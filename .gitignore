@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Run artifacts: screenshots, traces, logs, evaluator decisions.
+runs/
+
+# Local configuration and secrets. Never commit.
+.env
+driver.config.yaml
+driver.config.local.yaml
+
+.DS_Store

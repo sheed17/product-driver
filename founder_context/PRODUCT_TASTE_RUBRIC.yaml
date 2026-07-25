@@ -1,0 +1,388 @@
+# Neyma — Structured Product Taste Rubric
+#
+# Machine-readable companion to PRODUCT_OWNER_CONTEXT.md. The evaluator uses
+# these categories to judge OBSERVED product behaviour and to decide whether a
+# failure is something it may correct itself (FIX) or must escalate (ASK_USER).
+#
+# The Neyma repository remains authoritative for the active READY unit, phase
+# scope, acceptance criteria, architecture, safety invariants and progress.
+# This file encodes durable product taste only. Where they conflict on
+# authority, the repository wins.
+
+version: 1
+
+meta:
+  applies_to: neyma
+  surfaces:
+    - web_control_plane
+    - conversational
+    - slack
+    - teams
+    - email
+    - sms
+    - voice
+    - api
+    - cli
+    - documents
+    - portal
+  severity_levels: [blocker, major, minor]
+
+# ---------------------------------------------------------------------------
+# Confidence policy
+# ---------------------------------------------------------------------------
+confidence:
+  # Below this, the evaluator may not return an autonomous FIX.
+  minimum_for_fix: 0.6
+  # A customer-facing decision at or below this confidence must escalate.
+  minimum_for_customer_facing_fix: 0.75
+  # Below this, the evaluator may not return ACCEPT either.
+  minimum_for_accept: 0.6
+  low_confidence_action: ASK_USER
+  rules:
+    - "Low confidence may never produce an autonomous FIX for a major
+       customer-facing decision. Escalate with ASK_USER instead."
+    - "Confidence is about the DECISION, not about the model's fluency."
+    - "If the scenario did not run, confidence in any product judgement is 0."
+
+# ---------------------------------------------------------------------------
+# Escalation boundaries — when ASK_USER is mandatory
+# ---------------------------------------------------------------------------
+ask_user_boundaries:
+  - id: materially_different_experiences
+    description: >
+      Two materially different customer experiences are both reasonable and the
+      repository does not choose between them.
+  - id: product_identity
+    description: >
+      The choice changes Neyma's product identity or interaction model — for
+      example making it feel like a dashboard, a chatbot, or a TMS front-end.
+  - id: founder_taste
+    description: >
+      A customer-facing decision depends strongly on founder taste rather than
+      on any stated requirement.
+  - id: repository_silent
+    description: >
+      The repository is intentionally silent on a major product choice.
+  - id: low_confidence
+    description: >
+      Evaluator confidence is below the configured threshold.
+  - id: tms_centrality
+    description: >
+      A design would assume a TMS exists or treat it as the origin of truth.
+      A TMS is one possible node, not the universal center.
+  - id: channel_promotion
+    description: >
+      A channel (Slack, Teams, email, portal, conversation) would become a
+      second source of truth or a second orchestrator.
+
+# ---------------------------------------------------------------------------
+# Hard product rules — never acceptable, regardless of taste
+# ---------------------------------------------------------------------------
+never_acceptable:
+  - id: success_without_verification
+    description: >
+      Treating a button click, HTTP 200, queued job, email send attempt, browser
+      action, database write, adapter call, posted message, or model prediction
+      as success by itself.
+    proxies_that_are_not_success:
+      - button_click
+      - http_200
+      - queued_job
+      - email_send_attempt
+      - browser_action
+      - database_write
+      - adapter_call
+      - message_posted
+      - model_prediction
+  - id: inference_presented_as_fact
+    description: An inference shown to a user as an established fact.
+  - id: dead_end_error
+    description: An error with no recovery path and no statement of what is known.
+  - id: unowned_obligation
+    description: An unresolved obligation with no accountable human or system owner.
+  - id: agent_jargon_leak
+    description: >
+      Internal agent, orchestration, state-machine, prompt, model, tool or
+      confidence jargon exposed to a normal user without operational necessity.
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+categories:
+
+  - id: operational_clarity
+    description: >
+      The surface communicates in the language of freight operations, not of the
+      implementation. A dispatcher understands it without being taught the system.
+    pass_conditions:
+      - "States what happened in operational terms."
+      - "States what matters now."
+      - "Prefers operational clarity over technical detail."
+    failure_examples:
+      - "Screen shows 'run_id 8f2a3 state=AWAITING_TRANSITION'."
+      - "Error reads 'adapter call returned non-2xx'."
+      - "UI exposes node, graph, prompt, tool or embedding vocabulary."
+    normally_maps_to: FIX
+    severity: major
+    surfaces: [web_control_plane, conversational, slack, teams, email, sms]
+
+  - id: obligation_visibility
+    description: >
+      Outstanding obligations are visible as obligations — not buried in an
+      activity log the operator has to reconstruct.
+    pass_conditions:
+      - "Open obligations are enumerable without reading raw logs."
+      - "Each obligation states what it is waiting on."
+      - "Closed and open work are distinguishable."
+    failure_examples:
+      - "The only view is a reverse-chronological event feed."
+      - "An obligation exists in the database but appears on no surface."
+    normally_maps_to: FIX
+    severity: major
+    surfaces: [web_control_plane, conversational, slack, teams]
+
+  - id: evidence_clarity
+    description: >
+      The evidence supporting a state is visible and attributable. The user can
+      see why Neyma believes what it believes.
+    pass_conditions:
+      - "Each asserted state points at the evidence supporting it."
+      - "Evidence is identifiable (document, message, portal reading, assertion)."
+      - "Absence of evidence is shown as absence, not as zero or blank."
+    failure_examples:
+      - "'Delivered' shown with no indication of what proved delivery."
+      - "Missing POD renders as an empty cell indistinguishable from 'none required'."
+    normally_maps_to: FIX
+    severity: blocker
+    surfaces: [web_control_plane, conversational, api, documents]
+
+  - id: known_vs_inferred
+    description: >
+      Known facts and model inferences are distinguishable at a glance.
+    pass_conditions:
+      - "Inferred values are visibly marked as inferred."
+      - "The basis of an inference is available."
+      - "A user can tell an owner assertion from a system inference."
+    failure_examples:
+      - "An inferred delivery time is rendered identically to a scanned POD timestamp."
+      - "Model-extracted amount displayed as if it were confirmed by the carrier."
+    normally_maps_to: FIX
+    severity: blocker
+    surfaces: [web_control_plane, conversational, api, documents, email]
+
+  - id: authority_clarity
+    description: >
+      Evidence is distinguishable from authority. Something being known does not
+      make it authorized.
+    pass_conditions:
+      - "Authorization to act is shown separately from evidence of state."
+      - "Model inference is never presented as sufficient authority."
+      - "Owner-asserted information is not silently overwritten."
+    failure_examples:
+      - "UI implies an action is permitted because the data looks complete."
+      - "A model-inferred value silently replaces an owner assertion."
+    normally_maps_to: ASK_USER
+    severity: blocker
+    surfaces: [web_control_plane, api, conversational]
+    repository_authoritative: true
+
+  - id: accountable_owner
+    description: >
+      Exactly one accountable human is named where human ownership is required.
+    pass_conditions:
+      - "Each obligation needing a human names exactly one accountable person."
+      - "Ownership is unambiguous: Neyma's, the user's, or a named third party."
+    failure_examples:
+      - "'Assigned to: Operations' with no individual."
+      - "Two people appear equally responsible for the same obligation."
+      - "Ownership is implied by position in a list rather than stated."
+    normally_maps_to: FIX
+    severity: major
+    surfaces: [web_control_plane, conversational, slack, teams]
+
+  - id: next_action_clarity
+    description: >
+      What happens next is explicit, and whether Neyma or a human moves it.
+    pass_conditions:
+      - "Every open item states the next step."
+      - "The actor for the next step is named."
+      - "Blocked items say what would unblock them."
+    failure_examples:
+      - "Status reads 'In progress' with no next step."
+      - "An item is blocked with no statement of what it is blocked on."
+    normally_maps_to: FIX
+    severity: major
+    surfaces: [web_control_plane, conversational, slack, teams, email]
+
+  - id: approval_quality
+    description: >
+      Human approval appears where consequences matter, and nowhere else.
+    pass_conditions:
+      - "Consequential actions require approval."
+      - "Ordinary reversible actions do not."
+      - "The approval request states what will happen and what it costs."
+    failure_examples:
+      - "Confirmation dialog on a read-only refresh."
+      - "Money moves without an approval step."
+      - "Approval text does not say what is being approved."
+    normally_maps_to: ASK_USER
+    severity: blocker
+    surfaces: [web_control_plane, conversational, slack, teams]
+    repository_authoritative: true
+
+  - id: outcome_verification
+    description: >
+      Success means the intended real-world or business outcome was verified,
+      not that an action was attempted.
+    pass_conditions:
+      - "Completion claims are backed by an oracle external to the attempt."
+      - "Attempted, succeeded and verified are distinguishable states."
+      - "Ambiguous outcomes are shown as ambiguous, not as success."
+    failure_examples:
+      - "'Invoice sent' shown after an SMTP call returned 200."
+      - "'Updated in TMS' shown after a form submit with no readback."
+      - "A queued job renders as a completed obligation."
+    normally_maps_to: FIX
+    severity: blocker
+    surfaces: [web_control_plane, conversational, api, slack, teams, email]
+
+  - id: failure_recovery
+    description: >
+      Every error explains itself and offers a path forward.
+    pass_conditions:
+      - "States what failed."
+      - "States what is known and whether the outcome is unknown."
+      - "States what Neyma will do next and what the operator can do."
+      - "States whether retrying is safe."
+    failure_examples:
+      - "'Something went wrong.'"
+      - "A raw traceback or adapter error shown to an operator."
+      - "A timeout rendered as a definite failure."
+    normally_maps_to: FIX
+    severity: blocker
+    surfaces: [web_control_plane, conversational, slack, teams, email, sms, api]
+
+  - id: proactivity
+    description: >
+      Neyma continues working and surfaces what needs attention without being
+      opened. It is not a tool the user must sit down and run.
+    pass_conditions:
+      - "Work continues when no UI or chat window is open."
+      - "Exceptions and obligations are surfaced to the operator."
+      - "The user is not required to poll for state."
+    failure_examples:
+      - "Nothing happens unless a person clicks 'Run'."
+      - "An exception is discoverable only by opening a specific screen."
+    normally_maps_to: ASK_USER
+    severity: major
+    surfaces: [conversational, slack, teams, email, sms, web_control_plane]
+
+  - id: noise_control
+    description: >
+      Proactive without being noisy. Signal density stays high.
+    pass_conditions:
+      - "Notifications correspond to things a human must know or act on."
+      - "Routine successful work does not generate interruptions."
+      - "Related events are consolidated rather than emitted individually."
+    failure_examples:
+      - "A Slack message for every step of a successful automated flow."
+      - "Duplicate alerts for the same underlying obligation."
+    normally_maps_to: ASK_USER
+    severity: minor
+    surfaces: [slack, teams, email, sms, conversational]
+
+  - id: channel_consistency
+    description: >
+      One coherent Neyma identity across channels. No channel becomes a second
+      source of truth or a second orchestrator.
+    pass_conditions:
+      - "State is consistent across channels."
+      - "Channels are evidence and effect surfaces, not orchestrators."
+      - "Conversation is not treated as truth or authority."
+    failure_examples:
+      - "Slack shows an obligation closed while the control plane shows it open."
+      - "A decision exists only in a chat thread and nowhere durable."
+      - "Two channels can independently drive the same workflow."
+    normally_maps_to: ASK_USER
+    severity: blocker
+    surfaces: [slack, teams, email, sms, voice, portal, api, web_control_plane, conversational]
+
+  - id: customer_language
+    description: >
+      The product speaks the customer's language. A TMS is one possible node,
+      not the universal center.
+    pass_conditions:
+      - "Freight vocabulary is used correctly (load, lane, carrier, POD, BOL)."
+      - "Surfaces work for customers with no TMS."
+      - "No internal system naming leaks into customer-facing copy."
+    failure_examples:
+      - "A screen that cannot render without a TMS connection."
+      - "Copy that calls a load a 'record' or a 'job'."
+      - "Internal unit ids (P3, AC-SEC-001) shown to an operator."
+    normally_maps_to: FIX
+    severity: major
+    surfaces: [web_control_plane, conversational, slack, teams, email, documents]
+
+  - id: business_loop_closure
+    description: >
+      Neyma stays accountable until the actual business loop is closed. Visible
+      success does not prove closure.
+    pass_conditions:
+      - "The surface distinguishes 'work done' from 'loop closed'."
+      - "Closure is asserted only against a business-level oracle."
+      - "Open loops remain visible until genuinely closed."
+    failure_examples:
+      - "A load marked complete when the invoice is unpaid and unbilled."
+      - "An exception closed because a message was sent about it."
+      - "A workflow that ends at the adapter call rather than the outcome."
+    normally_maps_to: FIX
+    severity: blocker
+    surfaces: [web_control_plane, conversational, api]
+
+# ---------------------------------------------------------------------------
+# Vague-correction rejection
+# ---------------------------------------------------------------------------
+# A FIX whose correction prompt is dominated by these phrases, without observed
+# evidence, an expected result and a retest instruction, is rejected before it
+# reaches the builder.
+vague_correction_phrases:
+  - "keep going"
+  - "improve this"
+  - "make it better"
+  - "make it production-ready"
+  - "make it production ready"
+  - "polish the workflow"
+  - "polish it"
+  - "enhance robustness"
+  - "clean it up"
+  - "finish the feature"
+  - "add more tests"
+  - "tidy up"
+  - "refactor as needed"
+  - "handle edge cases"
+  - "improve ux"
+  - "improve the user experience"
+  - "continue"
+  - "as appropriate"
+  - "etc"
+
+# Minimum substance a FIX correction prompt must have.
+correction_prompt_requirements:
+  min_chars: 120
+  required_fields:
+    - requirement_reference
+    - scenario
+    - observed_result
+    - expected_result
+    - evidence_paths
+    - preserve
+    - retest
+  rules:
+    - "A FIX must name a concrete discrepancy between an observed result and an
+       expected result."
+    - "A FIX must cite at least one evidence path that exists in the run."
+    - "A FIX must state the smallest justified correction."
+    - "A FIX must state what behaviour must be preserved."
+    - "A FIX must state exactly how to retest."
+    - "An identical correction repeated within a run means the loop is not
+       converging: stop as BLOCKED."

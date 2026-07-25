@@ -1,0 +1,102 @@
+# Browser scenario template.
+#
+# Use this shape once a phase produces a surface a person actually looks at.
+# The driver starts the service itself (the builder's sandbox cannot bind a
+# port), waits for readiness, then drives the real UI with Playwright and
+# captures screenshots, DOM text, console errors, network failures and a trace.
+#
+# The evaluator judges what a freight operator would see — not the markup.
+
+name: browser_generic
+phase: "P10"
+mode: browser
+description: >
+  Open the generated Neyma operator surface, navigate the way an operator
+  would, and capture what is actually visible. Copy this file per surface and
+  replace the steps and expectations.
+
+# ---------------------------------------------------------------------------
+# 1. Build the artifacts the site is generated from.
+#    Every Neyma CLI requires an explicit tenant — there is no default.
+# ---------------------------------------------------------------------------
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+  # Uncomment and set TENANT for a real slice:
+  # - ".venv/bin/python scripts/generate_realistic_corpus.py"
+  # - ".venv/bin/python scripts/run_workflow.py --tenant neyma_test_freight"
+  # - ".venv/bin/python scripts/run_review.py --tenant neyma_test_freight"
+  # - ".venv/bin/python scripts/generate_packet_pages.py --tenant neyma_test_freight"
+  # - ".venv/bin/python scripts/generate_mock_tms.py --tenant neyma_test_freight"
+
+fixtures:
+  - "data/active_workspace/site/index.html"
+
+# ---------------------------------------------------------------------------
+# 2. Serve the product locally. Started by the driver, not by the builder.
+# ---------------------------------------------------------------------------
+services:
+  - name: site
+    command: ".venv/bin/python -m http.server 8000 --directory data/active_workspace/site"
+
+readiness:
+  - http: "http://127.0.0.1:8000/"
+    expect_status: 200
+    timeout_s: 5
+
+app_url: "http://127.0.0.1:8000"
+
+# ---------------------------------------------------------------------------
+# 3. Drive the UI the way an operator would
+# ---------------------------------------------------------------------------
+browser:
+  initial_screenshot: true
+  final_screenshot: true
+  steps:
+    - goto: "/"
+      screenshot: "landing"
+
+    - goto: "/operator/"
+      wait_ms: 500
+      screenshot: "operator-console"
+
+    # Example interactions — replace with the real flow under test:
+    # - click: "text=Loads"
+    # - wait_for: "[data-testid='load-list']"
+    # - fill: "input[name='search']"
+    #   value: "LD560003"
+    # - press: "Enter"
+    # - wait_for: "text=LD560003"
+    # - screenshot: "load-detail"
+    # - expect_text: "Delivered"
+
+# ---------------------------------------------------------------------------
+# 4. What an operator must be able to see.
+#    These are checked against the page's visible text, so write them the way
+#    the product actually words things.
+# ---------------------------------------------------------------------------
+expect_visible: []
+  # Product-rubric expectations look like this — what happened, what matters
+  # now, what is inferred, who owns the next step:
+  # - "Awaiting your approval"
+  # - "Inferred from"
+  # - "Evidence"
+  # - "Next"
+
+# ---------------------------------------------------------------------------
+# 5. What must never appear on a surface a person looks at.
+#    Internal agent jargon leaking into the UI is a product defect.
+# ---------------------------------------------------------------------------
+forbidden:
+  - "Traceback"
+  - "undefined"
+  - "[object Object]"
+  - "NaN"
+  - "None"
+  - "TODO"
+  - "tool_use"
+  - "checkpoint witness"
+  - "READY unit"
+
+expect_state: []
+
+teardown: []

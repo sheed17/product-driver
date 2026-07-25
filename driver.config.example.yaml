@@ -1,0 +1,61 @@
+# Neyma Product Driver configuration.
+# Copy to driver.config.yaml and edit. CLI flags override anything here.
+
+neyma_repo: /Users/sammyfammy/freight-logistics-operational-teammate
+driver_root: /Users/sammyfammy/neyma-product-driver
+
+# What the builder should do. Override per run with --task.
+task: ""
+
+# Scenario name (resolved under scenarios/) or an explicit path.
+scenario: backend_generic
+
+# Hard ceiling on the correct-and-retest loop. Must be 1..20.
+max_iterations: 5
+
+builder:
+  model: opus
+  # 'default' | 'acceptEdits' | 'plan'. Bypassing modes are rejected outright.
+  # 'acceptEdits' matches Neyma's own defaultMode so the builder can Write/Edit
+  # ordinary files without an interactive approval the harness cannot service;
+  # deny rules for secrets/protected config and the driver's PreToolUse safety
+  # net still apply. Do not set 'default' unless you want every edit to pause.
+  permission_mode: acceptEdits
+  # Required for the SDK to load Neyma's CLAUDE.md, settings, hooks,
+  # skills and subagents. Removing these strips Neyma's authority.
+  setting_sources: [user, project, local]
+  # Explicit Agent SDK tool permissions. This driver runs UNATTENDED, so the
+  # builder's working set is auto-approved here — no interactive approval pause
+  # for ordinary source-code work. Bash covers pytest, linters, repository
+  # scripts, and local git (status/diff/log/show/add/restore and a local commit
+  # when repository authority requires it). The driver's PreToolUse hook still
+  # hard-denies remote publishing, force push, history rewrites, secret access,
+  # external/production effects, system-wide installs and machine-security
+  # changes even though the tools are allow-listed. Omit to use this default.
+  allowed_tools:
+    [Read, Grep, Glob, NotebookRead, Write, Edit, MultiEdit, NotebookEdit,
+     TodoWrite, Bash, BashOutput, KillShell, WebFetch, WebSearch]
+  max_turns: 120
+  turn_timeout_s: 1800
+  stream_progress: true
+
+evaluator:
+  model: opus
+  max_turns: 30
+  turn_timeout_s: 900
+  # The evaluator is read-only by construction.
+  allowed_tools: [Read, Grep, Glob]
+
+run:
+  command_timeout_s: 300
+  readiness_timeout_s: 90
+  http_timeout_s: 30
+  # Enabled automatically for browser scenarios.
+  browser_enabled: false
+  headless: true
+  capture_trace: true
+
+# Neyma is normally dirty mid-phase, so this defaults to true.
+allow_dirty_tree: true
+# Refuse to run unless the repo is on this branch. null = any branch.
+require_branch: null

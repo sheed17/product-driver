@@ -1,0 +1,107 @@
+# Backend-only scenario template.
+#
+# Use this shape for phases where there is no browser surface yet — the product
+# is exercised through CLI entry points, real local API calls, persisted state
+# and logs. Every command runs from the Neyma repository root.
+#
+# The driver runs these commands from its OWN unsandboxed process, which matters
+# for Neyma: the builder session runs under a sandbox that blocks socket.bind(),
+# so anything that listens on a port must be started here, not by the builder.
+
+name: backend_generic
+phase: "P3"
+mode: backend
+description: >
+  Generic backend slice check: prove the environment is sound, exercise the
+  behaviour under test through its real entry point, then inspect what was
+  actually persisted. Copy this file per phase and replace the marked sections.
+
+# ---------------------------------------------------------------------------
+# 1. Setup — must all succeed or the scenario aborts before touching the product
+# ---------------------------------------------------------------------------
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# ---------------------------------------------------------------------------
+# 2. Fixtures that must exist before the product is exercised
+# ---------------------------------------------------------------------------
+fixtures:
+  - "eval/golden_set/ground_truth.json"
+  - "pytest-canonical.ini"
+
+# ---------------------------------------------------------------------------
+# 3. Long-running services.
+#    Leave empty for pure-CLI phases. Example for a phase with an HTTP surface:
+#
+# services:
+#   - name: callback
+#     command: >-
+#       .venv/bin/python scripts/run_action_callback_server.py
+#       --host 127.0.0.1 --port 8001
+#       --workspace data/active_workspace/driver_probe
+#       --db data/active_workspace/driver_probe/workflow.sqlite3
+# readiness:
+#   - tcp: "127.0.0.1:8001"
+# app_url: "http://127.0.0.1:8001"
+# ---------------------------------------------------------------------------
+services: []
+readiness: []
+app_url: ""
+
+# ---------------------------------------------------------------------------
+# 4. Operate the product through its real entry points.
+#    Replace these with the commands that exercise the slice under test.
+#    Tests are included as a signal, never as the basis for acceptance.
+# ---------------------------------------------------------------------------
+commands:
+  - name: "focused suite for the slice under test"
+    run: ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q"
+    expect_exit_code: 0
+    timeout_s: 600
+
+  - name: "checkpoint matrix — the 105-case merge-gating oracle"
+    run: ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q"
+    expect_exit_code: 0
+    timeout_s: 900
+
+# ---------------------------------------------------------------------------
+# 5. Real API calls against a locally running service (empty when no HTTP surface)
+# ---------------------------------------------------------------------------
+requests: []
+
+# ---------------------------------------------------------------------------
+# 6. Inspect what was actually persisted — the oracle.
+#    A local write is never an oracle for an external effect; for backend
+#    slices, durable state and event rows are the oracle.
+# ---------------------------------------------------------------------------
+expect_state:
+  - name: "P3 canonical tables exist in a freshly created schema"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    contains:
+      - "checkpoint_witnesses"
+      - "brakes"
+      - "platform_brake"
+
+# ---------------------------------------------------------------------------
+# 7. What must be observable, and what must never appear anywhere
+# ---------------------------------------------------------------------------
+expect_visible: []
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "PermissionError"
+  - "no such table"
+  - "CrossTenantAccessAttempted"
+
+# ---------------------------------------------------------------------------
+# 8. Teardown — always runs, even after failure. Must be non-destructive.
+#    NEVER use git stash/restore/clean/checkout -- here: the P3 kernel is
+#    untracked and those commands would destroy it irrecoverably.
+# ---------------------------------------------------------------------------
+teardown: []
