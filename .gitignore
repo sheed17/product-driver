@@ -7,8 +7,15 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
-# Run artifacts: screenshots, traces, logs, evaluator decisions.
+# Run artifacts: screenshots, traces, logs, evaluator decisions, run journals.
 runs/
+
+# Preservation refs and git bundles written before any local-history change.
+# Local recovery points — never published.
+preservation/
+
+# Approved temporary workspace for throwaway probes and scratch.
+tmp/
 
 # Local configuration and secrets. Never commit.
 .env

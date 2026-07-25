@@ -22,13 +22,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
+from pydantic import ValidationError
+
 from .config import (
-    DEFAULT_DRIVER_ROOT,
     DriverConfig,
     api_key_present,
     load_config,
 )
 from .completion_auditor import AuditDecision, CompletionAuditor
+from .paths import RepositoryPathError
 from .context import (
     ContextProvenance,
     ContextResolutionError,
@@ -1066,6 +1068,34 @@ async def _check_builder_write_capability(repo: Path) -> tuple[bool, str]:
         return False, "the probe changed the tracked working tree (it must not)"
 
     return True, f"create/edit/read/remove OK at ignored {rel}; no tracked file touched"
+
+
+async def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Read-only preflight against the target repository.
+
+    Writes nothing, starts no Claude session, and runs only read-only git
+    inspection. Intended as the first thing you run before trusting the driver
+    unattended: it shows exactly what the driver derives from the repository, so
+    a disagreement with your own reading surfaces before a run, not during one.
+
+    Exit codes: 0 calibrated cleanly; 2 the repository could not be read;
+    10 calibration succeeded but a founder decision is required first.
+    """
+    from .calibration import calibrate
+
+    config = _config_from_args(args)
+    report = calibrate(config.neyma_repo)
+
+    if getattr(args, "as_json", False):
+        print(json.dumps(report.to_dict(), indent=2, default=str))
+    else:
+        print(report.render())
+
+    if report.problems:
+        return 2
+    if report.founder_decision_required:
+        return 10
+    return 0
 
 
 async def cmd_doctor(args: argparse.Namespace) -> int:
@@ -2113,6 +2143,14 @@ def build_parser() -> argparse.ArgumentParser:
     common(doctor_p)
     doctor_p.set_defaults(func=cmd_doctor)
 
+    calibrate_p = sub.add_parser(
+        "calibrate",
+        help="read-only preflight: what the driver derives from the target repository",
+    )
+    common(calibrate_p)
+    calibrate_p.add_argument("--json", action="store_true", dest="as_json")
+    calibrate_p.set_defaults(func=cmd_calibrate)
+
     status_p = sub.add_parser("status", help="show the latest (or a given) run")
     common(status_p)
     status_p.add_argument("run_id", nargs="?", help="run id (defaults to the latest)")
@@ -2219,6 +2257,26 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         out("\ninterrupted")
         return 130
+    except ValidationError as exc:
+        # Configuration is wrong. Say exactly what is missing and how to supply
+        # it — a traceback here would read as a driver bug, when in fact the
+        # driver is correctly refusing to guess.
+        error("Configuration error\n")
+        for item in exc.errors():
+            location = ".".join(str(part) for part in item.get("loc", ())) or "(root)"
+            out(f"  {location}: {item.get('msg', '')}")
+        if any("neyma_repo" in str(e.get("loc", ())) for e in exc.errors()):
+            out(
+                "\n  The target repository is never inferred. Either:\n"
+                "    - copy driver.config.example.yaml to driver.config.yaml and set "
+                "neyma_repo, or\n"
+                "    - pass --repo /path/to/the/repository\n"
+                "  The driver does not fall back to a previously-used path."
+            )
+        return 2
+    except RepositoryPathError as exc:
+        error(f"Repository path error\n  {exc}")
+        return 2
 
 
 if __name__ == "__main__":

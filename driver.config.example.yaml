@@ -1,13 +1,38 @@
 # Neyma Product Driver configuration.
 # Copy to driver.config.yaml and edit. CLI flags override anything here.
+#
+# driver.config.yaml is git-ignored. Never commit a personal one, and never put
+# a secret in it — the driver reads no credentials from configuration.
 
-neyma_repo: /Users/sammyfammy/freight-logistics-operational-teammate
-driver_root: /Users/sammyfammy/neyma-product-driver
+# REQUIRED. The target Neyma product repository. There is no default and no
+# fallback: if this path is missing or is not a git checkout, the driver stops
+# and says so rather than reading some other directory.
+neyma_repo: ~/Desktop/freight-logistics-operational-teammate
+
+# OPTIONAL. The Product Driver's own root. Omit it — the driver derives it from
+# where this package is actually installed. Set it only for an unusual layout.
+# driver_root: ~/neyma-product-driver
+
+# OPTIONAL. All four default under driver_root and are created on demand.
+# These, plus neyma_repo, are the approved roots the builder may write into;
+# a write resolving outside every one of them is denied and recorded.
+# runs_dir:            ~/neyma-product-driver/runs          # run artifacts, evidence, traces
+# preservation_dir:    ~/neyma-product-driver/preservation  # backup refs and git bundles
+# temp_workspace_root: ~/neyma-product-driver/tmp           # throwaway probes and scratch
+# scenarios_dir:       ~/neyma-product-driver/scenarios
+
+# Additional approved roots, if a scenario genuinely needs one.
+# extra_writable_roots: []
+
+# A Driver-maintenance run works on the Product Driver itself, so driver_root
+# joins the approved roots. Leave false for ordinary product runs: the driver's
+# own source is not the builder's business then.
+driver_maintenance: false
 
 # What the builder should do. Override per run with --task.
 task: ""
 
-# Scenario name (resolved under scenarios/) or an explicit path.
+# Scenario name (resolved under scenarios_dir) or an explicit path.
 scenario: backend_generic
 
 # Hard ceiling on the correct-and-retest loop. Must be 1..20.
@@ -17,21 +42,23 @@ builder:
   model: opus
   # 'default' | 'acceptEdits' | 'plan'. Bypassing modes are rejected outright.
   # 'acceptEdits' matches Neyma's own defaultMode so the builder can Write/Edit
-  # ordinary files without an interactive approval the harness cannot service;
-  # deny rules for secrets/protected config and the driver's PreToolUse safety
-  # net still apply. Do not set 'default' unless you want every edit to pause.
+  # ordinary files without an interactive approval the unattended harness cannot
+  # service. It does not weaken anything: the PreToolUse hook still denies the
+  # hard-blocked set, and Neyma's own deny rules still load underneath.
   permission_mode: acceptEdits
   # Required for the SDK to load Neyma's CLAUDE.md, settings, hooks,
   # skills and subagents. Removing these strips Neyma's authority.
   setting_sources: [user, project, local]
   # Explicit Agent SDK tool permissions. This driver runs UNATTENDED, so the
   # builder's working set is auto-approved here — no interactive approval pause
-  # for ordinary source-code work. Bash covers pytest, linters, repository
-  # scripts, and local git (status/diff/log/show/add/restore and a local commit
-  # when repository authority requires it). The driver's PreToolUse hook still
-  # hard-denies remote publishing, force push, history rewrites, secret access,
-  # external/production effects, system-wide installs and machine-security
-  # changes even though the tools are allow-listed. Omit to use this default.
+  # for ordinary source-code work. There is no can_use_tool callback: a
+  # whole-tool allow entry would shadow it, and unattended it could only hang.
+  # Bash covers pytest, linters, repository scripts, local services and local
+  # git (status/diff/log/show/add/restore, and a local commit when repository
+  # authority requires one). The PreToolUse hook still hard-denies remote
+  # publishing, force push, history rewrites without preservation, secret
+  # access, external/production effects, system-wide installs, machine-security
+  # changes and writes outside the approved roots.
   allowed_tools:
     [Read, Grep, Glob, NotebookRead, Write, Edit, MultiEdit, NotebookEdit,
      TodoWrite, Bash, BashOutput, KillShell, WebFetch, WebSearch]
@@ -59,3 +86,11 @@ run:
 allow_dirty_tree: true
 # Refuse to run unless the repo is on this branch. null = any branch.
 require_branch: null
+
+# Local history transformation (git commit --amend, soft-reset consolidation).
+# Off by default. Turning it on does NOT make amendment automatic: each one
+# still has to pass the mechanical preconditions in preservation.py — the
+# affected commits must be unreachable from every remote-tracking ref, the
+# repository protocol must require the transformation, and a preservation ref
+# plus a git bundle must be written before anything moves.
+allow_local_history_rewrite: false

@@ -4,6 +4,13 @@ Loaded from a JSON/YAML file (``driver.config.yaml`` by default), overridable by
 CLI flags. Validation is strict about the things that matter for safety: the
 Neyma repo must be a real git repository, permission mode may never be a
 bypassing mode, and iteration count is bounded.
+
+**Paths are derived, never remembered.** ``driver_root`` defaults to wherever
+this package actually lives (see :func:`~neyma_product_driver.paths.discover_driver_root`);
+``neyma_repo`` has no default at all and must be configured. An earlier version
+of this file carried two absolute paths belonging to one machine, one of which
+has since gone stale — a driver that silently falls back to an obsolete path
+reads a repository that is not the product, and reports confidently about it.
 """
 
 from __future__ import annotations
@@ -15,8 +22,12 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-DEFAULT_DRIVER_ROOT = Path("/Users/sammyfammy/neyma-product-driver")
-DEFAULT_NEYMA_REPO = Path("/Users/sammyfammy/freight-logistics-operational-teammate")
+from .paths import (
+    ApprovedRoots,
+    default_roots,
+    discover_driver_root,
+    expand_resolved,
+)
 
 # Permission modes that would let the builder act without the Neyma repo's own
 # controls being consulted. Never selectable.
@@ -126,10 +137,25 @@ class DriverConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    neyma_repo: Path = DEFAULT_NEYMA_REPO
-    driver_root: Path = DEFAULT_DRIVER_ROOT
+    # No default: the target repository is always stated explicitly. There is no
+    # fallback path, because a wrong-but-plausible repository is worse than a
+    # clear failure to start.
+    neyma_repo: Path
+    # Derived from where this package actually lives, not from a remembered path.
+    driver_root: Path = Field(default_factory=discover_driver_root)
     runs_dir: Path | None = None
     scenarios_dir: Path | None = None
+    #: Local backup refs and git bundles created before any local-history change.
+    preservation_dir: Path | None = None
+    #: Scratch space for temporary probes and throwaway workspaces.
+    temp_workspace_root: Path | None = None
+    #: Additional roots the builder may write into, beyond the four derived ones.
+    extra_writable_roots: list[Path] = Field(default_factory=list)
+
+    # A Driver-maintenance run works on the Product Driver itself, so driver_root
+    # joins the approved roots. Off for ordinary product runs, where the driver's
+    # own source is not the builder's business.
+    driver_maintenance: bool = False
 
     task: str = ""
     scenario: str = "backend_generic"
@@ -146,19 +172,41 @@ class DriverConfig(BaseModel):
     allow_auto_push: bool = False
     confirm_api_key_billing: bool = False
 
+    # Local-history transformation (amend / soft-reset consolidation). Off by
+    # default, and enabling it does not make the transformation automatic: each
+    # one must still satisfy every mechanical precondition in
+    # :mod:`~neyma_product_driver.preservation` — unpushed, protocol-required,
+    # and preserved to a local ref and bundle before anything moves. Arbitrary
+    # rebases stay blocked regardless, because nothing here can prove their
+    # recoverability yet.
+    allow_local_history_rewrite: bool = False
+
     @field_validator("neyma_repo", "driver_root", mode="before")
     @classmethod
     def _expand(cls, v: Any) -> Any:
         if v is None:
             return v
-        return Path(os.path.expanduser(str(v))).resolve()
+        if str(v).strip() == "":
+            raise ValueError(
+                "neyma_repo must name the target repository; it is never inferred"
+            )
+        return expand_resolved(v)
 
-    @field_validator("runs_dir", "scenarios_dir", mode="before")
+    @field_validator(
+        "runs_dir", "scenarios_dir", "preservation_dir", "temp_workspace_root", mode="before"
+    )
     @classmethod
     def _expand_opt(cls, v: Any) -> Any:
         if v in (None, ""):
             return None
-        return Path(os.path.expanduser(str(v))).resolve()
+        return expand_resolved(v)
+
+    @field_validator("extra_writable_roots", mode="before")
+    @classmethod
+    def _expand_list(cls, v: Any) -> Any:
+        if not v:
+            return []
+        return [expand_resolved(item) for item in v]
 
     @field_validator("max_iterations")
     @classmethod
@@ -175,27 +223,68 @@ class DriverConfig(BaseModel):
             object.__setattr__(self, "runs_dir", self.driver_root / "runs")
         if self.scenarios_dir is None:
             object.__setattr__(self, "scenarios_dir", self.driver_root / "scenarios")
+        if self.preservation_dir is None:
+            object.__setattr__(self, "preservation_dir", self.driver_root / "preservation")
+        if self.temp_workspace_root is None:
+            object.__setattr__(self, "temp_workspace_root", self.driver_root / "tmp")
         if self.allow_auto_commit or self.allow_auto_push:
+            # These govern the DRIVER control process, which never commits or
+            # pushes. They say nothing about the builder session, which may
+            # create local commits when the target repository's own authority
+            # requires them. See README "Who may do what".
             raise ValueError(
                 "allow_auto_commit / allow_auto_push cannot be enabled: the driver "
-                "never commits or pushes on your behalf"
+                "control process never commits or pushes on your behalf"
             )
         return self
+
+    # -- approved local roots ---------------------------------------------
+
+    def writable_roots(self) -> ApprovedRoots:
+        """The local roots the builder may write into during this run.
+
+        Derived, not hardcoded: the target repository, this run's artifact
+        directory, the preservation directory and the temporary workspace —
+        plus the Product Driver itself when this is a maintenance run.
+        """
+        assert self.runs_dir is not None
+        assert self.preservation_dir is not None
+        assert self.temp_workspace_root is not None
+        return default_roots(
+            target_repo=self.neyma_repo,
+            runs_dir=self.runs_dir,
+            preservation_dir=self.preservation_dir,
+            temp_workspace_root=self.temp_workspace_root,
+            driver_root=self.driver_root if self.driver_maintenance else None,
+            extra=self.extra_writable_roots,
+        )
 
     # -- repository checks (kept separate so unit tests can build a config
     #    pointing at a temp dir without a git repo present) -----------------
 
     def validate_repo(self) -> list[str]:
-        """Return a list of problems with the configured Neyma repository."""
+        """Return a list of problems with the configured Neyma repository.
+
+        Every problem names the configured path, so a run pointed at a stale or
+        half-deleted directory says which path it was given rather than failing
+        somewhere deeper with a confusing symptom.
+        """
         problems: list[str] = []
         if not self.neyma_repo.exists():
-            problems.append(f"Neyma repository not found: {self.neyma_repo}")
+            problems.append(
+                f"Neyma repository not found: {self.neyma_repo}. "
+                "Set neyma_repo in driver.config.yaml or pass --repo; "
+                "the driver never falls back to a previously-used path."
+            )
             return problems
         if not self.neyma_repo.is_dir():
             problems.append(f"Neyma repository path is not a directory: {self.neyma_repo}")
             return problems
         if not (self.neyma_repo / ".git").exists():
-            problems.append(f"Not a git repository (no .git): {self.neyma_repo}")
+            problems.append(
+                f"Not a git repository (no .git): {self.neyma_repo}. "
+                "This looks like a leftover directory rather than the product repository."
+            )
         if not (self.neyma_repo / "CLAUDE.md").exists():
             problems.append(
                 f"CLAUDE.md not found in {self.neyma_repo}; the builder would run "
@@ -234,12 +323,18 @@ def load_config(path: str | Path | None = None, **overrides: Any) -> DriverConfi
             raise ValueError(f"Config file must contain a mapping: {p}")
         data = loaded
     else:
-        for default_name in ("driver.config.yaml", "driver.config.yml", "driver.config.json"):
-            p = DEFAULT_DRIVER_ROOT / default_name
-            if p.exists():
-                loaded = yaml.safe_load(p.read_text()) or {}
-                if isinstance(loaded, dict):
-                    data = loaded
+        # Search the derived driver root and the working directory — never a
+        # remembered absolute path.
+        roots: list[Path] = [discover_driver_root(), Path.cwd()]
+        for root in dict.fromkeys(roots):
+            for default_name in ("driver.config.yaml", "driver.config.yml", "driver.config.json"):
+                p = root / default_name
+                if p.exists():
+                    loaded = yaml.safe_load(p.read_text()) or {}
+                    if isinstance(loaded, dict):
+                        data = loaded
+                    break
+            if data:
                 break
 
     for key, value in overrides.items():

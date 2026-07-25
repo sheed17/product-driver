@@ -28,6 +28,9 @@ permissions, not as an interactive ``can_use_tool`` callback:
 Everything else — editing/creating/renaming/deleting ordinary repository files,
 running Python/pytest/linters/scripts, and local git including a local commit
 when repository authority requires it — runs autonomously with no approval pause.
+
+Classification itself lives in :mod:`~neyma_product_driver.command_guard`, which
+also documents honestly what string-level classification can and cannot enforce.
 """
 
 from __future__ import annotations
@@ -50,143 +53,25 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
+from .command_guard import (
+    CommandGuard,
+    GuardDecision,
+    classify_command,
+    classify_tool_use,
+    enforcement_layers,
+)
 from .config import BuilderConfig
 from .models import redact
+from .paths import ApprovedRoots
 from .prompts import BUILDER_SYSTEM_APPEND
 
-# --------------------------------------------------------------------------
-# Hard-blocked-action classification
-# --------------------------------------------------------------------------
-#
-# The driver runs unattended, so ordinary work is NOT listed here — it runs
-# autonomously. This is the narrow set of actions the driver must never perform
-# on the owner's behalf: remote publishing, force push, history rewrites, secret
-# access, external/production effects, system-wide installs and machine-security
-# changes. Everything else (local commits, restore, add, file create/edit/rename/
-# delete, pytest/linters/scripts) is deliberately absent so it is never blocked.
-# Matching is on the raw command string, deliberately broad.
-
-_FORBIDDEN_COMMAND_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    # -- Remote publishing and force push --------------------------------------
-    (re.compile(r"\bgit\s+push\b[^\n]*(?:--force\b|--force-with-lease\b|(?:^|\s)-f\b)"),
-     "git force push (publishing + history overwrite of a remote)"),
-    (re.compile(r"\bgit\s+push\b"), "git push (publishing to a remote)"),
-    (re.compile(r"\bgit\s+(?:merge|rebase|pull)\b[^\n]*\borigin\b"), "git sync from a remote"),
-    # -- History rewrites ------------------------------------------------------
-    (re.compile(r"\bgit\s+reset\s+--hard\b"), "git reset --hard (destroys committed/worktree state)"),
-    (re.compile(r"\bgit\s+rebase\b"), "git rebase (history rewrite)"),
-    (re.compile(r"\bgit\s+filter-branch\b"), "git filter-branch (history rewrite)"),
-    (re.compile(r"\bgit\s+filter-repo\b"), "git filter-repo (history rewrite)"),
-    (re.compile(r"\bgit\s+commit\b[^\n]*--amend\b"), "git commit --amend (rewrites a commit)"),
-    (re.compile(r"\bgit\s+push\b[^\n]*--delete\b|\bgit\s+push\b[^\n]*:\s*\S"), "git push --delete (remote branch/tag deletion)"),
-    # -- Deleting the repository / operating outside allowed paths -------------
-    (re.compile(r"\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+(?:/(?:\s|$)|~|\$HOME\b)"), "recursive delete of a root/home path"),
-    (re.compile(r"\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+[^\n]*(?:/|\b)\.git(?:/|\b|\s|$)"), "deleting the .git repository"),
-    # -- External / production effects ----------------------------------------
-    (re.compile(r"\bgh\s+(?:pr|release|repo|api|workflow|gist|secret|auth)\b"), "GitHub CLI mutation"),
-    (re.compile(r"\b(?:kubectl|helm|terraform|pulumi|serverless|vercel|netlify|flyctl|fly|heroku|render)\b"), "deploy tooling"),
-    (re.compile(r"\b(?:docker|podman)\s+push\b"), "container push"),
-    (re.compile(r"\baws\s+(?!.*\b(?:help|--version)\b)"), "AWS CLI"),
-    (re.compile(r"\b(?:gcloud|az|doctl|linode-cli)\s+"), "cloud CLI"),
-    (re.compile(r"\bnpm\s+publish\b|\bpoetry\s+publish\b|\btwine\s+upload\b|\byarn\s+publish\b|\bnpx\s+[^\n]*\bpublish\b"),
-     "package publish"),
-    # `\b` before a hyphen never matches, so anchor on whitespace instead.
-    (re.compile(r"(?i)\b(?:curl|wget|http|httpie)\b[^|;&]*\s(?:-X\s*(?:POST|PUT|PATCH|DELETE)\b|--data\b|--form\b|-d\s)"),
-     "outbound mutating HTTP request"),
-    (re.compile(r"(?i)\b(?:slack|twilio|sendgrid|mailgun|postmark|resend|mailx|sendmail|mutt)\b"), "outbound communication"),
-    (re.compile(r"(?i)\b(?:stripe|braintree|paypal|adyen|square)\b"), "payment / billing effect"),
-    (re.compile(r"(?i)\bprod(?:uction)?\b.*\b(?:db|database|psql|mysql|migrate)\b"), "production database access"),
-    (re.compile(r"(?i)\bpsql\b.*\b(?:prod|production)\b"), "production database access"),
-    # -- Reading secrets through the shell ------------------------------------
-    (re.compile(r"(?i)\b(?:cat|bat|less|more|head|tail|xxd|base64|strings|cp|scp|rsync|open)\b[^\n|;&]*"
-                r"(?:\.env(?:\.[^\s/]*)?|(?:^|/)\.ssh/|id_(?:rsa|ed25519|ecdsa|dsa)\b|(?:^|/)\.aws/"
-                r"|\.git-credentials\b|(?:^|/)\.netrc\b|\.pem\b|\.p12\b)"),
-     "reading a secret / credential file through the shell"),
-    (re.compile(r"(?i)\bsecurity\s+(?:find-|dump-|export|unlock)"), "macOS keychain access"),
-    # -- System-wide installs and machine-security changes --------------------
-    (re.compile(r"(?i)\bsudo\b"), "sudo (privileged, machine-wide effect)"),
-    (re.compile(r"(?i)\b(?:brew|apt|apt-get|yum|dnf|port|snap|pacman|zypper|apk)\s+install\b"), "system package install"),
-    (re.compile(r"(?i)\bnpm\s+(?:install|i|add)\b[^\n]*\s-g\b|\b(?:yarn|pnpm)\s+global\s+add\b"), "global npm/yarn/pnpm install"),
-    (re.compile(r"(?i)\b(?:softwareupdate|csrutil|spctl|nvram|scutil|systemsetup)\b"), "machine-security / system setting change"),
-    (re.compile(r"(?i)\bdefaults\s+write\b"), "system defaults change"),
-    (re.compile(r"(?i)\bchmod\s+-R?\s*0?777\b|\bchflags\b"), "insecure permission / flag change"),
+__all__ = [
+    "BuilderSession",
+    "BuilderTurn",
+    "classify_command",
+    "classify_tool_use",
+    "enforcement_layers",
 ]
-
-# Secret / credential surfaces: reading OR writing these is refused, on any file
-# tool AND through the shell (above). The driver must never exfiltrate or alter
-# credentials, tokens, keys, keychains or browser profiles.
-_SECRET_PATH_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"(?:^|/)\.env(?:\.[^/]*)?$"),
-    re.compile(r"(?:^|/)\.ssh(?:/|$)"),
-    re.compile(r"(?:^|/)id_(?:rsa|ed25519|ecdsa|dsa)(?:\.pub)?$"),
-    re.compile(r"(?:^|/)\.aws(?:/|$)"),
-    re.compile(r"(?:^|/)\.azure(?:/|$)"),
-    re.compile(r"(?:^|/)\.config/(?:gcloud|gh|gh-copilot)(?:/|$)"),
-    re.compile(r"(?:^|/)\.kube(?:/|$)"),
-    re.compile(r"(?:^|/)\.git-credentials$"),
-    re.compile(r"(?:^|/)\.netrc$"),
-    re.compile(r"(?:^|/)\.npmrc$"),
-    re.compile(r"(?:^|/)\.pypirc$"),
-    re.compile(r"(?:^|/)\.docker/config\.json$"),
-    re.compile(r"(?i)(?:^|/)[^/]*\.(?:pem|key|p12|pfx|keystore|jks)$"),
-    re.compile(r"(?i)/Library/Keychains/|(?:^|/)[^/]*\.keychain(?:-db)?$"),
-    # Browser profiles (cookies, saved credentials).
-    re.compile(r"(?i)/(?:Google/Chrome|Chromium|BraveSoftware|Firefox|Microsoft Edge)/"),
-    re.compile(r"(?i)(?:^|/)\.mozilla/"),
-]
-
-# Protected control surfaces: WRITING these is refused (they carry the harness's
-# own authority), but reading them is fine. CLAUDE.md is deliberately NOT here —
-# the builder may edit ordinary project docs, including CLAUDE.md.
-_PROTECTED_CONFIG_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"(?:^|/)\.claude/settings(?:\.local)?\.json$"),
-    re.compile(r"(?:^|/)\.claude/hooks/"),
-    re.compile(r"(?:^|/)\.claude/settings/"),
-    re.compile(r"(?:^|/)\.mcp\.json$"),
-]
-
-_MUTATING_FILE_TOOLS = {"Write", "Edit", "NotebookEdit", "MultiEdit"}
-_READ_TOOLS = {"Read", "NotebookRead"}
-
-
-def _matches(path: str, patterns: list[re.Pattern[str]]) -> bool:
-    return bool(path) and any(p.search(path) for p in patterns)
-
-
-def classify_command(command: str) -> str | None:
-    """Return a reason string if ``command`` is hard-blocked, else None."""
-    if not command:
-        return None
-    for pattern, reason in _FORBIDDEN_COMMAND_PATTERNS:
-        if pattern.search(command):
-            return reason
-    return None
-
-
-def classify_tool_use(tool_name: str, tool_input: dict[str, Any]) -> str | None:
-    """Return a reason string if this tool use is hard-blocked, else None.
-
-    Ordinary work — reading non-secret files, writing/editing ordinary files,
-    running non-destructive commands — returns None and is never blocked.
-    """
-    if tool_name == "Bash":
-        return classify_command(str(tool_input.get("command", "")))
-
-    path = str(tool_input.get("file_path") or tool_input.get("path") or "")
-
-    if tool_name in _READ_TOOLS:
-        if _matches(path, _SECRET_PATH_PATTERNS):
-            return f"read of a secret/credential path ({path})"
-        return None
-
-    if tool_name in _MUTATING_FILE_TOOLS:
-        if _matches(path, _SECRET_PATH_PATTERNS):
-            return f"write to a secret/credential path ({path})"
-        if _matches(path, _PROTECTED_CONFIG_PATTERNS):
-            return f"write to a protected control surface ({path})"
-        return None
-
-    return None
 
 
 # --------------------------------------------------------------------------
@@ -230,6 +115,8 @@ class BuilderSession:
         config: BuilderConfig,
         resume_session_id: str | None = None,
         on_progress: Callable[[str], None] | None = None,
+        roots: ApprovedRoots | None = None,
+        journal: Any | None = None,
     ) -> None:
         self.repo = Path(repo)
         self.config = config
@@ -238,13 +125,29 @@ class BuilderSession:
         self._client: ClaudeSDKClient | None = None
         self._on_progress = on_progress or (lambda _msg: None)
         self.denied_requests: list[str] = []
+        #: Approved write roots. ``None`` means confinement is not configured —
+        #: the string-level rules still apply, but no root boundary is claimed.
+        self.roots = roots
+        #: Optional RunJournal. Every tool use, denial and command flows into it.
+        self.journal = journal
+        self.guard = CommandGuard(roots=roots, cwd=self.repo)
 
     # -- permission handling ---------------------------------------------
+
+    def authorize_amendment(self, authorized: bool) -> None:
+        """Permit (or revoke) exactly one authorized local-history amendment.
+
+        Only :mod:`~neyma_product_driver.preservation` should call this, and
+        only after every mechanical precondition has passed. It is deliberately
+        a session-level switch rather than a config flag, so an authorization
+        cannot outlive the run that proved it.
+        """
+        self.guard.amendment_authorized = bool(authorized)
 
     async def _pre_tool_use_hook(
         self, input_data: dict[str, Any], tool_use_id: str | None, context: Any
     ) -> dict[str, Any]:
-        """The enforcement layer: blocks hard-blocked actions even when a
+        """The enforcement layer: blocks hard-blocked actions even when an
         ``allowed_tools`` entry, the repo's own settings, or the permission mode
         pre-approved the tool. This is what makes explicit tool permissions safe
         to grant unattended — the deny here is deterministic and always fires."""
@@ -252,9 +155,14 @@ class BuilderSession:
         tool_input = input_data.get("tool_input") or {}
         if not isinstance(tool_input, dict):
             return {}
-        reason = classify_tool_use(tool_name, tool_input)
-        if not reason:
+
+        decision: GuardDecision = self.guard.classify(tool_name, tool_input)
+        self._journal_tool_use(tool_name, tool_input, decision)
+
+        if not decision.denied:
             return {}
+
+        reason = decision.reason or "blocked"
         detail = redact(f"{tool_name}: {reason}")
         if detail not in self.denied_requests:
             self.denied_requests.append(detail)
@@ -269,6 +177,34 @@ class BuilderSession:
                 ),
             }
         }
+
+    def _journal_tool_use(
+        self, tool_name: str, tool_input: dict[str, Any], decision: GuardDecision
+    ) -> None:
+        """Record the tool use, and any denial, for the run journal."""
+        if self.journal is None:
+            return
+        try:
+            self.journal.record_tool_use(
+                tool=tool_name,
+                detail=redact(
+                    str(
+                        tool_input.get("command")
+                        or tool_input.get("file_path")
+                        or tool_input.get("path")
+                        or tool_input.get("url")
+                        or tool_input.get("query")
+                        or ""
+                    )
+                )[:400],
+                denied_reason=redact(decision.reason) if decision.reason else None,
+                layer=decision.layer,
+            )
+            for verdict in decision.verdicts:
+                if not verdict.allowed:
+                    self.journal.record_denied_path(str(verdict.resolved), verdict.reason or "")
+        except Exception:  # pragma: no cover - journalling must never break a run
+            pass
 
     # -- lifecycle --------------------------------------------------------
 

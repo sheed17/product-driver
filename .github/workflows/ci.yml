@@ -1,0 +1,155 @@
+name: CI
+
+# CI for the Product Driver itself.
+#
+# Deliberately hermetic. This workflow must never need:
+#   * a real ANTHROPIC_API_KEY or any Claude usage — every Agent SDK call in the
+#     suite is faked, and ANTHROPIC_API_KEY is explicitly emptied below so a
+#     repository secret cannot leak into a run even by accident;
+#   * GitHub write permissions — `permissions:` is read-only;
+#   * access to the private Neyma repository — the tests build throwaway git
+#     repositories in temp directories;
+#   * any production credential.
+#
+# If a future test needs one of those, it does not belong in this workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Force subscription-free, key-free operation. The driver refuses to run
+  # against API-key billing without explicit confirmation; in CI there is
+  # nothing to confirm and nothing to bill.
+  ANTHROPIC_API_KEY: ""
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  core:
+    name: core tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install the package with development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify the package imports and exposes its entry point
+        run: |
+          python -c "import neyma_product_driver as m; print('package:', m.__file__)"
+          python -c "from neyma_product_driver.cli import build_parser; build_parser(); print('CLI parser OK')"
+          python -m neyma_product_driver --help > /dev/null
+          python -c "
+          from neyma_product_driver.paths import discover_driver_root
+          root = discover_driver_root()
+          print('derived driver_root:', root)
+          assert (root / 'pyproject.toml').is_file(), root
+          "
+
+      - name: Validate every YAML file parses
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          import yaml
+
+          failures = []
+          targets = sorted(
+              p for p in Path().rglob("*.y*ml")
+              if ".venv" not in p.parts and "node_modules" not in p.parts
+          )
+          for path in targets:
+              try:
+                  yaml.safe_load(path.read_text(encoding="utf-8"))
+              except yaml.YAMLError as exc:
+                  failures.append(f"{path}: {exc}")
+          for line in failures:
+              print("INVALID:", line)
+          print(f"validated {len(targets)} YAML file(s), {len(failures)} invalid")
+          sys.exit(1 if failures else 0)
+          PY
+
+      - name: Verify the example config loads
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          data = yaml.safe_load(Path("driver.config.example.yaml").read_text())
+          assert isinstance(data, dict), "example config must be a mapping"
+          assert "neyma_repo" in data, "example config must show neyma_repo"
+          # The example must not carry a stale absolute path from any one machine.
+          root = str(data.get("driver_root") or "")
+          assert not root.startswith("/Users/"), f"stale absolute driver_root: {root}"
+          print("example config OK")
+          PY
+
+      - name: Run the test suite (excluding the browser end-to-end test)
+        run: python -m pytest tests/ -q -m "not e2e" --durations=10
+
+  browser-smoke:
+    name: browser smoke (e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install the package with development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Cache the Playwright browser download
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the deterministic browser smoke test
+        run: python -m pytest tests/test_smoke_e2e.py -q -m e2e --durations=10
+
+      - name: Upload run artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-artifacts
+          path: |
+            /tmp/pytest-of-*/**/screenshots/**
+            /tmp/pytest-of-*/**/trace.zip
+            /tmp/pytest-of-*/**/*.log
+            /tmp/pytest-of-*/**/scenario.json
+          if-no-files-found: ignore
+          retention-days: 7

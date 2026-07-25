@@ -40,19 +40,36 @@ orchestrator, no service.
 ```
 
 The Neyma repository is the source of truth. The driver reads and operates it;
-it never overwrites or weakens its CLAUDE.md authority, settings, hooks, safety
-controls, READY-unit selection, acceptance contracts or phase boundaries.
+it never weakens its authority, settings, hooks, safety controls, READY-unit
+selection, acceptance contracts or phase boundaries. Authority documents such as
+`CLAUDE.md` *may* be edited when a task legitimately requires it — but never
+silently, and never to remove a control that is blocking the run. See
+[Safety → Authority files](#authority-files).
 
 ---
 
 ## Install
 
 ```bash
-cd /Users/sammyfammy/neyma-product-driver
-python3.13 -m venv .venv          # any Python 3.11+
+cd /path/to/neyma-product-driver     # wherever you cloned it
+python3.13 -m venv .venv             # any Python 3.11+
 .venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/python -m playwright install chromium
 ```
+
+## Configure
+
+```bash
+cp driver.config.example.yaml driver.config.yaml
+# then set neyma_repo to your Neyma checkout
+```
+
+`neyma_repo` is **required and has no default**. `driver_root` is derived from
+where the package is installed, so you normally leave it unset. There is no
+fallback to a previously-used path: if the configured repository is missing or
+is not a git checkout, the driver stops and tells you which path it was given.
+`driver.config.yaml` is git-ignored — never commit it, and never put a secret
+in it.
 
 ## Authenticate
 
@@ -70,6 +87,28 @@ warns, and refuses to continue without explicit confirmation.
 The driver never reads, prints, logs or persists OAuth tokens, GitHub tokens,
 API keys or any other secret. `doctor` checks that a credential store *exists*;
 it never opens it.
+
+## Calibrate first
+
+Before trusting the driver unattended, check that it reads your repository the
+way you do:
+
+```bash
+.venv/bin/python -m neyma_product_driver calibrate
+.venv/bin/python -m neyma_product_driver calibrate --json
+```
+
+Strictly read-only — no Claude session, no file written, only inspection git
+commands. It reports the repository path, branch, HEAD, tree, working-tree
+state, the canonical active implementation unit, phase state, checkpoint and
+review state, open risks, dependencies, the next eligible unit, the acceptance
+criteria in force, and whether a founder decision is required.
+
+Everything is **derived from the target repository**. No phase name, unit id,
+risk id or gate name is written into the implementation — if the repository
+moves to a new phase, calibration follows without a code change. Exit `0` when
+it calibrates cleanly, `2` when the repository cannot be read, `10` when a
+founder decision is required first.
 
 ## Check the environment
 
@@ -95,6 +134,7 @@ directory is writable, and that every scenario file parses.
 Other commands:
 
 ```bash
+python -m neyma_product_driver calibrate   # read-only preflight against the repo
 python -m neyma_product_driver doctor      # environment checks
 python -m neyma_product_driver status      # latest run, or: status <run-id>
 python -m neyma_product_driver evaluate    # run a scenario + judge it once, no builder
@@ -570,29 +610,127 @@ onward.
 
 ## Safety
 
-The driver never automatically commits, pushes, merges, tags, deploys, publishes
-packages, creates external resources, sends Slack/email/SMS, touches production
-credentials or databases, moves money, or alters customer systems. Read-only web
-research and local testing are allowed.
+This driver runs **unattended, with broad local autonomy on purpose**. The
+governing principle is:
 
-Enforcement is in two independent places, because Neyma's own
-`settings.local.json` pre-approves some tools and a pre-approved `Bash` could
-otherwise smuggle a `git push` past a single check:
+> wide autonomy inside approved local roots
+> + complete evidence and recoverability
+> + hard external boundaries
 
-1. `can_use_tool` — the SDK permission callback. Consequential actions are
-   denied and recorded. Anything else that would need interactive human approval
-   is also declined and surfaced to you, never auto-approved.
-2. a `PreToolUse` hook — fires even for pre-approved tools.
+It does not ask permission for ordinary engineering work. It stops hard at the
+boundary where consequences leave this machine.
 
-Specifically blocked, mirroring Neyma's own hooks: `git push`, `git commit`,
-`git tag`, `git branch -D`, `gh pr/release/repo/api/workflow`, deploy tooling,
-container/package publish, cloud CLIs, mutating outbound HTTP, outbound
-messaging, production database access — and, because Neyma's P3 kernel is
-currently **untracked**, the repository-fatal `git stash`, `git restore`,
-`git clean`, `git checkout --` and `git reset --hard`. Edits to Neyma's own
-control surfaces (`CLAUDE.md`, `.claude/settings*.json`, `.claude/hooks/`) are
-refused: the driver must not weaken the repo's authority to make its own loop
-succeed.
+### Who may do what
+
+Four different actors get confused constantly, so they are named separately.
+
+| | may do | may never do |
+|---|---|---|
+| **A. Driver control process** (this repo's Python) | read the repo, start local services, drive a browser, write run artifacts, create preservation refs and bundles | commit, push, merge, tag, deploy, publish, or execute a history rewrite — it runs no mutating git command against the target repo at all |
+| **B. Builder Claude session** | create/edit/rename/delete ordinary files, refactor broadly, add and modify tests, run pytest/linters/scripts/local services, use local test databases, inspect git, `git add`, **create local commits**, run repository-authorized finalizers, research public docs | push, force-push, mutate a remote, rewrite history without a preservation-backed authorization, read secrets, cause external/production/customer effects, install system-wide, change machine security, write outside the approved roots |
+| **C. Target-repository authority** | Neyma's own `CLAUDE.md`, settings, hooks, skills and subagents are loaded via `setting_sources` and are **authoritative** over the driver's own allowances | — |
+| **D. Hard external boundaries** | — | never crossed by anything, regardless of task, config or repository authority |
+
+`allow_auto_commit` and `allow_auto_push` are rejected by config validation.
+They govern **A**, the control process. They say nothing about **B**: the
+builder may create a local commit when the target repository's own protocol
+requires one, and the permission tests prove it can.
+
+### Enforcement layers, honestly
+
+There is **no `can_use_tool` callback**. A whole-tool `allowed_tools` entry
+would shadow it, and unattended it could only ever be a place for the run to
+hang. Enforcement is:
+
+1. **`allowed_tools`** — the auto-approved working set, so ordinary work never
+   pauses for an approval nobody is there to give.
+2. **the `PreToolUse` hook** — the deterministic application-level deny layer.
+   It fires even for tools `allowed_tools`, the permission mode, or the repo's
+   own settings pre-approved, so a pre-approved `Bash` cannot smuggle a
+   `git push` past it.
+3. **the target repository's own settings and hooks** — loaded underneath as
+   defense in depth, and authoritative where they are stricter.
+4. **the Claude Code sandbox** — the CLI's own filesystem/network restrictions
+   (this is what blocks `socket.bind()`, which is why scenarios declare
+   services for the driver to start).
+
+What each layer can and cannot enforce is listed in
+`command_guard.enforcement_layers()` — kept in code so this table cannot drift
+from the implementation:
+
+| layer | covers | does **not** cover |
+|---|---|---|
+| application (this driver) | direct and common-indirect blocked commands, secret paths, protected control surfaces, approved-root confinement, wrapper-script inspection, amendment gating | arbitrary computed or runtime-fetched commands; anything a running process does through file handles the classifier never sees |
+| target repository | its own deny rules and hooks | anything outside its own configuration |
+| Claude sandbox | the builder session's filesystem/network limits | whatever the sandbox is configured to permit |
+| operating system | **not configured by this driver** | everything — running the builder as a dedicated local user with no credential access is a *procedural recommendation*, not something this code enforces |
+
+**Regex classification is not an operating-system security boundary, and this
+README does not claim it is.** It decodes nested shells, interpreter `-c`
+payloads, command substitution, base64, and wrapper scripts on disk, and it
+refuses commands whose name is computed at runtime because it cannot classify
+them. A process that can already execute arbitrary code can still defeat string
+matching. What is guaranteed is that every refusal is *recorded*, so an attempt
+is visible in the evidence even where it could not have been prevented.
+
+### Always blocked
+
+`git push` (any form), force push, remote deletion, remote branch mutation,
+`git remote` changes, credential config changes, `git rebase`, `filter-branch`,
+`filter-repo`, `git reset --hard`, all `gh` subcommands except a small read-only
+set, deploy tooling, container/package publish, cloud CLIs, mutating outbound
+HTTP (including uploads), outbound messaging, payment tooling, production
+database access, secret/credential reads through any tool, `sudo`, system
+package installs, and machine-security changes.
+
+Writes to `.claude/settings*.json`, `.claude/hooks/` and `.mcp.json` are refused
+during ordinary product runs: a run that can edit its own enforcement has none.
+
+### Authority files
+
+`CLAUDE.md` is **not** categorically blocked — the builder may edit ordinary
+project documentation, including authority documents, when the task legitimately
+requires it. The rule is *permitted, but never quiet*:
+
+- every authority-file change is captured before/after, diffed, and surfaced at
+  the top of the run evidence and in the founder summary;
+- an edit that **removes or weakens a mandatory control** (`MUST` → `should`,
+  `NEVER` → `avoid`, a deleted gate or acceptance criterion) is detected and
+  reported as a finding, whatever the task was.
+
+No guard, acceptance criterion or release gate may be deleted or weakened to
+obtain a green result. See `authority.py`.
+
+### Local git and history
+
+Permitted freely: `status`, `diff`, `log`, `show`, `add`, `commit`, and
+repository-authorized finalizers.
+
+`git commit --amend` and `git reset --soft` consolidation are **blocked by
+default** and become possible only through a preservation-backed authorization
+that proves, mechanically:
+
+1. every affected commit is unreachable from every remote-tracking ref;
+2. the repository protocol requires or permits the transformation;
+3. the branch, HEAD and tree are recorded;
+4. a local preservation ref **and** a git bundle exist;
+5. the expected resulting topology was stated in advance;
+6. the resulting tree is verified afterwards (an amend must not change content);
+7. the action and its recovery location are recorded.
+
+Push state is read from local remote-tracking refs. When it cannot be determined
+locally, the transformation is **refused**, not assumed safe. Arbitrary
+`git rebase` stays unconditionally blocked — nothing here can yet prove it
+recoverable. See `preservation.py`.
+
+### Approved roots
+
+The builder may write only inside the roots derived for the run: the target
+repository, the run-artifact directory, the preservation directory, and the
+temporary workspace (plus the driver root itself on an explicit maintenance
+run). Every write target is resolved with `realpath` — `~` expanded, `../`
+collapsed, symlinks followed — so a symlink or traversal escaping an approved
+root is refused on where it actually lands. Every denied path is recorded.
 
 `bypassPermissions`, `dontAsk` and `auto` permission modes are rejected by
 config validation. `dangerouslyDisableSandbox` is never used.
@@ -612,6 +750,8 @@ Each iteration is persisted under `runs/<run-id>/`:
 
 ```
 runs/20260721-231500/
+  FOUNDER-SUMMARY.md          the ten questions, answered without the raw logs
+  journal.json                every tool use, command, denial and git identity
   state.json                  run state, session ids, resume point
   iteration-01/
     record.json               timestamp, session ids, everything below
@@ -636,6 +776,34 @@ runs/20260721-231500/
 
 Inspect a trace with `playwright show-trace runs/<id>/iteration-01/trace.zip`.
 
+### The founder summary
+
+Because the driver is given broad local freedom deliberately, observability is
+strengthened instead of adding approval friction. `journal.json` records the
+starting repository, branch, HEAD, tree and full working-tree status; the active
+unit and its acceptance criteria; builder and evaluator session ids; every tool
+use and shell command with exit codes and timeouts; files created, modified,
+moved and deleted; authority files changed; local commits; any local-history
+change with its recovery point; preservation refs and bundles; test and scenario
+results; denied operations; external-boundary attempts; the ending branch, HEAD,
+tree and working-tree state; the exact stop reason; and the next safe action.
+
+`FOUNDER-SUMMARY.md` answers, in order:
+
+1. What did the Driver work on?
+2. What changed?
+3. What evidence proves it?
+4. What was preserved?
+5. What remains incomplete?
+6. **Did any authority file change?**
+7. **Did any local history change?**
+8. Where is the recovery point?
+9. Was any external action attempted or denied?
+10. What decision, if any, is required from the founder?
+
+Questions 6 and 7 are the two that most often need action, so they are placed
+where they cannot be scrolled past.
+
 ---
 
 ## Tests
@@ -650,6 +818,28 @@ end-to-end smoke test (`tests/test_smoke_e2e.py`) uses a fake builder, starts a
 real local HTTP app, opens it with a real Chromium, captures screenshots and a
 trace, produces a deterministic FIX, applies a fake correction, reruns, and ends
 in ACCEPT.
+
+`tests/test_autonomy_boundaries.py` holds the permission and safety proofs:
+ordinary file work, broad refactors, pytest and repository scripts, local
+commits and authorized finalizers all run unattended; push, remote mutation,
+production effects, credential access, out-of-root writes, symlink escapes, path
+traversal, protected settings, silent authority weakening, pushed-history
+amendment and indirect wrapper-script bypasses are all denied.
+
+### CI
+
+`.github/workflows/ci.yml` runs on push and pull request:
+
+- **core tests** — Python 3.11/3.12/3.13, install with dev extras, package and
+  CLI import checks, derived-`driver_root` check, YAML validation, example-config
+  check, then the full non-e2e suite.
+- **browser smoke** — Playwright Chromium (cached), the deterministic e2e test,
+  artifacts uploaded on failure.
+
+CI needs no Anthropic API key, no real Claude usage, no GitHub write
+permission, no access to the private Neyma repository, and no production
+credential. `permissions:` is read-only and `ANTHROPIC_API_KEY` is explicitly
+emptied so a repository secret cannot leak into a run.
 
 ---
 
@@ -669,10 +859,27 @@ in ACCEPT.
   implementations that enforce them. A rule stated only in a diagram, a table
   cell or an unusual phrasing may not be discovered — `protocol --sources` shows
   exactly what was.
-- It never executes a git-history rewrite, even after approval. The approved plan
-  is handed back as commands, or as a prompt for a fresh builder session.
-- Push state is read from remote-tracking refs. A commit pushed from a different
-  clone, or fetched by someone else without a local tracking ref, cannot be seen.
+- The driver control process never executes a git-history rewrite. The
+  `approve` flow hands the plan back as commands, or as a prompt for a fresh
+  builder session. A *builder* amendment is possible only through the
+  preservation-backed authorization described under
+  [Safety → Local git and history](#local-git-and-history); arbitrary
+  `git rebase` remains blocked outright.
+- Push state is read from local remote-tracking refs, without fetching. A commit
+  pushed from a different clone, or fetched by someone else without a local
+  tracking ref, cannot be seen — which is why an undeterminable push state
+  *refuses* a history transformation rather than assuming it is safe.
+- Command classification is application-level, not an operating-system boundary.
+  It decodes nested shells, interpreter payloads, substitution, base64 and
+  on-disk wrapper scripts, but a command computed at runtime from data it cannot
+  read is refused rather than understood. Running the builder as a dedicated
+  local user with no credential access remains a procedural recommendation this
+  code does not enforce.
+- Approved-root confinement covers writes, not reads: the builder legitimately
+  reads system Python and installed packages. Secret *reads* are blocked
+  separately, by path pattern.
+- Authority-weakening detection is textual. It catches deleted mandatory lines
+  and the common softening rewrites; a control dismantled purely through
+  restructuring, or one stated only in code, may not be caught.
 - Deadlock detection reasons about gates the repository names in its own
   documents and code. A bespoke gate it never mentions cannot enter the graph.
-# product-driver
