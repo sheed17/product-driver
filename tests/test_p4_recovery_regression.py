@@ -1046,6 +1046,62 @@ def test_PD9_ownership_does_not_scan_script_prose(tmp_path: Path) -> None:
     assert "force push" in (blocked.reason or "").lower()
 
 
+def test_PD9_script_prose_backticks_are_not_command_substitution(tmp_path: Path) -> None:
+    """Markdown backticks in prose are not shell command substitution.
+
+    The first fix here exempted script text from the *ownership* rules and
+    stopped there. It should have carried the rest of the execution-only checks
+    with it: the same mutation battery names its target as
+    `eval/phase0/import_probe.py` in a module docstring, and the
+    computed-command-name rule read those backticks as substitution and refused
+    the gate a second time.
+
+    "I cannot see what this would run" is a claim about a command about to run.
+    File text is not that. What the script layer is actually for — a literal
+    hard-blocked command written into a file — is unaffected, including one that
+    really is hidden behind substitution.
+    """
+    from neyma_product_driver.command_guard import CommandGuard, classify_command
+    from neyma_product_driver.paths import ApprovedRoot, ApprovedRoots
+
+    repo = producing_after_certified_pair(tmp_path / "neyma")
+    scripts = repo.root / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+
+    documented = scripts / "mutate_phase4_boundary.py"
+    documented.write_text(
+        '"""Phase 4 boundary mutation battery.\n\n'
+        "Mutates `eval/phase0/import_probe.py` (the boundary-aware import gate),\n"
+        "plus one CREATE mutation that `$(cat manifest)` would never reach.\n"
+        '"""\n'
+        'PROBE = "eval/phase0/import_probe.py"\n'
+        "print(PROBE)\n",
+        encoding="utf-8",
+    )
+
+    roots = ApprovedRoots([ApprovedRoot("repo", repo.root, "the product repository")])
+    guard = CommandGuard(roots=roots, cwd=repo.root, builder_owns_worktree=True)
+
+    decision = guard.classify("Bash", {"command": f"python {documented}"})
+    assert not decision.denied, decision.reason
+
+    # The rule still holds where it means something: a real command whose name
+    # the harness cannot resolve, typed at the shell, is still refused.
+    assert classify_command("$(echo git) push origin main") is not None
+    assert classify_command("g=git; $g push origin main") is not None
+
+    # And a hard-blocked command written into a script is still caught even
+    # though prose no longer is.
+    nasty = scripts / "prose_cover.sh"
+    nasty.write_text(
+        "#!/bin/sh\n# documented as `git status` below\ngit push --force origin main\n",
+        encoding="utf-8",
+    )
+    blocked = guard.classify("Bash", {"command": f"sh {nasty}"})
+    assert blocked.denied
+    assert "force push" in (blocked.reason or "").lower()
+
+
 def test_I_the_run_loop_actually_writes_its_journal(tmp_path: Path) -> None:
     """PD-12: run-journal evidence is mandatory, so a run must produce it.
 

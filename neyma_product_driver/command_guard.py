@@ -436,6 +436,7 @@ def classify_command(
     _depth: int = 0,
     allow_amend: bool = False,
     builder_owns_worktree: bool = False,
+    scanning_file_text: bool = False,
 ) -> str | None:
     """Return a reason string if ``command`` is hard-blocked, else ``None``.
 
@@ -443,6 +444,10 @@ def classify_command(
     payloads, command substitution, ``eval``, and base64. ``allow_amend`` is set
     only by :class:`CommandGuard` when a specific amendment has passed every
     preservation precondition.
+
+    ``scanning_file_text`` marks the caller as reading a *file* rather than a
+    command about to run, which switches off the checks whose whole rationale is
+    imminent execution. See :func:`_computed_command_name`.
     """
     if not command:
         return None
@@ -461,9 +466,22 @@ def classify_command(
         if not (allow_amend and waivable):
             return direct
 
-    computed = _computed_command_name(command)
-    if computed is not None:
-        return computed
+    # "I cannot see what this would run" is a statement about a command the
+    # guard is on the verge of allowing to execute. A line of file text is not
+    # that, and prose routinely looks like substitution: the P4 mutation battery
+    # documents its own target as `eval/phase0/import_probe.py` — Markdown
+    # backticks, in a module docstring — and that sentence was read as a
+    # computed command name and blocked a required gate. Nothing was going to be
+    # expanded, because nothing was going to be run.
+    #
+    # This is the same lesson as the ownership rule below, which was exempted
+    # from file text for exactly this reason and should have carried the rest of
+    # the execution-only checks with it. Literal hard-blocked commands written
+    # into a file are still caught, which is what this layer is actually for.
+    if not scanning_file_text:
+        computed = _computed_command_name(command)
+        if computed is not None:
+            return computed
 
     if _depth >= _MAX_INDIRECTION_DEPTH:
         return None
@@ -489,6 +507,7 @@ def classify_command(
             _depth=_depth + 1,
             allow_amend=allow_amend,
             builder_owns_worktree=builder_owns_worktree,
+            scanning_file_text=scanning_file_text,
         )
         if inner is not None:
             return f"{inner} (reached indirectly through an interpreter or substitution)"
@@ -750,6 +769,7 @@ class CommandGuard:
                         stripped,
                         allow_amend=self.amendment_authorized,
                         builder_owns_worktree=False,
+                        scanning_file_text=True,
                     )
                     if reason is not None:
                         break
