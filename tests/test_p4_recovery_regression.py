@@ -1146,3 +1146,67 @@ def test_I_iteration_dir_naming_matches_the_evidence_store(tmp_path: Path) -> No
         f"integrity check looks in {iteration_dir(store.run_dir, 1).name}, "
         f"store writes {written.name}"
     )
+
+
+def test_PD2_a_guard_suite_the_finalizer_RUNS_is_not_derived_status() -> None:
+    """A finalizer names the status it writes AND the guards it runs.
+
+    Treating both as finalizer-owned is not a harmless over-approximation. It
+    made `eval/tests/test_bootstrap_hermeticity.py` — a guard suite the real
+    finalizer passes to pytest — classify as STATUS, so a content commit that
+    touched it was reported as "a content commit also carries derived status":
+    a blocker, on a file the finalizer never writes, standing between a
+    legitimate content commit and its independent review.
+
+    The repository states which files it owns. That statement outranks an
+    inference drawn from scraping its source, which is the same precedence rule
+    used everywhere else in this module.
+    """
+    from neyma_product_driver.protocol_sources import (
+        _declared_owned_paths,
+        _is_test_path,
+    )
+
+    # Shaped exactly like the real scripts/finalize_status.py: a declaration of
+    # what it writes, and a pytest argument list of what it runs.
+    source = '''
+STATUS_METADATA_FILES = (
+    "docs/implementation/SUITE-RESULT.json",
+    "docs/implementation/GATE-RESULT.json",
+    "docs/implementation/CURRENT.md",
+    "docs/implementation/BUILD-STATUS.yaml",
+)
+
+def _step_run_guards_and_gates():
+    checks = [
+        ("control guards",
+         [PY, "-m", "pytest",
+          "eval/tests/test_docs_control_system.py", "eval/tests/test_status_reality.py",
+          "eval/tests/test_bootstrap_hermeticity.py", "-q"]),
+    ]
+'''
+
+    declared = _declared_owned_paths(source)
+
+    assert "docs/implementation/CURRENT.md" in declared
+    assert "docs/implementation/GATE-RESULT.json" in declared
+    assert "docs/implementation/BUILD-STATUS.yaml" in declared
+
+    # The suites it RUNS are not the status it WRITES.
+    for executed in (
+        "eval/tests/test_bootstrap_hermeticity.py",
+        "eval/tests/test_status_reality.py",
+        "eval/tests/test_docs_control_system.py",
+    ):
+        assert executed not in declared, (
+            f"{executed} is passed to pytest, not written — claiming the finalizer "
+            "owns it blocks content commits that legitimately touch it"
+        )
+
+    # The scrape fallback (a finalizer that declares nothing) must not claim a
+    # test either: a finalizer that WROTE its own guards would be precisely the
+    # false-green defect those guards exist to catch.
+    assert _is_test_path("eval/tests/test_status_reality.py")
+    assert _is_test_path("pkg/foo_test.py")
+    assert not _is_test_path("docs/implementation/CURRENT.md")
+    assert not _is_test_path("src/freight_recon/effect_boundary.py")
