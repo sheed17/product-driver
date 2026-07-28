@@ -149,6 +149,43 @@ _HISTORY_TRANSFORM_PATTERNS = [
     (re.compile(r"\bgit\s+reset\s+--soft\b"), "git reset --soft (commit consolidation)"),
 ]
 
+# Operations that move a ref, re-point HEAD, or hide/replace the materialized
+# working tree. They are denied WHILE A BUILDER OWNS THE WORKTREE, because the
+# builder is the thing holding the only copy of the in-progress work.
+#
+# Run 3 is the case: a builder moved the product branch with `update-ref` after
+# building a commit with `commit-tree`, and reset the worktree to a tree that did
+# not contain the episode's untracked files. The work survived only because a
+# preservation ref happened to exist. Nothing in the guard noticed, because each
+# individual command looked innocuous: `commit-tree` writes an object and moves
+# nothing, `update-ref` moves a ref and touches no file. It is the SEQUENCE that
+# rewrites history, and the ownership that makes it unsafe.
+_WORKTREE_OWNERSHIP_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bgit\s+update-ref\b"), "git update-ref (moves a ref)"),
+    (re.compile(r"\bgit\s+symbolic-ref\b(?![^\n]*--(?:short|quiet)?\s*$)"),
+     "git symbolic-ref (re-points HEAD)"),
+    (re.compile(r"\bgit\s+branch\b[^\n]*(?:\s-f\b|\s--force\b|\s-[a-zA-Z]*f[a-zA-Z]*\b)"),
+     "git branch --force (moves a branch ref)"),
+    (re.compile(r"\bgit\s+branch\b[^\n]*\s-(?:d|D)\b"), "git branch -d/-D (deletes a branch ref)"),
+    (re.compile(r"\bgit\s+reset\b"), "git reset (moves the branch, index or worktree)"),
+    (re.compile(r"\bgit\s+checkout\b(?![^\n]*\s-{1,2}[bB]\b)"),
+     "git checkout (replaces the materialized worktree or moves HEAD)"),
+    (re.compile(r"\bgit\s+switch\b"), "git switch (moves HEAD and the worktree)"),
+    (re.compile(r"\bgit\s+restore\b"), "git restore (discards working-tree changes)"),
+    (re.compile(r"\bgit\s+stash\b"), "git stash (hides the in-progress working tree)"),
+    (re.compile(r"\bgit\s+clean\b"), "git clean (deletes untracked product files)"),
+    (re.compile(r"\bgit\s+commit-tree\b"), "git commit-tree (builds a replacement commit)"),
+    (re.compile(r"\bgit\s+worktree\s+(?:remove|prune|move)\b"), "git worktree removal/move"),
+]
+
+_WORKTREE_OWNERSHIP_REASON = (
+    "{what} while a builder owns this product worktree. The builder holds the only "
+    "materialized copy of the in-progress work, including untracked files, so a ref "
+    "move or a worktree replacement can silently discard it. An exact ref transition "
+    "is permitted only through a live approval naming that exact old ref, new ref, "
+    "baseline and intended tree — and only when no builder owns the worktree."
+)
+
 _HISTORY_TRANSFORM_REASON = (
     "{what} — a local history rewrite without a preservation-backed authorization. "
     "The affected commits must be proven unreachable from every remote-tracking "
@@ -352,11 +389,26 @@ def _code_reason(payload: str, *, inline: bool) -> str | None:
     return None
 
 
+def classify_worktree_ownership(command: str) -> str | None:
+    """Reason ``command`` is unsafe while a builder owns the worktree, else None.
+
+    Applied only when ownership is actually held: outside a builder-owned
+    worktree these are ordinary git commands and must not be blocked.
+    """
+    if not command:
+        return None
+    for pattern, what in _WORKTREE_OWNERSHIP_PATTERNS:
+        if pattern.search(command):
+            return _WORKTREE_OWNERSHIP_REASON.format(what=what)
+    return None
+
+
 def classify_command(
     command: str,
     *,
     _depth: int = 0,
     allow_amend: bool = False,
+    builder_owns_worktree: bool = False,
 ) -> str | None:
     """Return a reason string if ``command`` is hard-blocked, else ``None``.
 
@@ -367,6 +419,11 @@ def classify_command(
     """
     if not command:
         return None
+
+    if builder_owns_worktree:
+        owned = classify_worktree_ownership(command)
+        if owned is not None:
+            return owned
 
     direct = _direct_reason(command)
     if direct is not None:
@@ -400,7 +457,12 @@ def classify_command(
         code = _code_reason(payload, inline=True)
         if code is not None:
             return code
-        inner = classify_command(payload, _depth=_depth + 1, allow_amend=allow_amend)
+        inner = classify_command(
+            payload,
+            _depth=_depth + 1,
+            allow_amend=allow_amend,
+            builder_owns_worktree=builder_owns_worktree,
+        )
         if inner is not None:
             return f"{inner} (reached indirectly through an interpreter or substitution)"
 
@@ -541,10 +603,14 @@ class CommandGuard:
         roots: ApprovedRoots | None = None,
         cwd: Path | None = None,
         amendment_authorized: bool = False,
+        builder_owns_worktree: bool = False,
     ) -> None:
         self.roots = roots
         self.cwd = Path(cwd) if cwd is not None else None
         self.amendment_authorized = amendment_authorized
+        #: Set while a builder holds this product worktree. See
+        #: `_WORKTREE_OWNERSHIP_PATTERNS` for what it denies and why.
+        self.builder_owns_worktree = builder_owns_worktree
         #: Every path denied during this session, for the run journal.
         self.denied_paths: list[PathVerdict] = []
 
@@ -637,7 +703,9 @@ class CommandGuard:
                     if not stripped or stripped.startswith("#"):
                         continue
                     reason = classify_command(
-                        stripped, allow_amend=self.amendment_authorized
+                        stripped,
+                        allow_amend=self.amendment_authorized,
+                        builder_owns_worktree=self.builder_owns_worktree,
                     )
                     if reason is not None:
                         break
@@ -654,7 +722,11 @@ class CommandGuard:
         """Classify one tool use across every layer this guard implements."""
         if tool_name == "Bash":
             command = str(tool_input.get("command", ""))
-            reason = classify_command(command, allow_amend=self.amendment_authorized)
+            reason = classify_command(
+                command,
+                allow_amend=self.amendment_authorized,
+                builder_owns_worktree=self.builder_owns_worktree,
+            )
             if reason is not None:
                 return GuardDecision(reason, layer="command")
 

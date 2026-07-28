@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .journal_integrity import empty_marker
 from .models import (
     IterationRecord,
     RunState,
@@ -160,8 +161,17 @@ class EvidenceStore:
             self.write_text(rel / "builder-summary.md", record.builder_summary)
 
         if record.git:
-            self.write_text(rel / "git-status.txt", record.git.status_porcelain)
-            self.write_text(rel / "git-diff-stat.txt", record.git.diff_stat)
+            # Never write zero bytes: an empty file must always mean the capture
+            # failed, so a legitimately clean tree records that explicitly
+            # instead. See journal_integrity.
+            self.write_text(
+                rel / "git-status.txt",
+                record.git.status_porcelain or empty_marker("git status --porcelain"),
+            )
+            self.write_text(
+                rel / "git-diff-stat.txt",
+                record.git.diff_stat or empty_marker("git diff --stat"),
+            )
 
         if record.scenario:
             self.write_json(rel / "scenario.json", record.scenario.model_dump(mode="json"))

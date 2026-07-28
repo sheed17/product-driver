@@ -37,6 +37,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .worktree_state import (
+    WorktreePreservation,
+    capture_worktree_state,
+    preserve_worktree,
+    verify_worktree_restored,
+)
+
 PRESERVATION_REF_NAMESPACE = "refs/preservation"
 
 
@@ -349,6 +356,13 @@ class AmendmentAuthorization:
     verified: bool | None = None
     verification_detail: str = ""
 
+    #: Full working-tree preservation, untracked files included. The commit-only
+    #: preservation above cannot capture an in-progress episode, which is exactly
+    #: what a rewrite is most likely to destroy.
+    worktree: "WorktreePreservation | None" = None
+    worktree_verified: bool | None = None
+    worktree_verification_detail: str = ""
+
     @property
     def authorized(self) -> bool:
         return not self.failures
@@ -405,7 +419,52 @@ class AmendmentAuthorization:
                 "content was altered by a transformation that should only have "
                 "rearranged commits"
             )
+
+        # The committed tree is only half the question. A rewrite that leaves
+        # HEAD's tree identical can still have discarded the entire uncommitted
+        # episode — the untracked files a soft reset or a checkout quietly drops.
+        # Verifying only the commit tree is how a "verified" restoration loses
+        # work, so the working tree is verified too, against a preservation that
+        # actually captured the untracked files.
+        if self.worktree is not None:
+            ok, detail, _state = verify_worktree_restored(Path(self.repo), self.worktree)
+            self.worktree_verified = ok
+            self.worktree_verification_detail = detail
+            if not ok:
+                self.verified = False
+        else:
+            self.worktree_verified = False
+            self.worktree_verification_detail = (
+                "no working-tree preservation was captured, so untracked product files "
+                "cannot be proven to have survived; restoration is assumed, not proven"
+            )
+            self.verified = False
+
         return bool(self.verified)
+
+    @property
+    def restoration_proven(self) -> bool:
+        """Both the committed tree AND the working tree were proven identical.
+
+        Not a default. `verified is None` means `verify_result` never ran, and an
+        unverified rewrite is a failed rewrite: "the tree is probably fine"
+        is precisely the claim that let a lost working tree go unnoticed.
+        """
+        return self.verified is True and self.worktree_verified is True
+
+    def assert_restoration_proven(self) -> None:
+        """Raise unless restoration was actually proven. Verification is mandatory."""
+        if self.restoration_proven:
+            return
+        if self.verified is None:
+            raise PreservationNotVerified(
+                "verify_result() was never called: a rewrite whose restoration is only "
+                "assumed is a failed rewrite"
+            )
+        detail = "; ".join(
+            d for d in (self.verification_detail, self.worktree_verification_detail) if d
+        )
+        raise PreservationNotVerified(f"restoration was not proven: {detail}")
 
 
 def authorize_amendment(
@@ -493,4 +552,82 @@ def authorize_amendment(
         detail = "; ".join(auth.preservation.errors) or "ref or bundle missing"
         auth.failures.append(f"preservation is incomplete ({detail})")
 
+    # Precondition 4b — preserve the WORKING TREE, untracked files included.
+    # The ref and bundle above capture commits; an in-progress episode lives in
+    # files git has never been told about, and those are the ones a rewrite
+    # loses. A preservation that cannot restore them is not a preservation.
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d-%H%M%S")
+    auth.worktree = preserve_worktree(
+        repo,
+        f"{PRESERVATION_REF_NAMESPACE}/{stamp}-worktree",
+        message="working-tree preservation before authorized amendment (incl. untracked)",
+    )
+    if not auth.worktree.complete:
+        detail = "; ".join(auth.worktree.errors) or "working-tree ref missing"
+        auth.failures.append(
+            f"working-tree preservation is incomplete ({detail}); untracked product files "
+            "could not be captured, so restoration could not be proven afterwards"
+        )
+
     return auth
+
+
+class PreservationNotVerified(Exception):
+    """A rewrite completed without proving the state was restored."""
+
+
+class HiddenWorkNotFinalizable(Exception):
+    """A finalizer was asked to certify a tree that is not the preserved work."""
+
+
+def assert_preserved_tree_materialized(
+    repo: Path,
+    preservation: WorktreePreservation | None,
+    *,
+    review_artifact: dict | None = None,
+) -> None:
+    """Refuse to finalize while the run's preserved product tree is not on disk.
+
+    A finalizer certifies *a tree*. If a preservation ref created during this run
+    holds the real product work while the working directory holds something else
+    — a stashed episode, a checked-out older tree, a reset that dropped untracked
+    files — then the thing being certified is not the thing that was built, and
+    the resulting receipt attests to a state nobody reviewed.
+
+    The only way past this is an approved exact review artifact that names the
+    reviewed commit and tree, states a machine-checkable restoration procedure,
+    and proves the intended product tree IS the tree being finalized.
+    """
+    if preservation is None or not preservation.complete:
+        return
+
+    ok, detail = _worktree_matches(repo, preservation)
+    if ok:
+        return
+
+    if review_artifact:
+        approved = bool(review_artifact.get("approved"))
+        reviewed_commit = str(review_artifact.get("reviewed_commit", "") or "")
+        reviewed_tree = str(review_artifact.get("reviewed_tree", "") or "")
+        procedure = str(review_artifact.get("restoration_procedure", "") or "")
+        current = capture_worktree_state(Path(repo))
+        proves_intended = bool(reviewed_tree) and reviewed_tree == current.tree
+        if approved and reviewed_commit and reviewed_tree and procedure and proves_intended:
+            return
+        raise HiddenWorkNotFinalizable(
+            f"{detail}. A review artifact was supplied but does not authorize this: it must be "
+            "approved, name the exact reviewed commit and tree, state a machine-checkable "
+            "restoration procedure, and prove the intended product tree is the tree being "
+            f"finalized (reviewed_tree={reviewed_tree[:12] or '(none)'}, "
+            f"worktree={current.tree[:12] or '(none)'})"
+        )
+
+    raise HiddenWorkNotFinalizable(
+        f"{detail}. A hidden or stashed product tree may not be finalized: the preserved work "
+        "is not the work in the worktree, so the receipt would certify a tree nobody built."
+    )
+
+
+def _worktree_matches(repo: Path, preservation: WorktreePreservation) -> tuple[bool, str]:
+    ok, detail, _state = verify_worktree_restored(Path(repo), preservation)
+    return ok, detail

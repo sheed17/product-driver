@@ -29,7 +29,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .deadlock_detector import Deadlock, ObservedGates
-from .git_topology import CommitRole, GitTopology
+from .git_topology import CommitRole, GitCommitRole, GitTopology
 from .models import utcnow
 from .protocol_sources import (
     DiscoveredProtocol,
@@ -122,6 +122,9 @@ class RemediationOption(BaseModel):
     risk_level: RiskLevel = RiskLevel.MEDIUM
     disqualified: bool = False
     disqualification_reason: str = ""
+    #: True when the option changes the repository's rules rather than its state.
+    #: Such an option may never outrank one that satisfies the existing rule.
+    weakens_protocol: bool = False
     approval_phrase: str = ""
     verification_commands: list[str] = Field(default_factory=list)
     prohibited_operations: list[str] = Field(default_factory=list)
@@ -129,6 +132,25 @@ class RemediationOption(BaseModel):
     archival_refs: list[str] = Field(default_factory=list)
     expected_tree: str = ""
     plan_hash: str = ""
+
+    # -- the exact ref transition this option would perform ----------------
+    #: The ref that moves, its required current value, and the baseline the new
+    #: commit is built on. Recorded structurally so an approval can bind to the
+    #: precise transition instead of to a shell string nobody re-reads.
+    ref_name: str = ""
+    old_ref_value: str = ""
+    baseline_commit: str = ""
+    #: Stable topology identity this option was planned against, carried so an
+    #: approval can bind to it without re-deriving the protocol.
+    topology_fingerprint: dict[str, Any] = Field(default_factory=dict)
+
+    def ref_transition(self) -> dict[str, str]:
+        return {
+            "ref": self.ref_name,
+            "old": self.old_ref_value,
+            "baseline": self.baseline_commit,
+            "intended_tree": self.expected_tree,
+        }
 
     def hashable(self) -> dict[str, Any]:
         """The parts of the option an approval is actually approving."""
@@ -177,6 +199,97 @@ class ApprovalRecord(BaseModel):
     run_id: str = ""
     remote_impact: bool = False
     notes: list[str] = Field(default_factory=list)
+
+    # -- what was actually approved, stated explicitly ---------------------
+    #: The baseline the operation was approved against. A builder may not
+    #: reinterpret or substitute this value (see `assert_approved_baseline`).
+    approved_baseline: str = ""
+    #: The exact ref transition approved: old ref value -> new ref value.
+    ref_transition: dict[str, str] = Field(default_factory=dict)
+    #: Stable topology identity this approval is bound to.
+    topology_fingerprint: dict[str, Any] = Field(default_factory=dict)
+    #: Advisory working-tree state at approval time. Updating this does NOT
+    #: invalidate the approval; it is re-verified immediately before execution.
+    working_state: dict[str, Any] = Field(default_factory=dict)
+    #: True once the operation this record authorizes has executed.
+    consumed: bool = False
+
+    def matches_topology(self, current: dict[str, Any]) -> bool:
+        """Is this approval still describing the repository in front of us?"""
+        if not self.topology_fingerprint:
+            return True  # pre-split record: fall back to plan_hash matching
+        return _canonical(self.topology_fingerprint) == _canonical(current)
+
+
+def _canonical(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, default=str)
+
+
+class ApprovalExpired(Exception):
+    """The approved operation is not the operation that would now execute."""
+
+
+class BaselineMismatch(Exception):
+    """A history operation was attempted against an unapproved baseline."""
+
+
+def assert_approved_baseline(resolved_baseline: str, record: ApprovalRecord | None) -> None:
+    """Refuse a history operation whose baseline is not the approved one.
+
+    Run 3 failed exactly here. The founder approved an operation against
+    baseline 3d231731b8b0; the builder resolved 180fdcc instead and proceeded,
+    rebuilding P4 content on the wrong parent and detaching it from the
+    certified pair. Nothing stopped it, because the baseline was re-derived at
+    execution time rather than checked against what was approved.
+
+    The approved baseline is not a hint. It is part of the operation. This runs
+    BEFORE any ref, index or working-tree mutation.
+    """
+    if record is None:
+        raise BaselineMismatch(
+            "no live approval record: a history operation may not execute without one"
+        )
+    approved = (record.approved_baseline or "").strip()
+    resolved = (resolved_baseline or "").strip()
+    if not approved:
+        raise BaselineMismatch(
+            "the approval record names no baseline, so no baseline can be verified against it"
+        )
+    if not resolved:
+        raise BaselineMismatch(
+            f"no baseline resolved, but the approval names {approved[:12]}"
+        )
+    n = min(len(approved), len(resolved))
+    if n < 7 or approved[:n] != resolved[:n]:
+        raise BaselineMismatch(
+            f"resolved baseline {resolved[:12]} != approved baseline {approved[:12]}. "
+            "The builder may not reinterpret or substitute the founder-approved baseline. "
+            "Stopping before any ref, index or working-tree mutation."
+        )
+
+
+def assert_live_approval(
+    record: ApprovalRecord | None,
+    current_topology: dict[str, Any],
+    *,
+    operation: str = "history operation",
+) -> ApprovalRecord:
+    """No history operation executes without a matching, live ApprovalRecord."""
+    if record is None:
+        raise ApprovalExpired(
+            f"{operation} requires a live ApprovalRecord and none exists"
+        )
+    if record.consumed:
+        raise ApprovalExpired(
+            f"{operation}: this approval has already been consumed; approvals are single-use"
+        )
+    if not record.matches_topology(current_topology):
+        raise ApprovalExpired(
+            f"{operation}: the commit graph, baseline, branch, pushed status or rule set has "
+            "changed since approval, so the approved operation is not the operation that would "
+            "now execute. Re-resolve and obtain a fresh approval."
+        )
+    return record
 
 
 class ApprovalStore:
@@ -227,19 +340,111 @@ class ApprovalStore:
 # --------------------------------------------------------------------------
 
 
-def repo_fingerprint(topology: GitTopology, protocol: DiscoveredProtocol) -> dict[str, Any]:
-    """Everything a plan depends on. Any change to it expires an approval."""
+def topology_fingerprint(
+    topology: GitTopology,
+    protocol: DiscoveredProtocol,
+    ref_transition: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """The STABLE identity of the operation a human approved.
+
+    Only facts that change what the operation *is* belong here: which branch,
+    which baseline, which commit graph, whether the history is shared, which
+    rules were in force, and the exact ref transition intended. A change to any
+    of them means the approved operation is no longer the operation that would
+    execute, so the approval must expire.
+
+    Deliberately absent: anything about the working tree. See
+    `working_state_fingerprint`.
+    """
     return {
         "head": topology.head_commit,
         "head_tree": topology.head_tree,
         "baseline": topology.baseline_commit,
         "branch": topology.branch,
         "commits": [[c.commit_sha, c.tree_sha, c.role.value] for c in topology.commits],
-        "dirty": topology.dirty_file_count,
-        "untracked": topology.untracked_count,
         "pushed": sorted(topology.pushed_commits),
+        "shared": topology.is_shared,
+        "state": topology.state.state.value,
         "rules": sorted(r.rule_id for r in protocol.rules),
+        "rules_version": rules_version(protocol),
+        "ref_transition": dict(sorted((ref_transition or {}).items())),
     }
+
+
+def rules_version(protocol: DiscoveredProtocol) -> str:
+    """A digest of the rules IN FORCE, by content rather than by name.
+
+    Hashing rule ids alone cannot notice a rule whose text, authority level,
+    quantities or citation changed while its id stayed the same — and it was
+    only ever an edit to a tracked file (which moved the old fingerprint's
+    dirty-file count) that made rule changes appear to expire approvals at all.
+    With working-tree state out of plan identity, the rule set has to be
+    measured on its own terms, so it is.
+    """
+    payload = [
+        [
+            r.rule_id,
+            r.kind.value,
+            r.authority_level.value,
+            r.source_path,
+            r.source_lines_or_section,
+            r.description,
+            r.applies_to,
+            sorted(r.allowed_states),
+            sorted(r.prohibited_states),
+            json.dumps(r.parameters, sort_keys=True, default=str),
+        ]
+        for r in protocol.rules
+    ]
+    payload.sort(key=lambda row: (row[0], row[3], row[4]))
+
+    # The extracted rules are the driver's READING of the protocol; the protocol
+    # itself is the documents. A change the extractor does not yet turn into a
+    # rule is still a change to the authority an approval was granted under, so
+    # the source documents are versioned directly. This stays precise: it covers
+    # the governing documents only, so ordinary product edits — the EP-1 files an
+    # implementation episode touches all day — do not disturb plan identity.
+    doc_digest = hashlib.sha256()
+    for rel in sorted(protocol.sources.all_paths()):
+        doc_digest.update(rel.encode("utf-8"))
+        try:
+            doc_digest.update((protocol.repo / rel).read_bytes())
+        except OSError:
+            doc_digest.update(b"<unreadable>")
+    payload.append(["__sources__", doc_digest.hexdigest()])
+
+    blob = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def working_state_fingerprint(state: Any) -> dict[str, Any]:
+    """The ADVISORY working-tree state. Never part of plan identity.
+
+    An approval used to be invalidated by ordinary editing: the fingerprint
+    counted dirty and untracked files, so saving a file during an
+    implementation episode silently expired a topology approval that the edit
+    had nothing to do with. That trained everyone to treat expiry as noise and
+    re-approve reflexively — and a re-approval given by reflex is not an
+    approval. Meanwhile a real history rewrite could occur with no live
+    approval record at all, because the two things were never separated.
+
+    So working-tree state is recorded, reported and re-verified immediately
+    before execution — but it does not decide whether the approval is live.
+    """
+    if state is None:
+        return {}
+    return {
+        "worktree_tree": getattr(state, "tree", ""),
+        "index": getattr(state, "index", ""),
+        "dirty_paths": list(getattr(state, "dirty", ()) or ()),
+        "untracked_paths": list(getattr(state, "untracked", ()) or ()),
+        "file_count": getattr(state, "file_count", 0),
+    }
+
+
+def repo_fingerprint(topology: GitTopology, protocol: DiscoveredProtocol) -> dict[str, Any]:
+    """Plan identity. Stable topology only — volatile worktree state excluded."""
+    return topology_fingerprint(topology, protocol)
 
 
 def compute_plan_hash(fingerprint: dict[str, Any], option: RemediationOption) -> str:
@@ -463,6 +668,9 @@ class RemediationPlanner:
             ],
             archival_refs=[name for name, _, _ in archives],
             expected_tree=target_tree,
+            ref_name=ref,
+            old_ref_value=topology.head_commit,
+            baseline_commit=baseline,
         )
 
     def _option_amend(self, topology: GitTopology) -> RemediationOption:
@@ -543,6 +751,9 @@ class RemediationPlanner:
             ],
             archival_refs=[name for name, _, _ in archives],
             expected_tree=target_tree,
+            ref_name=f"refs/heads/{topology.branch}" if topology.branch else "HEAD",
+            old_ref_value=topology.head_commit,
+            baseline_commit=topology.baseline_commit,
         )
 
     def _option_protocol_exception(self, topology: GitTopology) -> RemediationOption:
@@ -594,6 +805,7 @@ class RemediationPlanner:
             requires_human_approval=True,
             rewrites_history=False,
             affects_remote_history=False,
+            weakens_protocol=True,
             risk_level=RiskLevel.HIGH,
             approval_phrase=f"APPROVE {self.unit_id.upper()} PROTOCOL AMENDMENT",
             verification_commands=[
@@ -720,12 +932,18 @@ class RemediationPlanner:
         history_trouble = bool(
             deadlocks or [v for v in violations if v.violation_type is ViolationType.HISTORY]
         )
+
+        # A certified pair inside the rewrite range makes every history-rewriting
+        # option illegal, whatever else recommends it. See
+        # `certified_pair_commits` for why.
+        certified = certified_pair_commits(topology)
+
         if history_trouble and topology.baseline_commit and topology.commits:
             # Consolidation rebuilds a *content* commit from a content tree.
             # With no content commit in the range there is nothing to
             # consolidate, and packaging a stray status edit as content would be
             # a worse state than the one being repaired.
-            if topology.content_commits:
+            if topology.content_commits and not certified:
                 options.append(self._option_consolidate(topology))
                 # A soft reset re-commits the index, which holds the *current*
                 # HEAD tree. That equals the target tree only when nothing was
@@ -734,22 +952,48 @@ class RemediationPlanner:
                 # status no one is allowed to write by hand.
                 if topology.commits[-1] is topology.content_commits[-1]:
                     options.append(self._option_amend(topology))
-            options.append(self._option_protocol_exception(topology))
             options.append(self._option_manual_finalization(topology))
+
+            # The protocol amendment is generated LAST and only after a
+            # mechanical proof that no legal existing state is reachable.
+            proof = amendment_admissibility(options, topology, certified)
+            if proof.admissible:
+                amendment = self._option_protocol_exception(topology)
+                amendment.disqualified = False
+                options.append(amendment)
+            elif proof.emit_disqualified:
+                amendment = self._option_protocol_exception(topology)
+                amendment.disqualified = True
+                amendment.disqualification_reason = proof.reason
+                options.append(amendment)
 
         fingerprint = repo_fingerprint(topology, self.protocol)
         for option in options:
             option.plan_hash = compute_plan_hash(fingerprint, option)
+            option.topology_fingerprint = topology_fingerprint(
+                topology, self.protocol, option.ref_transition()
+            )
             _assert_never_proposes_destruction(option)
+            _assert_never_orphans_certified_pair(option, topology)
 
         return rank_options(options)
 
 
 def rank_options(options: list[RemediationOption]) -> list[RemediationOption]:
-    """Safest first. A disqualified option is always last, whatever it scores."""
+    """Safest first. A disqualified option is always last, whatever it scores.
+
+    One ordering is absolute rather than scored: an option that WEAKENS the
+    protocol never outranks one that satisfies the existing rule. Weakening was
+    previously cheap to score well — it rewrites no history and touches no
+    remote — so the safest-looking option on paper was the one that quietly
+    removed a guard. Satisfying the rule that exists always comes first.
+    """
+    satisfies_existing_rule = any(_satisfies_existing_rule(o) for o in options)
 
     def score(option: RemediationOption) -> tuple[int, int]:
         value = 0
+        if option.weakens_protocol and satisfies_existing_rule:
+            value -= 30
         value += 3 if option.protocol_compliance.compliant else -6
         value += 2 if option.evidence_preserved else -4
         value += 2 if not option.affects_remote_history else -3
@@ -774,6 +1018,137 @@ def recommended(options: list[RemediationOption]) -> RemediationOption | None:
         if not option.disqualified:
             return option
     return None
+
+
+def certified_pair_commits(topology: GitTopology) -> list[GitCommitRole]:
+    """Commits in the rewrite range that are certified-pair boundaries.
+
+    A FINALIZER_GENERATED commit is not an ordinary status commit. It is the
+    second half of a certified pair: the finalizer wrote it only after a real
+    suite run on a clean checkout, and it binds derived status and receipts to
+    the exact tree it certified. That binding is the repository's proof that the
+    content commit beneath it was actually green.
+
+    Squashing, amending, orphaning or consolidating such a commit destroys that
+    proof while leaving a plausible-looking history behind — the certification
+    silently becomes an assertion no run stands behind. So a certified pair is an
+    inviolable boundary: history-rewriting options are not merely deprioritized
+    when one is in range, they are not offered at all.
+    """
+    return [c for c in topology.commits if c.role is CommitRole.FINALIZER_GENERATED]
+
+
+def _satisfies_existing_rule(option: RemediationOption) -> bool:
+    """Does this option reach a legal state WITHOUT weakening a rule or destroying anything?
+
+    Rewriting history that already exists on a remote is not a non-destructive
+    way to satisfy a rule: other clones keep the old commits, and the repair
+    becomes a divergence every one of them has to reconcile. Such an option
+    therefore does not count as proof that the existing rule is satisfiable, and
+    it does not suppress the amendment option — which, for shared history, may
+    genuinely be the less damaging remedy.
+    """
+    return (
+        not option.weakens_protocol
+        and not option.disqualified
+        and option.evidence_preserved
+        and not option.destructive_operations
+        and not option.affects_remote_history
+        and option.protocol_compliance.compliant
+    )
+
+
+class AmendmentAdmissibility(BaseModel):
+    """Whether weakening the protocol may even be put on the table."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    admissible: bool = False
+    emit_disqualified: bool = True
+    reason: str = ""
+    satisfying_option_ids: list[str] = Field(default_factory=list)
+
+
+def amendment_admissibility(
+    options: list[RemediationOption],
+    topology: GitTopology,
+    certified: list[GitCommitRole] | None = None,
+) -> AmendmentAdmissibility:
+    """Mechanical proof gate for the protocol-amendment option.
+
+    Weakening the rule is the one remedy that makes every FUTURE unit less safe,
+    because a guard edited to accept the state it was written to reject stops
+    catching that state forever. It must therefore be the last resort, never the
+    first — and "last resort" has to be proved, not asserted.
+
+    The proof is mechanical: an amendment is admissible only when NO other
+    generated option can reach a legal state without destroying evidence. If any
+    evidence-preserving, non-destructive, rule-satisfying option exists, the
+    existing rule is satisfiable and the amendment is inadmissible.
+    """
+    certified = certified_pair_commits(topology) if certified is None else certified
+
+    # The repository is already in one of its own legal states. There is nothing
+    # to amend, and offering to weaken the rule here is how a legal repository
+    # gets talked into a rewrite.
+    if topology.state.legal:
+        return AmendmentAdmissibility(
+            admissible=False,
+            emit_disqualified=False,
+            reason=(
+                f"the repository is already in the legal {topology.state.state.value} state; "
+                "no rule needs amending"
+            ),
+        )
+
+    satisfying = [o for o in options if _satisfies_existing_rule(o)]
+    if satisfying:
+        return AmendmentAdmissibility(
+            admissible=False,
+            emit_disqualified=True,
+            satisfying_option_ids=[o.option_id for o in satisfying],
+            reason=(
+                "a non-destructive, evidence-preserving option already satisfies the existing "
+                f"topology rule (option {', '.join(o.option_id for o in satisfying)}); the "
+                "protocol may not be weakened while the rule is satisfiable"
+            ),
+        )
+
+    if certified:
+        return AmendmentAdmissibility(
+            admissible=False,
+            emit_disqualified=True,
+            reason=(
+                "the range contains a certified pair boundary "
+                f"({', '.join(c.short for c in certified)}), which must be preserved rather than "
+                "legislated around; resolve the state without touching the certified pair"
+            ),
+        )
+
+    return AmendmentAdmissibility(
+        admissible=True,
+        reason=(
+            "no evidence-preserving option reaches a legal state, so amending the rule is the "
+            "only remaining remedy"
+        ),
+    )
+
+
+def _assert_never_orphans_certified_pair(
+    option: RemediationOption, topology: GitTopology
+) -> None:
+    """A plan that rewrites away a certified pair is a bug, not an option."""
+    if not option.rewrites_history:
+        return
+    certified = certified_pair_commits(topology)
+    if certified:
+        raise AssertionError(
+            f"remediation option {option.option_id} rewrites history across certified pair "
+            f"boundary/boundaries {', '.join(c.short for c in certified)}. A "
+            "FINALIZER_GENERATED commit binds derived status and receipts to the tree a real "
+            "suite run certified; squashing, amending, orphaning or consolidating it destroys "
+            "that proof."
+        )
 
 
 def _assert_never_proposes_destruction(option: RemediationOption) -> None:

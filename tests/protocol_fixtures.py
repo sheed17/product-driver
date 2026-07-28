@@ -587,3 +587,65 @@ def finalized_pair_with_content_baseline_pointer(
         *RECEIPT_PATHS,
     )
     return repo
+
+
+# --------------------------------------------------------------------------
+# The PRODUCING fixture (P4 recovery regression)
+# --------------------------------------------------------------------------
+#
+# The legal state the driver previously condemned:
+#
+#     certified content  →  finalizer metadata  →  next content (HEAD)
+#                                                  + dirty/untracked worktree
+#
+# This is the repository's own PRODUCING state: the recorded content_commit is
+# HEAD^^, HEAD^ is a pure status-metadata commit, and HEAD is the next content
+# commit being produced. The receipts on disk correctly name the certified pair,
+# because the receipt for HEAD is exactly what this state exists to produce.
+#
+# Read as a flat commit list it looks alarming — a status commit sitting before a
+# content commit — and the driver used to report "status was recorded for a tree
+# that did not exist yet", rank a history rewrite first, and offer to amend the
+# protocol. All three were wrong. Nothing here is broken.
+
+
+def producing_after_certified_pair(
+    root: Path, *, unit_id: str = "P4", dirty: bool = True, **protocol_kw
+) -> ProtocolRepo:
+    """certified content → finalizer metadata → next content (+ WIP worktree).
+
+    The exact shape of p4/adapter-containment-completion at 72512b9 on the
+    3d231731b8b0 + f1e8e18 certified pair.
+    """
+    repo = finalized_pair_with_content_baseline_pointer(root, unit_id=unit_id, **protocol_kw)
+
+    # The next content commit, built on the certified pair. Derived status is NOT
+    # touched: it still records the certified pair, which is what makes this
+    # PRODUCING rather than finalized.
+    repo.write("src/kernel.py", "def kernel():\n    return 3\n")
+    repo.write("eval/test_kernel.py", "def test_kernel():\n    assert kernel() == 3\n")
+    repo.write("src/adapter.py", "def adapter():\n    return 'read-only'\n")
+    repo.commit(
+        f"{unit_id} F2: the genuinely read-only adapter surface (content commit)",
+        "src/kernel.py",
+        "eval/test_kernel.py",
+        "src/adapter.py",
+    )
+
+    if dirty:
+        # An in-progress implementation episode: modified tracked files plus
+        # untracked new files that exist nowhere else.
+        repo.write("src/kernel.py", "def kernel():\n    return 4  # EP-1 in progress\n")
+        repo.write("src/governed_approval.py", "def approve():\n    return 'EP-1 untracked'\n")
+        repo.write("eval/test_governed_approval.py", "def test_approve():\n    assert True\n")
+
+    return repo
+
+
+def certified_pair_commits_of(repo: ProtocolRepo) -> tuple[str, str, str]:
+    """``(certified_content, finalizer_metadata, next_content)`` for the fixture."""
+    return (
+        repo._git("rev-parse", "HEAD^^"),
+        repo._git("rev-parse", "HEAD^"),
+        repo._git("rev-parse", "HEAD"),
+    )
