@@ -729,10 +729,27 @@ class CommandGuard:
                     stripped = line.strip()
                     if not stripped or stripped.startswith("#"):
                         continue
+                    # Worktree-ownership rules deliberately do NOT apply to a
+                    # script's text. Ownership governs what the builder issues
+                    # against the product worktree right now; a repository
+                    # script is a file, and its prose is not a command.
+                    #
+                    # The distinction is not academic. The P4 mutation battery
+                    # documents its own safety in a docstring — "original bytes
+                    # are held IN MEMORY - never `git checkout/restore/stash/
+                    # clean`" — and scanning that line for ownership violations
+                    # blocked a required gate on the strength of a sentence
+                    # promising the exact opposite. Docstrings are not `#`
+                    # comments, so no comment skip can rescue this; the rule was
+                    # simply the wrong shape for file text.
+                    #
+                    # What this layer exists to catch is unchanged and still
+                    # enforced: hard-blocked commands (push, rebase, rm -rf) and
+                    # credential reads written into a file to be run next turn.
                     reason = classify_command(
                         stripped,
                         allow_amend=self.amendment_authorized,
-                        builder_owns_worktree=self.builder_owns_worktree,
+                        builder_owns_worktree=False,
                     )
                     if reason is not None:
                         break

@@ -1001,3 +1001,45 @@ def test_live_guard_refuses_a_second_finalizer_launch(tmp_path: Path) -> None:
 
     # Once the owner exits, the lock is reclaimable with no timeout heuristic.
     assert guard.check_finalizer_launch(launch["command"]) is None
+
+
+def test_PD9_ownership_does_not_scan_script_prose(tmp_path: Path) -> None:
+    """A docstring is not a command.
+
+    The P4 mutation battery documents its own safety by naming the commands it
+    refuses to use. Scanning that prose for ownership violations blocked a
+    required gate on the strength of a sentence promising the opposite — and a
+    docstring is not a `#` comment, so no comment skip catches it.
+
+    Hard-blocked commands written into a script are still caught: that is what
+    the script layer is for.
+    """
+    from neyma_product_driver.command_guard import CommandGuard
+    from neyma_product_driver.paths import ApprovedRoot, ApprovedRoots
+
+    repo = producing_after_certified_pair(tmp_path / "neyma")
+    scripts = repo.root / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+
+    safe = scripts / "mutate_boundary.py"
+    safe.write_text(
+        '"""Safe in-memory mutation battery.\n\n'
+        "  * original bytes are held IN MEMORY - never `git checkout/restore/stash/clean`\n"
+        "  * restoration is verified byte-for-byte\n"
+        '"""\n'
+        "print('mutating in memory')\n",
+        encoding="utf-8",
+    )
+
+    roots = ApprovedRoots([ApprovedRoot("repo", repo.root, "the product repository")])
+    guard = CommandGuard(roots=roots, cwd=repo.root, builder_owns_worktree=True)
+
+    decision = guard.classify("Bash", {"command": f"python {safe}"})
+    assert not decision.denied, decision.reason
+
+    # A genuinely hard-blocked command inside a script is still caught.
+    nasty = scripts / "sneaky.sh"
+    nasty.write_text("#!/bin/sh\ngit push --force origin main\n", encoding="utf-8")
+    blocked = guard.classify("Bash", {"command": f"sh {nasty}"})
+    assert blocked.denied
+    assert "force push" in (blocked.reason or "").lower()
