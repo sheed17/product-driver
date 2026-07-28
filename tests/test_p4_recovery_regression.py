@@ -729,13 +729,18 @@ def test_PD11_liveness_comes_from_the_lock_not_from_artifacts(tmp_path: Path) ->
     [
         "git update-ref refs/heads/p4 abc123",
         "git branch -f p4 abc123",
+        "git branch -D p4",
         "git symbolic-ref HEAD refs/heads/other",
-        "git reset --soft HEAD~1",
+        "git reset --hard HEAD~1",
+        "git reset HEAD~1",
         "git checkout other-branch",
         "git switch other-branch",
         "git stash",
         "git clean -fd",
-        "git restore src/kernel.py",
+        "git restore .",
+        "git restore --source=HEAD~1 src/kernel.py",
+        "git checkout -- .",
+        "git worktree remove /tmp/wt",
         "NEW=$(git commit-tree $TREE -p $BASE -m x) && git update-ref refs/heads/p4 $NEW",
     ],
 )
@@ -753,10 +758,38 @@ def test_PD9_ref_and_worktree_operations_denied_while_a_builder_owns(command: st
         "git log --oneline -5",
         "git add -A && git commit -m 'EP-1 work'",
         "git diff --stat",
+        # Reverting ONE file the builder itself is editing. Denying this while
+        # the Write tool can rewrite the same file byte for byte would be
+        # theatre, not a guard.
+        "git restore src/kernel.py",
+        "git checkout -- src/kernel.py",
     ],
 )
 def test_PD9_ordinary_builder_work_is_not_blocked(command: str) -> None:
     assert classify_command(command, builder_owns_worktree=True) is None
+
+
+def test_PD9_soft_reset_still_needs_a_preservation_backed_authorization() -> None:
+    """Ownership does not weaken the amendment path — it defers to it.
+
+    `git reset --soft` remains denied without an authorization, by the stricter
+    layer that demands proof the commits are unpushed and preserved. With that
+    authorization it proceeds, because an approved amendment is exactly the
+    "exact ref transition through a live approval" case.
+    """
+    command = "git reset --soft HEAD~2"
+
+    denied = classify_command(command, builder_owns_worktree=True)
+    assert denied is not None
+    assert "preservation-backed authorization" in denied
+
+    allowed = classify_command(command, builder_owns_worktree=True, allow_amend=True)
+    assert allowed is None
+
+    # Authorizing an amendment unlocks nothing else.
+    assert classify_command(
+        "git update-ref refs/heads/p4 abc", builder_owns_worktree=True, allow_amend=True
+    ) is not None
 
 
 def test_PD9_ownership_scoping_does_not_leak_when_no_builder_owns() -> None:
@@ -892,3 +925,79 @@ def test_guard9_a_real_preservation_verifies(tmp_path: Path) -> None:
     assert auth.verify_result() is True
     assert auth.restoration_proven
     auth.assert_restoration_proven()
+
+
+# ==========================================================================
+# Live wiring: the guards must be enforced, not merely implemented
+# ==========================================================================
+
+
+def test_live_builder_session_owns_its_worktree_and_denies_ref_moves(tmp_path: Path) -> None:
+    """A BuilderSession constructs its guard with ownership held."""
+    from neyma_product_driver.builder import BuilderSession
+    from neyma_product_driver.config import BuilderConfig
+
+    repo = producing_after_certified_pair(tmp_path / "neyma")
+    session = BuilderSession(repo.root, BuilderConfig())
+
+    assert session.own_worktree
+    assert session.guard.builder_owns_worktree
+
+    denied = session.guard.classify("Bash", {"command": "git update-ref refs/heads/p4 abc"})
+    assert denied.denied
+    assert "builder owns this product worktree" in (denied.reason or "")
+
+    allowed = session.guard.classify("Bash", {"command": "pytest eval/tests -q"})
+    assert not allowed.denied
+
+
+def test_live_guard_refuses_a_second_finalizer_launch(tmp_path: Path) -> None:
+    """PD-12/guard 12: the lock is authoritative at the launch point."""
+    from neyma_product_driver.command_guard import CommandGuard
+
+    repo = producing_after_certified_pair(tmp_path / "neyma")
+    guard = CommandGuard(cwd=repo.root)
+
+    launch = {"command": ".venv/bin/python scripts/finalize_status.py --phase P4"}
+
+    # No owner: launching is fine.
+    assert guard.check_finalizer_launch(launch["command"]) is None
+
+    # A live owner in another process must block the launch. The in-process
+    # lock is invisible to `held_by_other`, so hold it from a child.
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                f"""
+                import sys, time
+                sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})
+                from neyma_product_driver.ownership import finalizer_lock
+                with finalizer_lock({str(repo.root)!r}, target_commit="held"):
+                    print("HELD", flush=True)
+                    time.sleep(30)
+                """
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "HELD"
+
+        reason = guard.check_finalizer_launch(launch["command"])
+        assert reason is not None
+        assert "already owns this repository" in reason
+        assert "never infer that it died from a missing log" in reason
+
+        decision = guard.classify("Bash", launch)
+        assert decision.denied
+        assert decision.layer == "finalizer-lock"
+    finally:
+        holder.kill()
+        holder.wait(timeout=30)
+
+    # Once the owner exits, the lock is reclaimable with no timeout heuristic.
+    assert guard.check_finalizer_launch(launch["command"]) is None
