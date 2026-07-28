@@ -26,10 +26,13 @@ from pathlib import Path
 
 from .run_journal import JOURNAL_FILE, SUMMARY_FILE
 
-#: Per-iteration artifacts every completed iteration must carry.
+#: Per-iteration artifacts every completed iteration must carry. `commands.log`
+#: is the command log PD-12 names: without it there is no record of what was
+#: actually executed, only of what was decided.
 REQUIRED_ITERATION_ARTIFACTS = (
     "git-status.txt",
     "git-diff-stat.txt",
+    "commands.log",
     "record.json",
 )
 
@@ -104,14 +107,29 @@ def _check(path: Path, label: str) -> ArtifactVerdict:
     return verdict
 
 
+def iteration_dir(run_dir: Path, iteration: int) -> Path:
+    """The directory for one iteration, whichever padding the store used.
+
+    `EvidenceStore` writes `iteration-01`. Guessing a different padding here and
+    then reporting the artifacts "missing" would fail a perfectly complete run
+    on a naming difference — a false accusation is as bad as a missed one, so
+    every layout the store has used is accepted.
+    """
+    run_dir = Path(run_dir)
+    for name in (
+        f"iteration-{iteration:02d}",
+        f"iteration-{iteration:03d}",
+        f"iteration-{iteration}",
+    ):
+        candidate = run_dir / name
+        if candidate.exists():
+            return candidate
+    return run_dir / f"iteration-{iteration:02d}"
+
+
 def verify_iteration_evidence(run_dir: Path, iteration: int) -> JournalIntegrityResult:
     """Every required artifact for one iteration exists and is non-empty."""
-    base = Path(run_dir) / f"iteration-{iteration:03d}"
-    if not base.exists():
-        # Older layouts number without padding; accept either rather than
-        # inventing a failure from a naming difference.
-        alt = Path(run_dir) / f"iteration-{iteration}"
-        base = alt if alt.exists() else base
+    base = iteration_dir(run_dir, iteration)
 
     result = JournalIntegrityResult()
     for name in REQUIRED_ITERATION_ARTIFACTS:

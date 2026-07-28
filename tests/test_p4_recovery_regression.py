@@ -622,6 +622,7 @@ def _complete_run(run_dir: Path) -> None:
     it.mkdir(parents=True, exist_ok=True)
     (it / "git-status.txt").write_text(" M src/kernel.py\n", encoding="utf-8")
     (it / "git-diff-stat.txt").write_text(" src/kernel.py | 2 +-\n", encoding="utf-8")
+    (it / "commands.log").write_text("pytest eval/tests -q  (exit 0)\n", encoding="utf-8")
     (it / "record.json").write_text(json.dumps({"iteration": 1}), encoding="utf-8")
 
 
@@ -1043,3 +1044,49 @@ def test_PD9_ownership_does_not_scan_script_prose(tmp_path: Path) -> None:
     blocked = guard.classify("Bash", {"command": f"sh {nasty}"})
     assert blocked.denied
     assert "force push" in (blocked.reason or "").lower()
+
+
+def test_I_the_run_loop_actually_writes_its_journal(tmp_path: Path) -> None:
+    """PD-12: run-journal evidence is mandatory, so a run must produce it.
+
+    The control loop recorded per-iteration evidence but never constructed a
+    RunJournal, so journal.json and FOUNDER-SUMMARY.md were never written by any
+    run — the mandatory acceptance evidence did not exist. Requiring it while
+    nothing produced it would have failed every run closed; the fix is to write
+    it, not to stop asking for it.
+    """
+    from neyma_product_driver.cli import _write_run_journal
+    from neyma_product_driver.config import DriverConfig
+    from neyma_product_driver.evidence import EvidenceStore
+    from neyma_product_driver.models import RunState
+    from neyma_product_driver.run_journal import JOURNAL_FILE, SUMMARY_FILE
+
+    repo = producing_after_certified_pair(tmp_path / "neyma")
+    store = EvidenceStore(tmp_path / "runs", "20260728-000000")
+    store.run_dir.mkdir(parents=True, exist_ok=True)
+
+    config = DriverConfig(neyma_repo=repo.root, runs_dir=tmp_path / "runs")
+    _write_run_journal(store, RunState(run_id=store.run_id), config)
+
+    journal = store.run_dir / JOURNAL_FILE
+    summary = store.run_dir / SUMMARY_FILE
+    assert journal.is_file() and journal.stat().st_size > 0
+    assert summary.is_file() and summary.stat().st_size > 0
+
+    # And the run-level half of the integrity check now passes.
+    result = verify_run_evidence(store.run_dir)
+    assert not any("journal.json" in f for f in result.failures), result.failures
+    assert not any(SUMMARY_FILE in f for f in result.failures), result.failures
+
+
+def test_I_iteration_dir_naming_matches_the_evidence_store(tmp_path: Path) -> None:
+    """A complete run must not be failed over a padding difference."""
+    from neyma_product_driver.evidence import EvidenceStore
+    from neyma_product_driver.journal_integrity import iteration_dir
+
+    store = EvidenceStore(tmp_path / "runs", "20260728-000001")
+    written = store.iteration_dir(1)
+    assert iteration_dir(store.run_dir, 1) == written, (
+        f"integrity check looks in {iteration_dir(store.run_dir, 1).name}, "
+        f"store writes {written.name}"
+    )

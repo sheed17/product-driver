@@ -40,6 +40,7 @@ from .context import (
     load_founder_context,
 )
 from .evidence import EvidenceStore, check_writable, new_run_id
+from .run_journal import RunJournal
 from .models import (
     Decision,
     EvaluatorDecision,
@@ -853,8 +854,51 @@ async def cmd_run(args: argparse.Namespace) -> int:
         store.save_state(state)
         return 1
 
+    _write_run_journal(store, state, config)
     _report_outcome(result, store)
     return _exit_code_for(result.status)
+
+
+def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConfig) -> None:
+    """Persist journal.json and FOUNDER-SUMMARY.md for the run.
+
+    Run-journal evidence is acceptance evidence, so a run that produces none
+    cannot be accepted. The control loop already records per-iteration evidence
+    (git-status.txt, git-diff-stat.txt, commands.log, record.json); what was
+    missing was the run-level journal and the founder summary that make the run
+    reviewable without reading the raw logs.
+
+    Derived from what was actually recorded — never fabricated. Best-effort by
+    construction: failing to WRITE the journal must not destroy the run whose
+    evidence it describes, and the integrity check will report its absence
+    rather than passing silently.
+    """
+    try:
+        journal = RunJournal(
+            run_id=store.run_id,
+            task=str(getattr(state, "task", "") or ""),
+            repo=str(config.neyma_repo),
+        )
+        journal.record_start(config.neyma_repo)
+        for record in state.iterations:
+            for command in record.commands or []:
+                journal.record_command(
+                    command.command,
+                    exit_code=command.exit_code,
+                    timed_out=command.timed_out,
+                    duration_s=command.duration_s,
+                    source="builder",
+                )
+            if record.git and record.git.head_commit:
+                journal.record_commit(
+                    record.git.head_commit,
+                    f"iteration {record.iteration}",
+                    record.git.branch or "",
+                )
+        journal.record_end(config.neyma_repo)
+        journal.save(store.run_dir)
+    except Exception as exc:  # pragma: no cover - never fail a run on its own journal
+        warn(f"could not write the run journal: {type(exc).__name__}: {redact(str(exc))}")
 
 
 def _indent(msg: str) -> str:
