@@ -1,0 +1,24 @@
+{
+  "assembled_at": "2026-08-09T21:44:01+00:00",
+  "founder_context_version": "",
+  "founder_context_files": [],
+  "repository_head": "e2e",
+  "repository_branch": "main",
+  "repository_dirty_files": 0,
+  "active_unit_id": "U-042",
+  "active_unit_status": "READY",
+  "active_unit_criteria": [],
+  "repository_files_consulted": [],
+  "evidence_files_consulted": [
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/approval_backend/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/gen-approve-twice/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/gen-concurrent-approval/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/gen-happy/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/gen-missing-invoice/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/scenarios/gen-restart-persistence/service-api.log",
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-02/suite-result.json"
+  ],
+  "founder_feedback_count": 0,
+  "prompt_chars": 4331
+}

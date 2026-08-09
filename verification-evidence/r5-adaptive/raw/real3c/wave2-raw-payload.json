@@ -1,0 +1,407 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The approval endpoint hangs and never responds; every approval POST observed in this run timed out, so approvals cannot be recorded at all.",
+      "risk_category": "timeout_before_effect",
+      "severity": "P0",
+      "basis": "Clusters C01-C04: POST /api/invoices/*/approve all 'got timed out'"
+    },
+    {
+      "id": "R2",
+      "description": "A timed-out approval request may or may not have durably recorded the approval, leaving an ambiguous/partial persisted state that no observer can trust.",
+      "risk_category": "timeout_after_effect",
+      "severity": "P1",
+      "basis": "C01-C04 timeouts + AC-APPROVAL-001 requires the approval be recorded durably"
+    },
+    {
+      "id": "R3",
+      "description": "Two concurrent approvals of the same invoice could double-record or corrupt the durable approval state.",
+      "risk_category": "concurrency",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 durable single record; gen-idempotent covered only sequential double-call"
+    },
+    {
+      "id": "R4",
+      "description": "Approval state may not survive an api process restart, violating the promise that persisted state survives a re-read.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+    },
+    {
+      "id": "R5",
+      "description": "Approving an unknown invoice or sending a malformed body may hang or silently write junk instead of being cleanly rejected without persisting.",
+      "risk_category": "malformed_input",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001 records approving an invoice; unknown/garbage input must not create durable records"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-approve-restart-recovery",
+      "title": "Approval of SMOKE survives an api restart and re-read",
+      "purpose": "Prove that a recorded approval is durable across a process restart and can be re-read afterward, which is the literal promise of AC-APPROVAL-002.",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R4",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "api-service",
+      "rationale": "Restarting api is the strongest test of 'survives a re-read of persisted state'; no other covered scenario cycles the process.",
+      "setup": [
+        "Ensure api is running on http://127.0.0.1:8959"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/SMOKE/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "timeout_s": 10
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py SMOKE",
+            "contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "api"
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py SMOKE",
+            "contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "POST /api/invoices/SMOKE/approve returns 200 within 10s",
+        "state.py SMOKE reports approved before restart",
+        "state.py SMOKE still reports approved after api restart"
+      ],
+      "forbidden_observations": [
+        "POST times out",
+        "approval for SMOKE absent after restart"
+      ],
+      "cleanup": [],
+      "isolation_note": "Uses the single fixed SMOKE key; approving SMOKE is idempotent, so re-running does not accumulate distinct records. Runs alone under isolation_key api-service because it restarts the shared api process.",
+      "generated_from": [
+        "C01",
+        "AC-APPROVAL-002"
+      ]
+    },
+    {
+      "id": "gen-approve-retry-safety",
+      "title": "Retrying an approve after a timeout records exactly one durable approval",
+      "purpose": "Given every approve currently times out, verify that a client retry does not double-record; the durable state must show a single approval regardless of how many times the timed-out call was retried.",
+      "risk_category": "retry_safety",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R2",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2A",
+      "rationale": "The observed failure mode is timeouts; a real client will retry, so exactly-once durability under retry is the load-bearing worry.",
+      "setup": [
+        "Ensure api is running"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2A/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "timeout_s": 6
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2A/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "timeout_s": 6
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2A",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "approved, approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "W2A appears approved exactly once in persisted state"
+      ],
+      "forbidden_observations": [
+        "W2A recorded as approved more than once",
+        "persisted state for W2A is corrupt or malformed"
+      ],
+      "cleanup": [],
+      "isolation_note": "Uses a unique invoice id W2A not shared with any other scenario, so its writes cannot contaminate others; no reset command is approved, so isolation relies on id uniqueness.",
+      "generated_from": [
+        "C02",
+        "AC-APPROVAL-001"
+      ]
+    },
+    {
+      "id": "gen-approve-timeout-after-effect",
+      "title": "A timed-out approve does not leave ambiguous half-written state",
+      "purpose": "When the approve call times out under a tight deadline, the persisted store must be internally consistent: either W2B is fully approved or it is absent, never a partial/corrupt record.",
+      "risk_category": "timeout_after_effect",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R2",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2B",
+      "rationale": "AC-001 demands durability; a timeout that leaves a torn record would make the durable state untrustworthy.",
+      "setup": [
+        "Ensure api is running"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2B/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "timeout_s": 3
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2B",
+            "not_contains": [
+              "error",
+              "traceback",
+              "partial"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "state.py exits cleanly and reports W2B as either approved or not present, with well-formed output"
+      ],
+      "forbidden_observations": [
+        "state.py reports a corrupt/partial record for W2B",
+        "state reader errors out reading W2B"
+      ],
+      "cleanup": [],
+      "isolation_note": "Unique invoice id W2B used only here; id uniqueness prevents contamination since no reset command is approved.",
+      "generated_from": [
+        "C03",
+        "AC-APPROVAL-001"
+      ]
+    },
+    {
+      "id": "gen-approve-concurrent-same-invoice",
+      "title": "Two simultaneous approvals of one invoice record a single durable approval",
+      "purpose": "Exercise a race the sequential idempotency test cannot: fire two approvals for W2C at the same instant and confirm the durable store holds exactly one approval.",
+      "risk_category": "concurrency",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R3",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2C",
+      "rationale": "gen-idempotent-approve was sequential; concurrent writes can interleave and double-record or corrupt state in ways a sequential call never triggers.",
+      "setup": [
+        "Ensure api is running"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2C/approve",
+              "json_body": {},
+              "expect_status": 200,
+              "timeout_s": 8
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2C/approve",
+              "json_body": {},
+              "expect_status": 200,
+              "timeout_s": 8
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2C",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "approved, approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "W2C is approved exactly once after two concurrent approvals"
+      ],
+      "forbidden_observations": [
+        "W2C recorded twice",
+        "persisted state for W2C corrupted by the race"
+      ],
+      "cleanup": [],
+      "isolation_note": "Unique invoice id W2C used only by this scenario; must not run concurrently with anything else touching W2C (isolation_key invoice:W2C).",
+      "generated_from": [
+        "C02",
+        "AC-APPROVAL-001"
+      ]
+    },
+    {
+      "id": "gen-approve-unknown-invoice",
+      "title": "Approving an unknown invoice is rejected and records nothing",
+      "purpose": "An approve for a nonexistent invoice id must be cleanly rejected (not hang) and must not create a durable approval record.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R5",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2D-UNKNOWN",
+      "rationale": "AC-001 records approval of an invoice; a bogus id must not manufacture a durable record, and given the hang cluster it must also respond rather than time out.",
+      "setup": [
+        "Ensure api is running"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2D-UNKNOWN/approve",
+            "json_body": {},
+            "expect_status": 404,
+            "timeout_s": 6
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2D-UNKNOWN",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Approve for unknown invoice returns a client error within 6s",
+        "no approved record exists for W2D-UNKNOWN"
+      ],
+      "forbidden_observations": [
+        "request times out",
+        "a durable approval is created for the unknown invoice"
+      ],
+      "cleanup": [],
+      "isolation_note": "Reads/writes only the unknown id W2D-UNKNOWN, which no other scenario references; a rejected request should write nothing at all.",
+      "generated_from": [
+        "AC-APPROVAL-001"
+      ]
+    },
+    {
+      "id": "gen-approve-malformed-body",
+      "title": "Malformed approve body is rejected without persisting",
+      "purpose": "A syntactically malformed request body must be rejected cleanly (no hang) and must not write a durable approval for W2E.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R5",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2E",
+      "rationale": "Durable records should only result from valid approvals; malformed input must not corrupt or populate the store.",
+      "setup": [
+        "Ensure api is running"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2E/approve",
+            "raw_body": "{not-json",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "expect_status": 400,
+            "timeout_s": 6
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2E",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "malformed body rejected with a 4xx within 6s",
+        "no approved record exists for W2E"
+      ],
+      "forbidden_observations": [
+        "request times out",
+        "malformed input produces a durable approval or corrupts state"
+      ],
+      "cleanup": [],
+      "isolation_note": "Uses unique id W2E only; a rejected malformed request should persist nothing, so it cannot contaminate later scenarios.",
+      "generated_from": [
+        "AC-APPROVAL-001"
+      ]
+    }
+  ],
+  "unresolved_questions": [
+    "Neither acceptance criterion states who is authorized to approve an invoice, so authorization/cross_tenant scenarios cannot be grounded \u2014 confirm whether approval must be access-controlled before verifying it.",
+    "The ACs do not define the required response shape or status code for a successful approval beyond 'records durably'; the 200 expectations above are assumed and should be confirmed against the intended contract.",
+    "No approved command resets persisted approval state, so scenarios rely on unique invoice ids for isolation rather than teardown \u2014 confirm whether a reset/cleanup mechanism should exist for the durable store."
+  ]
+}

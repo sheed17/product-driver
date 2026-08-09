@@ -1,0 +1,308 @@
+{
+  "U042-S1": {
+    "name": "generated:U042-S1",
+    "phase": "P3",
+    "description": "Deployed governed route fails closed / ships dark: no payment effect without a bound approval\n\nrisk: safety_invariant (priority P0)\npurpose: Prove that at the real deployed entry point a governed tap never produces an external effect without a recorded, bound approval: the blocked route refuses explicitly, a missing provider/kernel fails closed, and the default capability is a proven non-occurrence.\nrequirement: no payment effect occurs without a recorded approval\nproduct principle: success_without_verification\nrationale: This suite drives the REAL action_callback handler built from run_action_callback_server._build_governed_write_route, so it exercises the deployed authority split rather than a fixture.\n\ngenerated at 2026-08-09T21:39:20+00:00 (stage=initial, wave 1)\nbecause of risk: R1\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "deployed_governed_route_suite",
+        "command": {
+          "name": "deployed_governed_route_suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_deployed_governed_route.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_the_blocked_route_refuses_explicitly_rather_than_falling_through",
+            "test_provider_none_fails_closed",
+            "test_the_deployed_default_capability_is_dark",
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "All deployed-route tests pass; a governed tap on a blocked route yields state REFUSED / reason ROUTE_NOT_CONFIGURED and advances no pipeline.",
+      "With no writer injected the chain reaches FAILED (dark), never a laundered VERIFIED."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any test failure or error indicating the route advanced the pipeline or reached the adapter while unconfigured."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S4": {
+    "name": "generated:U042-S4",
+    "phase": "P3",
+    "description": "Unauthorized actor / forged / mis-contexted tap is refused before any advance\n\nrisk: authorization (priority P1)\npurpose: Prove an operator without approval authority (not on the allowlist), a forged signature, or a tap from the wrong channel/workspace/message is refused and records no decision.\nrequirement: an operator without approval authority is refused\nproduct principle: authority_clarity\nrationale: Directly exercises the UnauthorizedActor and context bindings that back the 'refused' AC.\n\ngenerated at 2026-08-09T21:39:20+00:00 (stage=initial, wave 1)\nbecause of risk: R3\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "governed_approval_binding_suite",
+        "command": {
+          "name": "governed_approval_binding_suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_an_unauthorized_actor_is_refused",
+            "test_a_forged_signature_is_refused",
+            "test_a_tap_from_the_wrong_channel_is_refused",
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Unauthorized actor raises UnauthorizedActor; forged/expired/mis-contexted envelopes raise the typed refusal; nothing is recorded."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any test failure showing an unauthorized or forged tap verifying or advancing the pipeline."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S5": {
+    "name": "generated:U042-S5",
+    "phase": "P3",
+    "description": "Cross-tenant isolation: another tenant's claim/amount/effect is never visible or approvable\n\nrisk: cross_tenant (priority P0)\npurpose: Prove tenant-scoped reads and writes: a foreign tenant cannot see or approve another tenant's queued intents, claims, token amounts, or effects.\nrequirement: an invoice belonging to another tenant is never visible or approvable\nproduct principle: authority_clarity\nrationale: The store-level tenant scoping tests are the load-bearing evidence for the cross-tenant AC (weight 3).\n\ngenerated at 2026-08-09T21:39:20+00:00 (stage=initial, wave 1)\nbecause of risk: R4\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "tenant_scope_suite",
+        "command": {
+          "name": "tenant_scope_suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_u26bc_tenant_scope.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_action_claims_are_tenant_scoped",
+            "test_token_amounts_are_tenant_scoped",
+            "test_cross_tenant_update_changes_zero_rows",
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "All tenant-scope tests pass: same commit key is independent across tenants; a cross-tenant update changes zero rows; claims and amounts are not readable across tenants."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any failure showing one tenant reading or approving another tenant's row."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S6": {
+    "name": "generated:U042-S6",
+    "phase": "P3",
+    "description": "Callback service recovers after restart with durable ledger/claim state intact\n\nrisk: restart_recovery (priority P1)\npurpose: Prove the supervised-approval surface survives a restart: the service comes back reachable and the durable tables that record approvals/claims/effects persist (in-memory grant handles are lost, which is the fail-closed direction).\nrequirement: approval survives a restart\nproduct principle: failure_recovery\nrationale: This is the only live observable for restart durability given the harness cannot mint a live approval; it confirms recovery + persistence of the durable state that holds recorded decisions.\n\ngenerated at 2026-08-09T21:39:20+00:00 (stage=initial, wave 1)\nbecause of risk: R5\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1500
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/email/action",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 400,
+          "expect_contains": [
+            "Missing action token"
+          ],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT name FROM sqlite_master WHERE type='table'\"",
+          "contains": [
+            "effect_grants",
+            "security_events"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "After restart the service answers on 8001 (400 for a tokenless action link), proving it came back up.",
+      "The durable effect_grants and security_events tables still exist in the workspace DB."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Connection refused / timeout after restart (service failed to recover).",
+      "Missing effect_grants or security_events tables (durable approval/effect state lost on restart)."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S13": {
+    "name": "generated:U042-S13",
+    "phase": "P3",
+    "description": "Regression guard: claim-CAS and witness suites still enforce single settlement\n\nrisk: regression (priority P1)\npurpose: Confirm the diff's rewrite of governed_approval.py did not weaken the compare-and-swap/witness tests that back the exactly-once claim.\nrequirement: an approved invoice is paid exactly once\nproduct principle: outcome_verification\nrationale: The existing CAS/witness suite is the codified single-settlement invariant; a green run is cheap high-signal protection against a silent regression in the 210-line approval rewrite.\n\ngenerated at 2026-08-09T21:41:45+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: R-EO-5\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING\ndiff files consulted: src/freight_recon/governed_approval.py, src/freight_recon/carrier_invoice_write.py, src/freight_recon/action_callback.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "claim-cas-and-witness",
+        "command": {
+          "name": "claim-cas-and-witness",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Claim CAS and witness tests pass, confirming single-settlement invariant intact"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any failure or error in the CAS/witness suite",
+      "Tests skipped/deselected such that the invariant is not actually exercised"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

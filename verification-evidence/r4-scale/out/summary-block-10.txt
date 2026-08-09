@@ -1,0 +1,19 @@
+10 generated case(s) + 1 permanent regression scenario(s): 9 passed, 2 failed, 0 blocked, 0 skipped
+risk categories exercised: cross_tenant, idempotency, persistence_failure
+
+FAILURES:
+  [FAIL] P0 generated case-005-idem  (idempotency)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py 5: contains 'item=5
+      generated because: item 5 is representative of the idempotency surface
+      verifies: R4-SCALE-AUDIT
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py 5: contains 'item=5 approval_rows=1' — not found in command output
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py 5: must not contain 'approval_rows=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-005-idem
+  [FAIL] P1 generated case-009-http  (cross_tenant)  — expect_visible: GET http://127.0.0.1:8731/item/9: contains '"owner": "tenant-a"' — not found in response body
+      generated because: item 9 is representative of the cross_tenant surface
+      verifies: R4-SCALE-AUDIT
+      failed: expect_visible: GET http://127.0.0.1:8731/item/9: contains '"owner": "tenant-a"' — not found in response body
+      failed: forbidden: tenant-b — present in observed output
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-009-http
+
+2 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.

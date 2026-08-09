@@ -1,0 +1,255 @@
+{
+  "iteration": 1,
+  "timestamp": "2026-08-09T21:43:43+00:00",
+  "builder_session_id": "builder-1",
+  "evaluator_session_id": "evaluator-1",
+  "builder_summary": "implemented.\n\nRUNNABLE CHECKPOINT: POST /approve",
+  "git": {
+    "branch": "main",
+    "status_porcelain": "",
+    "diff_stat": "",
+    "head_commit": "09840a7",
+    "dirty_file_count": 0
+  },
+  "scenario": {
+    "scenario_name": "approval_backend",
+    "mode": "backend",
+    "started_at": "2026-08-09T21:43:44+00:00",
+    "setup": [
+      {
+        "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py",
+        "exit_code": 0,
+        "stdout": "reset\n",
+        "stderr": "",
+        "duration_s": 0.03510141700007807,
+        "timed_out": false,
+        "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+      }
+    ],
+    "services_started": [
+      "api"
+    ],
+    "readiness_ok": true,
+    "readiness_detail": "all readiness checks passed",
+    "commands": [
+      {
+        "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+        "exit_code": 0,
+        "stdout": "payments=1\ninvoices=INV-1\n",
+        "stderr": "",
+        "duration_s": 0.03643316699981369,
+        "timed_out": false,
+        "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+      }
+    ],
+    "http": [
+      {
+        "name": "approve once",
+        "method": "POST",
+        "url": "http://127.0.0.1:55496/approve",
+        "status": 200,
+        "error": null,
+        "body_text": "{\"status\": \"approved\", \"invoice\": \"INV-1\"}",
+        "json_body": {
+          "status": "approved",
+          "invoice": "INV-1"
+        },
+        "duration_s": 0.0007634580006197211
+      }
+    ],
+    "browser": null,
+    "assertions": [
+      {
+        "kind": "expect_state",
+        "target": "POST http://127.0.0.1:55496/approve: status == 200",
+        "passed": true,
+        "detail": "got 200"
+      },
+      {
+        "kind": "expect_state",
+        "target": "one payment: contains 'payments=1'",
+        "passed": true,
+        "detail": ""
+      }
+    ],
+    "teardown": [
+      {
+        "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py",
+        "exit_code": 0,
+        "stdout": "reset\n",
+        "stderr": "",
+        "duration_s": 0.037208875000033004,
+        "timed_out": false,
+        "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+      }
+    ],
+    "error": null,
+    "steps_performed": [],
+    "fixtures_written": [],
+    "scenario_id": "approval_backend",
+    "origin": "permanent"
+  },
+  "decision": {
+    "decision": "FIX",
+    "summary": "1 required scenario(s) failed, including generated verification: gen-approve-twice",
+    "observed_behavior": [
+      "an approval succeeded"
+    ],
+    "problems": [
+      "[FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output"
+    ],
+    "correction_prompt": "SCENARIO SUITE FAILURES — the running product did not behave as the verification scenarios require.\n\n3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\n\n\nTHESE FAILURES ARE DISTINCT and need separate attention:\n  - gen-approve-twice: generated:gen-approve-twice\n      exercised because: the approval effect may not be safe under idempotency\n      observed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      observed: expect_visible: payments=1 — not present in any observed output\n      observed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\nMake the smallest correction that resolves the cause above. Do not change a scenario, delete an assertion, or weaken a guard to make this pass — the scenarios describe what the product promises, and a green result obtained by editing them is worth nothing.",
+    "evidence_paths": [
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice"
+    ],
+    "confidence": 0.85,
+    "requirement_reference": "U-042: an approved invoice is paid exactly once",
+    "product_principle_reference": "a button click, an HTTP 200 or a passing unit test is not success; the underlying outcome must be verified",
+    "scenario": "gen-approve-twice",
+    "observed_result": "3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\nrisk categories exercised: happy_path, idempotency, missing_data\n\nFAILURES:\n  [FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      generated because: the approval effect may not be safe under idempotency\n      verifies: U-042: an approved invoice is paid exactly once\n      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      failed: expect_visible: payments=1 — not present in any observed output\n      failed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\n1 unresolved high-priority scenario failure(s)\nThis states verified coverage. It is not a claim that all possible cases were verified.",
+    "expected_result": "Every required scenario passes: each situation the suite exercises produces the observable outcome it expects, and none of the forbidden observations.",
+    "preserve": "All behaviour the passing scenarios already demonstrate, every permanent regression scenario, and every guard. Do not weaken or delete a scenario to obtain a green result.",
+    "retest": "Re-run the scenario suite. The failed scenarios rerun first, their risk neighbours rerun with them, and the full required regression set must be green before acceptance.",
+    "customer_facing": false,
+    "rubric_categories": [],
+    "additional_verification_needed": false,
+    "scenario_requests": []
+  },
+  "raw_decision": null,
+  "correction_prompt_sent": "PRODUCT REVIEW — CORRECTION 1\n\nThe product-driver operated the running product and found a concrete\ndiscrepancy. This is not a code review; these are observations from actually\nusing the product.\n\nActive READY unit: U-042. Keep the fix inside its scope.\n\nREQUIREMENT: U-042: an approved invoice is paid exactly once\nPRODUCT PRINCIPLE: a button click, an HTTP 200 or a passing unit test is not success; the underlying outcome must be verified\n\nSCENARIO EXECUTED: gen-approve-twice\n\nOBSERVED RESULT: 3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\nrisk categories exercised: happy_path, idempotency, missing_data\n\nFAILURES:\n  [FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      generated because: the approval effect may not be safe under idempotency\n      verifies: U-042: an approved invoice is paid exactly once\n      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      failed: expect_visible: payments=1 — not present in any observed output\n      failed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\n1 unresolved high-priority scenario failure(s)\nThis states verified coverage. It is not a claim that all possible cases were verified.\n\nEXPECTED RESULT: Every required scenario passes: each situation the suite exercises produces the observable outcome it expects, and none of the forbidden observations.\n\nEVIDENCE:\n  - /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\nSMALLEST JUSTIFIED CORRECTION:\nSCENARIO SUITE FAILURES — the running product did not behave as the verification scenarios require.\n\n3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\n\n\nTHESE FAILURES ARE DISTINCT and need separate attention:\n  - gen-approve-twice: generated:gen-approve-twice\n      exercised because: the approval effect may not be safe under idempotency\n      observed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      observed: expect_visible: payments=1 — not present in any observed output\n      observed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\nMake the smallest correction that resolves the cause above. Do not change a scenario, delete an assertion, or weaken a guard to make this pass — the scenarios describe what the product promises, and a green result obtained by editing them is worth nothing.\n\nMUST BE PRESERVED: All behaviour the passing scenarios already demonstrate, every permanent regression scenario, and every guard. Do not weaken or delete a scenario to obtain a green result.\n\nRETEST: Re-run the scenario suite. The failed scenarios rerun first, their risk neighbours rerun with them, and the full required regression set must be green before acceptance.\n\nMake the smallest correction that resolves the discrepancy above. Do not\nrefactor unrelated code. Do not commit or push. End with an updated\n\"RUNNABLE CHECKPOINT\" section.\n",
+  "paused_permission_requests": [],
+  "notes": [],
+  "context_provenance": {
+    "assembled_at": "2026-08-09T21:43:48+00:00",
+    "founder_context_version": "",
+    "founder_context_files": [],
+    "repository_head": "e2e",
+    "repository_branch": "main",
+    "repository_dirty_files": 0,
+    "active_unit_id": "U-042",
+    "active_unit_status": "READY",
+    "active_unit_criteria": [],
+    "repository_files_consulted": [],
+    "evidence_files_consulted": [
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01",
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/approval_backend/service-api.log",
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice/service-api.log",
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-happy/service-api.log",
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-missing-invoice/service-api.log",
+      "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/suite-result.json"
+    ],
+    "founder_feedback_count": 0,
+    "prompt_chars": 4205
+  },
+  "rejected_reasons": [],
+  "suite": {
+    "started_at": "2026-08-09T21:43:44+00:00",
+    "duration_s": 4.340135209000437,
+    "full_run": true,
+    "selection_reason": "first pass: the full suite",
+    "outcomes": [
+      {
+        "scenario_id": "approval_backend",
+        "scenario_name": "approval_backend",
+        "origin": "permanent",
+        "outcome": "PASSED",
+        "priority": "P0",
+        "risk_category": "",
+        "required": true,
+        "duration_s": 0.0,
+        "assertions_total": 2,
+        "assertions_failed": 0,
+        "failed_assertions": [],
+        "error": "",
+        "skip_reason": "",
+        "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/approval_backend",
+        "generated_because": "",
+        "requirement_reference": ""
+      },
+      {
+        "scenario_id": "gen-approve-twice",
+        "scenario_name": "generated:gen-approve-twice",
+        "origin": "generated",
+        "outcome": "FAILED",
+        "priority": "P0",
+        "risk_category": "idempotency",
+        "required": true,
+        "duration_s": 0.0,
+        "assertions_total": 4,
+        "assertions_failed": 3,
+        "failed_assertions": [
+          "expect_state: exactly one payment: contains 'payments=1' — not found in command output",
+          "expect_visible: payments=1 — not present in any observed output",
+          "forbidden: payments=2 — present in observed output"
+        ],
+        "error": "",
+        "skip_reason": "",
+        "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice",
+        "generated_because": "the approval effect may not be safe under idempotency",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once"
+      },
+      {
+        "scenario_id": "gen-happy",
+        "scenario_name": "generated:gen-happy",
+        "origin": "generated",
+        "outcome": "PASSED",
+        "priority": "P0",
+        "risk_category": "happy_path",
+        "required": true,
+        "duration_s": 0.0,
+        "assertions_total": 3,
+        "assertions_failed": 0,
+        "failed_assertions": [],
+        "error": "",
+        "skip_reason": "",
+        "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-happy",
+        "generated_because": "the approval effect may not be safe under happy_path",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once"
+      },
+      {
+        "scenario_id": "gen-missing-invoice",
+        "scenario_name": "generated:gen-missing-invoice",
+        "origin": "generated",
+        "outcome": "PASSED",
+        "priority": "P0",
+        "risk_category": "missing_data",
+        "required": true,
+        "duration_s": 0.0,
+        "assertions_total": 3,
+        "assertions_failed": 0,
+        "failed_assertions": [],
+        "error": "",
+        "skip_reason": "",
+        "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-missing-invoice",
+        "generated_because": "the approval effect may not be safe under missing_data",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once"
+      }
+    ],
+    "clusters": [
+      {
+        "cluster_id": "C01",
+        "affected_scenarios": [
+          "gen-approve-twice"
+        ],
+        "shared_observations": [
+          "expect_state: exactly one payment: contains 'payments=<n>' — not found in command output",
+          "expect_visible: payments=<n> — not present in any observed output",
+          "forbidden: payments=<n> — present in observed output"
+        ],
+        "likely_failure_domain": "generated:gen-approve-twice: expect_state: exactly one payment: contains 'payments=1' — not found in command output",
+        "evidence_paths": [
+          "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice"
+        ],
+        "highest_priority": "P0",
+        "risk_categories": [
+          "idempotency"
+        ],
+        "singleton": true
+      }
+    ]
+  },
+  "completion_audit": null,
+  "protocol_resolution": null,
+  "investigation": null,
+  "independent_review": null
+}

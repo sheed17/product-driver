@@ -1,0 +1,127 @@
+{
+  "grand_proposed": 64,
+  "grand_accepted": 15,
+  "acceptance_rate": 0.234,
+  "rejection_taxonomy": {
+    "prose-written-into-setup/cleanup": 39,
+    "invented-risk-category": 3,
+    "regression-without-scope": 3,
+    "effect-family-without-oracle": 3,
+    "schema-mismatch": 1
+  },
+  "accepted_action_kinds": {
+    "command": 12,
+    "state_check": 4,
+    "restart_service": 1,
+    "wait": 1,
+    "request": 1,
+    "browser": 1,
+    "parallel_requests": 1
+  },
+  "accepted_with_persisted_state_check": 4,
+  "per_task": [
+    {
+      "task": "A",
+      "proposed": 6,
+      "accepted": 4,
+      "rejected": 2,
+      "risks_identified": 2,
+      "risks_uncovered": 0,
+      "P0/P1_risks_uncovered": 0,
+      "rejection_reasons": {
+        "invented-risk-category": 2
+      },
+      "accepted_categories": [
+        "missing_data",
+        "regression",
+        "stale_state",
+        "ui_backend_disagreement"
+      ]
+    },
+    {
+      "task": "A2-diff",
+      "proposed": 17,
+      "accepted": 2,
+      "rejected": 15,
+      "risks_identified": 12,
+      "risks_uncovered": 10,
+      "P0/P1_risks_uncovered": 8,
+      "rejection_reasons": {
+        "invented-risk-category": 1,
+        "prose-written-into-setup/cleanup": 13,
+        "regression-without-scope": 1
+      },
+      "accepted_categories": [
+        "regression",
+        "safety_invariant"
+      ]
+    },
+    {
+      "task": "B-diff",
+      "proposed": 16,
+      "accepted": 5,
+      "rejected": 11,
+      "risks_identified": 10,
+      "risks_uncovered": 5,
+      "P0/P1_risks_uncovered": 5,
+      "rejection_reasons": {
+        "effect-family-without-oracle": 3,
+        "regression-without-scope": 2,
+        "prose-written-into-setup/cleanup": 6
+      },
+      "accepted_categories": [
+        "authorization",
+        "cross_tenant",
+        "regression",
+        "restart_recovery",
+        "safety_invariant"
+      ]
+    },
+    {
+      "task": "C",
+      "proposed": 8,
+      "accepted": 3,
+      "rejected": 5,
+      "risks_identified": 5,
+      "risks_uncovered": 4,
+      "P0/P1_risks_uncovered": 4,
+      "rejection_reasons": {
+        "schema-mismatch": 1,
+        "prose-written-into-setup/cleanup": 4
+      },
+      "accepted_categories": [
+        "boundary",
+        "concurrency",
+        "regression"
+      ]
+    },
+    {
+      "task": "D",
+      "proposed": 8,
+      "accepted": 0,
+      "rejected": 8,
+      "risks_identified": 7,
+      "risks_uncovered": 7,
+      "P0/P1_risks_uncovered": 7,
+      "rejection_reasons": {
+        "prose-written-into-setup/cleanup": 8
+      },
+      "accepted_categories": []
+    },
+    {
+      "task": "E",
+      "proposed": 9,
+      "accepted": 1,
+      "rejected": 8,
+      "risks_identified": 5,
+      "risks_uncovered": 5,
+      "P0/P1_risks_uncovered": 5,
+      "rejection_reasons": {
+        "prose-written-into-setup/cleanup": 8
+      },
+      "accepted_categories": [
+        "regression"
+      ]
+    }
+  ]
+}

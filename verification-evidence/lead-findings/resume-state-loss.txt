@@ -1,0 +1,20 @@
+--- before interruption ---
+scenarios generated : ['gen-a']
+waves_used          : 2
+budget_exhausted    : True
+plan persisted      : True /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmpec3he309/runs/run-resume-probe/scenario-plan.json
+
+--- after resume (same run id, same store) ---
+scenarios restored  : []
+waves_used          : 0
+budget_exhausted    : False
+after replanning    : ['gen-a']
+
+RESULT: resume does NOT restore generated scenario state.
+        - prior scenarios are absent from the new planner
+        - 'gen-a' was regenerated despite already existing in the persisted plan
+
+wave budget across resume:
+  p2.waves_used   : 2 (max_waves = 2 )
+  total waves actually run across both processes: 4
+  => max_waves was exceeded across the resume boundary

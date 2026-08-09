@@ -1,0 +1,6 @@
+  2 proposed scenario(s) refused:
+    - UUI11-S1: unknown risk_category 'accountable-owner'
+    - UUI11-S2: unknown risk_category 'evidence-clarity'
+  wave 1 (initial): 4 scenario(s) accepted — UUI11-S3, UUI11-S4, UUI11-S5, UUI11-S6
+
+=== A: 4 accepted, 2 refused ===

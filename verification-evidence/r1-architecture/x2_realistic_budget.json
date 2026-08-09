@@ -1,0 +1,17 @@
+{
+  "status": "ACCEPTED",
+  "outcomes": [
+    [
+      "backend_generic",
+      "PASSED",
+      "P0"
+    ],
+    [
+      "gen-dup",
+      "SKIPPED",
+      "P0"
+    ]
+  ],
+  "full_run": true,
+  "blocking": 0
+}

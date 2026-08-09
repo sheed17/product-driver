@@ -1,0 +1,212 @@
+{
+  "verified_at": "2026-08-09T14:44:00",
+  "executed_against": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/stage",
+  "source_of_truth": "/Users/sammyfammy/neyma-product-driver",
+  "note": "the assigned git worktree is stale (commit bbe0fd2) and lacks the untracked feature modules; nothing was executed from it",
+  "diff_r_brief_output": "(no differences)",
+  "diff_returncode": 0,
+  "all_files_match": true,
+  "file_count": 40,
+  "per_file": {
+    "__init__.py": {
+      "live_sha256": "de9d61b43c4d17bac8c47883e4372fe47f3310c7f01391d0c4577651c56d808b",
+      "stage_sha256": "de9d61b43c4d17bac8c47883e4372fe47f3310c7f01391d0c4577651c56d808b",
+      "match": true
+    },
+    "__main__.py": {
+      "live_sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "stage_sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "match": true
+    },
+    "authority.py": {
+      "live_sha256": "4ab6d8bc1bbe3b2e200b038ef7b5d78b9c8dda73c1c56b077c30eabd3f4c33d5",
+      "stage_sha256": "4ab6d8bc1bbe3b2e200b038ef7b5d78b9c8dda73c1c56b077c30eabd3f4c33d5",
+      "match": true
+    },
+    "builder.py": {
+      "live_sha256": "31c81805954db1142ca606694ae032b5434bc9ffc03a5fd773ec7a3c4faab75a",
+      "stage_sha256": "31c81805954db1142ca606694ae032b5434bc9ffc03a5fd773ec7a3c4faab75a",
+      "match": true
+    },
+    "calibration.py": {
+      "live_sha256": "d2c5d523fda166506d64dd95c360b725cf3b49a2b875d2ed5606b6776f2cc1ea",
+      "stage_sha256": "d2c5d523fda166506d64dd95c360b725cf3b49a2b875d2ed5606b6776f2cc1ea",
+      "match": true
+    },
+    "cli.py": {
+      "live_sha256": "750acab3ea495de764d04caa17492698368d5dd92f6b960b331b118da4f97359",
+      "stage_sha256": "750acab3ea495de764d04caa17492698368d5dd92f6b960b331b118da4f97359",
+      "match": true
+    },
+    "command_guard.py": {
+      "live_sha256": "35775527a05df5f35017028a586821294b3c0dc8d2d211f2d27c9f69093647af",
+      "stage_sha256": "35775527a05df5f35017028a586821294b3c0dc8d2d211f2d27c9f69093647af",
+      "match": true
+    },
+    "completion_auditor.py": {
+      "live_sha256": "ed0a4c4d35e1aa35436a580f664ae9163030541181deba4de49c0353053c8319",
+      "stage_sha256": "ed0a4c4d35e1aa35436a580f664ae9163030541181deba4de49c0353053c8319",
+      "match": true
+    },
+    "config.py": {
+      "live_sha256": "cb92ef5ad18ae96d11598ddb98105a34482e10e340ca7d3c525b5e383c4d0790",
+      "stage_sha256": "cb92ef5ad18ae96d11598ddb98105a34482e10e340ca7d3c525b5e383c4d0790",
+      "match": true
+    },
+    "context.py": {
+      "live_sha256": "33cf781fc21b4dc34d16b6e328672af590c7d188465d28bbdee8677a66972eec",
+      "stage_sha256": "33cf781fc21b4dc34d16b6e328672af590c7d188465d28bbdee8677a66972eec",
+      "match": true
+    },
+    "deadlock_detector.py": {
+      "live_sha256": "aacc10831c4f793b8bb7fab63d54dee626359bab0f7eb83f3b2d53f55356a715",
+      "stage_sha256": "aacc10831c4f793b8bb7fab63d54dee626359bab0f7eb83f3b2d53f55356a715",
+      "match": true
+    },
+    "evaluator.py": {
+      "live_sha256": "a75b18893fb0a3b6f34a180524c3b640b652d2fb8c2ad600e5eb9ff062ccca63",
+      "stage_sha256": "a75b18893fb0a3b6f34a180524c3b640b652d2fb8c2ad600e5eb9ff062ccca63",
+      "match": true
+    },
+    "evidence.py": {
+      "live_sha256": "5572b7fe73806fe4aead419382ca8d064dfbff6fa509f97bc31f38dbf2237253",
+      "stage_sha256": "5572b7fe73806fe4aead419382ca8d064dfbff6fa509f97bc31f38dbf2237253",
+      "match": true
+    },
+    "failure_clustering.py": {
+      "live_sha256": "e681c847ac20c848f61928e00849129acf2e251a83e3e414bc4e6ced307e5c16",
+      "stage_sha256": "e681c847ac20c848f61928e00849129acf2e251a83e3e414bc4e6ced307e5c16",
+      "match": true
+    },
+    "git_topology.py": {
+      "live_sha256": "1d786032f91c4a3384b6486834a148609a098a0911e66cbb0af1b8483421f671",
+      "stage_sha256": "1d786032f91c4a3384b6486834a148609a098a0911e66cbb0af1b8483421f671",
+      "match": true
+    },
+    "hypothesis_engine.py": {
+      "live_sha256": "2f919c12c66688a441c1eb40da57a5c82cbc58db83adec096a3889fc4fe6ac3e",
+      "stage_sha256": "2f919c12c66688a441c1eb40da57a5c82cbc58db83adec096a3889fc4fe6ac3e",
+      "match": true
+    },
+    "investigation_memory.py": {
+      "live_sha256": "59dec5e9e312cfd3d5c4e7f43efe45f54a79f99ebdd274215f25c39d1b8b7e83",
+      "stage_sha256": "59dec5e9e312cfd3d5c4e7f43efe45f54a79f99ebdd274215f25c39d1b8b7e83",
+      "match": true
+    },
+    "investigation_reasoner.py": {
+      "live_sha256": "dedecfda343cc98e327227b0baddd1b8bd8e8d73865a951e3258a919734df61c",
+      "stage_sha256": "dedecfda343cc98e327227b0baddd1b8bd8e8d73865a951e3258a919734df61c",
+      "match": true
+    },
+    "investigator.py": {
+      "live_sha256": "180dd5d15cbd5ca391e4dede159865dc64bbb2c6e7878afdb86faa780207bed3",
+      "stage_sha256": "180dd5d15cbd5ca391e4dede159865dc64bbb2c6e7878afdb86faa780207bed3",
+      "match": true
+    },
+    "journal_integrity.py": {
+      "live_sha256": "17cc1050cfba31979e92e5faca63cd048ca09b109c388ca4e92676f41d7b8590",
+      "stage_sha256": "17cc1050cfba31979e92e5faca63cd048ca09b109c388ca4e92676f41d7b8590",
+      "match": true
+    },
+    "models.py": {
+      "live_sha256": "8cd6be26db03f20e5848b656d6011b9417c1e202ab3a6f546e310ed0babe7bec",
+      "stage_sha256": "8cd6be26db03f20e5848b656d6011b9417c1e202ab3a6f546e310ed0babe7bec",
+      "match": true
+    },
+    "ownership.py": {
+      "live_sha256": "8c394446ceeb85e8d7af9f5918eddd8563c33e712836dc653d45af597bc6c096",
+      "stage_sha256": "8c394446ceeb85e8d7af9f5918eddd8563c33e712836dc653d45af597bc6c096",
+      "match": true
+    },
+    "paths.py": {
+      "live_sha256": "8c2c6a02cea3e6e2edd3b8ec41d8f035b368cae21e95ab2759a5579439e7aede",
+      "stage_sha256": "8c2c6a02cea3e6e2edd3b8ec41d8f035b368cae21e95ab2759a5579439e7aede",
+      "match": true
+    },
+    "preservation.py": {
+      "live_sha256": "2ca303ff6d3103a8153ba58cb317a0c018cd9a51c97b7505a5d2bbc12b44b5b2",
+      "stage_sha256": "2ca303ff6d3103a8153ba58cb317a0c018cd9a51c97b7505a5d2bbc12b44b5b2",
+      "match": true
+    },
+    "probe_runner.py": {
+      "live_sha256": "8dcc8f133eaf849967cdec1f1d8f6791fc746cc7e2e1f72b1d18b9068196d2e4",
+      "stage_sha256": "8dcc8f133eaf849967cdec1f1d8f6791fc746cc7e2e1f72b1d18b9068196d2e4",
+      "match": true
+    },
+    "prompts.py": {
+      "live_sha256": "b8e99e6e138002dc5c0914ccdbb368a718c627196a6890cfdb51eded23b4653c",
+      "stage_sha256": "b8e99e6e138002dc5c0914ccdbb368a718c627196a6890cfdb51eded23b4653c",
+      "match": true
+    },
+    "protocol_resolver.py": {
+      "live_sha256": "9a12794aaae5d22269194bc974ed04dfd3456fba7883771c847fe4c070ec83c0",
+      "stage_sha256": "9a12794aaae5d22269194bc974ed04dfd3456fba7883771c847fe4c070ec83c0",
+      "match": true
+    },
+    "protocol_sources.py": {
+      "live_sha256": "548e8d9a1612356ce95a3e2e1f7275b68cb50c8e50c8881c7329898cbc6ce27f",
+      "stage_sha256": "548e8d9a1612356ce95a3e2e1f7275b68cb50c8e50c8881c7329898cbc6ce27f",
+      "match": true
+    },
+    "remediation_planner.py": {
+      "live_sha256": "7b98d26053acc19b17b83e2bb4b70a8f9c6e5198c68d9e27c92bdf8dc743c096",
+      "stage_sha256": "7b98d26053acc19b17b83e2bb4b70a8f9c6e5198c68d9e27c92bdf8dc743c096",
+      "match": true
+    },
+    "repo_state.py": {
+      "live_sha256": "0a98a8c6b0893a9e82a4689c2bddf503700f778814034875618fe3190e8d25d4",
+      "stage_sha256": "0a98a8c6b0893a9e82a4689c2bddf503700f778814034875618fe3190e8d25d4",
+      "match": true
+    },
+    "reviewer.py": {
+      "live_sha256": "5c1861a5ac0f4dce007275cade1e7d244fd6d6f6a3091a150ba4cb3d01558a02",
+      "stage_sha256": "5c1861a5ac0f4dce007275cade1e7d244fd6d6f6a3091a150ba4cb3d01558a02",
+      "match": true
+    },
+    "run_journal.py": {
+      "live_sha256": "b4e250016f33d465f19baced32b5cd0faedaa284917b26c13590c52036573a0f",
+      "stage_sha256": "b4e250016f33d465f19baced32b5cd0faedaa284917b26c13590c52036573a0f",
+      "match": true
+    },
+    "runner.py": {
+      "live_sha256": "52ffb6171e60ea9477fe37364de4b999eb7a5e0b2e3592cbb002c8d6fde45032",
+      "stage_sha256": "52ffb6171e60ea9477fe37364de4b999eb7a5e0b2e3592cbb002c8d6fde45032",
+      "match": true
+    },
+    "scenario_generator.py": {
+      "live_sha256": "7e47884a9cccf76dfa0f6646034a8239eef9ec73ef736668237ca162cf529af7",
+      "stage_sha256": "7e47884a9cccf76dfa0f6646034a8239eef9ec73ef736668237ca162cf529af7",
+      "match": true
+    },
+    "scenario_plan.py": {
+      "live_sha256": "87b20da328fcbf8f4479e63b7daa91d66749f6af5c3f097d2d51fb556b99b938",
+      "stage_sha256": "87b20da328fcbf8f4479e63b7daa91d66749f6af5c3f097d2d51fb556b99b938",
+      "match": true
+    },
+    "scenario_planner.py": {
+      "live_sha256": "2d2d710e9957ad00bfa635467678b2e1c7829679cbbb24d0a0bfc48e32cab1a6",
+      "stage_sha256": "2d2d710e9957ad00bfa635467678b2e1c7829679cbbb24d0a0bfc48e32cab1a6",
+      "match": true
+    },
+    "scenario_suite.py": {
+      "live_sha256": "b8d43447437dceae7d64a93da0c6a7e50b5e9381f680bb3e358771f5bee94db6",
+      "stage_sha256": "b8d43447437dceae7d64a93da0c6a7e50b5e9381f680bb3e358771f5bee94db6",
+      "match": true
+    },
+    "scenario_validation.py": {
+      "live_sha256": "961799f3ea3e4313141386bd5de9ef2298ebae99eb513652c23936e952c0393f",
+      "stage_sha256": "961799f3ea3e4313141386bd5de9ef2298ebae99eb513652c23936e952c0393f",
+      "match": true
+    },
+    "scenarios.py": {
+      "live_sha256": "54231708e7f8dc3b17cb04ce4e633369bbef0c506822681356e2804c732763bd",
+      "stage_sha256": "54231708e7f8dc3b17cb04ce4e633369bbef0c506822681356e2804c732763bd",
+      "match": true
+    },
+    "worktree_state.py": {
+      "live_sha256": "4e531e693408f23a974c09735a259bb153f8f14b9e6ea7a25e2d67b622be336e",
+      "stage_sha256": "4e531e693408f23a974c09735a259bb153f8f14b9e6ea7a25e2d67b622be336e",
+      "match": true
+    }
+  }
+}

@@ -1,0 +1,6 @@
+approved.approves(hostile) -> (True, '')
+resolve refusals           -> []
+subprocess stdout:
+payments
+INJECTED_SECOND_COMMAND_RAN
+

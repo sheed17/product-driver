@@ -1,0 +1,257 @@
+{
+  "UUI11-S3": {
+    "name": "generated:UUI11-S3",
+    "phase": "P3",
+    "description": "Missing/unlinked evidence still surfaces honestly, never fabricated\n\nrisk: missing_data (priority P1)\npurpose: When the exception's backing document cannot be linked (unlinked packet or unresolved mailbox sha), the screen must still show the received evidence honestly and must not invent a source document \u2014 verified via the pilot's packet-link accuracy.\nrequirement: U-UI-11: the screen shows the evidence the exception was raised from\nproduct principle: repository_silent\nrationale: _copy_mailbox_evidence silently skips mailbox:// links whose sha does not resolve and _render_unlinked_packet_page renders only payload evidence. test_pilot_session asserts packet_link_accuracy, the direct measure of whether rendered evidence links resolve to real artifacts rather than dead/fabricated ones.\n\ngenerated at 2026-08-09T21:39:05+00:00 (stage=initial, wave 1)\nbecause of risk: R3\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "pilot-packet-link-accuracy",
+        "command": {
+          "name": "pilot-packet-link-accuracy",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_pilot_session.py eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "packet_link_accuracy holds (rendered evidence/packet links resolve to real artifacts)",
+      "Unlinked exceptions render a 'Received Evidence' section rather than a broken canonical source doc"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A rendered evidence link that points at a document the run never received",
+      "An unlinked exception rendered as if it had full source docs"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "UUI11-S4": {
+    "name": "generated:UUI11-S4",
+    "phase": "P3",
+    "description": "No exception review UI for a run the backend has already closed\n\nrisk: stale_state (priority P0)\npurpose: A run that has left NEEDS_REVIEW (e.g. DONE) must not render an exception detail screen offering review actions or a NEEDS_REVIEW state \u2014 the render layer must reflect the current backend state only.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: AC-3 (weight 3). build_review_payload returns None unless run.state==NEEDS_REVIEW, and operator_console._review_card shows 'No active review actions; current state is <X>' when the live re-read differs. Running the review + pilot render tests exercises this gate; the DB check establishes that terminal states really do exist so the guard is load-bearing.\n\ngenerated at 2026-08-09T21:39:05+00:00 (stage=initial, wave 1)\nbecause of risk: R1\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "render-state-gate-tests",
+        "command": {
+          "name": "render-state-gate-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE state IN ('DONE','FAILED')\"",
+          "contains": [],
+          "not_contains": [
+            "Error",
+            "no such table"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT DISTINCT state FROM workflow_runs\"",
+          "contains": [],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Render/pilot tests pass: no review card / review actions are produced for runs not in NEEDS_REVIEW",
+      "workflow_runs contains terminal (DONE/FAILED) runs, proving the closed-run case is real"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A review payload or action set produced for a run whose backend state is not NEEDS_REVIEW",
+      "sqlite error indicating the DB or table is missing"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "UUI11-S5": {
+    "name": "generated:UUI11-S5",
+    "phase": "P3",
+    "description": "Backend only ever holds a valid, closed set of states the screen can mirror\n\nrisk: ui_backend_disagreement (priority P1)\npurpose: Establish the ground truth AC-3 depends on: every persisted run holds exactly one state from the known WorkflowState enum and none is null/blank, so any state the screen displays can be checked against a real backend value.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: known_vs_inferred\nrationale: AC-3 is a screen-vs-backend agreement claim. Since the exception screen is static output with no served route at 8001, the executable half of the invariant is: the backend's own state column is well-formed and drawn only from the enum the render layer maps. A null/foreign state would mean the screen is showing something the backend cannot justify.\n\ngenerated at 2026-08-09T21:39:05+00:00 (stage=initial, wave 1)\nbecause of risk: R1\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE state IS NULL OR state='' OR state NOT IN ('RECEIVED','EXTRACTED','RECONCILED','NEEDS_REVIEW','APPROVED','DISPUTED','REQUESTED_BACKUP','READY_FOR_ENTRY','ENTERING','ENTERED','DONE','FAILED','WAITING_FOR_SESSION')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "Error",
+            "no such table"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Query returns 0: no run holds a null, blank, or unknown state",
+      "The set of states the screen could render is fully backed by the enum"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A nonzero count (a run whose persisted state is outside the known enum)",
+      "sqlite error indicating a missing DB/table"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "UUI11-S6": {
+    "name": "generated:UUI11-S6",
+    "phase": "P3",
+    "description": "Exception-screen change does not regress the pilot spine (no false green)\n\nrisk: regression (priority P2)\npurpose: Guard against the render change breaking reconciliation, review, delivery, or the dogfood site build, and against a silently-passing false-green.\nrequirement: U-UI-11\nproduct principle: founder_taste\nrationale: review.py / packet_page.py / operator_console.py sit on the pilot spine. The canonical suite plus run_diagnostics is the broadest regression signal available under the approved commands.\n\ngenerated at 2026-08-09T21:39:05+00:00 (stage=initial, wave 1)\nbecause of risk: R4\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "full-canonical-suite",
+        "command": {
+          "name": "full-canonical-suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "command",
+        "name": "diagnostics",
+        "command": {
+          "name": "diagnostics",
+          "run": ".venv/bin/python scripts/run_diagnostics.py",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Full canonical suite passes with exit 0",
+      "run_diagnostics completes cleanly (exit 0)"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any failed/errored test in the canonical suite",
+      "Diagnostics exiting non-zero"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

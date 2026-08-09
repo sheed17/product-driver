@@ -1,0 +1,750 @@
+{
+  "run_id": "20260809-e2e",
+  "task": "build supervised carrier invoice approval",
+  "active_unit_id": "U-042",
+  "generation_basis": {
+    "task": "build supervised carrier invoice approval",
+    "task_hash": "bf05fa0a1720c325",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "approval survives a restart (weight 2): PENDING"
+    ],
+    "founder_context_version": "founder-v1",
+    "repository_head": "09840a7",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "approval_backend"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "approving twice may pay twice",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "the diff touched the approval endpoint",
+      "covered_by": [
+        "gen-approve-twice"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-happy",
+      "title": "gen-happy exercises happy_path",
+      "purpose": "verify the approval effect happens exactly as promised",
+      "risk_category": "happy_path",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice": "INV-1"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "exactly one payment",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+            "contains": [
+              "payments=1"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "payments=1"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [
+        "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py"
+      ],
+      "isolation_note": "",
+      "isolation_key": "approval-state",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:43:43+00:00",
+        "task_hash": "bf05fa0a1720c325",
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approval_backend"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "the approval effect may not be safe under happy_path",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-approve-twice",
+      "title": "gen-approve-twice exercises idempotency",
+      "purpose": "verify the approval effect happens exactly as promised",
+      "risk_category": "idempotency",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "first approval",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice": "INV-2"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "second approval of the same invoice",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice": "INV-2"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "exactly one payment",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+            "contains": [
+              "payments=1"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "payments=1"
+      ],
+      "forbidden_observations": [
+        "payments=2"
+      ],
+      "cleanup": [
+        "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py"
+      ],
+      "isolation_note": "",
+      "isolation_key": "approval-state",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:43:43+00:00",
+        "task_hash": "bf05fa0a1720c325",
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approval_backend"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "the approval effect may not be safe under idempotency",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-missing-invoice",
+      "title": "gen-missing-invoice exercises missing_data",
+      "purpose": "verify the approval effect happens exactly as promised",
+      "risk_category": "missing_data",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {},
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "invoice is required"
+            ],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "invoice is required"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [
+        "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py"
+      ],
+      "isolation_note": "",
+      "isolation_key": "approval-state",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:43:43+00:00",
+        "task_hash": "bf05fa0a1720c325",
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approval_backend"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "the approval effect may not be safe under missing_data",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-concurrent-approval",
+      "title": "gen-concurrent-approval exercises concurrency",
+      "purpose": "verify the approval effect happens exactly as promised",
+      "risk_category": "concurrency",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "two operators approve the same invoice at once",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "operator-a",
+              "method": "POST",
+              "path": "/approve",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "invoice": "INV-3"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            {
+              "name": "operator-b",
+              "method": "POST",
+              "path": "/approve",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "invoice": "INV-3"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": null
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "exactly one payment",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+            "contains": [
+              "payments=1"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "payments=1"
+      ],
+      "forbidden_observations": [
+        "payments=2"
+      ],
+      "cleanup": [
+        "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py"
+      ],
+      "isolation_note": "",
+      "isolation_key": "approval-state",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:43:48+00:00",
+        "task_hash": "bf05fa0a1720c325",
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approval_backend"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [
+          "[FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output"
+        ],
+        "generating_risk": "the approval effect may not be safe under concurrency",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-restart-persistence",
+      "title": "gen-restart-persistence exercises restart_recovery",
+      "purpose": "verify the approval effect happens exactly as promised",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice": "INV-4"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "api",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "read the approval back after the restart",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/payments",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [
+              "INV-4"
+            ],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+            "contains": [
+              "INV-4"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "INV-4"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [
+        "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py"
+      ],
+      "isolation_note": "",
+      "isolation_key": "approval-state",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:43:48+00:00",
+        "task_hash": "bf05fa0a1720c325",
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approval_backend"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [
+          "[FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output"
+        ],
+        "generating_risk": "the approval effect may not be safe under restart_recovery",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 5,
+    "by_risk_category": {
+      "happy_path": 1,
+      "idempotency": 1,
+      "missing_data": 1,
+      "concurrency": 1,
+      "restart_recovery": 1
+    },
+    "by_priority": {
+      "P0": 5
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [
+    "the approval endpoint is POST /approve"
+  ],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:43:43+00:00",
+      "basis": {
+        "task": "build supervised carrier invoice approval",
+        "task_hash": "bf05fa0a1720c325",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "approval_backend"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 3,
+      "accepted_ids": [
+        "gen-happy",
+        "gen-approve-twice",
+        "gen-missing-invoice"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 2,
+      "stage": "adaptive",
+      "requested_at": "2026-08-09T21:43:48+00:00",
+      "basis": {
+        "task": "build supervised carrier invoice approval",
+        "task_hash": "bf05fa0a1720c325",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "approval_backend"
+        ],
+        "prior_failures": [
+          "[FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output"
+        ],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 2,
+      "accepted_ids": [
+        "gen-concurrent-approval",
+        "gen-restart-persistence"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 3,
+      "stage": "diff_refinement",
+      "requested_at": "2026-08-09T21:43:48+00:00",
+      "basis": {
+        "task": "build supervised carrier invoice approval",
+        "task_hash": "bf05fa0a1720c325",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "founder_context_version": "founder-v1",
+        "repository_head": "09840a7",
+        "diff_files": [
+          "FIXED"
+        ],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "approval_backend"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

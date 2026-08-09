@@ -1,0 +1,13 @@
+--- setup ---
+$ /Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py  [exit=0, 0.0s]
+stdout:
+reset
+--- commands ---
+$ /Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py  [exit=0, 0.0s]
+stdout:
+payments=1
+invoices=INV-1
+--- teardown ---
+$ /Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py  [exit=0, 0.0s]
+stdout:
+reset

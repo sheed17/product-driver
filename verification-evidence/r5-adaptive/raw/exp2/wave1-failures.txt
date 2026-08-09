@@ -1,0 +1,3 @@
+[FAIL] P0 permanent permanent:approval-smoke  — expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: durable store shows approved: contains 'status=approved' — not found in command output

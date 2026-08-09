@@ -1,0 +1,662 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "A supervisor cannot actually complete a release even when authorized (gate too strict / role check rejects valid supervisor), breaking the core capability.",
+        "risk_category": "authorization",
+        "severity": "P0",
+        "basis": "AC 'a supervisor can release an operation' (weight 3), U-AUTHZ-2"
+      },
+      {
+        "id": "R2",
+        "description": "A non-supervisor's release request is refused at the response layer but the underlying effect (grant claim / operation state advance) still occurs, so the refusal is cosmetic.",
+        "risk_category": "authorization",
+        "severity": "P0",
+        "basis": "AC 'a non-supervisor is refused and no release occurs' (weight 3); HTTP 200/refusal text is not proof no effect happened"
+      },
+      {
+        "id": "R3",
+        "description": "Tenant isolation on the release gate is bypassable: a supervisor authenticated in tenant A can release an operation owned by tenant B.",
+        "risk_category": "cross_tenant",
+        "severity": "P0",
+        "basis": "AC 'a supervisor of one tenant cannot release another tenant's operation' (weight 3); schema.py enforces tenant-first keys but a new authz path may query without tenant binding"
+      },
+      {
+        "id": "R4",
+        "description": "Some refusals (e.g. cross-tenant, missing-identity, malformed token, or the second of two concurrent attempts) are silently dropped instead of written to the audit trail, so 'every refusal' is not actually every refusal.",
+        "risk_category": "observability",
+        "severity": "P1",
+        "basis": "AC 'every refusal is recorded in the audit log' (weight 2); refusal paths in action_callback.py funnel through _refuse_governed but new role paths may not"
+      },
+      {
+        "id": "R5",
+        "description": "Two simultaneous supervisor release taps on the same operation both succeed, minting two live grants / double-releasing.",
+        "risk_category": "concurrency",
+        "severity": "P1",
+        "basis": "effect_grants invariant of one live reservation per (tenant, effect); AC 'a supervisor can release an operation'"
+      },
+      {
+        "id": "R6",
+        "description": "A replayed/retried supervisor approval releases the operation a second time (non-idempotent), producing a duplicate effect.",
+        "risk_category": "idempotency",
+        "severity": "P1",
+        "basis": "AC 'a supervisor can release an operation'; retry_safety of the release effect"
+      },
+      {
+        "id": "R7",
+        "description": "The active surface for 'release an operation' under role-based authz is unknown (static operator_console.py is read-only; release runs through secret-signed actions), so the acceptance behavior may be exercised only in unit tests and never through the real console.",
+        "risk_category": "requirement-coverage",
+        "severity": "P1",
+        "basis": "operator_console.py is a static artifact; run_action_callback_server governed route ships dark/fail-closed"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "AUTHZ2-S1",
+        "title": "Supervisor releases a pending operation through the operator console",
+        "purpose": "Confirm an authenticated supervisor can complete a release and that a real release effect is persisted, not just a success message.",
+        "risk_category": "happy_path",
+        "priority": "P0",
+        "generating_risk": "R1",
+        "requirement_reference": "U-AUTHZ-2: a supervisor can release an operation",
+        "product_principle_reference": "authority_clarity",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Operates on the disposable driver_probe dogfood workspace; releases a single freshly-seeded operation. A released operation is terminal, so it cannot alter the inputs of other scenarios that target different operations. isolation_key pins the shared DB so no mutating scenario runs concurrently.",
+        "setup": [
+          "Callback service running on 127.0.0.1:8001 against the driver_probe workspace DB",
+          "At least one pending, releasable operation seeded for the supervisor's tenant"
+        ],
+        "rationale": "This is the load-bearing positive case; without proof of a persisted effect a passing UI is meaningless.",
+        "confidence": 0.4,
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/operator/"
+              },
+              {
+                "expect_text": "Operator Console"
+              },
+              {
+                "click": "Release"
+              },
+              {
+                "expect_text": "released"
+              }
+            ]
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type,to_state,actor FROM audit_events ORDER BY id DESC LIMIT 5\"",
+              "contains": [
+                "RELEASED"
+              ],
+              "not_contains": [
+                "REFUSED"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "Console shows the release succeeded for the supervisor",
+          "A new operation_action_claim / effect grant exists for the released operation",
+          "An audit_events row records the release with the supervisor as actor"
+        ],
+        "forbidden_observations": [
+          "Success shown but no persisted claim/grant/audit row for the release"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "operator_console.py",
+          "phase2_tenant_first.py audit_events schema"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S2",
+        "title": "Non-supervisor release attempt is refused and no release effect occurs",
+        "purpose": "Prove a non-supervisor identity is rejected AND that no grant/claim/state-advance is written, and that the refusal is recorded.",
+        "risk_category": "authorization",
+        "priority": "P0",
+        "generating_risk": "R2",
+        "requirement_reference": "U-AUTHZ-2: a non-supervisor is refused and no release occurs",
+        "product_principle_reference": "accountable_owner",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Sends a release attempt that must be refused; a refusal only appends immutable rows to append-only audit/security tables and must not change operation state, so it cannot contaminate later scenarios.",
+        "setup": [
+          "Callback service running on 127.0.0.1:8001",
+          "A pending operation exists that a non-supervisor must not be able to release"
+        ],
+        "rationale": "Refusal must be enforced at the effect boundary, not merely in the response body.",
+        "confidence": 0.5,
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "non-supervisor-release-attempt"
+              },
+              "expect_status": 403,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type,to_state,actor FROM audit_events WHERE to_state='REFUSED' ORDER BY id DESC LIMIT 5\"",
+              "contains": [
+                "REFUSED"
+              ]
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Request is refused (non-2xx)",
+          "operation_action_claims count is unchanged before vs after",
+          "A REFUSED audit/security event is recorded"
+        ],
+        "forbidden_observations": [
+          "A new claim/grant appears after a non-supervisor attempt",
+          "The refusal leaves no audit/security row"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "action_callback.py _refuse_governed"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S3",
+        "title": "Tenant-A supervisor cannot release tenant-B's operation",
+        "purpose": "Verify tenant isolation on the release gate: an authenticated supervisor of one tenant is refused for another tenant's operation, no effect lands in tenant B, and the refusal is recorded.",
+        "risk_category": "cross_tenant",
+        "priority": "P0",
+        "generating_risk": "R3",
+        "requirement_reference": "U-AUTHZ-2: a supervisor of one tenant cannot release another tenant's operation",
+        "product_principle_reference": "tms_centrality",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "A refused cross-tenant attempt only appends refusal rows; it must not advance tenant B state, so it is isolated.",
+        "setup": [
+          "Two tenants present in the driver_probe DB, each with at least one operation",
+          "A supervisor session/identity bound to tenant A"
+        ],
+        "rationale": "Schema keys are tenant-first, but a new authz query that omits the tenant binding would leak across tenants while passing single-tenant tests.",
+        "confidence": 0.45,
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT tenant,count(*) FROM operation_action_claims GROUP BY tenant\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "tenantA-supervisor-releasing-tenantB-operation"
+              },
+              "expect_status": 403,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type,to_state FROM audit_events WHERE to_state='REFUSED' ORDER BY id DESC LIMIT 5\"",
+              "contains": [
+                "REFUSED"
+              ]
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT tenant,count(*) FROM operation_action_claims GROUP BY tenant\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Cross-tenant release is refused",
+          "No new claim/grant appears under tenant B",
+          "A REFUSED event is recorded"
+        ],
+        "forbidden_observations": [
+          "Tenant B gains a release claim/grant attributable to a tenant A actor"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "schema.py tenant-first invariants"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S4",
+        "title": "Every refusal is recorded \u2014 repeated non-supervisor attempts each leave a row",
+        "purpose": "Confirm the audit trail records EVERY refusal, not just the first, by issuing several refused attempts and checking the refusal-row count grows per attempt.",
+        "risk_category": "repeated_request",
+        "priority": "P1",
+        "generating_risk": "R4",
+        "requirement_reference": "U-AUTHZ-2: every refusal is recorded in the audit log",
+        "product_principle_reference": "obligation_visibility",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Only appends refusal rows to append-only tables; changes no operation state.",
+        "setup": [
+          "Callback service running on 127.0.0.1:8001"
+        ],
+        "rationale": "Dedupe/rate-limit logic can silently collapse repeated refusals into one row, violating 'every refusal is recorded'.",
+        "confidence": 0.5,
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "refused-attempt-1"
+              },
+              "expect_status": 403,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "refused-attempt-2"
+              },
+              "expect_status": 403,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "refused-attempt-3"
+              },
+              "expect_status": 403,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE to_state='REFUSED'\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Refusal/security rows increase for each refused attempt",
+          "No release effect is created"
+        ],
+        "forbidden_observations": [
+          "Three refused attempts leave only one audit/security row"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "action_callback.py transport-boundary auditing"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S5",
+        "title": "Two simultaneous supervisor release taps release the operation at most once",
+        "purpose": "Exercise the race: concurrent authorized releases of the same operation must yield exactly one live grant/claim, never two.",
+        "risk_category": "concurrency",
+        "priority": "P1",
+        "generating_risk": "R5",
+        "requirement_reference": "U-AUTHZ-2: a supervisor can release an operation",
+        "product_principle_reference": "outcome_verification",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Targets one freshly-seeded operation; releasing it is terminal so it cannot bleed into other scenarios.",
+        "setup": [
+          "A single pending operation seeded for the supervisor's tenant",
+          "Callback service running on 127.0.0.1:8001"
+        ],
+        "rationale": "effect_grants is meant to hold one live reservation per (tenant, effect); a new authz path could open a claim window before the grant is minted.",
+        "confidence": 0.4,
+        "actions": [
+          {
+            "kind": "parallel_requests",
+            "requests": [
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {
+                  "token": "supervisor-release-race-A"
+                },
+                "timeout_s": 5
+              },
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {
+                  "token": "supervisor-release-race-B"
+                },
+                "timeout_s": 5
+              }
+            ]
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "At most one release claim/grant exists for the operation after both taps"
+        ],
+        "forbidden_observations": [
+          "Two live claims/grants for the same operation",
+          "Two distinct RELEASED audit events for one operation"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "effect_grants single-live-reservation invariant"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S6",
+        "title": "Replayed supervisor approval does not release twice",
+        "purpose": "Verify idempotency/retry-safety: re-submitting an already-consumed supervisor approval does not create a second release effect.",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "generating_risk": "R6",
+        "requirement_reference": "U-AUTHZ-2: a supervisor can release an operation",
+        "product_principle_reference": "success_without_verification",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Acts on one operation; a second release must be a no-op, so state stays terminal and isolated.",
+        "setup": [
+          "A supervisor approval that has already released one operation (chain after S1) or a freshly seeded one",
+          "Callback service running on 127.0.0.1:8001"
+        ],
+        "rationale": "Email/Slack taps get replayed by clients and retries; a non-idempotent release doubles the effect.",
+        "confidence": 0.4,
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "supervisor-approval-replayed"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "supervisor-approval-replayed"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Claim/grant count does not increase on the second identical submission"
+        ],
+        "forbidden_observations": [
+          "A second release effect is created from a replayed approval"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "operation_action_claims uniqueness"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S7",
+        "title": "Release attempt with no asserted role/identity is refused and recorded",
+        "purpose": "Exercise the missing-data case: a release request that carries no supervisor role/identity must fail closed and record the refusal, not default to allow.",
+        "risk_category": "missing_data",
+        "priority": "P1",
+        "generating_risk": "R4",
+        "requirement_reference": "U-AUTHZ-2: a non-supervisor is refused and no release occurs",
+        "product_principle_reference": "dead_end_error",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Refused attempt appends only to append-only tables.",
+        "setup": [
+          "Callback service running on 127.0.0.1:8001"
+        ],
+        "rationale": "Fail-open on absent role is the classic authz bug; absence of a role must be treated as not-a-supervisor.",
+        "confidence": 0.5,
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {},
+              "expect_status": 400,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events\"",
+              "contains": []
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operation_action_claims\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Request refused",
+          "A refusal/security row is recorded",
+          "No release claim created"
+        ],
+        "forbidden_observations": [
+          "A release proceeds when no supervisor role is present"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "fail-closed refusal path"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S8",
+        "title": "Malformed release action is refused at the transport boundary and logged",
+        "purpose": "Confirm a malformed/garbage signed release action is rejected before any effect and that the rejection is recorded (the refusal-recording pathway works for junk input too).",
+        "risk_category": "malformed_input",
+        "priority": "P2",
+        "generating_risk": "R4",
+        "requirement_reference": "U-AUTHZ-2: every refusal is recorded in the audit log",
+        "product_principle_reference": "repository_silent",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Only appends a rejection row; no state mutation.",
+        "setup": [
+          "Callback service running on 127.0.0.1:8001"
+        ],
+        "rationale": "action_callback.py explicitly audits rejected requests at the transport boundary; a regression there would silently drop refusals.",
+        "confidence": 0.55,
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "!!!not-a-valid-token!!!"
+              },
+              "expect_status": 400,
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events\"",
+              "contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "Malformed action rejected (non-2xx)",
+          "A security/audit row records the rejected request"
+        ],
+        "forbidden_observations": [
+          "Malformed action silently accepted or dropped with no record"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "action_callback.py transport-boundary audit",
+          "U-AUTHZ-2 acceptance criteria"
+        ]
+      },
+      {
+        "id": "AUTHZ2-S9",
+        "title": "Canonical test suite passes with role-based release authorization in place",
+        "purpose": "Run the authoritative canonical suite to catch regressions in the release/authz/tenant behavior at the unit level, since the live release path ships dark and secret-gated.",
+        "risk_category": "regression",
+        "priority": "P1",
+        "generating_risk": "R7",
+        "requirement_reference": "U-AUTHZ-2",
+        "product_principle_reference": "outcome_verification",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest-canonical.ini runs hermetically against temp databases; it does not touch the driver_probe workspace or the callback service.",
+        "setup": [],
+        "rationale": "The real console/release surface is not fully reachable without secrets; the canonical suite is the most trustworthy check that all four acceptance behaviors hold.",
+        "confidence": 0.6,
+        "actions": [
+          {
+            "kind": "command",
+            "name": "canonical-suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Suite passes, including any U-AUTHZ-2 authorization/tenant tests"
+        ],
+        "forbidden_observations": [
+          "Authz/tenant tests fail or are absent"
+        ],
+        "cleanup": [],
+        "generated_from": [
+          "U-AUTHZ-2 acceptance criteria",
+          "pytest-canonical.ini"
+        ]
+      }
+    ],
+    "assumptions": [
+      "No implementation diff, existing-coverage list, or prior-failure log was supplied to me for this wave; scenarios are grounded in the ACs, product-principle ids, and the repository surface I could read, not in the actual builder change.",
+      "The 'operator console' the task names is currently a static read-only HTML artifact (operator_console.py); I assume the role-based release capability is being newly added and that a release-capable console or endpoint is served on 127.0.0.1:8001 by the 'callback' service.",
+      "The release/approval effect is persisted via operation_action_claims and/or effect_grants, and refusals via audit_events (to_state='REFUSED' / event 'GovernedWriteRefused') and security_events; state_checks read the driver_probe workspace DB at data/active_workspace/driver_probe/workflow.sqlite3.",
+      "Refusal-path requests (non-supervisor, missing identity, malformed, cross-tenant) do NOT require a valid signing secret, so they can be exercised over loopback without referencing any secret; the positive supervisor release path DOES require valid auth and is therefore routed through the browser console / covered by the canonical suite rather than a hand-signed HTTP call.",
+      "The driver_probe workspace is disposable and pre-seeded with at least one pending, releasable operation per tenant; released operations are terminal.",
+      "Exact HTTP status codes for refusals are guesses (400/403); the load-bearing evidence in each scenario is the persisted-state check, not the status code."
+    ],
+    "unresolved_questions": [
+      "What is the actual surface for 'release an operation' under role-based authz \u2014 an interactive operator-console HTTP/browser endpoint, or only the existing secret-signed /actions/signed and /slack/actions taps? Concrete request paths and success/refusal responses are needed to author higher-confidence positive scenarios.",
+      "How is 'supervisor' role asserted and authenticated (session, signed token claim, Slack user allowlist, a new roles table)? The AC promises a supervisor/non-supervisor distinction but I could not find any role/supervisor concept in the current schema or code.",
+      "Which table/state records a completed release (operation_action_claims, effect_grants, a run state transition), and what value distinguishes 'released' \u2014 so that 'no release occurs' can be asserted precisely rather than by claim-count deltas?",
+      "Is an authorization/role refusal written to audit_events, security_events, or both, and with what event_type/to_state? AC4 ('every refusal is recorded') cannot be verified exactly without the canonical refusal record shape for the new role gate.",
+      "The governed write route currently ships dark and fail-closed (kernel BLOCKED pending AC-CKPT-6 adjudication). If release genuinely cannot execute in the deployed server, is U-AUTHZ-2's 'a supervisor CAN release' testable anywhere other than unit tests? This may indicate the acceptance behavior is not yet reachable through a real surface."
+    ]
+  }
+]

@@ -1,0 +1,175 @@
+==============================================================================
+WAVE-2 ACCEPTED OUTPUT PER RUN
+==============================================================================
+
+exp1a-nonidem  accepted=5  proposed=5   [r5/raw/real1]
+    [P0 timeout_after_effect      ] Approve that stalls past client timeout still leaves exactly one durable approval
+    [P0 retry_safety              ] Retrying an approval after an ambiguous timeout does not double-record
+    [P0 concurrency               ] Two simultaneous approvals of one invoice record a single payment
+    [P0 ui_backend_disagreement   ] A 200-approved response must agree with an independent re-read of persisted state
+    [P2 missing_data              ] Approval with no actor supplied is still recorded durably exactly once
+
+exp1b-nonidem  accepted=0  proposed=5   [r5/raw/real1b]
+    (all proposals refused by validation; proposed titles were:)
+      - [timeout_after_effect] Approve must answer before the client times out, and the durable store must record exactly one payment
+      - [concurrency] Two simultaneous approvals of the same invoice record exactly one payment
+      - [stale_state] A recorded approval is still present on repeated independent re-reads of the durable store
+      - [safety_invariant] Approving one invoice leaves an unrelated invoice pending in the durable store
+      - [malformed_input] Approve with a non-JSON body still records the approval durably without crashing
+
+exp1c-nonidem  accepted=5  proposed=5   [r5/raw/real1c]
+    [P0 ui_backend_disagreement   ] API read says approved but durable store must agree
+    [P0 restart_recovery          ] Approval survives a service restart / re-read of persisted state
+    [P0 timeout_after_effect      ] Approve that times out client-side must have either not paid or paid exactly once
+    [P1 concurrency               ] Two simultaneous approvals of one invoice pay exactly once
+    [P2 boundary                  ] Approving one invoice leaves other invoices untouched
+
+exp2a-ui_lies  accepted=4  proposed=4   [r5/raw/real2]
+    [P0 concurrency               ] Two simultaneous approvals of one invoice record a single payment durably
+    [P0 stale_state               ] Approval survives a fresh-process re-read after intervening operations
+    [P0 timeout_after_effect      ] Approval is durably recorded even when the client request times out
+    [P1 retry_safety              ] Retrying an approve after an ambiguous timeout does not double-pay
+
+exp2b-ui_lies  accepted=0  proposed=6   [r5/raw/real2b]
+    (all proposals refused by validation; proposed titles were:)
+      - [ui_backend_disagreement] Approve response says approved but durable store must agree
+      - [stale_state] Approval survives re-read and a later unrelated approval
+      - [concurrency] Two simultaneous approvals of one invoice pay exactly once
+      - [ambiguous_external_effect] Delayed approval lands durably and a retry does not double-pay
+      - [missing_data] Approval with no actor is still recorded durably
+      - [safety_invariant] Reading an invoice never records an approval
+
+exp2c-ui_lies  accepted=5  proposed=5   [r5/raw/real2c]
+    [P0 ui_backend_disagreement   ] API claims approved but the durable re-read must agree
+    [P0 timeout_after_effect      ] Approve that stalls past client timeout must still have persisted exactly once
+    [P0 retry_safety              ] Client retry after an ambiguous timeout must not double-pay
+    [P1 concurrency               ] Two simultaneous approvals of one invoice pay exactly once
+    [P2 missing_data              ] Approve with no actor still records durably
+
+exp3a-uncertain  accepted=4  proposed=4   [r5/raw/real3]
+    [P0 ambiguous_external_effect ] Timed-out approve leaves an ambiguous durable effect
+    [P0 ui_backend_disagreement   ] Approve acknowledged by API but absent from durable store
+    [P0 restart_recovery          ] Approval survives an api restart / independent re-read
+    [P1 concurrency               ] Simultaneous approvals of one invoice pay exactly once
+
+exp3b-uncertain  accepted=0  proposed=6   [r5/raw/real3b]
+    (all proposals refused by validation; proposed titles were:)
+      - [restart_recovery] Approval survives an api restart and re-read of persisted state
+      - [retry_safety] Retrying an approve after a timeout records exactly one approval
+      - [concurrency] Two simultaneous approvals of one invoice record a single approval
+      - [missing_data] Approving a non-existent invoice fails cleanly without recording
+      - [malformed_input] Malformed approve payload is rejected and writes no state
+      - [partial_failure] Approve while api is stopped leaves no phantom record after recovery
+
+exp3c-uncertain  accepted=0  proposed=6   [r5/raw/real3c]
+    (all proposals refused by validation; proposed titles were:)
+      - [restart_recovery] Approval of SMOKE survives an api restart and re-read
+      - [retry_safety] Retrying an approve after a timeout records exactly one durable approval
+      - [timeout_after_effect] A timed-out approve does not leave ambiguous half-written state
+      - [concurrency] Two simultaneous approvals of one invoice record a single durable approval
+      - [missing_data] Approving an unknown invoice is rejected and records nothing
+      - [malformed_input] Malformed approve body is rejected without persisting
+
+exp3d-uncertain  accepted=0  proposed=4   [r5/raw/real3d]
+    (all proposals refused by validation; proposed titles were:)
+      - [ui_backend_disagreement] Approved response must match the durable store, not just the in-memory view
+      - [concurrency] Two simultaneous approvals of one invoice record a single approval
+      - [stale_state] An earlier approval survives a later approval of a different invoice on re-read
+      - [missing_data] Approval with no actor metadata is still recorded durably
+
+CONTROL-no-evidence  accepted=5  proposed=5   [r5/raw/control]
+    [P0 timeout_after_effect      ] Approve that stalls past client timeout still lands exactly one durable effect
+    [P0 retry_safety              ] Retry after an ambiguous timeout must not double-pay
+    [P0 concurrency               ] Two simultaneous approvals of one invoice pay exactly once
+    [P1 ui_backend_disagreement   ] In-memory GET and durable store agree after approval
+    [P1 restart_recovery          ] Approval survives an api service restart
+
+==============================================================================
+SIMILARITY OF ACCEPTED WAVE-2 COVERAGE  (6 of 11 runs contributed scenarios)
+==============================================================================
+REPLICATE    pairs=2   mean risk-category Jaccard 0.464   mean title-token Jaccard 0.279
+BETWEEN      pairs=8   mean risk-category Jaccard 0.429   mean title-token Jaccard 0.278
+CONTROL      pairs=5   mean risk-category Jaccard 0.600   mean title-token Jaccard 0.337
+
+  pair detail:
+    [BETWEEN  ] exp1a-nonidem        vs exp2a-ui_lies        cats=0.500 titles=0.301
+    [BETWEEN  ] exp1a-nonidem        vs exp2c-ui_lies        cats=1.000 titles=0.367
+    [BETWEEN  ] exp1a-nonidem        vs exp3a-uncertain      cats=0.286 titles=0.205
+    [BETWEEN  ] exp1c-nonidem        vs exp2a-ui_lies        cats=0.286 titles=0.265
+    [BETWEEN  ] exp1c-nonidem        vs exp2c-ui_lies        cats=0.429 titles=0.368
+    [BETWEEN  ] exp1c-nonidem        vs exp3a-uncertain      cats=0.500 titles=0.281
+    [BETWEEN  ] exp2a-ui_lies        vs exp3a-uncertain      cats=0.143 titles=0.204
+    [BETWEEN  ] exp2c-ui_lies        vs exp3a-uncertain      cats=0.286 titles=0.234
+    [CONTROL  ] exp1a-nonidem        vs CONTROL-no-evidence  cats=0.667 titles=0.317
+    [CONTROL  ] exp1c-nonidem        vs CONTROL-no-evidence  cats=0.667 titles=0.386
+    [CONTROL  ] exp2a-ui_lies        vs CONTROL-no-evidence  cats=0.500 titles=0.311
+    [CONTROL  ] exp2c-ui_lies        vs CONTROL-no-evidence  cats=0.667 titles=0.357
+    [CONTROL  ] exp3a-uncertain      vs CONTROL-no-evidence  cats=0.500 titles=0.313
+    [REPLICATE] exp1a-nonidem        vs exp1c-nonidem        cats=0.429 titles=0.287
+    [REPLICATE] exp2a-ui_lies        vs exp2c-ui_lies        cats=0.500 titles=0.270
+
+==============================================================================
+SIMILARITY OF RAW MODEL PROPOSALS (pre-validation)  (11 of 11 runs contributed scenarios)
+==============================================================================
+REPLICATE    pairs=12  mean risk-category Jaccard 0.342   mean title-token Jaccard 0.275
+BETWEEN      pairs=33  mean risk-category Jaccard 0.377   mean title-token Jaccard 0.257
+CONTROL      pairs=10  mean risk-category Jaccard 0.470   mean title-token Jaccard 0.313
+
+  pair detail:
+    [BETWEEN  ] exp1a-nonidem        vs exp2a-ui_lies        cats=0.500 titles=0.301
+    [BETWEEN  ] exp1a-nonidem        vs exp2b-ui_lies        cats=0.375 titles=0.279
+    [BETWEEN  ] exp1a-nonidem        vs exp2c-ui_lies        cats=1.000 titles=0.367
+    [BETWEEN  ] exp1a-nonidem        vs exp3a-uncertain      cats=0.286 titles=0.205
+    [BETWEEN  ] exp1a-nonidem        vs exp3b-uncertain      cats=0.375 titles=0.181
+    [BETWEEN  ] exp1a-nonidem        vs exp3c-uncertain      cats=0.571 titles=0.230
+    [BETWEEN  ] exp1a-nonidem        vs exp3d-uncertain      cats=0.500 titles=0.236
+    [BETWEEN  ] exp1b-nonidem        vs exp2a-ui_lies        cats=0.500 titles=0.262
+    [BETWEEN  ] exp1b-nonidem        vs exp2b-ui_lies        cats=0.375 titles=0.293
+    [BETWEEN  ] exp1b-nonidem        vs exp2c-ui_lies        cats=0.250 titles=0.295
+    [BETWEEN  ] exp1b-nonidem        vs exp3a-uncertain      cats=0.125 titles=0.267
+    [BETWEEN  ] exp1b-nonidem        vs exp3b-uncertain      cats=0.222 titles=0.229
+    [BETWEEN  ] exp1b-nonidem        vs exp3c-uncertain      cats=0.375 titles=0.228
+    [BETWEEN  ] exp1b-nonidem        vs exp3d-uncertain      cats=0.286 titles=0.214
+    [BETWEEN  ] exp1c-nonidem        vs exp2a-ui_lies        cats=0.286 titles=0.265
+    [BETWEEN  ] exp1c-nonidem        vs exp2b-ui_lies        cats=0.222 titles=0.298
+    [BETWEEN  ] exp1c-nonidem        vs exp2c-ui_lies        cats=0.429 titles=0.368
+    [BETWEEN  ] exp1c-nonidem        vs exp3a-uncertain      cats=0.500 titles=0.281
+    [BETWEEN  ] exp1c-nonidem        vs exp3b-uncertain      cats=0.222 titles=0.248
+    [BETWEEN  ] exp1c-nonidem        vs exp3c-uncertain      cats=0.375 titles=0.265
+    [BETWEEN  ] exp1c-nonidem        vs exp3d-uncertain      cats=0.286 titles=0.254
+    [BETWEEN  ] exp2a-ui_lies        vs exp3a-uncertain      cats=0.143 titles=0.204
+    [BETWEEN  ] exp2a-ui_lies        vs exp3b-uncertain      cats=0.250 titles=0.215
+    [BETWEEN  ] exp2a-ui_lies        vs exp3c-uncertain      cats=0.429 titles=0.276
+    [BETWEEN  ] exp2a-ui_lies        vs exp3d-uncertain      cats=0.333 titles=0.277
+    [BETWEEN  ] exp2b-ui_lies        vs exp3a-uncertain      cats=0.429 titles=0.252
+    [BETWEEN  ] exp2b-ui_lies        vs exp3b-uncertain      cats=0.200 titles=0.196
+    [BETWEEN  ] exp2b-ui_lies        vs exp3c-uncertain      cats=0.200 titles=0.239
+    [BETWEEN  ] exp2b-ui_lies        vs exp3d-uncertain      cats=0.667 titles=0.289
+    [BETWEEN  ] exp2c-ui_lies        vs exp3a-uncertain      cats=0.286 titles=0.234
+    [BETWEEN  ] exp2c-ui_lies        vs exp3b-uncertain      cats=0.375 titles=0.206
+    [BETWEEN  ] exp2c-ui_lies        vs exp3c-uncertain      cats=0.571 titles=0.241
+    [BETWEEN  ] exp2c-ui_lies        vs exp3d-uncertain      cats=0.500 titles=0.281
+    [CONTROL  ] exp1a-nonidem        vs CONTROL-no-evidence  cats=0.667 titles=0.317
+    [CONTROL  ] exp1b-nonidem        vs CONTROL-no-evidence  cats=0.250 titles=0.341
+    [CONTROL  ] exp1c-nonidem        vs CONTROL-no-evidence  cats=0.667 titles=0.386
+    [CONTROL  ] exp2a-ui_lies        vs CONTROL-no-evidence  cats=0.500 titles=0.311
+    [CONTROL  ] exp2b-ui_lies        vs CONTROL-no-evidence  cats=0.222 titles=0.331
+    [CONTROL  ] exp2c-ui_lies        vs CONTROL-no-evidence  cats=0.667 titles=0.357
+    [CONTROL  ] exp3a-uncertain      vs CONTROL-no-evidence  cats=0.500 titles=0.313
+    [CONTROL  ] exp3b-uncertain      vs CONTROL-no-evidence  cats=0.375 titles=0.237
+    [CONTROL  ] exp3c-uncertain      vs CONTROL-no-evidence  cats=0.571 titles=0.254
+    [CONTROL  ] exp3d-uncertain      vs CONTROL-no-evidence  cats=0.286 titles=0.286
+    [REPLICATE] exp1a-nonidem        vs exp1b-nonidem        cats=0.250 titles=0.341
+    [REPLICATE] exp1a-nonidem        vs exp1c-nonidem        cats=0.429 titles=0.287
+    [REPLICATE] exp1b-nonidem        vs exp1c-nonidem        cats=0.250 titles=0.373
+    [REPLICATE] exp2a-ui_lies        vs exp2b-ui_lies        cats=0.250 titles=0.246
+    [REPLICATE] exp2a-ui_lies        vs exp2c-ui_lies        cats=0.500 titles=0.270
+    [REPLICATE] exp2b-ui_lies        vs exp2c-ui_lies        cats=0.375 titles=0.282
+    [REPLICATE] exp3a-uncertain      vs exp3b-uncertain      cats=0.250 titles=0.233
+    [REPLICATE] exp3a-uncertain      vs exp3c-uncertain      cats=0.250 titles=0.260
+    [REPLICATE] exp3a-uncertain      vs exp3d-uncertain      cats=0.333 titles=0.226
+    [REPLICATE] exp3b-uncertain      vs exp3c-uncertain      cats=0.714 titles=0.390
+    [REPLICATE] exp3b-uncertain      vs exp3d-uncertain      cats=0.250 titles=0.178
+    [REPLICATE] exp3c-uncertain      vs exp3d-uncertain      cats=0.250 titles=0.214
+
+VERDICT RULE: responsiveness requires BETWEEN < REPLICATE and CONTROL lowest.

@@ -1,0 +1,19 @@
+[C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8962/api/invoices/SMOKE/approve: status == 200 — got timed out
+  affected: permanent:approval-smoke
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+  evidence: r5/raw/nodiff3/artifacts-w1/scenarios/permanent-approval-smoke
+
+[C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8962/api/invoices/W1C/approve: status == 200 — got timed out
+  affected: gen-idempotent-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+  evidence: r5/raw/nodiff3/artifacts-w1/scenarios/gen-idempotent-approve
+
+[C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8962/api/invoices/W1B/approve: status == 200 — got timed out
+  affected: gen-persist-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+  evidence: r5/raw/nodiff3/artifacts-w1/scenarios/gen-persist-approve
+
+[C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8962/api/invoices/W1A/approve: status == 200 — got timed out
+  affected: gen-happy-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+  evidence: r5/raw/nodiff3/artifacts-w1/scenarios/gen-happy-approve

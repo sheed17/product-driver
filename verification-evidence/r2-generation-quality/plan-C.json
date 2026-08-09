@@ -1,0 +1,605 @@
+{
+  "run_id": "review-C",
+  "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+  "active_unit_id": "U-RO-3",
+  "generation_basis": {
+    "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+    "task_hash": "3e71fde5555029a8",
+    "active_unit_id": "U-RO-3",
+    "acceptance_criteria": [
+      "a search by reference returns the matching shipment (weight 3): PENDING",
+      "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+      "the view performs no write of any kind (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A filter that matches nothing renders a blank/empty view rather than an explicit 'no matching shipments' message, leaving the operator unable to tell 'no results' from 'view broke'.",
+      "risk_category": "missing_data",
+      "severity": "P0",
+      "basis": "AC 'a filter with no matches says so rather than showing nothing' is PENDING.",
+      "covered_by": []
+    },
+    {
+      "id": "R2",
+      "description": "The read-only view performs a write of some kind (audit row, effect grant, action claim, or accidental state mutation), breaking the read-only guarantee.",
+      "risk_category": "safety_invariant",
+      "severity": "P0",
+      "basis": "AC 'the view performs no write of any kind' is PENDING; tenant schema has effect_grants / operation_action_claims / delivery_action_claims that record effects.",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "Search input reaches the SQL/query layer unsanitized or crashes the view on special characters, injection-style strings, or very long input.",
+      "risk_category": "malformed_input",
+      "severity": "P1",
+      "basis": "AC 'a search by reference returns the matching shipment' plus the no-write AC \u2014 a search over a SQLite-backed store.",
+      "covered_by": []
+    },
+    {
+      "id": "R5",
+      "description": "The search leaks shipments belonging to another tenant, violating tenant isolation of the canonical tenant tables.",
+      "risk_category": "cross_tenant",
+      "severity": "P1",
+      "basis": "Canonical shipment/load data is tenant-scoped (CANONICAL_TENANT_TABLES); a naive query could ignore the bound tenant.",
+      "covered_by": []
+    },
+    {
+      "id": "R6",
+      "description": "Adding the view breaks or shadows existing read/command routes on the callback server.",
+      "risk_category": "regression",
+      "severity": "P2",
+      "basis": "The new view is added to the same app that already serves /slack/*, /email/action, /actions/signed.",
+      "covered_by": [
+        "S-RO3-08"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S-RO3-05",
+      "title": "Empty / whitespace-only filter degrades sensibly",
+      "purpose": "Confirm an empty or whitespace-only filter does not crash and does not present a bare blank screen.",
+      "risk_category": "boundary",
+      "priority": "P1",
+      "rationale": "Empty-query is the most common boundary a search box hits; it must resolve to either the full list or an explicit prompt, never a blank or an error.",
+      "requirement_reference": "a filter with no matches says so rather than showing nothing",
+      "product_principle_reference": "operational_clarity",
+      "mode": "browser",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [
+            {
+              "goto": "/shipments?q=%20%20",
+              "click": null,
+              "fill": null,
+              "value": null,
+              "press": null,
+              "wait_for": null,
+              "wait_ms": null,
+              "screenshot": null,
+              "expect_text": null
+            },
+            {
+              "goto": null,
+              "click": null,
+              "fill": null,
+              "value": null,
+              "press": null,
+              "wait_for": null,
+              "wait_ms": null,
+              "screenshot": null,
+              "expect_text": "shipment"
+            }
+          ],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "A whitespace-only query renders either the shipment list or an explicit prompt/empty-state \u2014 the word 'shipment' appears in view chrome.",
+        "No traceback."
+      ],
+      "forbidden_observations": [
+        "A completely blank page for an empty query.",
+        "A 500 / traceback."
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only GET; mutates nothing.",
+      "isolation_key": "app:127.0.0.1:8001",
+      "generated_from": [
+        "AC:no-match-message"
+      ],
+      "confidence": 0.45,
+      "provenance": {
+        "generated_at": "2026-08-09T21:37:30+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a6b4cb06-737b-46bf-8371-7fddb05233c6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO3-07",
+      "title": "Concurrent searches stay consistent and write nothing",
+      "purpose": "Confirm simultaneous searches return correct results and do not trigger any write under concurrent read load.",
+      "risk_category": "concurrency",
+      "priority": "P2",
+      "rationale": "A read view hit concurrently must not lazily materialize/cache into a mutation table; a race is the classic way a 'read-only' path sneaks a write.",
+      "requirement_reference": "the view performs no write of any kind",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?q=101",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?q=ZZ-DOES-NOT-EXIST-99999",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?q=101",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants\"",
+            "contains": [],
+            "not_contains": [
+              "Error"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "All four concurrent requests return 200.",
+        "effect_grants count query succeeds and (compared to S-RO3-03 baseline) shows no growth attributable to the reads."
+      ],
+      "forbidden_observations": [
+        "A request errors or times out under concurrent load.",
+        "effect_grants grew during the concurrent read burst."
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only requests; no cleanup needed.",
+      "isolation_key": "db:data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [
+        "AC:no-writes"
+      ],
+      "confidence": 0.4,
+      "provenance": {
+        "generated_at": "2026-08-09T21:37:30+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R2",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a6b4cb06-737b-46bf-8371-7fddb05233c6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO3-08",
+      "title": "Canonical test suite stays green after the view is added",
+      "purpose": "Guard against the new view breaking or shadowing existing read/command routes and schema invariants.",
+      "risk_category": "regression",
+      "priority": "P2",
+      "rationale": "The view is bolted onto the same app that serves existing routes; the canonical suite is the cheapest broad regression net and is an approved command.",
+      "requirement_reference": "U-RO-3",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "canonical-suite",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "The canonical pytest suite exits 0 with the shipment-search view present."
+      ],
+      "forbidden_observations": [
+        "Any previously-passing test fails after the view was added."
+      ],
+      "cleanup": [],
+      "isolation_note": "Runs the test suite in its own harness; no persistent app state mutated.",
+      "isolation_key": "repo:pytest-canonical",
+      "generated_from": [
+        "unit:U-RO-3"
+      ],
+      "confidence": 0.6,
+      "provenance": {
+        "generated_at": "2026-08-09T21:37:30+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R6",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a6b4cb06-737b-46bf-8371-7fddb05233c6",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 3,
+    "by_risk_category": {
+      "boundary": 1,
+      "concurrency": 1,
+      "regression": 1
+    },
+    "by_priority": {
+      "P1": 1,
+      "P2": 2
+    },
+    "uncovered_risks": [
+      "A filter that matches nothing renders a blank/empty view rather than an explicit 'no matching shipments' message, leaving the operator unable to tell 'no results' from 'view broke'.",
+      "The read-only view performs a write of some kind (audit row, effect grant, action claim, or accidental state mutation), breaking the read-only guarantee.",
+      "Search input reaches the SQL/query layer unsanitized or crashes the view on special characters, injection-style strings, or very long input.",
+      "The search leaks shipments belonging to another tenant, violating tenant isolation of the canonical tenant tables."
+    ]
+  },
+  "assumptions": [
+    "The read-only view is served by the same app at http://127.0.0.1:8001 and is reachable at /shipments, accepting a reference/filter via a `q` query parameter. The exact route and parameter name are unknown because U-RO-3 is unimplemented; browser/request paths must be re-pointed once the real route exists.",
+    "The 'no matches' empty-state renders literal text containing 'no matching'; the exact wording must be confirmed against the implementation.",
+    "Reference '101' identifies a shipment present in the driver_probe workspace (it is used pervasively across existing tests); if that workspace's data differs, S-RO3-01 must be re-seeded with a real reference.",
+    "The app writes to data/active_workspace/driver_probe/workflow.sqlite3, so counts read there reflect any write the view would make.",
+    "Mutation-bearing tables are effect_grants, operation_action_claims, delivery_action_claims, operation_token_amounts, audit_events (from CANONICAL_TENANT_TABLES); the no-write assertions target these."
+  ],
+  "unresolved_questions": [
+    "What is the actual route and query-parameter contract for the new view (path, method, filter field names)? All functional scenarios assume /shipments?q=... and must be corrected once known.",
+    "What exact text does the empty-state show when a filter matches nothing? AC2 requires it 'says so', but the specific string is unspecified.",
+    "Is there a fixture that seeds shipments for more than one tenant in the driver_probe workspace? Without one, the cross-tenant leak scenario (S-RO3-06) cannot be executed and tenant scoping of the view cannot be verified.",
+    "Does 'reference' mean the load id, the pro/PRO number, or both, and is matching exact or substring/case-insensitive? This determines the correct happy-path inputs and whether partial-match boundary cases exist.",
+    "Is any read-audit logging intended for the view? If a read is meant to append to audit_events, the no-write assertion on audit_events (S-RO3-03) must be relaxed for that table only."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:32:41+00:00",
+      "basis": {
+        "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+        "task_hash": "3e71fde5555029a8",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 8,
+      "accepted_ids": [
+        "S-RO3-05",
+        "S-RO3-07",
+        "S-RO3-08"
+      ],
+      "rejected": [
+        {
+          "id": "S-RO3-03",
+          "title": "A battery of searches writes nothing to the mutation tables",
+          "reasons": [
+            "persisted_state_checks.0.command: Field required",
+            "persisted_state_checks.0.table: Extra inputs are not permitted",
+            "persisted_state_checks.0.assertion: Extra inputs are not permitted",
+            "persisted_state_checks.1.command: Field required",
+            "persisted_state_checks.1.table: Extra inputs are not permitted",
+            "persisted_state_checks.1.assertion: Extra inputs are not permitted",
+            "persisted_state_checks.2.command: Field required",
+            "persisted_state_checks.2.table: Extra inputs are not permitted",
+            "persisted_state_checks.2.assertion: Extra inputs are not permitted",
+            "persisted_state_checks.3.command: Field required",
+            "persisted_state_checks.3.table: Extra inputs are not permitted",
+            "persisted_state_checks.3.assertion: Extra inputs are not permitted"
+          ],
+          "raw": {
+            "id": "S-RO3-03",
+            "title": "A battery of searches writes nothing to the mutation tables",
+            "purpose": "Prove the read-only guarantee: after matching, non-matching, and repeated searches, the effect/claim/audit tables are unchanged.",
+            "risk_category": "safety_invariant",
+            "priority": "P0",
+            "requirement_reference": "the view performs no write of any kind",
+            "product_principle_reference": "outcome_verification",
+            "generating_risk": "R2",
+            "mode": "backend",
+            "service_refs": [
+              "callback"
+            ],
+            "rationale": "Weight-3 AC; an HTTP 200 is not evidence of no-write, so persisted mutation-table counts must be captured before and after and compared for equality.",
+            "setup": [
+              "Baseline is captured immediately before issuing any search request against the same probe workspace DB the app writes to."
+            ],
+            "actions": [
+              {
+                "kind": "state_check",
+                "state_check": {
+                  "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'eg='||count(*) FROM effect_grants UNION ALL SELECT 'oac='||count(*) FROM operation_action_claims UNION ALL SELECT 'dac='||count(*) FROM delivery_action_claims UNION ALL SELECT 'ota='||count(*) FROM operation_token_amounts UNION ALL SELECT 'audit='||count(*) FROM audit_events\"",
+                  "contains": [
+                    "eg=",
+                    "oac=",
+                    "dac=",
+                    "audit="
+                  ],
+                  "not_contains": [
+                    "Error",
+                    "no such table"
+                  ]
+                }
+              },
+              {
+                "kind": "request",
+                "request": {
+                  "method": "GET",
+                  "path": "/shipments?q=101",
+                  "expect_status": 200,
+                  "timeout_s": 5
+                }
+              },
+              {
+                "kind": "request",
+                "request": {
+                  "method": "GET",
+                  "path": "/shipments?q=ZZ-DOES-NOT-EXIST-99999",
+                  "expect_status": 200,
+                  "timeout_s": 5
+                }
+              },
+              {
+                "kind": "request",
+                "request": {
+                  "method": "GET",
+                  "path": "/shipments?q=101",
+                  "expect_status": 200,
+                  "timeout_s": 5
+                }
+              },
+              {
+                "kind": "state_check",
+                "state_check": {
+                  "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'eg='||count(*) FROM effect_grants UNION ALL SELECT 'oac='||count(*) FROM operation_action_claims UNION ALL SELECT 'dac='||count(*) FROM delivery_action_claims UNION ALL SELECT 'ota='||count(*) FROM operation_token_amounts UNION ALL SELECT 'audit='||count(*) FROM audit_events\"",
+                  "contains": [
+                    "eg=",
+                    "oac=",
+                    "dac=",
+                    "audit="
+                  ],
+                  "not_contains": [
+                    "Error",
+                    "no such table"
+                  ]
+                }
+              }
+            ],
+            "persisted_state_checks": [
+              {
+                "table": "effect_grants",
+                "assertion": "count identical in the before and after state_check outputs"
+              },
+              {
+                "table": "operation_action_claims",
+                "assertion": "count identical before and after"
+              },
+              {
+                "table": "delivery_action_claims",
+                "assertion": "count identical before and after"
+              },
+              {
+                "table": "audit_events",
+                "assertion": "count identical before and after \u2014 no read is logged as a mutating event"
+              }
+            ],
+            "expected_observations": [
+              "The five labelled counts (eg=, oac=, dac=, ota=, audit=) are byte-for-byte identical between the pre-search and post-search state_check outputs."
+            ],
+            "forbidden_observations": [
+              "Any of the mutation-table counts is higher after the searches than before."
+            ],
+            "isolation_key": "db:data/active_workspace/driver_probe/workflow.sqlite3",
+            "isolation_note": "Verifies absence of writes; itself performs only reads, no cleanup needed.",
+            "confidence": 0.55,
+            "generated_from": [
+              "AC:no-writes"
+            ]
+          }
+        },
+        {
+          "id": "S-RO3-01",
+          "title": "Search by an existing reference returns that shipment",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Assumes the read-only view is reachable at /shipments and accepts a reference filter via the q query parameter.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S-RO3-02",
+          "title": "Filter with no matches shows an explicit empty-state, not a blank view",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Uses a reference string that cannot exist so the empty result is deterministic.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S-RO3-04",
+          "title": "Malformed / injection-style search input is handled safely and still writes nothing",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Sends SQL-injection-shaped, script-shaped, and long inputs as the reference filter.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S-RO3-06",
+          "title": "Search is scoped to the bound tenant and does not leak another tenant's shipment",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Requires a shipment reference known to belong to a tenant OTHER than the one the running app is bound to. If no cross-tenant fixture exists this scenario cannot be executed as written \u2014 see unresolved questions.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

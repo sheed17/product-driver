@@ -1,0 +1,1012 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "The exception detail screen renders the next action but omits or fabricates the accountable owner, so an operator sees work with no named human to do it.",
+        "risk_category": "missing_data",
+        "severity": "P0",
+        "basis": "AC 'the exception detail screen names the next action and who owns it' (weight 3)"
+      },
+      {
+        "id": "R2",
+        "description": "The screen shows a cached/stale workflow state or a stale 'next action' after the backend run has already transitioned (e.g. closed to DONE or moved to APPROVED), presenting a state the backend no longer holds.",
+        "risk_category": "stale_state",
+        "severity": "P0",
+        "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3)"
+      },
+      {
+        "id": "R3",
+        "description": "The evidence section shows generic, empty, broken, or another load's documents rather than the specific evidence the exception was raised from, or silently hides that evidence is missing.",
+        "risk_category": "missing_data",
+        "severity": "P1",
+        "basis": "AC 'the screen shows the evidence the exception was raised from' (weight 2)"
+      },
+      {
+        "id": "R4",
+        "description": "For a terminal/closed run the screen still presents an actionable 'next action' as if the exception were open, inviting an operator to act on already-resolved work.",
+        "risk_category": "unexpected_state_transition",
+        "severity": "P1",
+        "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3)"
+      },
+      {
+        "id": "R5",
+        "description": "A malformed or non-existent exception id yields a 500 / blank / stack trace instead of a clear not-found, a dead end for the operator.",
+        "risk_category": "malformed_input",
+        "severity": "P2",
+        "basis": "U-UI-11 improve exception detail screen so operators understand next action"
+      },
+      {
+        "id": "R6",
+        "description": "The 'next action' is surfaced as an internal state/enum token (e.g. NEEDS_REVIEW, CARRIER_PAYABLE) rather than a concrete operator instruction.",
+        "risk_category": "agent-jargon",
+        "severity": "P2",
+        "basis": "AC 'the exception detail screen names the next action and who owns it' (weight 3)"
+      },
+      {
+        "id": "R7",
+        "description": "After the callback service restarts, the screen serves the pre-restart state instead of re-reading current backend truth.",
+        "risk_category": "restart_recovery",
+        "severity": "P2",
+        "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3)"
+      },
+      {
+        "id": "R8",
+        "description": "Existing review/packet rendering invariants regress while adding next-action/owner fields.",
+        "risk_category": "regression",
+        "severity": "P1",
+        "basis": "U-UI-11 modifies review/detail rendering already covered by test_review.py / test_dogfood_pilot.py"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1",
+        "title": "Open exception detail names next action, owner, evidence, and true state",
+        "purpose": "Confirm the primary promise of U-UI-11: for an open (NEEDS_REVIEW) exception the detail screen simultaneously names a concrete next action, names who owns it, shows the evidence the exception was raised from, and shows the state the backend currently holds.",
+        "risk_category": "happy_path",
+        "priority": "P0",
+        "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "next_action_clarity",
+        "generating_risk": "R1",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only: navigates and reads the screen and queries the DB; performs no writes, so it cannot contaminate later scenarios.",
+        "setup": [
+          "Callback service is serving on 127.0.0.1:8001 against data/active_workspace/driver_probe/workflow.sqlite3",
+          "At least one workflow_run is in state NEEDS_REVIEW"
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"select count(*) from workflow_runs where state='NEEDS_REVIEW'\"",
+              "not_contains": [
+                "0"
+              ]
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "first exception in the list"
+              },
+              {
+                "expect_text": "Next action"
+              },
+              {
+                "expect_text": "Owner"
+              },
+              {
+                "expect_text": "Evidence"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Backend reports one or more NEEDS_REVIEW runs",
+          "Detail screen shows a concrete next-action instruction (e.g. an Approve/Dispute/Request-backup phrasing)",
+          "Detail screen shows a non-empty owner for that action",
+          "Detail screen shows an Evidence section listing the documents the exception was raised from",
+          "The workflow state shown matches NEEDS_REVIEW held in the backend"
+        ],
+        "forbidden_observations": [
+          "An empty, 'null', or 'None' owner value",
+          "A next-action area that is blank or shows only an internal state enum",
+          "A stack trace or server error"
+        ],
+        "requirement_reference_notes": "AC1+AC2+AC3 exercised together on the happy path",
+        "confidence": 0.6,
+        "rationale": "The single most load-bearing check: the screen must deliver all three promises at once for a normal open exception."
+      },
+      {
+        "id": "S2",
+        "title": "Screen reflects backend state after the run transitions out from under it",
+        "purpose": "Directly exercise AC3: once the backing run leaves NEEDS_REVIEW in the backend, a reload of the detail screen must show the new state and must not keep presenting the stale 'needs review' next action.",
+        "risk_category": "stale_state",
+        "priority": "P0",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "success_without_verification",
+        "generating_risk": "R2",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Mutates one workflow_run's state and restores it in cleanup; no other scenario may run concurrently against driver_probe_workflow_db.",
+        "setup": [
+          "Executor binds RUN_ID to a real workflow_run currently in NEEDS_REVIEW (e.g. the newest NEEDS_REVIEW run), and records its prior state for cleanup"
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"select state from workflow_runs where id=1\"",
+              "contains": [
+                "NEEDS_REVIEW"
+              ]
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions/1"
+              },
+              {
+                "expect_text": "Next action"
+              }
+            ]
+          },
+          {
+            "kind": "command",
+            "name": "transition-run-to-done",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"update workflow_runs set state='DONE' where id=1\"",
+            "expect_exit_code": 0
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"select state from workflow_runs where id=1\"",
+              "contains": [
+                "DONE"
+              ]
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions/1"
+              },
+              {
+                "expect_text": "DONE"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Before mutation the backend and the screen both show NEEDS_REVIEW with a next action",
+          "After the backend row is set to DONE the reloaded screen shows the closed/terminal state",
+          "The screen no longer presents the NEEDS_REVIEW next action as pending"
+        ],
+        "forbidden_observations": [
+          "Reloaded screen still shows the NEEDS_REVIEW next action after backend is DONE",
+          "Screen shows a state string that is not the current backend state"
+        ],
+        "cleanup": [
+          "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"update workflow_runs set state='NEEDS_REVIEW' where id=1\""
+        ],
+        "confidence": 0.55,
+        "rationale": "AC3 is only meaningfully falsifiable by moving backend truth and proving the screen follows it; the state_check is the oracle, not the HTTP 200."
+      },
+      {
+        "id": "S3",
+        "title": "Every open exception's next action carries a named owner",
+        "purpose": "Exercise the 'who owns it' half of AC1 against the accountable-owner principle: the screen must attribute the next action to a named human/role, never leave it unowned or invent one when none is recorded.",
+        "risk_category": "missing_data",
+        "priority": "P0",
+        "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "accountable_owner",
+        "generating_risk": "R1",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only navigation and reads; no writes.",
+        "setup": [
+          "At least one NEEDS_REVIEW run exists"
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "first exception in the list"
+              },
+              {
+                "expect_text": "Owner"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The next action is attributed to a specific, non-empty owner (a named human or a named role such as the owner/operator)"
+        ],
+        "forbidden_observations": [
+          "Owner shown as blank, 'unassigned', 'null', or 'None'",
+          "An owner value that is a placeholder or clearly fabricated identity not tied to the run"
+        ],
+        "product_principle_reference_notes": "unowned_obligation is the failure this guards against",
+        "confidence": 0.55,
+        "rationale": "An unowned next action is the exact dead-end the founder's accountable_owner/unowned_obligation principles forbid."
+      },
+      {
+        "id": "S4",
+        "title": "Exception with missing evidence says so rather than faking or breaking links",
+        "purpose": "Exercise AC2 under the degraded case: when the evidence the exception was raised from is missing or unlinked, the screen must clearly mark it missing, not show a blank/broken document or invent one.",
+        "risk_category": "missing_data",
+        "priority": "P1",
+        "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+        "product_principle_reference": "evidence_clarity",
+        "generating_risk": "R3",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only navigation and reads; no writes.",
+        "setup": [
+          "Executor selects an exception whose backing load has a missing required document / unlinked evidence (e.g. a 'missing POD' or unlinked-packet run)"
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "an exception flagged for missing or unlinked evidence"
+              },
+              {
+                "expect_text": "missing"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The evidence section explicitly names the missing/unavailable document",
+          "The next action reflects the gap (e.g. request the missing backup)"
+        ],
+        "forbidden_observations": [
+          "A blank or broken evidence viewer with no explanation",
+          "Evidence attributed to a document that the run does not actually have",
+          "Another load's documents shown as this exception's evidence"
+        ],
+        "confidence": 0.5,
+        "rationale": "evidence_clarity/known_vs_inferred: absent evidence must be shown as absent, never papered over."
+      },
+      {
+        "id": "S5",
+        "title": "Terminal-state exception does not present an actionable next step",
+        "purpose": "Guard AC3 at the boundary between open and closed: opening the detail for a run the backend holds as terminal (DONE/FAILED) must show that closed truth and must not offer a pending next action.",
+        "risk_category": "unexpected_state_transition",
+        "priority": "P1",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "outcome_verification",
+        "generating_risk": "R4",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only: reads a run already in a terminal state; performs no writes.",
+        "setup": [
+          "Executor binds RUN_ID to a run the backend holds in DONE or FAILED"
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"select state from workflow_runs where id=2\"",
+              "contains": [
+                "DONE"
+              ]
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions/2"
+              },
+              {
+                "expect_text": "DONE"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The screen shows the terminal state that the backend holds",
+          "No actionable/pending next action is offered for the closed run"
+        ],
+        "forbidden_observations": [
+          "An 'Approve'/'Dispute'/'Request backup' next action presented as pending for a terminal run",
+          "A state on screen that differs from the backend's terminal state"
+        ],
+        "confidence": 0.5,
+        "rationale": "A closed exception that still invites action is a direct AC3 violation and an operator trap."
+      },
+      {
+        "id": "S6",
+        "title": "Non-existent exception id returns a clean not-found, not a crash",
+        "purpose": "Malformed/unknown identifier handling: an operator hitting a stale or wrong exception link must get a clear not-found, not a 500 or a blank page (dead_end_error).",
+        "risk_category": "malformed_input",
+        "priority": "P2",
+        "requirement_reference": "U-UI-11: improve the exception detail screen so operators can understand the next action",
+        "product_principle_reference": "dead_end_error",
+        "generating_risk": "R5",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "callback_service_8001",
+        "isolation_note": "Read-only request for a non-existent id; no state is created or mutated.",
+        "setup": [
+          "No workflow_run exists with id 999999999"
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions/999999999"
+              },
+              {
+                "expect_text": "not found"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "A clear, human-readable not-found / unknown-exception message"
+        ],
+        "forbidden_observations": [
+          "A server error / 500 / stack trace",
+          "A blank page",
+          "A rendered detail screen fabricated for an id that has no backing run"
+        ],
+        "confidence": 0.5,
+        "rationale": "Stale links are routine; the screen must fail into an explanation, not a dead end."
+      },
+      {
+        "id": "S7",
+        "title": "Next action is a concrete instruction, not an internal enum",
+        "purpose": "Exercise the 'names the next action' half of AC1 against agent_jargon_leak: the next action must read as an operator instruction, not a raw workflow/state token.",
+        "risk_category": "agent-jargon",
+        "priority": "P2",
+        "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "agent_jargon_leak",
+        "generating_risk": "R6",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only navigation and reads; no writes.",
+        "setup": [
+          "At least one NEEDS_REVIEW run exists"
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "first exception in the list"
+              },
+              {
+                "expect_text": "Next action"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The next action is phrased as an operator instruction (a verb the operator can act on)"
+        ],
+        "forbidden_observations": [
+          "The next action shown verbatim as an internal enum such as 'NEEDS_REVIEW', 'CARRIER_PAYABLE', 'RECONCILED', or 'READY_FOR_ENTRY'"
+        ],
+        "confidence": 0.45,
+        "rationale": "next_action_clarity is only satisfied if the action is legible to the operator, not the machine."
+      },
+      {
+        "id": "S8",
+        "title": "Screen shows current backend state after callback service restart",
+        "purpose": "Exercise AC3 across a restart: the screen must re-read backend truth after the callback service is bounced, not serve a pre-restart snapshot.",
+        "risk_category": "restart_recovery",
+        "priority": "P2",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "generating_risk": "R7",
+        "mode": "browser",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "callback_service_8001",
+        "isolation_note": "Restarts the callback service (declared in service_refs); no DB writes. Must not run concurrently with other callback-service scenarios.",
+        "setup": [
+          "Executor binds RUN_ID to a real run and records its current backend state"
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"select state from workflow_runs where id=1\"",
+              "contains": [
+                "NEEDS_REVIEW"
+              ]
+            }
+          },
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1000
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions/1"
+              },
+              {
+                "expect_text": "NEEDS_REVIEW"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "After restart the screen renders and shows the same state the backend currently holds"
+        ],
+        "forbidden_observations": [
+          "Post-restart screen shows a different state than the backend row",
+          "Service fails to serve the detail screen after restart"
+        ],
+        "confidence": 0.45,
+        "rationale": "A restart is the cheapest way to catch a screen that caches state instead of reading it live."
+      },
+      {
+        "id": "S9",
+        "title": "Existing review/packet rendering suite still passes",
+        "purpose": "Regression guard: adding next-action/owner and live-state rendering must not break the existing review payload and packet/detail rendering invariants.",
+        "risk_category": "regression",
+        "priority": "P1",
+        "requirement_reference": "U-UI-11: improve the exception detail screen so operators can understand the next action",
+        "product_principle_reference": "founder_taste",
+        "generating_risk": "R8",
+        "mode": "backend",
+        "isolation_key": "pytest_canonical",
+        "isolation_note": "Runs the test suite in-process against temp fixtures; does not touch the driver_probe workspace or the callback service.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "review-detail-regression",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The review and dogfood packet/detail rendering tests pass"
+        ],
+        "forbidden_observations": [
+          "Any failing or errored test in the review/packet rendering suite"
+        ],
+        "confidence": 0.6,
+        "rationale": "The screen is built on ReviewPayload/packet rendering already under test; a regression here is cheap to detect and high-value."
+      }
+    ],
+    "assumptions": [
+      "The exception detail screen is served live by the callback service on 127.0.0.1:8001, reachable at a list route (assumed '/exceptions') with per-exception detail at '/exceptions/<run_id>'. Exact routes were not discoverable in committed code and must be bound at execution.",
+      "Backend truth for an exception's state is workflow_runs.state in data/active_workspace/driver_probe/workflow.sqlite3, and the screen is built from ReviewPayload derived from that run.",
+      "The driver_probe workspace contains at least one NEEDS_REVIEW run and at least one terminal run; concrete run ids (shown as 1/2 in the SQL) must be bound to real rows at execution, with prior state recorded for cleanup.",
+      "Browser 'click first exception in the list' aligns with the SQL-targeted run only if the list is ordered deterministically (assumed newest-first by id); executor should bind the same run to both the URL and the SQL."
+    ],
+    "unresolved_questions": [
+      "What is the actual route/URL of the exception detail screen and its listing on the 127.0.0.1:8001 service? It is not present in the committed callback server, so it must be confirmed against the builder's diff before these scenarios can bind concrete paths.",
+      "AC1 requires the screen name 'who owns it', but no product requirement defines where owner is sourced (a workflow_runs column, a config default like operator_name, or an assignment table). If the backend records no owner, is the screen expected to show a default role, or to flag the obligation as unowned? This determines whether S3's 'never invent an owner' expectation is correct.",
+      "Is the exception detail screen intended to be a live per-request read of workflow_runs, or a regenerated static artifact? AC3 (and S2/S8) presume live reads; if it is a rebuilt static site, staleness is governed by regeneration timing rather than request-time reads.",
+      "AC2 says show 'the evidence the exception was raised from' \u2014 is 'raised from' the specific documents/attachments that triggered the reconciliation flag, or the full document set of the load? This changes what S4 should assert as correct vs fabricated evidence."
+    ]
+  },
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "The screen shows a workflow state that the backend (workflow_runs.state) does not currently hold \u2014 a cached, optimistic, or inferred state \u2014 misleading the operator about where the exception really is. This is the weight-3 AC and the founder's core distrust of UI that speaks past the backend.",
+        "risk_category": "ui_backend_disagreement",
+        "severity": "P0",
+        "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3); diff touched exception_detail_view.py + workflow_store.py which read/render state"
+      },
+      {
+        "id": "R2",
+        "description": "The screen names a next-action owner that was never actually assigned \u2014 inventing or defaulting an owner rather than surfacing that the obligation is unowned.",
+        "risk_category": "unowned_obligation",
+        "severity": "P0",
+        "basis": "AC 'names the next action and who owns it' (weight 3); authorization.py added 88 lines governing ownership"
+      },
+      {
+        "id": "R3",
+        "description": "The evidence panel fabricates or omits the evidence the exception was raised from, presenting an inference as the source fact.",
+        "risk_category": "missing_data",
+        "severity": "P1",
+        "basis": "AC 'shows the evidence the exception was raised from' (weight 2)"
+      },
+      {
+        "id": "R4",
+        "description": "After the backend state advances, the screen keeps showing the pre-change state on reload (stale render), violating the never-show-a-state-the-backend-doesn't-hold invariant across time.",
+        "risk_category": "stale_state",
+        "severity": "P1",
+        "basis": "AC 'never shows a state the backend does not currently hold' (weight 3)"
+      },
+      {
+        "id": "R5",
+        "description": "The exception detail route leaks or renders another tenant's run state/owner/evidence, since authorization was reworked in this diff.",
+        "risk_category": "cross_tenant",
+        "severity": "P0",
+        "basis": "authorization.py changed (+88); workflow_runs is tenant-first keyed (tenant, id)"
+      },
+      {
+        "id": "R6",
+        "description": "Changes to schema.py / workflow_store.py / authorization.py regress the canonical workflow and grant-state invariants that the rest of the product depends on.",
+        "risk_category": "regression",
+        "severity": "P1",
+        "basis": "diff modifies schema.py (+31), workflow_store.py (+163), authorization.py (+88)"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1-state-matches-backend",
+        "title": "Displayed exception state equals the state workflow_runs currently holds",
+        "purpose": "Prove the screen renders exactly the backend state for the run and never an invented/optimistic one (the weight-3 AC).",
+        "risk_category": "ui_backend_disagreement",
+        "generating_risk": "R1",
+        "priority": "P0",
+        "mode": "browser",
+        "requirement_reference": "the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "rationale": "workflow_runs.state is the single source of truth; the screen must echo it verbatim, not derive a friendlier synonym or a stale cache.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "A seeded exception run exists in data/active_workspace/driver_probe/workflow.sqlite3 (known load_id and state)."
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT state FROM workflow_runs ORDER BY updated_at DESC LIMIT 1\"",
+              "contains": [],
+              "not_contains": []
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "the most recent exception row"
+              },
+              {
+                "expect_text": "the exact state string returned by the state_check (e.g. NEEDS_REVIEW / RESOLVED)"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The state label on the detail screen is character-for-character the value SELECT state FROM workflow_runs returns for that run."
+        ],
+        "forbidden_observations": [
+          "A state word on screen that does not appear in workflow_runs.state for this run.",
+          "A 'processing'/'done' style status with no corresponding backend row value."
+        ],
+        "confidence": 0.55,
+        "generated_from": [
+          "AC3",
+          "schema workflow_runs.state"
+        ]
+      },
+      {
+        "id": "S2-next-action-and-owner-named",
+        "title": "Screen names the concrete next action and the human who owns it",
+        "purpose": "Confirm AC1: an operator sees WHAT happens next and WHO is accountable, not a vague 'in progress'.",
+        "risk_category": "happy_path",
+        "generating_risk": "R2",
+        "priority": "P0",
+        "mode": "browser",
+        "requirement_reference": "the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "accountable_owner",
+        "rationale": "next_action_clarity + accountable_owner: every open exception must point to a named action and a named owner.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "A seeded open exception run with an assigned owner exists."
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "an open exception with an assigned owner"
+              },
+              {
+                "expect_text": "a next-action label (an imperative action, not a bare status)"
+              },
+              {
+                "expect_text": "the name/role of the owner responsible for that action"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "A next-action phrase and an owner identifier both appear on the detail screen.",
+          "The owner shown corresponds to an ownership record the backend actually holds."
+        ],
+        "forbidden_observations": [
+          "Only a status with no next action.",
+          "A next action with no named owner."
+        ],
+        "confidence": 0.55,
+        "generated_from": [
+          "AC1",
+          "authorization.py"
+        ]
+      },
+      {
+        "id": "S3-owner-not-invented",
+        "title": "Unassigned exception surfaces 'needs an owner' rather than inventing one",
+        "purpose": "Guard against defaulting/fabricating an owner when the backend holds none \u2014 the unowned-obligation failure the diff's authorization rework could introduce.",
+        "risk_category": "missing_data",
+        "generating_risk": "R2",
+        "priority": "P0",
+        "mode": "browser",
+        "requirement_reference": "the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "unowned_obligation",
+        "rationale": "The schema's philosophy is ownership is asserted, never defaulted; the screen must inherit that and never silently name an owner nobody chose.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "Force one exception run into an unassigned-owner state for the duration of the test."
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "clear owner on a run",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE workflow_runs SET outcome=NULL WHERE id=(SELECT id FROM workflow_runs ORDER BY updated_at DESC LIMIT 1)\"",
+            "expect_exit_code": 0
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "the run with no owner"
+              },
+              {
+                "expect_text": "an explicit unassigned/needs-an-owner indication"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The screen states the exception is unassigned or asks for an owner assignment."
+        ],
+        "forbidden_observations": [
+          "A specific person/role rendered as owner when the backend holds no ownership record.",
+          "A blank owner field presented as if resolved."
+        ],
+        "cleanup": [
+          "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE workflow_runs SET outcome=... WHERE id=...  (restore prior outcome value)\""
+        ],
+        "isolation_note": "Mutates one row's ownership field; restored in cleanup and serialized on the workflow.sqlite3 isolation_key.",
+        "confidence": 0.4,
+        "generated_from": [
+          "AC1",
+          "phase2 owner-assertion philosophy"
+        ]
+      },
+      {
+        "id": "S4-evidence-shown",
+        "title": "Screen shows the actual evidence the exception was raised from",
+        "purpose": "Confirm AC2: the evidence panel reflects the backend's recorded reason/document, not a paraphrase or placeholder.",
+        "risk_category": "missing_data",
+        "generating_risk": "R3",
+        "priority": "P1",
+        "mode": "browser",
+        "requirement_reference": "the screen shows the evidence the exception was raised from",
+        "product_principle_reference": "evidence_clarity",
+        "rationale": "workflow_runs.reason (and linked document) is the raised-from evidence; evidence_clarity requires the operator can see it, not a summary of it.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "A seeded exception run whose reason/evidence is recorded in the backend."
+        ],
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT reason FROM workflow_runs ORDER BY updated_at DESC LIMIT 1\"",
+              "contains": [],
+              "not_contains": []
+            }
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "the most recent exception"
+              },
+              {
+                "expect_text": "the recorded reason / evidence reference returned by the state_check"
+              }
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The evidence shown on screen corresponds to workflow_runs.reason (and any linked invoice/document) for that run."
+        ],
+        "forbidden_observations": [
+          "A generic 'exception raised' with no evidence.",
+          "Evidence text that does not match any backend field for the run."
+        ],
+        "confidence": 0.5,
+        "generated_from": [
+          "AC2",
+          "schema workflow_runs.reason"
+        ]
+      },
+      {
+        "id": "S5-reload-reflects-new-state",
+        "title": "State advanced in the backend is reflected on reload, not a stale render",
+        "purpose": "Exercise AC3 across time: after the backend state changes, the screen must show the new state, never the pre-change one.",
+        "risk_category": "stale_state",
+        "generating_risk": "R4",
+        "priority": "P1",
+        "mode": "browser",
+        "requirement_reference": "the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "outcome_verification",
+        "rationale": "A screen that caches state can display a state the backend no longer holds \u2014 precisely the invariant AC3 forbids.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "A seeded exception run in a known initial state."
+        ],
+        "actions": [
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "the target exception"
+              },
+              {
+                "expect_text": "the initial state"
+              }
+            ]
+          },
+          {
+            "kind": "command",
+            "name": "advance backend state",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE workflow_runs SET state='RESOLVED', updated_at=updated_at WHERE id=(SELECT id FROM workflow_runs ORDER BY updated_at DESC LIMIT 1)\"",
+            "expect_exit_code": 0
+          },
+          {
+            "kind": "browser",
+            "browser_steps": [
+              {
+                "goto": "/exceptions"
+              },
+              {
+                "click": "the same exception"
+              },
+              {
+                "expect_text": "RESOLVED"
+              }
+            ]
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT state FROM workflow_runs ORDER BY updated_at DESC LIMIT 1\"",
+              "contains": [
+                "RESOLVED"
+              ],
+              "not_contains": []
+            }
+          }
+        ],
+        "expected_observations": [
+          "After the backend UPDATE, the reloaded screen shows RESOLVED (the new backend state)."
+        ],
+        "forbidden_observations": [
+          "The reloaded screen still shows the initial pre-change state."
+        ],
+        "cleanup": [
+          "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE workflow_runs SET state='<original state>' WHERE id=<same id>\""
+        ],
+        "isolation_note": "Mutates one run's state; restored in cleanup; serialized on the workflow.sqlite3 isolation_key so no concurrent scenario observes the transient RESOLVED.",
+        "confidence": 0.4,
+        "generated_from": [
+          "AC3"
+        ]
+      },
+      {
+        "id": "S6-cross-tenant-isolation",
+        "title": "Exception detail never renders another tenant's run",
+        "purpose": "Since authorization was reworked, verify the detail route is tenant-scoped and cannot surface a run whose (tenant,id) belongs to a different tenant.",
+        "risk_category": "cross_tenant",
+        "generating_risk": "R5",
+        "priority": "P0",
+        "mode": "backend",
+        "requirement_reference": "the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "authority_clarity",
+        "rationale": "workflow_runs is tenant-first keyed; the detail view must not resolve a run id outside the caller's tenant, else it shows state the caller's backend does not hold.",
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "service_refs": [
+          "callback"
+        ],
+        "setup": [
+          "Two tenants each with an exception run in the workspace DB."
+        ],
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/exceptions/{run_id_of_other_tenant}",
+              "expect_status": 404,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          }
+        ],
+        "expected_observations": [
+          "A run id outside the caller's tenant is refused (404/forbidden) with no state, owner, or evidence leaked."
+        ],
+        "forbidden_observations": [
+          "The other tenant's state/owner/evidence appears in the response body.",
+          "A 200 that renders a run the caller's tenant does not own."
+        ],
+        "confidence": 0.35,
+        "generated_from": [
+          "authorization.py",
+          "tenant-first schema"
+        ]
+      },
+      {
+        "id": "S7-canonical-regression",
+        "title": "Canonical suite still green after schema/store/authorization changes",
+        "purpose": "Catch regressions the diff may introduce in the workflow store, schema readiness, and grant-state invariants the whole product relies on.",
+        "risk_category": "regression",
+        "generating_risk": "R6",
+        "priority": "P1",
+        "mode": "backend",
+        "requirement_reference": "U-UI-11",
+        "product_principle_reference": "operational_clarity",
+        "rationale": "workflow_store.py (+163) and schema.py (+31) sit under existing canonical tests; a green run is the floor before trusting the UI change.",
+        "isolation_key": "canonical-test-suite",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "run canonical suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The canonical pytest suite exits 0 with no failures."
+        ],
+        "forbidden_observations": [
+          "Any failure/error in workflow_store, schema, or authorization tests."
+        ],
+        "isolation_note": "Test suite uses its own temp databases; does not touch the driver_probe workspace.",
+        "confidence": 0.8,
+        "generated_from": [
+          "diff: schema.py, workflow_store.py, authorization.py"
+        ]
+      },
+      {
+        "id": "S8-checkpoint-matrix-guard",
+        "title": "Grant-state / checkpoint matrix invariants survive the store changes",
+        "purpose": "workflow_store.py grew significantly; verify the checkpoint state matrix (the states the exception screen reads) is still enforced structurally.",
+        "risk_category": "safety_invariant",
+        "generating_risk": "R6",
+        "priority": "P2",
+        "mode": "backend",
+        "requirement_reference": "the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "rationale": "AC3 depends on the backend state space being exactly the canonical GRANT_STATES; a store change that widened it would let the screen show a state the schema never intended.",
+        "isolation_key": "canonical-test-suite",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "checkpoint matrix",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The checkpoint state matrix tests pass, confirming the canonical state set is unchanged."
+        ],
+        "forbidden_observations": [
+          "A new/unexpected state accepted by the store.",
+          "Matrix test failures."
+        ],
+        "isolation_note": "Isolated test DBs; no workspace mutation.",
+        "confidence": 0.7,
+        "generated_from": [
+          "AC3",
+          "GRANT_STATES invariant"
+        ]
+      }
+    ],
+    "assumptions": [
+      "The exception detail screen is served by the 'callback' service at http://127.0.0.1:8001; the exact route (assumed /exceptions and /exceptions/{id}) is not confirmed from the checkout because the builder's new files are on a branch not present here.",
+      "The screen renders one workflow_runs row: state is workflow_runs.state, evidence derives from workflow_runs.reason plus any linked document, and owner derives from the ownership records authorization.py governs.",
+      "data/active_workspace/driver_probe/workflow.sqlite3 is the live persisted store the screen reads and can be seeded with at least one exception run before the run.",
+      "The canonical state vocabulary the screen may display is bounded by GRANT_STATES / workflow_runs.state as enforced by schema.py."
+    ],
+    "unresolved_questions": [
+      "What is the exact HTTP route and tenant-scoping mechanism for the exception detail screen? Without it the browser/request paths in S1, S2, S5, S6 are best-effort and may need the concrete path.",
+      "Which backend column(s) carry the 'next action' and the 'owner'? The diff added 31 lines to schema.py and 88 to authorization.py, but the new columns/tables are not visible in this checkout, so S2/S3 assert on rendered text rather than a named backend field.",
+      "How is an exception's 'evidence' linked (reason text vs. a document/invoice reference vs. a raised-from source id)? S4 assumes workflow_runs.reason is the primary evidence field.",
+      "There is no acceptance criterion promising behavior when the backend is unavailable mid-view or when two operators act on the same exception concurrently; if the product intends a defined behavior there (dead_end_error / failure_recovery), it should be stated so it can be verified rather than invented here."
+    ]
+  }
+]

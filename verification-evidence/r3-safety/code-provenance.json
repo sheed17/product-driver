@@ -1,0 +1,99 @@
+{
+  "code_actually_executed": "/Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-aecb161c530a6a25e",
+  "real_working_tree": "/Users/sammyfammy/neyma-product-driver",
+  "worktree_git_head": "bbe0fd2 (STALE \u2014 predates the feature)",
+  "method": "shutil.copytree(dirs_exist_ok=True) of the shared checkout's neyma_product_driver/ and tests/ into the worktree, then `diff -r --brief -x __pycache__` over both directories, which returned zero differences. Per-file sha256 below.",
+  "diff_r_brief_result": "no differences (exit 0) for neyma_product_driver/ and tests/",
+  "files": [
+    {
+      "file": "neyma_product_driver/scenario_validation.py",
+      "shared_checkout": "961799f3ea3e4313141386bd5de9ef2298ebae99eb513652c23936e952c0393f",
+      "worktree_executed": "961799f3ea3e4313141386bd5de9ef2298ebae99eb513652c23936e952c0393f",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/scenario_generator.py",
+      "shared_checkout": "7e47884a9cccf76dfa0f6646034a8239eef9ec73ef736668237ca162cf529af7",
+      "worktree_executed": "7e47884a9cccf76dfa0f6646034a8239eef9ec73ef736668237ca162cf529af7",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/scenario_planner.py",
+      "shared_checkout": "2d2d710e9957ad00bfa635467678b2e1c7829679cbbb24d0a0bfc48e32cab1a6",
+      "worktree_executed": "2d2d710e9957ad00bfa635467678b2e1c7829679cbbb24d0a0bfc48e32cab1a6",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/scenario_plan.py",
+      "shared_checkout": "87b20da328fcbf8f4479e63b7daa91d66749f6af5c3f097d2d51fb556b99b938",
+      "worktree_executed": "87b20da328fcbf8f4479e63b7daa91d66749f6af5c3f097d2d51fb556b99b938",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/scenario_suite.py",
+      "shared_checkout": "b8d43447437dceae7d64a93da0c6a7e50b5e9381f680bb3e358771f5bee94db6",
+      "worktree_executed": "b8d43447437dceae7d64a93da0c6a7e50b5e9381f680bb3e358771f5bee94db6",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/scenarios.py",
+      "shared_checkout": "54231708e7f8dc3b17cb04ce4e633369bbef0c506822681356e2804c732763bd",
+      "worktree_executed": "54231708e7f8dc3b17cb04ce4e633369bbef0c506822681356e2804c732763bd",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/command_guard.py",
+      "shared_checkout": "35775527a05df5f35017028a586821294b3c0dc8d2d211f2d27c9f69093647af",
+      "worktree_executed": "35775527a05df5f35017028a586821294b3c0dc8d2d211f2d27c9f69093647af",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/cli.py",
+      "shared_checkout": "750acab3ea495de764d04caa17492698368d5dd92f6b960b331b118da4f97359",
+      "worktree_executed": "750acab3ea495de764d04caa17492698368d5dd92f6b960b331b118da4f97359",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/config.py",
+      "shared_checkout": "cb92ef5ad18ae96d11598ddb98105a34482e10e340ca7d3c525b5e383c4d0790",
+      "worktree_executed": "cb92ef5ad18ae96d11598ddb98105a34482e10e340ca7d3c525b5e383c4d0790",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/models.py",
+      "shared_checkout": "8cd6be26db03f20e5848b656d6011b9417c1e202ab3a6f546e310ed0babe7bec",
+      "worktree_executed": "8cd6be26db03f20e5848b656d6011b9417c1e202ab3a6f546e310ed0babe7bec",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/evidence.py",
+      "shared_checkout": "5572b7fe73806fe4aead419382ca8d064dfbff6fa509f97bc31f38dbf2237253",
+      "worktree_executed": "5572b7fe73806fe4aead419382ca8d064dfbff6fa509f97bc31f38dbf2237253",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/runner.py",
+      "shared_checkout": "52ffb6171e60ea9477fe37364de4b999eb7a5e0b2e3592cbb002c8d6fde45032",
+      "worktree_executed": "52ffb6171e60ea9477fe37364de4b999eb7a5e0b2e3592cbb002c8d6fde45032",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/prompts.py",
+      "shared_checkout": "b8e99e6e138002dc5c0914ccdbb368a718c627196a6890cfdb51eded23b4653c",
+      "worktree_executed": "b8e99e6e138002dc5c0914ccdbb368a718c627196a6890cfdb51eded23b4653c",
+      "identical": true
+    },
+    {
+      "file": "neyma_product_driver/failure_clustering.py",
+      "shared_checkout": "e681c847ac20c848f61928e00849129acf2e251a83e3e414bc4e6ced307e5c16",
+      "worktree_executed": "e681c847ac20c848f61928e00849129acf2e251a83e3e414bc4e6ced307e5c16",
+      "identical": true
+    },
+    {
+      "file": "tests/scenario_fixtures.py",
+      "shared_checkout": "cd7e82a2cfa69c6ef84dbc8b8e7875228fe9aba3e0c994958d83c53ffee551f4",
+      "worktree_executed": "cd7e82a2cfa69c6ef84dbc8b8e7875228fe9aba3e0c994958d83c53ffee551f4",
+      "identical": true
+    }
+  ]
+}

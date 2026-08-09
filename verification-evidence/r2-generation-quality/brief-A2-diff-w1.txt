@@ -1,0 +1,62 @@
+GENERATION STAGE: initial (wave 1)
+You may propose AT MOST 12 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Improve the exception detail screen so operators can understand the next action.
+
+ACTIVE READY UNIT: U-UI-11
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - the exception detail screen names the next action and who owns it (weight 3): PENDING
+  - the screen shows the evidence the exception was raised from (weight 2): PENDING
+  - the screen never shows a state the backend does not currently hold (weight 3): PENDING
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - accountable_owner
+  - agent_jargon_leak
+  - approval_quality
+  - authority_clarity
+  - business_loop_closure
+  - channel_consistency
+  - channel_promotion
+  - customer_language
+  - dead_end_error
+  - evidence_clarity
+  - failure_recovery
+  - founder context
+  - founder_taste
+  - inference_presented_as_fact
+  - known_vs_inferred
+  - low_confidence
+  - materially_different_experiences
+  - next_action_clarity
+  - noise_control
+  - obligation_visibility
+  - operational_clarity
+  - outcome_verification
+  - proactivity
+  - product rubric
+  - product_identity
+  - repository_silent
+  - success_without_verification
+  - tms_centrality
+  - unowned_obligation
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+  - .venv/bin/python -m pytest -c pytest-canonical.ini
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q
+  - .venv/bin/python scripts/check_env.py
+  - .venv/bin/python scripts/progress_status.py
+  - .venv/bin/python scripts/run_diagnostics.py
+  - sqlite3 data/active_workspace/driver_probe/workflow.sqlite3
+
+SERVICES you may reference / restart / stop / start: callback
+LOCAL APP URL for relative request paths: http://127.0.0.1:8001
+BROWSER available: yes
+
+Return the JSON object now.

@@ -1,0 +1,12 @@
+  8 proposed scenario(s) refused:
+    - AUTHZ2-S1: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001 against the driver_probe workspace DB'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S2: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S3: unsafe or unapproved operation: command is not in the approved set: 'Two tenants present in the driver_probe DB, each with at least one operation'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S4: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S5: unsafe or unapproved operation: command is not in the approved set: "A single pending operation seeded for the supervisor's tenant". Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S6: unsafe or unapproved operation: command is not in the approved set: 'A supervisor approval that has already released one operation (chain after S1) or a freshly seeded one'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S7: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+    - AUTHZ2-S8: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+  wave 1 (initial): 1 scenario(s) accepted — AUTHZ2-S9
+
+=== E: 1 accepted, 8 refused ===

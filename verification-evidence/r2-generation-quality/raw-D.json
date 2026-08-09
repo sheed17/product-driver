@@ -1,0 +1,467 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "If any workflow state still lives only in an in-process cache, a process restart reverts to the last durably-written state, silently losing transitions the operator already saw applied.",
+        "risk_category": "restart_recovery",
+        "severity": "P0",
+        "basis": "AC 'workflow state survives a process restart'; unit U-P5-1 moves state from an in-process cache to the durable store."
+      },
+      {
+        "id": "R2",
+        "description": "Rebuilding workflow/effect state from the persisted history on restart could re-drive an already-completed effect (double invoice / double commit) if a committed grant is treated as re-claimable.",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "basis": "AC 'rebuilding state from history never re-executes an effect'; checkpoint.py crash semantics: crash-after-commit -> grant EXPIRES unclaimed, re-checkpoint mints a NEW grant under the same commit_key."
+      },
+      {
+        "id": "R3",
+        "description": "A write that fails partway (transition UPDATE matches !=1 rows, FK violation, integrity error) could leave a workflow run or grant in a half-applied state instead of rolling back cleanly.",
+        "risk_category": "partial_failure",
+        "severity": "P0",
+        "basis": "AC 'a failed write leaves no partially applied workflow'; workflow.transition/_require_one_row rollback paths and _write_txn BEGIN IMMEDIATE."
+      },
+      {
+        "id": "R4",
+        "description": "A read served from a stale in-process cache after a durable write would show the operator an old state (UI/backend disagreement).",
+        "risk_category": "stale_state",
+        "severity": "P1",
+        "basis": "AC 'a read after a write never returns stale state'; action_callback opens a fresh WorkflowStore per request (lines 320/368)."
+      },
+      {
+        "id": "R5",
+        "description": "The live-hold uniqueness (at most one GRANTED/CLAIMED/ATTEMPTED/VERIFIED/UNKNOWN_OUTCOME grant per (tenant,commit_key)) could be violated by the state-move change, permitting two live reservations for one logical effect.",
+        "risk_category": "safety_invariant",
+        "severity": "P1",
+        "basis": "migrations/phase3_checkpoint.py ix_effect_grants_live_hold partial unique index; workflow.operation_commit_claim raises on >1 live row."
+      },
+      {
+        "id": "R6",
+        "description": "The checkpoint_witnesses append-only history could become mutable (missing triggers) or lose 1:1 witness:grant correspondence, corrupting the history that restart rebuilds from.",
+        "risk_category": "safety_invariant",
+        "severity": "P1",
+        "basis": "phase3_checkpoint.P3_TRIGGERS append-only triggers; checkpoint_witnesses UNIQUE(tenant,grant_id) FK to effect_grants."
+      },
+      {
+        "id": "R7",
+        "description": "The cache->store move could regress the 22 tenant-scoped store methods or cross-tenant isolation guarantees.",
+        "risk_category": "regression",
+        "severity": "P0",
+        "basis": "workflow.py WorkflowStore tenant-first invariants; broad canonical suite."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1-restart-survival",
+        "title": "Durable workflow store survives a callback process restart",
+        "purpose": "Prove the workflow state lives in the durable store on disk (readable while the process is down and after it restarts), not in an in-process cache that a restart would drop.",
+        "risk_category": "restart_recovery",
+        "priority": "P0",
+        "mode": "backend",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "failure_recovery",
+        "generating_risk": "R1",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe-workflow-db",
+        "isolation_note": "Only stops/starts the callback service and reads the store; performs no writes to persisted rows, so it cannot contaminate other scenarios' data. Must not run concurrently with any scenario reading/writing the same driver_probe workflow.sqlite3.",
+        "setup": [
+          "The callback service is running against data/active_workspace/driver_probe/workflow.sqlite3 with its canonical/P3 schema applied."
+        ],
+        "rationale": "The unit's whole point is that state is no longer process-local. Stopping the service and reading the same durable file, then restarting and re-opening it, is the direct observable of durability across a restart. A fresh WorkflowStore is opened per request, so a successful post-restart request also proves the process re-attaches to the durable store rather than an empty cache.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'RUNS='||count(*) FROM workflow_runs\"",
+              "contains": [
+                "RUNS="
+              ],
+              "not_contains": [
+                "no such table",
+                "malformed",
+                "Error"
+              ]
+            }
+          },
+          {
+            "kind": "stop_service",
+            "service": "callback"
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'RUNS='||count(*) FROM workflow_runs\"",
+              "contains": [
+                "RUNS="
+              ],
+              "not_contains": [
+                "no such table",
+                "malformed",
+                "Error"
+              ]
+            }
+          },
+          {
+            "kind": "start_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1500
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/email/action",
+              "expect_status": 400,
+              "expect_contains": [
+                "token"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'PARTIAL:'||id FROM workflow_runs WHERE state IS NULL OR created_at IS NULL OR updated_at IS NULL\"",
+              "not_contains": [
+                "PARTIAL:"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "The workflow_runs count is readable from the on-disk store before, during (service stopped), and after the restart.",
+          "After restart the service serves the callback path (400 for a missing token) by opening the durable store.",
+          "No workflow run is left in a partial (NULL state/created_at/updated_at) shape after restart."
+        ],
+        "forbidden_observations": [
+          "'no such table: workflow_runs' or a malformed/corrupt database while the service is stopped.",
+          "The service failing to answer /email/action after restart.",
+          "Any PARTIAL: row after restart."
+        ],
+        "cleanup": [
+          "Ensure the callback service is left running: start_service callback if it is down."
+        ],
+        "confidence": 0.62,
+        "generated_from": [
+          "workflow.py WorkflowStore",
+          "action_callback.py per-request WorkflowStore construction"
+        ]
+      },
+      {
+        "id": "S2-crash-reexecute-matrix",
+        "title": "Crash/restart matrix never re-executes a committed effect",
+        "purpose": "Exercise the constitutional crash matrix: crash-after-commit expires the grant unclaimed and a re-checkpoint mints a NEW grant under the same commit key without re-driving the effect.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "mode": "backend",
+        "requirement_reference": "rebuilding state from history never re-executes an effect",
+        "product_principle_reference": "success_without_verification",
+        "generating_risk": "R2",
+        "isolation_key": "pytest-canonical-suite",
+        "isolation_note": "Runs the checkpoint matrix test suite against its own temporary databases; touches no shared driver_probe state.",
+        "setup": [
+          "The canonical test environment is installed (.venv present)."
+        ],
+        "rationale": "test_phase3_checkpoint_matrix.py is the harness's deterministic encoding of the 105-case oracle including crash-after-commit and re-mint safety, which is exactly 'rebuilding state from history never re-executes an effect'. A green run is strong, reproducible evidence for the highest-weight AC.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "checkpoint-crash-matrix",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The checkpoint matrix suite passes, exit code 0."
+        ],
+        "forbidden_observations": [
+          "Any failing/errored case in the crash or re-mint rows of the matrix."
+        ],
+        "confidence": 0.8,
+        "generated_from": [
+          "checkpoint.py",
+          "migrations/phase3_checkpoint.py",
+          "eval/tests/test_phase3_checkpoint_matrix.py"
+        ]
+      },
+      {
+        "id": "S3-witness-claim-idempotency",
+        "title": "Witness is single-use and the claim CAS admits exactly one claim",
+        "purpose": "Confirm a checkpoint witness authorizes exactly one mint and the GRANTED->CLAIMED compare-and-set is single-serialization, so a replay/rebuild cannot produce a second effect.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "mode": "backend",
+        "requirement_reference": "rebuilding state from history never re-executes an effect",
+        "product_principle_reference": "outcome_verification",
+        "generating_risk": "R2",
+        "isolation_key": "pytest-canonical-suite",
+        "isolation_note": "Runs witness and claim-CAS tests against their own temporary databases; no shared state touched.",
+        "setup": [
+          "The canonical test environment is installed (.venv present)."
+        ],
+        "rationale": "claim_grant_cas is the sole serialization point of the effect (zero rows updated => caller does nothing). These suites prove single-use witness and single-claim CAS directly, which is the mechanism that makes replay-on-rebuild non-executing.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "witness-and-claim-cas",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Both witness and claim-CAS suites pass, exit code 0."
+        ],
+        "forbidden_observations": [
+          "A witness minting two grants or a grant admitting two claims."
+        ],
+        "confidence": 0.8,
+        "generated_from": [
+          "checkpoint.py claim_grant_cas / _require_genuine",
+          "eval/tests/test_phase3_witness.py",
+          "eval/tests/test_phase3_claim_cas.py"
+        ]
+      },
+      {
+        "id": "S4-single-live-hold",
+        "title": "At most one live-hold grant per (tenant, commit_key) in the durable ledger",
+        "purpose": "Guard the live-hold uniqueness invariant on the real dogfood store: no logical effect may hold two simultaneous live reservations, which would enable a double external effect after a rebuild.",
+        "risk_category": "safety_invariant",
+        "priority": "P1",
+        "mode": "backend",
+        "requirement_reference": "a failed write leaves no partially applied workflow",
+        "product_principle_reference": "outcome_verification",
+        "generating_risk": "R5",
+        "isolation_key": "driver_probe-workflow-db",
+        "isolation_note": "Read-only SELECT against the persisted store; performs no writes. Must not run concurrently with S1 (restart) on the same DB.",
+        "setup": [
+          "The callback service's durable store exists at data/active_workspace/driver_probe/workflow.sqlite3."
+        ],
+        "rationale": "operation_commit_claim raises if it ever sees more than one live row; this state_check asserts the same invariant holds in the actual persisted ledger, independent of the temp DBs the unit tests use. On an empty ledger it is a vacuous guard, but it can only ever surface a real violation.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'VIOLATION:'||tenant||'/'||commit_key||'='||count(*) FROM effect_grants WHERE state IN ('GRANTED','CLAIMED','ATTEMPTED','VERIFIED','UNKNOWN_OUTCOME') GROUP BY tenant,commit_key HAVING count(*)>1\"",
+              "not_contains": [
+                "VIOLATION:"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "No (tenant, commit_key) has more than one live-hold grant row."
+        ],
+        "forbidden_observations": [
+          "Any VIOLATION: line."
+        ],
+        "confidence": 0.55,
+        "generated_from": [
+          "migrations/phase3_checkpoint.py ix_effect_grants_live_hold",
+          "workflow.py operation_commit_claim"
+        ]
+      },
+      {
+        "id": "S5-witness-append-only-1to1",
+        "title": "Witness history is append-only and 1:1 with its grant",
+        "purpose": "Confirm the immutable-history invariant that restart rebuilds from: append-only triggers present and every witness maps to exactly one grant.",
+        "risk_category": "safety_invariant",
+        "priority": "P1",
+        "mode": "backend",
+        "requirement_reference": "rebuilding state from history never re-executes an effect",
+        "product_principle_reference": "evidence_clarity",
+        "generating_risk": "R6",
+        "isolation_key": "driver_probe-workflow-db",
+        "isolation_note": "Read-only SELECTs against the persisted store; no writes. Must not run concurrently with S1 on the same DB.",
+        "setup": [
+          "The durable store at data/active_workspace/driver_probe/workflow.sqlite3 has the P3 schema applied."
+        ],
+        "rationale": "If the history the rebuild reads can be mutated (triggers dropped) or a witness can float without its grant, the reconstruction that must never re-execute an effect is built on corruptible evidence. This asserts both structural guarantees on the real store.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'trg_checkpoint_witnesses_append_only%'\"",
+              "contains": [
+                "trg_checkpoint_witnesses_append_only_update",
+                "trg_checkpoint_witnesses_append_only_delete"
+              ]
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'ORPHAN:'||w.checkpoint_id FROM checkpoint_witnesses w LEFT JOIN effect_grants g ON w.tenant=g.tenant AND w.grant_id=g.grant_id WHERE g.grant_id IS NULL\"",
+              "not_contains": [
+                "ORPHAN:"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "Both append-only triggers exist on checkpoint_witnesses.",
+          "No witness row references a missing grant."
+        ],
+        "forbidden_observations": [
+          "A missing append-only trigger.",
+          "Any ORPHAN: line."
+        ],
+        "confidence": 0.6,
+        "generated_from": [
+          "migrations/phase3_checkpoint.py P3_TRIGGERS",
+          "checkpoint.py mint_checkpoint_witness"
+        ]
+      },
+      {
+        "id": "S6-durable-schema-complete",
+        "title": "Canonical schema provides a durable home for all workflow state",
+        "purpose": "Verify the canonical schema builds every table the durable workflow state depends on, so there is somewhere durable for state to live after the move off the in-process cache.",
+        "risk_category": "boundary",
+        "priority": "P2",
+        "mode": "backend",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "operational_clarity",
+        "generating_risk": "R1",
+        "isolation_key": "pytest-canonical-suite",
+        "isolation_note": "Builds a schema in a throwaway tempdir via the approved probe; no shared state touched.",
+        "setup": [
+          "The canonical test environment is installed (.venv present)."
+        ],
+        "rationale": "A cheap, deterministic confirmation that create_canonical_schema materializes the durable tables (workflow_runs, audit_events, effect_grants, checkpoint_witnesses, brakes, platform_brake). If a table the state-move relies on is absent, durability across restart is impossible.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "canonical-schema-tables",
+            "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "workflow_runs",
+              "audit_events",
+              "effect_grants",
+              "checkpoint_witnesses",
+              "brakes",
+              "platform_brake"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The printed table list contains all durable workflow/effect/witness tables."
+        ],
+        "forbidden_observations": [
+          "Any of the required tables missing from the printed list.",
+          "A schema build exception."
+        ],
+        "confidence": 0.75,
+        "generated_from": [
+          "schema.py create_canonical_schema",
+          "migrations/phase3_checkpoint.py"
+        ]
+      },
+      {
+        "id": "S7-full-regression",
+        "title": "Full canonical suite: no partial-write / stale-read / tenant regressions",
+        "purpose": "Run the whole canonical suite as the backstop for the failed-write-atomicity and read-after-write ACs and to catch any regression the state-move introduced across the 22 tenant-scoped store methods.",
+        "risk_category": "regression",
+        "priority": "P0",
+        "mode": "backend",
+        "requirement_reference": "a failed write leaves no partially applied workflow",
+        "product_principle_reference": "repository_silent",
+        "generating_risk": "R7",
+        "isolation_key": "pytest-canonical-suite",
+        "isolation_note": "Runs the suite against its own temporary databases; no shared driver_probe state touched.",
+        "setup": [
+          "The canonical test environment is installed (.venv present)."
+        ],
+        "rationale": "transition()/_require_one_row rollback-on-rowcount!=1 and the WAL/BEGIN-IMMEDIATE atomicity are exercised by the suite; a full green run is the honest backstop for AC #2 (no partial write) and AC #3 (no stale read) which cannot be independently driven at the HTTP layer without a signed token.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "full-canonical-suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "The full canonical suite passes, exit code 0."
+        ],
+        "forbidden_observations": [
+          "Any failing test in the workflow-store, transition-atomicity, or tenant-isolation areas."
+        ],
+        "confidence": 0.7,
+        "generated_from": [
+          "workflow.py transition/_require_one_row/_write_txn"
+        ]
+      },
+      {
+        "id": "S8-read-after-write-freshness-config",
+        "title": "Durable store is configured for fresh cross-connection reads (WAL)",
+        "purpose": "Confirm the persisted store uses WAL so a reader on a new connection sees the latest committed write \u2014 the mechanism that prevents a read from returning stale (formerly cached) state.",
+        "risk_category": "stale_state",
+        "priority": "P2",
+        "mode": "backend",
+        "requirement_reference": "a read after a write never returns stale state",
+        "product_principle_reference": "operational_clarity",
+        "generating_risk": "R4",
+        "isolation_key": "driver_probe-workflow-db",
+        "isolation_note": "Read-only PRAGMA/SELECT against the persisted store; no writes. Must not run concurrently with S1 on the same DB.",
+        "setup": [
+          "The callback service has opened data/active_workspace/driver_probe/workflow.sqlite3 at least once (WAL mode is set at store construction)."
+        ],
+        "rationale": "The callback opens a fresh WorkflowStore per request, so freshness depends on each new connection reading the latest committed disk state; WAL is what guarantees a concurrent reader is not pinned to a stale snapshot. This checks the durable mechanism directly and asserts no run is left without a committed state.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA journal_mode\"",
+              "contains": [
+                "wal"
+              ]
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'NOSTATE:'||id FROM workflow_runs WHERE state IS NULL\"",
+              "not_contains": [
+                "NOSTATE:"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "journal_mode reports wal.",
+          "No workflow run has a NULL state."
+        ],
+        "forbidden_observations": [
+          "journal_mode reporting delete/rollback instead of wal.",
+          "Any NOSTATE: line."
+        ],
+        "confidence": 0.45,
+        "generated_from": [
+          "workflow.py PRAGMA journal_mode=WAL",
+          "action_callback.py per-request store open"
+        ]
+      }
+    ],
+    "unresolved_questions": [
+      "I could not drive an end-to-end proof of the cache->store move at the HTTP layer: every state-changing callback route (/actions/signed, /email/action, /slack/*) requires a valid signed action token or Slack signature, and I may not use secrets, so I cannot create-then-restart-then-read a NEW workflow run through the running service. The restart evidence (S1) therefore asserts durability/integrity of the existing store across restart plus service recovery, not the survival of a specific transition applied via the API. Is there an approved, secret-free way to seed a workflow transition into the driver_probe store (e.g., a fixture loader) so a true before/after-restart state comparison can be authored?",
+      "State-of-the-store invariant checks (S4, S5, S8) are vacuous if the driver_probe ledger is empty at run time. Confirm whether the dogfood service is expected to have persisted runs/grants/witnesses when these scenarios run, or whether a seeding step should precede them.",
+      "The AC 'a read after a write never returns stale state' has no secret-free HTTP driver available to me; I approximated it with the WAL/per-connection freshness mechanism (S8) plus the full suite (S7). If there is an approved endpoint or script that performs a write and an immediately-following read against driver_probe, a stronger direct scenario could be authored.",
+      "The repository does not point me at the specific in-process cache being removed by U-P5-1 (no clearly-named cache module surfaced); scenarios are grounded in the durable WorkflowStore/ledger semantics the ACs describe rather than in the exact code path deleted. Confirm the source module/field that previously held the cached state."
+    ]
+  }
+]

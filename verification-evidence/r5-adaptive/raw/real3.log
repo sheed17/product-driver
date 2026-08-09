@@ -1,0 +1,42 @@
+=== uncertain: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 3 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve
+=== uncertain: EXECUTING WAVE-1 SUITE AGAINST THE REAL APP ===
+  → permanent:approval-smoke (permanent)
+  → gen-idempotent-approve (generated)
+  → gen-persist-approve (generated)
+  → gen-happy-approve (generated)
+3 generated case(s) + 1 permanent regression scenario(s): 0 passed, 4 failed, 0 blocked, 0 skipped
+risk categories exercised: happy_path, idempotency, persistence_failure
+
+FAILURES:
+  [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+      failed: expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/permanent-approval-smoke
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+      generated because: R2
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+      failed: expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-idempotent-approve
+  [FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+      generated because: R1
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-persist-approve
+  [FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+      generated because: R1
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+      failed: expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-happy-approve
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== uncertain: WAVE 2 (adaptive expansion from 4 failure(s)) ===
+  wave 2 (adaptive): 4 scenario(s) accepted — gen2-ambiguous-approve, gen2-ui-durable-disagree, gen2-restart-approval-durability, gen2-concurrent-approve-once
+wave 2 produced 4 accepted scenario(s):
+  [P0 ambiguous_external_effect] gen2-ambiguous-approve: Timed-out approve leaves an ambiguous durable effect
+  [P0 ui_backend_disagreement] gen2-ui-durable-disagree: Approve acknowledged by API but absent from durable store
+  [P0 restart_recovery] gen2-restart-approval-durability: Approval survives an api restart / independent re-read
+  [P1 concurrency] gen2-concurrent-approve-once: Simultaneous approvals of one invoice pay exactly once
+waves_used=2 budget_exhausted=False

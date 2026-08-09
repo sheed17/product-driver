@@ -1,0 +1,47 @@
+
+[FAIL] BOUND max_initial_scenarios=2, reasoner returned 10 valid scenarios
+        accepted 10; the per-wave limit is only sent to the model in the brief (scenario_planner.py:332-344) and is never enforced on the returned batch
+
+[FAIL] BOUND max_adaptive_scenarios_per_wave=2, reasoner returned 10
+        accepted 10 in the adaptive wave
+
+[PASS] BOUND max_total_scenarios=3, reasoner returned 10
+        accepted 3; refusals recorded: ['wave narrowed from 10 to 3 by the total-scenario budget', "t3: budget: the run's 3-scenario total is reached, so this scenario was not admitted"]
+
+[PASS] BOUND max_scenarios_per_risk_category=2, reasoner returned 8 in one category
+        accepted 2
+
+[PASS] BOUND max_waves=2, expansion requested 6 more times after the initial wave
+        waves_used=2, waves that produced scenarios=2, wave records=7, budget refusals recorded=5
+
+[PASS] TERMINATION loop expanding until budget_exhausted()
+        terminated after 1 expansion request(s); waves_used=2, scenarios=12
+
+[PASS] RECOGNITION no failures and no evaluator requests -> no wave is spent
+        waves_used stayed at 1
+[PASS] RECOGNITION reasoner answers 'nothing more is useful' (empty scenario list)
+        scenarios=0, waves_used=2 (the empty answer still consumes a wave, which bounds the loop)
+
+[PASS] DEDUP byte-identical operations and expectations (different id)
+        dup-b refused: duplicate: this exercises the same situation with the same expectations as coverage that already exi
+[PASS] DEDUP identical operations, reworded title/purpose AND relabelled risk category
+        dup-c refused: duplicate: this exercises the same situation with the same expectations as coverage that already exi
+[FAIL] DEDUP identical operations, only the expectation TEXT reworded ('the invoice is approved' -> 'The invoice ends up approved.')
+        dup-d ACCEPTED as new coverage; coverage_signature (scenario_plan.py:878-897) hashes the normalized expectation strings, so re-wording an expectation mints a fresh signature for identical actions
+
+[PASS] PROVENANCE the adaptive scenario records stage, wave and the failures consulted
+        stage='adaptive' wave=2 prior_failures_consulted=2 entries
+[PASS] PROVENANCE the wave record persists the whole basis (failures + findings)
+        wave-2 basis carries 2 failure(s) and 1 investigation finding(s)
+[FAIL] PROVENANCE which SPECIFIC failure/cluster caused THIS scenario
+        generating_risk='R-DOES-NOT-EXIST' -- copied verbatim from the model's own 'generating_risk' field (scenario_generator.py:400-402) with no check that it names a real risk, failure or cluster. Every scenario in a wave shares the same flat prior_failures_consulted list, so a wave with N failures and M scenarios records no failure->scenario edge. Here the model named a risk that does not exist and it was accepted.
+[FAIL] PROVENANCE cluster ids are never carried into the plan
+        FailureCluster.cluster_id (C01, C02...) is rendered into the prompt text only (scenario_planner.py:342) and appears nowhere in GenerationBasis, WaveRecord or ScenarioProvenance, so 'which cluster produced this scenario' is unanswerable from the persisted plan.
+
+==============================================================================
+15 checks, 5 FAILED
+  FAIL  BOUND max_initial_scenarios=2, reasoner returned 10 valid scenarios
+  FAIL  BOUND max_adaptive_scenarios_per_wave=2, reasoner returned 10
+  FAIL  DEDUP identical operations, only the expectation TEXT reworded ('the invoice is approved' -> 'The invoice ends up approved.')
+  FAIL  PROVENANCE which SPECIFIC failure/cluster caused THIS scenario
+  FAIL  PROVENANCE cluster ids are never carried into the plan

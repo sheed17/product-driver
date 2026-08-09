@@ -1,0 +1,42 @@
+=== uncertain: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 3 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve
+=== uncertain: EXECUTING WAVE-1 SUITE AGAINST THE REAL APP ===
+  → permanent:approval-smoke (permanent)
+  → gen-idempotent-approve (generated)
+  → gen-persist-approve (generated)
+  → gen-happy-approve (generated)
+3 generated case(s) + 1 permanent regression scenario(s): 0 passed, 4 failed, 0 blocked, 0 skipped
+risk categories exercised: happy_path, idempotency, persistence_failure
+
+FAILURES:
+  [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8960/api/invoices/SMOKE/approve: status == 200 — got timed out
+      failed: expect_state: POST http://127.0.0.1:8960/api/invoices/SMOKE/approve: status == 200 — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/permanent-approval-smoke
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1C/approve: status == 200 — got timed out
+      generated because: R2
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8960/api/invoices/W1C/approve: status == 200 — got timed out
+      failed: expect_state: POST http://127.0.0.1:8960/api/invoices/W1C/approve: status == 200 — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-idempotent-approve
+  [FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1B/approve: status == 200 — got timed out
+      generated because: R1
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8960/api/invoices/W1B/approve: status == 200 — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-persist-approve
+  [FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1A/approve: status == 200 — got timed out
+      generated because: R1
+      verifies: AC-APPROVAL-001
+      failed: expect_state: POST http://127.0.0.1:8960/api/invoices/W1A/approve: status == 200 — got timed out
+      failed: expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-happy-approve
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== uncertain: WAVE 2 (adaptive expansion from 4 failure(s)) ===
+  4 proposed scenario(s) refused:
+    - gen-w2-ui-vs-durable: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2UI which no other scenario touches'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-concurrent-once: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2CC which no other scenario touches'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-reread-survives-intervening-write: unsafe or unapproved operation: command is not in the approved set: 'Use invoice ids W2R1 and W2R2, both unique to this scenario'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-missing-actor: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2MD which no other scenario touches'. Generated scenarios may only run commands a human already approved.
+wave 2 produced 0 accepted scenario(s):
+waves_used=2 budget_exhausted=False

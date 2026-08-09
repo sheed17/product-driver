@@ -1,0 +1,52 @@
+PRODUCT REVIEW — CORRECTION 1
+
+The product-driver operated the running product and found a concrete
+discrepancy. This is not a code review; these are observations from actually
+using the product.
+
+Active READY unit: U-042. Keep the fix inside its scope.
+
+REQUIREMENT: U-042: an approved invoice is paid exactly once
+PRODUCT PRINCIPLE: a button click, an HTTP 200 or a passing unit test is not success; the underlying outcome must be verified
+
+SCENARIO EXECUTED: gen-dup
+
+OBSERVED RESULT: 1 generated case(s) + 1 permanent regression scenario(s): 1 passed, 1 failed, 0 blocked, 0 skipped
+risk categories exercised: idempotency
+
+FAILURES:
+  [FAIL] P0 generated gen-dup  (idempotency)  — expect_state: gen-dup: payments row count — got 2, want 1
+      generated because: duplicate approval could double-pay
+      verifies: U-042: an approved invoice is paid exactly once
+      failed: expect_state: gen-dup: payments row count — got 2, want 1
+      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-44/test_c2_failed_generated_scena0/driver/runs/r1-exp/iteration-01/scenarios/gen-dup
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+
+EXPECTED RESULT: Every required scenario passes: each situation the suite exercises produces the observable outcome it expects, and none of the forbidden observations.
+
+EVIDENCE:
+  - /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-44/test_c2_failed_generated_scena0/driver/runs/r1-exp/iteration-01/scenarios/gen-dup
+
+SMALLEST JUSTIFIED CORRECTION:
+SCENARIO SUITE FAILURES — the running product did not behave as the verification scenarios require.
+
+1 generated case(s) + 1 permanent regression scenario(s): 1 passed, 1 failed, 0 blocked, 0 skipped
+
+
+THESE FAILURES ARE DISTINCT and need separate attention:
+  - gen-dup: generated:gen-dup
+      exercised because: duplicate approval could double-pay
+      observed: expect_state: gen-dup: payments row count — got 2, want 1
+      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-44/test_c2_failed_generated_scena0/driver/runs/r1-exp/iteration-01/scenarios/gen-dup
+
+Make the smallest correction that resolves the cause above. Do not change a scenario, delete an assertion, or weaken a guard to make this pass — the scenarios describe what the product promises, and a green result obtained by editing them is worth nothing.
+
+MUST BE PRESERVED: All behaviour the passing scenarios already demonstrate, every permanent regression scenario, and every guard. Do not weaken or delete a scenario to obtain a green result.
+
+RETEST: Re-run the scenario suite. The failed scenarios rerun first, their risk neighbours rerun with them, and the full required regression set must be green before acceptance.
+
+Make the smallest correction that resolves the discrepancy above. Do not
+refactor unrelated code. Do not commit or push. End with an updated
+"RUNNABLE CHECKPOINT" section.

@@ -1,0 +1,4 @@
+[FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8957/api/invoices/SMOKE/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1C/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1B/approve: status == 200 — got timed out
+[FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1A/approve: status == 200 — got timed out

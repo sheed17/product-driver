@@ -1,0 +1,12 @@
+W1 status=ACCEPTED full_run=True
+W1 i2 executed (in order) = ['perm', 'gen-a', 'perm', 'gen-a', 'gen-b', 'gen-c']
+W1 widened? yes ; selection_reason='full required regression set before acceptance'
+W1 outcomes=[('perm', 'PASSED'), ('gen-a', 'PASSED'), ('gen-b', 'PASSED'), ('gen-c', 'PASSED')]
+W2 status=MAX_ITERATIONS i2=['perm', 'gen-a', 'perm', 'gen-a', 'gen-b', 'gen-c']
+W2 outcomes=[('perm', 'PASSED'), ('gen-a', 'PASSED'), ('gen-b', 'PASSED'), ('gen-c', 'FAILED')]
+W2 final decision=FIX
+W3 status=ACCEPTED executed=[]
+W3 outcomes=[('perm', 'SKIPPED'), ('gen-a', 'SKIPPED'), ('gen-b', 'SKIPPED'), ('gen-c', 'SKIPPED')]
+W3 full_run=True everything_required_passed=True
+W4 status=ACCEPTED executed=['i1:gen-a']
+W4 outcomes=[('perm', 'SKIPPED'), ('gen-a', 'PASSED'), ('gen-b', 'SKIPPED'), ('gen-c', 'SKIPPED')]

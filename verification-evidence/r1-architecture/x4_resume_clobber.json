@@ -1,0 +1,14 @@
+{
+  "plan_before": [
+    "gen-dup"
+  ],
+  "plan_after": [
+    "gen-different"
+  ],
+  "wave01_accepted_before": [
+    "gen-dup"
+  ],
+  "wave01_accepted_after": [
+    "gen-different"
+  ]
+}

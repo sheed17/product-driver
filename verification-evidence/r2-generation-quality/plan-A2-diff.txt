@@ -1,0 +1,70 @@
+GENERATED SCENARIO PLAN — run review-A2
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+2 generated case(s)
+risk categories exercised: regression, safety_invariant
+identified but NOT exercised: The exception detail screen renders the next action but omits or fabricates the accountable owner, so an operator sees work with no named human to do it.; The screen shows a cached/stale workflow state or a stale 'next action' after the backend run has already transitioned (e.g. closed to DONE or moved to APPROVED), presenting a state the backend no longer holds.; The evidence section shows generic, empty, broken, or another load's documents rather than the specific evidence the exception was raised from, or silently hides that evidence is missing.; For a terminal/closed run the screen still presents an actionable 'next action' as if the exception were open, inviting an operator to act on already-resolved work.; A malformed or non-existent exception id yields a 500 / blank / stack trace instead of a clear not-found, a dead end for the operator.; After the callback service restarts, the screen serves the pre-restart state instead of re-reading current backend truth.; The screen shows a workflow state that the backend (workflow_runs.state) does not currently hold — a cached, optimistic, or inferred state — misleading the operator about where the exception really is. This is the weight-3 AC and the founder's core distrust of UI that speaks past the backend.; The evidence panel fabricates or omits the evidence the exception was raised from, presenting an inference as the source fact.; After the backend state advances, the screen keeps showing the pre-change state on reload (stale render), violating the never-show-a-state-the-backend-doesn't-hold invariant across time.; The exception detail route leaks or renders another tenant's run state/owner/evidence, since authorization was reworked in this diff.
+
+IDENTIFIED RISKS:
+  [P0 missing_data] The exception detail screen renders the next action but omits or fabricates the accountable owner, so an operator sees work with no named human to do it.  (NOT covered)
+  [P0 stale_state] The screen shows a cached/stale workflow state or a stale 'next action' after the backend run has already transitioned (e.g. closed to DONE or moved to APPROVED), presenting a state the backend no longer holds.  (NOT covered)
+  [P1 missing_data] The evidence section shows generic, empty, broken, or another load's documents rather than the specific evidence the exception was raised from, or silently hides that evidence is missing.  (NOT covered)
+  [P1 unexpected_state_transition] For a terminal/closed run the screen still presents an actionable 'next action' as if the exception were open, inviting an operator to act on already-resolved work.  (NOT covered)
+  [P2 malformed_input] A malformed or non-existent exception id yields a 500 / blank / stack trace instead of a clear not-found, a dead end for the operator.  (NOT covered)
+  [P2 restart_recovery] After the callback service restarts, the screen serves the pre-restart state instead of re-reading current backend truth.  (NOT covered)
+  [P1 regression] Existing review/packet rendering invariants regress while adding next-action/owner fields.  (covered by S7-canonical-regression)
+  [P0 ui_backend_disagreement] The screen shows a workflow state that the backend (workflow_runs.state) does not currently hold — a cached, optimistic, or inferred state — misleading the operator about where the exception really is. This is the weight-3 AC and the founder's core distrust of UI that speaks past the backend.  (NOT covered)
+  [P1 missing_data] The evidence panel fabricates or omits the evidence the exception was raised from, presenting an inference as the source fact.  (NOT covered)
+  [P1 stale_state] After the backend state advances, the screen keeps showing the pre-change state on reload (stale render), violating the never-show-a-state-the-backend-doesn't-hold invariant across time.  (NOT covered)
+  [P0 cross_tenant] The exception detail route leaks or renders another tenant's run state/owner/evidence, since authorization was reworked in this diff.  (NOT covered)
+  [P1 regression] Changes to schema.py / workflow_store.py / authorization.py regress the canonical workflow and grant-state invariants that the rest of the product depends on.  (covered by S7-canonical-regression)
+
+SCENARIOS:
+  [P1 regression] S7-canonical-regression: Canonical suite still green after schema/store/authorization changes
+      purpose: Catch regressions the diff may introduce in the workflow store, schema readiness, and grant-state invariants the whole product relies on.
+      grounded in: U-UI-11
+      because: R6
+  [P2 safety_invariant] S8-checkpoint-matrix-guard: Grant-state / checkpoint matrix invariants survive the store changes
+      purpose: workflow_store.py grew significantly; verify the checkpoint state matrix (the states the exception screen reads) is still enforced structurally.
+      grounded in: the screen never shows a state the backend does not currently hold
+      because: R6
+
+ASSUMPTIONS:
+  - The exception detail screen is served live by the callback service on 127.0.0.1:8001, reachable at a list route (assumed '/exceptions') with per-exception detail at '/exceptions/<run_id>'. Exact routes were not discoverable in committed code and must be bound at execution.
+  - Backend truth for an exception's state is workflow_runs.state in data/active_workspace/driver_probe/workflow.sqlite3, and the screen is built from ReviewPayload derived from that run.
+  - The driver_probe workspace contains at least one NEEDS_REVIEW run and at least one terminal run; concrete run ids (shown as 1/2 in the SQL) must be bound to real rows at execution, with prior state recorded for cleanup.
+  - Browser 'click first exception in the list' aligns with the SQL-targeted run only if the list is ordered deterministically (assumed newest-first by id); executor should bind the same run to both the URL and the SQL.
+  - The exception detail screen is served by the 'callback' service at http://127.0.0.1:8001; the exact route (assumed /exceptions and /exceptions/{id}) is not confirmed from the checkout because the builder's new files are on a branch not present here.
+  - The screen renders one workflow_runs row: state is workflow_runs.state, evidence derives from workflow_runs.reason plus any linked document, and owner derives from the ownership records authorization.py governs.
+  - data/active_workspace/driver_probe/workflow.sqlite3 is the live persisted store the screen reads and can be seeded with at least one exception run before the run.
+  - The canonical state vocabulary the screen may display is bounded by GRANT_STATES / workflow_runs.state as enforced by schema.py.
+
+UNRESOLVED QUESTIONS:
+  - What is the actual route/URL of the exception detail screen and its listing on the 127.0.0.1:8001 service? It is not present in the committed callback server, so it must be confirmed against the builder's diff before these scenarios can bind concrete paths.
+  - AC1 requires the screen name 'who owns it', but no product requirement defines where owner is sourced (a workflow_runs column, a config default like operator_name, or an assignment table). If the backend records no owner, is the screen expected to show a default role, or to flag the obligation as unowned? This determines whether S3's 'never invent an owner' expectation is correct.
+  - Is the exception detail screen intended to be a live per-request read of workflow_runs, or a regenerated static artifact? AC3 (and S2/S8) presume live reads; if it is a rebuilt static site, staleness is governed by regeneration timing rather than request-time reads.
+  - AC2 says show 'the evidence the exception was raised from' — is 'raised from' the specific documents/attachments that triggered the reconciliation flag, or the full document set of the load? This changes what S4 should assert as correct vs fabricated evidence.
+  - What is the exact HTTP route and tenant-scoping mechanism for the exception detail screen? Without it the browser/request paths in S1, S2, S5, S6 are best-effort and may need the concrete path.
+  - Which backend column(s) carry the 'next action' and the 'owner'? The diff added 31 lines to schema.py and 88 to authorization.py, but the new columns/tables are not visible in this checkout, so S2/S3 assert on rendered text rather than a named backend field.
+  - How is an exception's 'evidence' linked (reason text vs. a document/invoice reference vs. a raised-from source id)? S4 assumes workflow_runs.reason is the primary evidence field.
+  - There is no acceptance criterion promising behavior when the backend is unavailable mid-view or when two operators act on the same exception concurrently; if the product intends a defined behavior there (dead_end_error / failure_recovery), it should be stated so it can be verified rather than invented here.
+
+REJECTED PROPOSALS:
+  S7: unknown risk_category 'agent-jargon'
+  S1: unsafe or unapproved operation: command is not in the approved set: 'Callback service is serving on 127.0.0.1:8001 against data/active_workspace/driver_probe/workflow.sqlite3'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: 'At least one workflow_run is in state NEEDS_REVIEW'. Generated scenarios may only run commands a human already approved.
+  S2: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a real workflow_run currently in NEEDS_REVIEW (e.g. the newest NEEDS_REVIEW run), and records its prior state for cleanup'. Generated scenarios may only run commands a human already approved.
+  S3: unsafe or unapproved operation: command is not in the approved set: 'At least one NEEDS_REVIEW run exists'. Generated scenarios may only run commands a human already approved.
+  S4: unsafe or unapproved operation: command is not in the approved set: "Executor selects an exception whose backing load has a missing required document / unlinked evidence (e.g. a 'missing POD' or unlinked-packet run)". Generated scenarios may only run commands a human already approved.
+  S5: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a run the backend holds in DONE or FAILED'. Generated scenarios may only run commands a human already approved.
+  S6: unsafe or unapproved operation: command is not in the approved set: 'No workflow_run exists with id 999999999'. Generated scenarios may only run commands a human already approved.
+  S8: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a real run and records its current backend state'. Generated scenarios may only run commands a human already approved.
+  S9: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+  S1-state-matches-backend: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run exists in data/active_workspace/driver_probe/workflow.sqlite3 (known load_id and state).'. Generated scenarios may only run commands a human already approved.; scenario mutates local state but declares neither cleanup commands nor an isolation strategy, so it would contaminate every scenario after it
+  S2-next-action-and-owner-named: unsafe or unapproved operation: command is not in the approved set: 'A seeded open exception run with an assigned owner exists.'. Generated scenarios may only run commands a human already approved.; scenario mutates local state but declares neither cleanup commands nor an isolation strategy, so it would contaminate every scenario after it
+  S3-owner-not-invented: unsafe or unapproved operation: command is not in the approved set: 'Force one exception run into an unassigned-owner state for the duration of the test.'. Generated scenarios may only run commands a human already approved.
+  S4-evidence-shown: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run whose reason/evidence is recorded in the backend.'. Generated scenarios may only run commands a human already approved.; scenario mutates local state but declares neither cleanup commands nor an isolation strategy, so it would contaminate every scenario after it
+  S5-reload-reflects-new-state: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run in a known initial state.'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('"UPDATE workflow_runs SET state=\'<original state>\' WHERE id=<same id>"'); only argument tails are permitted
+  S6-cross-tenant-isolation: unsafe or unapproved operation: command is not in the approved set: 'Two tenants each with an exception run in the workspace DB.'. Generated scenarios may only run commands a human already approved.; scenario mutates local state but declares neither cleanup commands nor an isolation strategy, so it would contaminate every scenario after it
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

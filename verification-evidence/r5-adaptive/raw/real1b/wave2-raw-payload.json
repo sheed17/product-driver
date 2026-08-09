@@ -1,0 +1,396 @@
+{
+  "risks": [
+    {
+      "id": "R-DBL-PAY",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "description": "A repeated or concurrent approve of the same invoice applies the payment effect more than once, so the durable store records payments>1 for a single logical approval.",
+      "basis": "AC-APPROVAL-001 (approval recorded durably) + diff to r5/fixture/app.py approve handler; the failed gen-idempotent-approve already showed payments!=1."
+    },
+    {
+      "id": "R-STALL-AMBIG",
+      "risk_category": "ambiguous_external_effect",
+      "severity": "P0",
+      "description": "Approve applies the effect durably but then stalls past the client timeout, so the HTTP caller times out and cannot tell whether the approval was recorded, even though the durable store already changed.",
+      "basis": "AC-APPROVAL-001; app.py 'uncertain' defect path stalls STALL_S seconds after saving."
+    },
+    {
+      "id": "R-UI-LIES",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "description": "Approve returns 200 approved and the in-memory GET reflects it, but the durable store is never written, so an independent re-read still sees pending.",
+      "basis": "AC-APPROVAL-002 (state survives a re-read); app.py 'ui_lies' path omits _save."
+    },
+    {
+      "id": "R-LEAK",
+      "risk_category": "safety_invariant",
+      "severity": "P1",
+      "description": "Approving one invoice mutates or leaks approval/payment state onto an unrelated invoice record.",
+      "basis": "AC-APPROVAL-001; shared _MEM/store mutated in the approve handler in app.py."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "v2-approve-timeout-ambiguity",
+      "title": "Approve must answer before the client times out, and the durable store must record exactly one payment",
+      "purpose": "Detect the ambiguous-effect failure where the approval effect is committed durably but the response stalls past a sane client timeout, leaving the caller unable to tell whether the approval happened.",
+      "risk_category": "timeout_after_effect",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-STALL-AMBIG",
+      "rationale": "The 'uncertain' defect saves then sleeps STALL_S (default 8s); a 5s client timeout will fire under the defect but not under correct fast-responding code. Inspecting the durable store afterwards resolves the true effect, since a timeout alone is not evidence.",
+      "service_refs": [
+        "api"
+      ],
+      "setup": [
+        "Use invoice id INV-W2TMO, which no other scenario touches, so its record starts absent/pending."
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/INV-W2TMO/approve",
+            "json_body": {
+              "actor": "alice"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2TMO",
+            "contains": [
+              "INV-W2TMO",
+              "status=approved",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending",
+              "payments=0",
+              "payments=2"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The POST returns 200 with an approved status within 5 seconds",
+        "A fresh re-read of the durable store shows INV-W2TMO status=approved with exactly one payment"
+      ],
+      "forbidden_observations": [
+        "The POST does not return within the client timeout (caller left uncertain while the effect has landed)",
+        "The durable store shows status=pending or payments=0 after a 200 was expected"
+      ],
+      "isolation_key": "r5/fixture/store.json",
+      "isolation_note": "Uses a unique invoice id (INV-W2TMO) so it cannot collide with other scenarios' records; no approved command exists to delete store entries, and the service reseeds the store on boot.",
+      "cleanup": []
+    },
+    {
+      "id": "v2-approve-concurrent-once",
+      "title": "Two simultaneous approvals of the same invoice record exactly one payment",
+      "purpose": "Detect a payment applied more than once when two approve requests race, exercising the check-and-set/locking path rather than the sequential repeat already covered.",
+      "risk_category": "concurrency",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-DBL-PAY",
+      "rationale": "Sequential idempotency is already covered; a simultaneous race is a distinct mechanism. Under a non-idempotent or unlocked handler the two concurrent calls durably record payments=2; correct code holds the lock and commits exactly one payment.",
+      "service_refs": [
+        "api"
+      ],
+      "setup": [
+        "Use invoice id INV-W2RACE, untouched by other scenarios, so it starts pending."
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/INV-W2RACE/approve",
+              "json_body": {
+                "actor": "alice"
+              },
+              "expect_status": 200,
+              "timeout_s": 5
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/INV-W2RACE/approve",
+              "json_body": {
+                "actor": "bob"
+              },
+              "expect_status": 200,
+              "timeout_s": 5
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2RACE",
+            "contains": [
+              "INV-W2RACE",
+              "status=approved",
+              "payments=1"
+            ],
+            "not_contains": [
+              "payments=2",
+              "payments=3",
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Both concurrent approvals return 200",
+        "The durable store shows INV-W2RACE with exactly one payment despite two concurrent approvals"
+      ],
+      "forbidden_observations": [
+        "The durable store records payments>=2 for a single invoice",
+        "The durable store still shows status=pending after both requests returned 200"
+      ],
+      "isolation_key": "r5/fixture/store.json",
+      "isolation_note": "Unique invoice id (INV-W2RACE); the parallel requests race only against each other. No delete command exists; the store is reseeded on service boot.",
+      "cleanup": []
+    },
+    {
+      "id": "v2-approve-survives-independent-reread",
+      "title": "A recorded approval is still present on repeated independent re-reads of the durable store",
+      "purpose": "Exercise AC-APPROVAL-002 directly: after approving, an independent fresh-process read of the persisted state must show the approval, and a second independent read must agree (no drift or in-memory-only state).",
+      "risk_category": "stale_state",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-UI-LIES",
+      "rationale": "AC-002 is about survival across a re-read, not merely the initial write. Two separate state.py invocations are two fresh processes reading the file; if the handler only mutated in-memory state (ui_lies) or the write is unstable, the re-reads disagree with the 200 response.",
+      "service_refs": [
+        "api"
+      ],
+      "setup": [
+        "Use invoice id INV-W2RRD, untouched by other scenarios."
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/INV-W2RRD/approve",
+            "json_body": {
+              "actor": "carol"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2RRD",
+            "contains": [
+              "INV-W2RRD",
+              "status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending",
+              "STORE MISSING"
+            ]
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2RRD",
+            "contains": [
+              "INV-W2RRD",
+              "status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending",
+              "STORE MISSING"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The approval returns 200",
+        "Both independent re-reads of the durable store show status=approved with one approval and one payment"
+      ],
+      "forbidden_observations": [
+        "Either re-read shows status=pending after a 200 approved response",
+        "The two re-reads disagree with each other"
+      ],
+      "isolation_key": "r5/fixture/store.json",
+      "isolation_note": "Unique invoice id (INV-W2RRD); read-only state checks do not mutate. Store reseeded on service boot.",
+      "cleanup": []
+    },
+    {
+      "id": "v2-approve-does-not-leak-to-other-invoice",
+      "title": "Approving one invoice leaves an unrelated invoice pending in the durable store",
+      "purpose": "Guard the per-record safety invariant: an approval must be scoped to its own invoice and must not mutate another invoice's persisted approval/payment state.",
+      "risk_category": "safety_invariant",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R-LEAK",
+      "rationale": "The handler mutates records inside a shared store/dict; a targeting bug could write to the wrong record or all records. Approving INV-W2LKA while INV-W2LKB is only read must leave INV-W2LKB pending with zero payments.",
+      "service_refs": [
+        "api"
+      ],
+      "setup": [
+        "Touch INV-W2LKB via a GET so it exists in the store as pending, then approve only INV-W2LKA."
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "GET",
+            "path": "/api/invoices/INV-W2LKB",
+            "expect_status": 200,
+            "expect_contains": [
+              "pending"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/INV-W2LKA/approve",
+            "json_body": {
+              "actor": "dave"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2LKA",
+            "contains": [
+              "INV-W2LKA",
+              "status=approved",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending"
+            ]
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2LKB",
+            "contains": [
+              "INV-W2LKB",
+              "status=pending",
+              "approvals=0",
+              "payments=0"
+            ],
+            "not_contains": [
+              "status=approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "INV-W2LKA is durably approved with one payment",
+        "INV-W2LKB remains durably pending with zero approvals and zero payments"
+      ],
+      "forbidden_observations": [
+        "INV-W2LKB becomes approved or accrues any payment after approving a different invoice"
+      ],
+      "isolation_key": "r5/fixture/store.json",
+      "isolation_note": "Uses two unique invoice ids (INV-W2LKA, INV-W2LKB) not shared with other scenarios. Store reseeded on service boot.",
+      "cleanup": []
+    },
+    {
+      "id": "v2-approve-malformed-body-still-durable",
+      "title": "Approve with a non-JSON body still records the approval durably without crashing",
+      "purpose": "Ensure a malformed request body does not either crash the service or bypass durable recording of the approval.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-UI-LIES",
+      "rationale": "The handler tolerates a bad body by defaulting actor to 'unknown'; the value is confirming that even on the malformed path the effect is committed durably (not just answered 200) and the service stays up.",
+      "service_refs": [
+        "api"
+      ],
+      "setup": [
+        "Use invoice id INV-W2MAL, untouched by other scenarios."
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/INV-W2MAL/approve",
+            "raw_body": "{not-json",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py INV-W2MAL",
+            "contains": [
+              "INV-W2MAL",
+              "status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending",
+              "STORE MISSING"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The malformed-body approve returns 200 approved",
+        "The durable store records INV-W2MAL as approved with one approval and one payment"
+      ],
+      "forbidden_observations": [
+        "The service errors/500s or becomes unavailable on a malformed body",
+        "The 200 is returned but the durable store shows pending"
+      ],
+      "isolation_key": "r5/fixture/store.json",
+      "isolation_note": "Unique invoice id (INV-W2MAL). If raw_body is unsupported by the harness, the equivalent malformed payload should be sent; store reseeded on boot.",
+      "cleanup": []
+    }
+  ],
+  "assumptions": [
+    "The local app on :8954 shares the same durable store file that r5/fixture/state.py reads, so state.py is a valid fresh-process oracle for AC-APPROVAL-002.",
+    "The service under test runs one of the seeded DEFECT modes (or none); scenarios are designed to pass under DEFECT=none and expose the specific defects.",
+    "Invoices are created on first touch, so unique invoice ids I chose start as pending and provide per-scenario isolation.",
+    "The 'uncertain' defect's stall (STALL_S, default 8s) exceeds a 5s client timeout, so a 5s request timeout distinguishes the stall from correct fast responses."
+  ],
+  "unresolved_questions": [
+    "AC-APPROVAL-002 says approval state must survive a re-read of persisted state, but the service's main() deletes and reseeds the store on every boot; therefore restart_recovery cannot validate AC-002 without falsely failing the correct control. Should the store persist across restarts, or is 'survives a re-read' deliberately scoped to an independent fresh-process read of the file (which I used)? This needs founder confirmation.",
+    "No acceptance criterion or product principle promises authorization, actor identity/authenticity, or cross-tenant isolation for the approve endpoint, so I did not author authorization/cross_tenant scenarios. If approvals are meant to be restricted to authorized actors, an AC is missing.",
+    "No requirement defines an approval amount or its correctness (the fixture hardcodes amount=100); I only verify payment count, not amount. Confirm whether payment amount is in scope."
+  ]
+}

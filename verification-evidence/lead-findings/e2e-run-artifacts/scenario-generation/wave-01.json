@@ -1,0 +1,33 @@
+{
+  "wave": 1,
+  "stage": "initial",
+  "requested_at": "2026-08-09T21:43:43+00:00",
+  "basis": {
+    "task": "build supervised carrier invoice approval",
+    "task_hash": "bf05fa0a1720c325",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "approval survives a restart (weight 2): PENDING"
+    ],
+    "founder_context_version": "founder-v1",
+    "repository_head": "09840a7",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "approval_backend"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "proposed": 3,
+  "accepted_ids": [
+    "gen-happy",
+    "gen-approve-twice",
+    "gen-missing-invoice"
+  ],
+  "rejected": [],
+  "budget_notes": [],
+  "reasoner_error": ""
+}

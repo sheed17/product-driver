@@ -1,0 +1,393 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The approve call may apply the payment/approval effect and then stall past any sane client timeout, so the caller receives no definitive response and cannot tell whether the invoice was approved. The effect is real but the outcome is ambiguous to the client.",
+      "risk_category": "timeout_after_effect",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001 (approving records the approval durably) \u2014 an approval that lands but is never confirmed to the caller undermines the durable-record guarantee's usefulness."
+    },
+    {
+      "id": "R2",
+      "description": "Two approvals of the same invoice arriving simultaneously may each apply the effect, double-recording the approval and double-paying, if the endpoint checks-then-sets without proper serialization.",
+      "risk_category": "concurrency",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 \u2014 a durable approval record that counts the same approval twice is not a faithful record."
+    },
+    {
+      "id": "R3",
+      "description": "An earlier invoice's persisted approval may not survive an independent re-read after a subsequent write to the store (clobbered / not truly durable), violating the survives-a-re-read guarantee.",
+      "risk_category": "persistence_failure",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-002 (approval state survives a re-read of persisted state)."
+    },
+    {
+      "id": "R4",
+      "description": "An approve request with no actor field may fail to record the approval durably or crash, dropping a legitimate approval.",
+      "risk_category": "missing_data",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001."
+    },
+    {
+      "id": "R5",
+      "description": "A malformed request body may either crash the endpoint (5xx) or, worse, persist a spurious approval that no valid actor requested.",
+      "risk_category": "malformed_input",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001 \u2014 the durable store must reflect only genuine approvals."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-timeout-after-approve",
+      "title": "Approve that stalls past the client timeout still resolves to a definitive, single durable effect",
+      "purpose": "Detect the ambiguous-outcome defect where the approval effect lands but the response stalls past a sane client timeout, leaving the caller unable to tell what happened. This is the one covered gap: idempotency and persistence are exercised, timeout-after-effect is not.",
+      "risk_category": "timeout_after_effect",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R1",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-store",
+      "isolation_note": "Uses a dedicated invoice id (UNIT-APPROVAL-TO-1) touched by no other scenario; the fixture reseeds the store on each service boot, so no residue crosses scenarios.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/UNIT-APPROVAL-TO-1/approve",
+            "json_body": {
+              "actor": "alice"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 4
+          }
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 9000
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py UNIT-APPROVAL-TO-1",
+            "contains": [
+              "status=approved",
+              "payments=1"
+            ],
+            "not_contains": [
+              "payments=2",
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "POST /approve returns a definitive response within the 4s client timeout",
+        "The durable store shows the invoice approved with exactly one payment"
+      ],
+      "forbidden_observations": [
+        "The approve request exceeds the client timeout with no response, leaving the outcome ambiguous",
+        "The durable store disagrees with what the HTTP response implied"
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py UNIT-APPROVAL-TO-1",
+          "contains": [
+            "status=approved",
+            "payments=1"
+          ]
+        }
+      ],
+      "generated_from": [
+        "R1",
+        "app.py DEFECT=uncertain branch"
+      ],
+      "confidence": 0.8
+    },
+    {
+      "id": "gen-concurrent-approve",
+      "title": "Two simultaneous approvals of the same invoice pay exactly once",
+      "purpose": "Exercise the race the sequential idempotency test cannot: concurrent approvals that could each pass a check-then-set and double-record/double-pay. Verifies serialization holds under contention.",
+      "risk_category": "concurrency",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R2",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-store",
+      "isolation_note": "Dedicated invoice id UNIT-APPROVAL-RACE-1; fixture reseeds store on boot.",
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/UNIT-APPROVAL-RACE-1/approve",
+              "json_body": {
+                "actor": "bob"
+              },
+              "expect_status": 200
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/UNIT-APPROVAL-RACE-1/approve",
+              "json_body": {
+                "actor": "carol"
+              },
+              "expect_status": 200
+            }
+          ]
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 500
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py UNIT-APPROVAL-RACE-1",
+            "contains": [
+              "status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "payments=2",
+              "approvals=2"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Durable store records exactly one approval and one payment despite two concurrent approve calls"
+      ],
+      "forbidden_observations": [
+        "Durable store shows two payments or two approvals from the concurrent calls"
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py UNIT-APPROVAL-RACE-1",
+          "contains": [
+            "approvals=1",
+            "payments=1"
+          ]
+        }
+      ],
+      "generated_from": [
+        "R2"
+      ],
+      "confidence": 0.78
+    },
+    {
+      "id": "gen-approval-survives-reread",
+      "title": "An approval survives an independent re-read after a later write to the store",
+      "purpose": "Verify AC-APPROVAL-002 specifically: an earlier invoice's persisted approval must still be present on an independent durable re-read after a subsequent, unrelated approval writes the store. Guards against clobbering / in-memory-only persistence.",
+      "risk_category": "persistence_failure",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R3",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-store",
+      "isolation_note": "Dedicated invoice ids UNIT-APPROVAL-A and UNIT-APPROVAL-B; fixture reseeds store on boot.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/UNIT-APPROVAL-A/approve",
+            "json_body": {
+              "actor": "dan"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/UNIT-APPROVAL-B/approve",
+            "json_body": {
+              "actor": "erin"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py",
+            "contains": [
+              "UNIT-APPROVAL-A status=approved",
+              "UNIT-APPROVAL-B status=approved"
+            ],
+            "not_contains": [
+              "UNIT-APPROVAL-A status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "An independent re-read of the durable store shows invoice A still approved after invoice B was approved"
+      ],
+      "forbidden_observations": [
+        "Invoice A reads back as pending after B's write",
+        "Invoice A is missing from the durable store"
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py",
+          "contains": [
+            "UNIT-APPROVAL-A status=approved",
+            "UNIT-APPROVAL-B status=approved"
+          ]
+        }
+      ],
+      "generated_from": [
+        "R3"
+      ],
+      "confidence": 0.75
+    },
+    {
+      "id": "gen-missing-actor-approve",
+      "title": "Approval with no actor is still recorded durably",
+      "purpose": "Confirm a legitimate approval missing the optional actor field is not silently dropped and is still persisted with a single payment.",
+      "risk_category": "missing_data",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R4",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-store",
+      "isolation_note": "Dedicated invoice id UNIT-APPROVAL-NOACTOR; fixture reseeds store on boot.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/UNIT-APPROVAL-NOACTOR/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py UNIT-APPROVAL-NOACTOR",
+            "contains": [
+              "status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Durable store records the approval and a single payment even though no actor was supplied"
+      ],
+      "forbidden_observations": [
+        "Durable store still shows the invoice pending after a 200 response"
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py UNIT-APPROVAL-NOACTOR",
+          "contains": [
+            "status=approved",
+            "payments=1"
+          ]
+        }
+      ],
+      "generated_from": [
+        "R4"
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "gen-malformed-approve",
+      "title": "Malformed approve body must not persist a spurious approval",
+      "purpose": "Ensure a non-object/garbage request body neither crashes the endpoint nor writes a spurious approval that no valid actor requested. The durable record must reflect only genuine approvals.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R5",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-store",
+      "isolation_note": "Dedicated invoice id UNIT-APPROVAL-MALFORMED; fixture reseeds store on boot.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/UNIT-APPROVAL-MALFORMED/approve",
+            "json_body": "not-an-object",
+            "expect_status": 400,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py UNIT-APPROVAL-MALFORMED",
+            "not_contains": [
+              "status=approved",
+              "payments=1"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The endpoint rejects the malformed body with a 4xx and records no approval",
+        "The durable store shows no payment for the invoice"
+      ],
+      "forbidden_observations": [
+        "The endpoint returns a 5xx / crashes on a malformed body",
+        "A spurious approval or payment is persisted from a malformed request"
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py UNIT-APPROVAL-MALFORMED",
+          "not_contains": [
+            "status=approved"
+          ]
+        }
+      ],
+      "generated_from": [
+        "R5",
+        "app.py body.get on non-dict"
+      ],
+      "confidence": 0.6
+    }
+  ],
+  "unresolved_questions": [
+    "AC-APPROVAL-002 says approval state must 'survive a re-read of persisted state'. Does this include surviving a full process restart? The current build reseeds/wipes the store on every service boot, so restart-survival cannot be verified against it and a restart_recovery scenario would fail even on correct behavior \u2014 clarify whether restart durability is in scope.",
+    "Should approving an unknown/never-seen invoice id return 404 or auto-create the invoice? The build auto-creates on first touch, but no acceptance criterion specifies this, so it cannot be verified as promised behavior.",
+    "Is any actor identity or authorization required to approve an invoice? No auth is present and none is promised in the ACs or principle ids shown, so authorization / cross_tenant scenarios cannot be grounded.",
+    "Is a defined error contract expected for malformed bodies (specific status/shape)? The malformed_input scenario assumes a 4xx rejection derived from AC-APPROVAL-001's 'only genuine approvals' intent; an explicit contract would firm this up."
+  ]
+}

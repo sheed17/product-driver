@@ -1,0 +1,352 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "An approval recorded in memory may not survive a service restart, violating the promise that approval state survives a re-read of persisted state.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+    },
+    {
+      "id": "R2",
+      "description": "Two simultaneous approvals of the same invoice could create duplicate or inconsistent durable records instead of a single approval.",
+      "risk_category": "concurrency",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001 approving an invoice records the approval durably"
+    },
+    {
+      "id": "R3",
+      "description": "Approving an invoice id that does not exist could durably record a spurious approval for a non-existent invoice.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 approving an invoice records the approval durably"
+    },
+    {
+      "id": "R4",
+      "description": "Re-issuing an approval after a restart could produce a second durable approval record rather than remaining a single idempotent approval.",
+      "risk_category": "repeated_request",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+    },
+    {
+      "id": "R5",
+      "description": "A malformed approval request body could corrupt or partially write persisted approval state.",
+      "risk_category": "malformed_input",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001 approving an invoice records the approval durably"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-restart-approve-survives",
+      "title": "Approval survives an api service restart and re-read of persisted state",
+      "purpose": "Verify that an approval recorded through the endpoint is still present in persisted state after the api service is fully restarted, which is the direct promise of AC-APPROVAL-002.",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R1",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-state-store",
+      "isolation_note": "Uses a scenario-unique invoice id (W2R1) that no other scenario touches; no shared row is mutated so it cannot contaminate concurrent scenarios. No approved command can delete state, so isolation is by unique id rather than teardown.",
+      "rationale": "Every prior approve request timed out; even once responsive, durability across a restart is the load-bearing behavior in AC-APPROVAL-002 and is not covered by the in-session persistence scenario.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R1/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R1",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "pending"
+            ]
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "api"
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R1",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "POST /approve returns 200 and the invoice is recorded approved before restart",
+        "After the api service restart, re-reading persisted state still shows W2R1 as approved"
+      ],
+      "forbidden_observations": [
+        "W2R1 shows pending or missing after restart",
+        "Persisted state loses the approval record after restart"
+      ],
+      "cleanup": []
+    },
+    {
+      "id": "gen-concurrent-approve-single-record",
+      "title": "Two simultaneous approvals of the same invoice record a single durable approval",
+      "purpose": "Exercise a race: issue two approve requests for the same invoice at the same instant and confirm persisted state holds exactly one approval, not a duplicated or inconsistent record.",
+      "risk_category": "concurrency",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R2",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-state-store",
+      "isolation_note": "Contends only on scenario-unique invoice id W2R2; must not run concurrently with other scenarios touching the same id, which none do.",
+      "rationale": "Idempotency was only checked as sequential double-approve; a genuine simultaneous race can still double-write durable state and is untested.",
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2R2/approve",
+              "json_body": {},
+              "expect_status": 200,
+              "expect_contains": [
+                "approved"
+              ],
+              "timeout_s": 5
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2R2/approve",
+              "json_body": {},
+              "expect_status": 200,
+              "expect_contains": [
+                "approved"
+              ],
+              "timeout_s": 5
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R2",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "error",
+              "duplicate"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Both concurrent requests complete without error",
+        "Persisted state shows W2R2 approved exactly once with no duplicate or conflicting record"
+      ],
+      "forbidden_observations": [
+        "State shows two separate approval records for W2R2",
+        "State shows an error/duplicate marker for W2R2"
+      ],
+      "cleanup": []
+    },
+    {
+      "id": "gen-approve-unknown-invoice",
+      "title": "Approving a non-existent invoice does not record a spurious approval",
+      "purpose": "Confirm that POSTing an approval for an invoice id that was never created does not durably persist an approved record for it.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R3",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-state-store",
+      "isolation_note": "References a never-created id W2R3-NOPE; a correct implementation writes nothing, so there is nothing to clean up.",
+      "rationale": "AC-APPROVAL-001 scopes durability to approving an invoice; approving something that is not an invoice should not fabricate durable state.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R3-NOPE/approve",
+            "json_body": {},
+            "expect_status": 404,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R3-NOPE",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The endpoint rejects approval of an unknown invoice (non-2xx)",
+        "No approved record exists for W2R3-NOPE in persisted state"
+      ],
+      "forbidden_observations": [
+        "Persisted state contains an approved record for the unknown invoice",
+        "The endpoint returns 200 for a non-existent invoice"
+      ],
+      "cleanup": []
+    },
+    {
+      "id": "gen-reapprove-after-restart",
+      "title": "Re-approving after a restart keeps a single durable approval",
+      "purpose": "After an approval survives a restart, re-issue the same approval and confirm persisted state still reflects a single approval rather than a second record.",
+      "risk_category": "repeated_request",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R4",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-state-store",
+      "isolation_note": "Uses scenario-unique invoice id W2R4; no other scenario references it.",
+      "rationale": "Combines re-read-after-restart with a repeated request to ensure idempotency holds across the persistence boundary, not just within one process lifetime.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R4/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "api"
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R4/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R4",
+            "contains": [
+              "approved"
+            ],
+            "not_contains": [
+              "duplicate",
+              "error"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Approval persists across the restart",
+        "Re-approving after restart leaves exactly one durable approval for W2R4"
+      ],
+      "forbidden_observations": [
+        "A second/duplicate approval record appears for W2R4 after re-approval",
+        "State reverts to pending after the second approval"
+      ],
+      "cleanup": []
+    },
+    {
+      "id": "gen-malformed-approve-body",
+      "title": "Malformed approval request body does not corrupt persisted state",
+      "purpose": "Send an approval with a malformed JSON body and confirm the endpoint rejects it without writing a partial or corrupt approval record.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R5",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "approval-state-store",
+      "isolation_note": "Targets scenario-unique invoice id W2R5; a correct implementation writes nothing on rejection, so no teardown is needed.",
+      "rationale": "AC-APPROVAL-001 requires durable recording of valid approvals; a malformed body must not be able to leave the store in a half-written approved state.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R5/approve",
+            "raw_body": "{not-valid-json",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "expect_status": 400,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R5",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "The endpoint rejects the malformed body with a 4xx",
+        "No approved record is persisted for W2R5"
+      ],
+      "forbidden_observations": [
+        "Persisted state shows W2R5 approved after a malformed request",
+        "A partial/corrupt record for W2R5 appears in state"
+      ],
+      "cleanup": []
+    }
+  ],
+  "unresolved_questions": [
+    "All prior approve requests in this run timed out (endpoint never returned), so it is unclear whether the approval endpoint is reachable at all; if it remains unresponsive, none of these scenarios can reach their state assertions. This looks like a builder/service availability issue rather than a missing scenario.",
+    "The acceptance criteria do not state the expected response for approving a non-existent invoice (404 vs 400 vs 200-with-no-effect); gen-approve-unknown-invoice assumes rejection. If the product intends a different contract, this requirement should be made explicit rather than inferred.",
+    "No approved command can delete or reset persisted approval state, so mutating scenarios rely on unique invoice ids for isolation; if the state store is not keyed per-invoice this assumption may not hold."
+  ]
+}

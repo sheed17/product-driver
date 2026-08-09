@@ -1,0 +1,11 @@
+{
+  "stages": [
+    "initial",
+    "adaptive"
+  ],
+  "requests": [
+    [
+      "approve while another operator approves the same invoice"
+    ]
+  ]
+}

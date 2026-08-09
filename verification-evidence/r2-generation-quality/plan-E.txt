@@ -1,0 +1,47 @@
+GENERATED SCENARIO PLAN — run review-E
+task: Add role-based authorization to the operator console so only a supervisor can release an operation.
+active unit: U-AUTHZ-2
+
+1 generated case(s)
+risk categories exercised: regression
+identified but NOT exercised: A supervisor cannot actually complete a release even when authorized (gate too strict / role check rejects valid supervisor), breaking the core capability.; A non-supervisor's release request is refused at the response layer but the underlying effect (grant claim / operation state advance) still occurs, so the refusal is cosmetic.; Tenant isolation on the release gate is bypassable: a supervisor authenticated in tenant A can release an operation owned by tenant B.; Two simultaneous supervisor release taps on the same operation both succeed, minting two live grants / double-releasing.; A replayed/retried supervisor approval releases the operation a second time (non-idempotent), producing a duplicate effect.
+
+IDENTIFIED RISKS:
+  [P0 authorization] A supervisor cannot actually complete a release even when authorized (gate too strict / role check rejects valid supervisor), breaking the core capability.  (NOT covered)
+  [P0 authorization] A non-supervisor's release request is refused at the response layer but the underlying effect (grant claim / operation state advance) still occurs, so the refusal is cosmetic.  (NOT covered)
+  [P0 cross_tenant] Tenant isolation on the release gate is bypassable: a supervisor authenticated in tenant A can release an operation owned by tenant B.  (NOT covered)
+  [P1 concurrency] Two simultaneous supervisor release taps on the same operation both succeed, minting two live grants / double-releasing.  (NOT covered)
+  [P1 idempotency] A replayed/retried supervisor approval releases the operation a second time (non-idempotent), producing a duplicate effect.  (NOT covered)
+
+SCENARIOS:
+  [P1 regression] AUTHZ2-S9: Canonical test suite passes with role-based release authorization in place
+      purpose: Run the authoritative canonical suite to catch regressions in the release/authz/tenant behavior at the unit level, since the live release path ships dark and secret-gated.
+      grounded in: U-AUTHZ-2
+      because: R7
+
+ASSUMPTIONS:
+  - No implementation diff, existing-coverage list, or prior-failure log was supplied to me for this wave; scenarios are grounded in the ACs, product-principle ids, and the repository surface I could read, not in the actual builder change.
+  - The 'operator console' the task names is currently a static read-only HTML artifact (operator_console.py); I assume the role-based release capability is being newly added and that a release-capable console or endpoint is served on 127.0.0.1:8001 by the 'callback' service.
+  - The release/approval effect is persisted via operation_action_claims and/or effect_grants, and refusals via audit_events (to_state='REFUSED' / event 'GovernedWriteRefused') and security_events; state_checks read the driver_probe workspace DB at data/active_workspace/driver_probe/workflow.sqlite3.
+  - Refusal-path requests (non-supervisor, missing identity, malformed, cross-tenant) do NOT require a valid signing secret, so they can be exercised over loopback without referencing any secret; the positive supervisor release path DOES require valid auth and is therefore routed through the browser console / covered by the canonical suite rather than a hand-signed HTTP call.
+  - The driver_probe workspace is disposable and pre-seeded with at least one pending, releasable operation per tenant; released operations are terminal.
+  - Exact HTTP status codes for refusals are guesses (400/403); the load-bearing evidence in each scenario is the persisted-state check, not the status code.
+
+UNRESOLVED QUESTIONS:
+  - What is the actual surface for 'release an operation' under role-based authz — an interactive operator-console HTTP/browser endpoint, or only the existing secret-signed /actions/signed and /slack/actions taps? Concrete request paths and success/refusal responses are needed to author higher-confidence positive scenarios.
+  - How is 'supervisor' role asserted and authenticated (session, signed token claim, Slack user allowlist, a new roles table)? The AC promises a supervisor/non-supervisor distinction but I could not find any role/supervisor concept in the current schema or code.
+  - Which table/state records a completed release (operation_action_claims, effect_grants, a run state transition), and what value distinguishes 'released' — so that 'no release occurs' can be asserted precisely rather than by claim-count deltas?
+  - Is an authorization/role refusal written to audit_events, security_events, or both, and with what event_type/to_state? AC4 ('every refusal is recorded') cannot be verified exactly without the canonical refusal record shape for the new role gate.
+  - The governed write route currently ships dark and fail-closed (kernel BLOCKED pending AC-CKPT-6 adjudication). If release genuinely cannot execute in the deployed server, is U-AUTHZ-2's 'a supervisor CAN release' testable anywhere other than unit tests? This may indicate the acceptance behavior is not yet reachable through a real surface.
+
+REJECTED PROPOSALS:
+  AUTHZ2-S1: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001 against the driver_probe workspace DB'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: "At least one pending, releasable operation seeded for the supervisor's tenant". Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S2: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: 'A pending operation exists that a non-supervisor must not be able to release'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S3: unsafe or unapproved operation: command is not in the approved set: 'Two tenants present in the driver_probe DB, each with at least one operation'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: 'A supervisor session/identity bound to tenant A'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S4: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S5: unsafe or unapproved operation: command is not in the approved set: "A single pending operation seeded for the supervisor's tenant". Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S6: unsafe or unapproved operation: command is not in the approved set: 'A supervisor approval that has already released one operation (chain after S1) or a freshly seeded one'. Generated scenarios may only run commands a human already approved.; unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S7: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+  AUTHZ2-S8: unsafe or unapproved operation: command is not in the approved set: 'Callback service running on 127.0.0.1:8001'. Generated scenarios may only run commands a human already approved.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

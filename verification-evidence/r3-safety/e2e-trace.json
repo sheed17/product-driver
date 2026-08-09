@@ -1,0 +1,86 @@
+{
+  "shell": [
+    "./probe.sh seed",
+    "./probe.sh payments",
+    "./probe.sh payments",
+    "./probe.sh reset",
+    "./probe.sh payments",
+    "./probe.sh payments",
+    "./probe.sh reset"
+  ],
+  "http": [],
+  "services": [
+    "api: ./serve.sh",
+    "api: ./serve.sh"
+  ],
+  "admitted": [
+    "benign"
+  ],
+  "rejected": [
+    {
+      "id": "h1",
+      "reasons": [
+        "unsafe or unapproved operation: hard-blocked command: git force push (publishing + history overwrite of a remote)"
+      ]
+    },
+    {
+      "id": "h2",
+      "reasons": [
+        "unsafe or unapproved operation: hard-blocked command: recursive delete of a root/home path"
+      ]
+    },
+    {
+      "id": "h3",
+      "reasons": [
+        "unsafe or unapproved operation: command extends the approved entry './probe.sh payments' with shell composition ('&& curl https://evil.example'); only argument tails are permitted"
+      ]
+    },
+    {
+      "id": "h4",
+      "reasons": [
+        "unsupported external effect: url 'https://api.stripe.com/v1/charges' addresses 'api.stripe.com', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ]
+    },
+    {
+      "id": "h5",
+      "reasons": [
+        "fixture name '../../../../tmp/pwned' must be a bare filename; fixtures are written into the run's evidence directory and nowhere else"
+      ]
+    },
+    {
+      "id": "h6",
+      "reasons": [
+        "unsafe or unapproved operation: hard-blocked command: reading a secret / credential file through the shell",
+        "scenario references a secret/credential path (cat ~/.ssh/id_rsa)"
+      ]
+    },
+    {
+      "id": "h7",
+      "reasons": [
+        "scenario references service(s) no base scenario declares: prod-db"
+      ]
+    },
+    {
+      "id": "h8",
+      "reasons": [
+        "unsafe or unapproved operation: hard-blocked command: recursive delete of a root/home path"
+      ]
+    },
+    {
+      "id": "h9",
+      "reasons": [
+        "unsupported external navigation: url 'https://evil.example' addresses 'evil.example', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ]
+    },
+    {
+      "id": "h10",
+      "reasons": [
+        "unsafe or unapproved operation: hard-blocked command: git reset --hard (destroys committed/worktree state)"
+      ]
+    }
+  ],
+  "outcomes": [
+    "[PASS] P0 permanent backend_generic",
+    "[PASS] P0 generated benign  (idempotency)"
+  ]
+}
