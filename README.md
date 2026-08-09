@@ -214,6 +214,167 @@ sandbox that blocks `socket.bind()`. Anything that listens on a port must be
 started by the driver's own unsandboxed process. The builder generates
 artifacts; the driver serves and drives them.
 
+### Ordered steps
+
+The phase form above runs in a fixed order: setup → services → readiness →
+commands → requests → browser → `expect_state`. That order cannot express
+"approve, then read back", "approve twice", "approve then restart the service",
+or "two operators approve simultaneously" — situations that exist *only* because
+of sequencing.
+
+An optional `steps:` list runs operations in the order you write them:
+
+```yaml
+steps:
+  - kind: request
+    request: {method: POST, path: /approve, json: {invoice: INV-1}, expect_status: 200}
+  - kind: parallel_requests          # issued simultaneously — this is a real race
+    requests:
+      - {method: POST, path: /approve, json: {invoice: INV-2}}
+      - {method: POST, path: /approve, json: {invoice: INV-2}}
+  - kind: restart_service            # names a service declared above
+    service: api                     # readiness is re-checked before continuing
+  - kind: state_check                # the oracle, read AFTER the restart
+    state_check: {command: "sqlite3 data/x.sqlite3 'select count(*) from payments'",
+                  contains: ["1"]}
+```
+
+A scenario uses one form or the other, never both. Every existing scenario file
+uses the phase form and is unaffected. Generated scenarios always compile to the
+step form.
+
+---
+
+## Generated verification scenarios
+
+Normally you write the scenario. With `--auto-scenarios`, the driver also works
+out **what situations this particular task should be tested for** — from the
+task, the active READY unit and its acceptance criteria, founder context, the
+diff the builder actually produced, the existing scenarios, and whatever has
+already failed in this run.
+
+```bash
+python -m neyma_product_driver run --task "..." --auto-scenarios
+python -m neyma_product_driver run --task "..." --scenario my_slice --auto-scenarios
+
+python -m neyma_product_driver scenarios plan --task "..."            # plan only, runs nothing
+python -m neyma_product_driver scenarios plan --task "..." --json
+python -m neyma_product_driver scenarios run-generated --run <id>     # replay a plan
+python -m neyma_product_driver scenarios promotion-candidates --run <id>
+python -m neyma_product_driver scenarios promote --run <id> --scenario-id <id>
+```
+
+`--scenario foo` alone is unchanged. `--scenario foo --auto-scenarios` runs foo
+as permanent regression coverage with generated coverage around it. Off unless
+asked for; see `scenario_generation` in `driver.config.example.yaml`.
+
+### Three separable stages, and nothing skips one
+
+```
+PLAN      a model proposes GeneratedScenario objects        scenario_generator.py
+VALIDATE  deterministic rules accept or reject each one     scenario_validation.py
+COMPILE   accepted scenarios become Scenario objects        scenario_plan.py
+EXECUTE   the existing ScenarioExecutor runs them           scenarios.py
+```
+
+A model proposes *intent* — "approve the same invoice twice and prove only one
+payment effect exists". It never proposes shell. **The approved command set is
+derived from commands a human already wrote** into `scenarios/*.yaml` or into
+`scenario_generation.approved_commands`; a generated scenario chooses which one
+runs and when, and extra arguments are allowed, but a shell operator in the tail
+(`&&`, `;`, `|`, `$( )`, `>`) is refused, as is anything the existing command
+guard hard-blocks. Requests must be loopback. Services may only be ones your base
+scenario declared. Fixtures are written into the run's evidence directory by
+*name*, never at a caller-chosen path.
+
+The compiler re-checks every command against the approved set independently of
+validation, because that is the last point before a string becomes a subprocess.
+
+### What gets refused, and why
+
+Every refusal is recorded in the wave record, so a rejected proposal is visible
+evidence rather than a silent gap.
+
+| refused when it… | because |
+|---|---|
+| names a requirement the repository does not state | a scenario may not invent product requirements |
+| cites no founder rubric category | ungrounded taste is not a requirement either |
+| has no observable outcome | nothing it does could pass or fail |
+| duplicates existing coverage | relabelling the risk does not buy a second slot |
+| claims an effect without inspecting persisted state | an HTTP 200 is not evidence that the effect happened |
+| mutates state with no cleanup or isolation | it would contaminate every scenario after it |
+| uses an unapproved command, non-loopback host, secret, or authority file | outside the safe execution model |
+| is a regression case with no diff or prior-evidence basis | out of the active task's scope without justification |
+
+### Bounded expansion
+
+Generation happens in waves: an **initial** plan, a **diff-aware refinement**
+after the builder changes the repository, and an **adaptive expansion** after
+failures. A failing "approve then refresh" suggests the family around it —
+approve twice, approve concurrently, approve then restart, retry after an
+ambiguous response.
+
+Every axis is bounded: scenarios per wave, waves per run, scenarios per risk
+category, scenarios in total, and a wall-clock execution budget. When a budget
+stops generation, the run says so rather than looking complete.
+
+### Suites, clustering and acceptance
+
+A run executes a **ScenarioSuite**: the permanent scenarios plus the generated
+ones. Execution is sequential — scenarios share services, ports, databases and a
+workspace, and `max_parallel` above 1 is refused until isolation can be proven
+rather than assumed. The suite still computes its isolation partition, so safe
+parallelism can be added later without a redesign.
+
+Failures that share signals *and* a risk family are clustered, so twenty-five
+symptoms of one non-durable transition produce one grounded correction instead of
+twenty-five. When the evidence is ambiguous, failures stay separate — a hidden
+defect costs far more than a repetitive correction.
+
+An ACCEPT requires all of: required permanent scenarios pass, required generated
+scenarios pass, the completion audit does not block, repository protocol permits
+acceptance, no unresolved high-priority generated failure remains, and the full
+required regression set actually ran. **An evaluator ACCEPT cannot override a
+failed required scenario** — the suite measured something concrete, and the
+measurement wins. Protocol and completion-audit precedence are unchanged and
+still outrank it.
+
+### Ephemeral, and never silently promoted
+
+Generated scenarios live under `runs/<run-id>/` and are never written into
+`scenarios/`. When one catches a real defect and passes after the fix, it is
+recorded in `runs/<run-id>/promotion-candidates.json` with the bug it found, the
+evidence path and the iteration it was fixed in. Promotion is a separate command
+that shows the exact YAML and asks first. There is no configuration that makes it
+automatic.
+
+### Provenance
+
+```
+runs/<run-id>/
+    scenario-plan.json                     the plan, with every scenario's provenance
+    scenario-generation/wave-01.json       what was asked, proposed, accepted, refused
+    promotion-candidates.json
+    iteration-01/
+        suite-result.json                  the aggregate
+        scenarios/<scenario-id>/           that scenario's own artifacts
+```
+
+Each generated scenario records the task hash, founder-context version,
+repository HEAD, active unit, acceptance criteria consulted, diff files consulted,
+prior failures consulted, the risk that caused it, and the wave and model that
+produced it. *"Why did Product Driver test this situation?"* is answerable from
+`scenario-plan.json` alone, without reading a model transcript.
+
+The driver reports **verified coverage**, never exhaustive correctness:
+
+```
+15 generated cases + 8 permanent regression scenarios verified
+risk categories exercised: idempotency, authorization, restart_recovery, ...
+0 unresolved high-priority scenario failures
+2 generated scenarios marked as regression-promotion candidates
+```
+
 ---
 
 ## Context layers
@@ -517,6 +678,20 @@ verification, broader gates, and explicit stop conditions.
 Artifacts land under `runs/<run-id>/investigation/`: `observations.json`,
 `contradictions.json`, `hypotheses.json`, `probes.json`, `result.json`, and a
 readable `timeline.md`.
+
+### It is not the scenario generator
+
+Two different questions, two separate systems, and the information flows one way:
+
+| | asks | produces |
+|---|---|---|
+| scenario generator | *what situations should we test?* | situations to exercise |
+| investigator | *why did this observed behaviour happen?* | a supported root cause |
+
+A supported finding — *"the state read after approval can race the commit"* —
+becomes an input to generation, which may then exercise an immediate read, a
+delayed read, two simultaneous reads and a refresh during the transition. The
+generator never diagnoses, and the investigator never proposes coverage.
 
 ## The prompt-quality contract
 

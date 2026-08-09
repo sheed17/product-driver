@@ -171,6 +171,19 @@ DECISION_SCHEMA: dict[str, Any] = {
             "description": "True if this changes something a customer sees or experiences.",
         },
         "rubric_categories": {"type": "array", "items": {"type": "string"}},
+        "additional_verification_needed": {
+            "type": "boolean",
+            "description": "True when the coverage exercised so far does not yet cover the "
+            "risk surface of what changed. Advisory: it requests more verification, it "
+            "does not change your decision.",
+        },
+        "scenario_requests": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Situations you want exercised next, in plain language "
+            "('approve while another operator is approving the same invoice'). These are "
+            "input to scenario generation, not commands, and are never executed as written.",
+        },
     },
     "required": [
         "decision",
@@ -388,6 +401,7 @@ def evaluator_prompt(
     repo_context: Any = None,
     founder_feedback: str = "",
     previous_corrections: list[str] | None = None,
+    suite: Any = None,
 ) -> str:
     """Assemble the three context layers into one evaluator prompt.
 
@@ -441,6 +455,37 @@ def evaluator_prompt(
         "--- WHAT THE DRIVER ACTUALLY OBSERVED BY OPERATING THE PRODUCT ---",
         _fmt_scenario(scenario),
     ]
+
+    if suite is not None:
+        # Summary plus evidence paths — never the raw artifacts. Full command
+        # output, response bodies, screenshots and traces stay on disk under the
+        # per-scenario evidence directories cited below, and can be read with
+        # Read/Grep if a specific failure needs more than the summary.
+        parts += [
+            "",
+            "=== VERIFICATION SUITE — GENERATED + PERMANENT SCENARIOS ===",
+            suite.summary_block(),
+            "",
+            "The generated scenarios are situations this run decided were worth "
+            "exercising, derived from the task, the acceptance criteria, the diff and "
+            "what has already failed. Each failure above names the risk it was "
+            "generated for and the evidence directory holding its full artifacts.",
+            "",
+            "Judge four things:",
+            "  1. does the observed behaviour satisfy the task?",
+            "  2. did the generated scenarios expose a meaningful defect, or only a "
+            "     mis-stated expectation? Say which.",
+            "  3. was the coverage sufficient for the risk surface of what changed?",
+            "  4. is further targeted verification warranted?",
+            "",
+            "Set additional_verification_needed and list scenario_requests when the "
+            "coverage does not yet reach the risk surface. Those are advisory: they "
+            "request more verification and never change your decision. A required "
+            "scenario that failed cannot be accepted — the harness enforces that "
+            "regardless of what you return, so do not argue around it.",
+            "",
+            "Describe coverage honestly. Never claim all possible cases were verified.",
+        ]
 
     if service_logs:
         parts += ["", "=== SERVICE STARTUP OUTPUT ==="]

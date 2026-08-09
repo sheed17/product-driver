@@ -18,7 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -61,6 +61,22 @@ from .prompts import (
     validate_correction_quality,
 )
 from .scenarios import Scenario, ScenarioExecutor, load_scenario
+from .scenario_planner import (
+    DefectMemory,
+    PromotionLedger,
+    ScenarioPlanner,
+    changed_files,
+    diff_stat,
+    record_promotion_candidates,
+)
+from .scenario_suite import (
+    Origin,
+    ScenarioSuite,
+    SuiteExecutor,
+    SuiteResult,
+    build_suite,
+    select_rerun,
+)
 
 # --------------------------------------------------------------------------
 # Terminal output
@@ -163,6 +179,12 @@ class LoopResult:
     final_decision: EvaluatorDecision | None = None
     audit: Any = None
     protocol: Any = None
+    #: The final SuiteResult, when the run executed a suite rather than one
+    #: scenario. Carries the coverage report the outcome is described with.
+    suite: SuiteResult | None = None
+    #: Generated scenarios that found a defect and later passed. Suggestions
+    #: only; nothing has been written into the permanent suite.
+    promotion_candidates: list[Any] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------
@@ -185,19 +207,30 @@ async def run_control_loop(
     auditor: Any = None,
     protocol_resolver: Any = None,
     investigator_factory: Any = None,
+    planner: Any = None,
 ) -> LoopResult:
     """Drive builder → observe → evaluate → correct, bounded by max_iterations.
 
     The order is: builder claim → completion auditor → protocol resolver →
-    scenario runner → product evaluator → combine. Repository authority is
+    scenario suite → product evaluator → combine. Repository authority is
     re-read before every evaluator decision, so a phase or READY-unit change
     mid-run is picked up rather than served from cache. Returns as soon as a
     terminal decision is reached, the iteration budget is exhausted, or a stop
     is requested.
+
+    When ``planner`` is supplied, the run additionally generates verification
+    scenarios for this task and executes them alongside the permanent one:
+    an initial plan up front, a diff-aware refinement after each builder turn,
+    and a bounded adaptive expansion after failures. Without a planner the loop
+    behaves exactly as it always has — one scenario, one result — which is what
+    keeps every existing workflow and every existing test unchanged.
     """
     feedback_store = FounderFeedbackStore(store.run_dir)
     last_audit: dict[str, Any] = {"value": None}
     last_protocol: dict[str, Any] = {"value": None}
+    last_suite: dict[str, Any] = {"value": None}
+    ledger = PromotionLedger(store.run_dir)
+    defects = DefectMemory()
 
     def _terminate(status: RunStatus, decision: EvaluatorDecision, record: IterationRecord) -> LoopResult:
         record.decision = decision
@@ -206,13 +239,23 @@ async def run_control_loop(
         state.final_decision = decision
         state.status = status
         store.save_state(state)
-        return LoopResult(status, state, decision, last_audit["value"], last_protocol["value"])
+        return LoopResult(
+            status,
+            state,
+            decision,
+            last_audit["value"],
+            last_protocol["value"],
+            last_suite["value"],
+            ledger.load(),
+        )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
     active_unit_id = ""
+    active_unit = None
     if repo_loader is not None:
         try:
-            active_unit_id = repo_loader.resolve_active_unit().unit_id
+            active_unit = repo_loader.resolve_active_unit()
+            active_unit_id = active_unit.unit_id
         except ContextResolutionError as exc:
             emit(f"  cannot resolve current authority: {exc}")
             decision = EvaluatorDecision(
@@ -222,11 +265,20 @@ async def run_control_loop(
             )
             return _terminate(RunStatus.BLOCKED, decision, IterationRecord(iteration=0))
 
+    # Stage 1 — plan verification from the requirements, before judging anything.
+    scenario_summary = scenario.summary()
+    if planner is not None:
+        emit("→ planning verification scenarios for this task...")
+        plan = planner.plan_initial(task=state.task, unit=active_unit, run_id=state.run_id)
+        emit(_indent(plan.coverage_summary.render()))
+        scenario_summary = _summarize_verification(scenario, planner)
+
     next_prompt = builder_task_prompt(
-        state.task, scenario.summary(), active_unit_id, feedback_store.render()
+        state.task, scenario_summary, active_unit_id, feedback_store.render()
     )
     prior_problems: list[str] = []
     sent_corrections: list[str] = []
+    previous_suite: SuiteResult | None = None
 
     for iteration in range(1, config.max_iterations + 1):
         if store.stop_requested():
@@ -255,15 +307,98 @@ async def run_control_loop(
         # 2. read-only git snapshot
         record.git = git_snapshot(config.neyma_repo)
 
+        # 2b. Stage 2 — the diff decides what is now at risk. A task that read
+        #     as UI-only but moved persistence or authorization earns
+        #     verification of those, whatever the task said.
+        if planner is not None:
+            emit("→ refining the scenario plan against what the builder changed...")
+            planner.refine_for_diff(
+                task=state.task,
+                unit=active_unit,
+                diff_files=changed_files(config.neyma_repo),
+                diff_stat=diff_stat(config.neyma_repo),
+            )
+
         # 3. operate the product
-        emit(f"→ running scenario '{scenario.name}' ({scenario.mode})...")
-        executor = make_executor(store.iteration_dir(iteration))
-        scenario_result = await executor.execute(scenario)
-        record.scenario = scenario_result
-        emit(
-            f"  scenario {'PASSED' if scenario_result.passed else 'FAILED'}"
-            + (f" — {scenario_result.error}" if scenario_result.error else "")
-        )
+        if planner is None:
+            emit(f"→ running scenario '{scenario.name}' ({scenario.mode})...")
+            executor = make_executor(store.iteration_dir(iteration))
+            scenario_result = await executor.execute(scenario)
+            record.scenario = scenario_result
+            suite_result = None
+            all_commands = list(scenario_result.commands)
+            service_logs = getattr(executor, "service_logs", {}) or {}
+            emit(
+                f"  scenario {'PASSED' if scenario_result.passed else 'FAILED'}"
+                + (f" — {scenario_result.error}" if scenario_result.error else "")
+            )
+        else:
+            suite = _assemble_suite(scenario, planner)
+            only, reason = select_rerun(suite, previous_suite)
+            emit(f"→ running scenario suite ({len(only)} of {len(suite)}): {reason}")
+
+            def new_suite_executor() -> SuiteExecutor:
+                return SuiteExecutor(
+                    make_executor=make_executor,
+                    artifact_root=store.iteration_dir(iteration),
+                    browser_enabled=config.run.browser_enabled,
+                    execution_budget_s=config.scenario_generation.execution_budget_s,
+                    max_parallel=config.scenario_generation.max_parallel,
+                    emit=emit,
+                )
+
+            suite_executor = new_suite_executor()
+            suite_result = await suite_executor.run(suite, only=only, selection_reason=reason)
+
+            # An ACCEPT may never rest on a narrowed pass. If everything the
+            # narrowed set covered is green, widen to the full required
+            # regression set now rather than discovering the gap after the
+            # evaluator has already said yes. A fresh executor, so the widened
+            # pass's results and evidence are the ones that get recorded.
+            if suite_result.everything_required_passed and not suite_result.full_run:
+                emit("→ narrowed suite is green; running the full required regression set...")
+                suite_executor = new_suite_executor()
+                suite_result = await suite_executor.run(
+                    suite,
+                    only=None,
+                    selection_reason="full required regression set before acceptance",
+                )
+
+            previous_suite = suite_result
+            last_suite["value"] = suite_result
+            record.suite = suite_result.model_dump(mode="json")
+            # Written now as well as by save_iteration below: an exception later
+            # in this iteration (an evaluator that dies, an auditor that raises)
+            # would otherwise discard the evidence for work that really ran.
+            store.write_json(
+                store.iteration_dir(iteration).relative_to(store.run_dir) / "suite-result.json",
+                record.suite,
+            )
+
+            _record_defects(defects, suite_result, suite_executor, iteration)
+            newly_promotable = record_promotion_candidates(
+                ledger=ledger,
+                memory=defects,
+                plan=planner.plan,
+                outcomes=suite_result.outcomes,
+                iteration=iteration,
+            )
+            for candidate in newly_promotable:
+                emit(
+                    f"  promotion candidate: {candidate.scenario_id} found a defect in "
+                    f"iteration {candidate.discovered_in_iteration} and now passes"
+                )
+
+            scenario_result = _primary_result(scenario, suite_executor, suite_result)
+            record.scenario = scenario_result
+            all_commands = [
+                command
+                for result in suite_executor.results.values()
+                for command in result.commands
+            ]
+            service_logs = suite_executor.service_logs
+            for line in suite_result.headline().splitlines():
+                emit(f"  {line}")
 
         # 3b. audit the builder's completion claims BEFORE judging the product
         audit = None
@@ -274,7 +409,7 @@ async def run_control_loop(
                 audit = auditor.audit(
                     record.builder_summary,
                     unit=unit_now,
-                    run_commands=list(scenario_result.commands),
+                    run_commands=all_commands,
                     evidence_dir=str(store.iteration_dir(iteration)),
                 )
             except ContextResolutionError as exc:
@@ -298,7 +433,7 @@ async def run_control_loop(
         resolution = None
         if protocol_resolver is not None:
             emit("→ resolving repository protocol...")
-            resolution = protocol_resolver.resolve(run_commands=list(scenario_result.commands))
+            resolution = protocol_resolver.resolve(run_commands=all_commands)
             last_protocol["value"] = resolution
             record.protocol_resolution = resolution.model_dump(mode="json")
             store.save_protocol_resolution(record.protocol_resolution, iteration)
@@ -362,7 +497,7 @@ async def run_control_loop(
             builder_summary=record.builder_summary,
             git=record.git,
             scenario=scenario_result,
-            service_logs=getattr(executor, "service_logs", {}) or {},
+            service_logs=service_logs,
             evidence_dir=str(store.iteration_dir(iteration)),
             paused_permission_requests=denied,
             prior_problems=prior_problems,
@@ -370,6 +505,7 @@ async def run_control_loop(
             repo_context=repo_context,
             founder_feedback=feedback_text,
             previous_corrections=sent_corrections,
+            suite=suite_result,
         )
 
         provenance = _build_provenance(
@@ -462,6 +598,13 @@ async def run_control_loop(
                     confidence=audit.confidence,
                 )
 
+        # 6c. combine: a required scenario that failed outranks an ACCEPT from
+        #     the product evaluator. The evaluator judges what it saw; it does
+        #     not get to overrule what the suite measured. Deliberately last, so
+        #     protocol and completion-audit precedence stay exactly as they were.
+        if suite_result is not None:
+            decision = _apply_suite_precedence(suite_result, decision, scenario.name, emit)
+
         record.decision = decision
         _print_decision(decision, emit)
 
@@ -483,6 +626,32 @@ async def run_control_loop(
             record.notes.append("iteration budget exhausted before the fix could be retested")
             return _terminate(RunStatus.MAX_ITERATIONS, decision, record)
 
+        # 7b. Stage 3 — a failure is evidence about a whole family of
+        #     situations, not just the one that failed. Bounded by the planner's
+        #     own budgets; when they are spent, the run continues with the
+        #     coverage it has rather than generating forever.
+        if planner is not None and suite_result is not None:
+            requests = list(decision.scenario_requests)
+            failures = [f.brief() for f in suite_result.failures()]
+            if (failures or requests) and not planner.budget_exhausted():
+                emit("→ expanding verification around what failed...")
+                planner.expand_after_failures(
+                    task=state.task,
+                    unit=active_unit,
+                    failures=failures,
+                    clusters=suite_result.clusters,
+                    investigation_findings=_investigation_findings(record),
+                    evaluator_requests=requests,
+                    diff_files=changed_files(config.neyma_repo),
+                )
+            elif (failures or requests) and planner.budget_exhausted():
+                note = (
+                    "scenario-generation budget is spent; no further situations were "
+                    "generated for the remaining failures"
+                )
+                record.notes.append(note)
+                emit(f"  {note}")
+
         grounded = render_correction_for_builder(decision)
         sent_corrections.append(decision.correction_prompt)
         next_prompt = builder_correction_prompt(
@@ -497,6 +666,258 @@ async def run_control_loop(
     state.status = RunStatus.MAX_ITERATIONS
     store.save_state(state)
     return LoopResult(RunStatus.MAX_ITERATIONS, state, state.final_decision)
+
+
+# --------------------------------------------------------------------------
+# Scenario suites inside the loop
+# --------------------------------------------------------------------------
+
+
+def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:
+    """Permanent scenario plus this run's generated coverage.
+
+    The explicitly selected scenario is always present and always permanent, so
+    ``--scenario foo --auto-scenarios`` runs foo exactly as it would have run
+    alone, with generated coverage added around it.
+    """
+    return build_suite(
+        permanent=[(scenario.name, scenario)],
+        generated=[
+            (model, planner.compiled[model.id])
+            for model in planner.plan.scenarios
+            if model.id in planner.compiled
+        ],
+    )
+
+
+def _summarize_verification(scenario: Scenario, planner: Any) -> str:
+    """What the builder is told about how its work will be exercised."""
+    parts = [scenario.summary()]
+    generated = planner.plan.scenarios
+    if generated:
+        parts += [
+            "",
+            "The harness will also exercise these generated situations:",
+            *(f"  - {s.title} ({s.risk_category.value}, {s.priority.value})" for s in generated),
+            "",
+            "These are verification cases derived from the requirements and the risk "
+            "surface. They are not additional requirements: if one of them rests on a "
+            "product decision the repository has not made, say so rather than inventing "
+            "the behaviour it expects.",
+        ]
+    return "\n".join(parts)
+
+
+def _primary_result(
+    scenario: Scenario, executor: SuiteExecutor, suite_result: SuiteResult
+) -> ScenarioResult:
+    """The permanent scenario's own result, which the rest of the loop expects.
+
+    The completion auditor, the protocol resolver and the iteration record all
+    predate suites and reason about one scenario. They keep seeing exactly what
+    they saw before — the explicitly selected scenario's result — while the
+    suite aggregate travels alongside it.
+    """
+    result = executor.results.get(scenario.name)
+    if result is not None:
+        return result
+    # The permanent scenario was skipped (a browser scenario with the browser
+    # disabled, say). Say that plainly rather than inventing an empty pass.
+    outcome = suite_result.by_id(scenario.name)
+    reason = outcome.skip_reason if outcome is not None else "it was not executed"
+    return ScenarioResult(
+        scenario_name=scenario.name,
+        mode=scenario.mode,
+        error=f"the permanent scenario did not run: {reason}",
+    )
+
+
+def _record_defects(
+    defects: DefectMemory,
+    suite_result: SuiteResult,
+    executor: SuiteExecutor,
+    iteration: int,
+) -> None:
+    """Remember the first failure of each generated scenario.
+
+    A generated scenario becomes a promotion candidate only if it *found*
+    something, so what it observed when it first failed is the thing worth
+    keeping.
+    """
+    for outcome in suite_result.failures():
+        if outcome.origin is not Origin.GENERATED:
+            continue
+        observation = outcome.error or (
+            outcome.failed_assertions[0] if outcome.failed_assertions else "failed"
+        )
+        defects.note_failure(outcome.scenario_id, iteration, observation)
+
+
+def _investigation_findings(record: IterationRecord) -> list[str]:
+    """Conclusions the investigator reached, as input to scenario generation.
+
+    The two stay separate: the investigator answers "why did this happen", the
+    generator answers "what should we test". A proven race is a reason to
+    exercise a family of situations, and that is the only direction the
+    information flows.
+    """
+    investigation = record.investigation or {}
+    findings: list[str] = []
+    for key in ("conclusion", "root_cause", "summary"):
+        value = investigation.get(key)
+        if isinstance(value, str) and value.strip():
+            findings.append(value.strip())
+    for hypothesis in investigation.get("hypotheses", []) or []:
+        if isinstance(hypothesis, dict) and str(hypothesis.get("status", "")).upper() in {
+            "SUPPORTED",
+            "CONFIRMED",
+        }:
+            statement = str(hypothesis.get("statement", "")).strip()
+            if statement:
+                findings.append(statement)
+    return findings
+
+
+def _apply_suite_precedence(
+    suite_result: SuiteResult,
+    decision: EvaluatorDecision,
+    scenario_name: str,
+    emit: Callable[[str], None],
+) -> EvaluatorDecision:
+    """A required scenario that failed cannot be accepted away.
+
+    The evaluator judges observed behaviour and may reasonably think the product
+    is fine; the suite measured something concrete that is not. Where they
+    disagree about a *required* scenario, the measurement wins, and the run gets
+    a grounded correction built from the failure clusters rather than from the
+    evaluator's impression.
+
+    Only ACCEPT is overridden. A FIX, ASK_USER or BLOCKED already stops the run
+    from completing, and replacing the evaluator's reasoning with the suite's
+    would lose information.
+    """
+    if decision.decision is not Decision.ACCEPT:
+        return decision
+
+    blocking = suite_result.blocking_failures()
+    if not blocking and suite_result.full_run:
+        return decision
+
+    if not blocking and not suite_result.full_run:
+        emit("  an ACCEPT cannot rest on a partial suite; the full required set did not run.")
+        return EvaluatorDecision(
+            decision=Decision.BLOCKED,
+            summary=(
+                "The product evaluation accepted, but only part of the required scenario "
+                "suite was executed, so there is no evidence the rest still passes."
+            ),
+            problems=[suite_result.selection_reason],
+            observed_behavior=decision.observed_behavior,
+            evidence_paths=[o.evidence_path for o in suite_result.outcomes if o.evidence_path][:12],
+        )
+
+    emit(f"  product evaluation ACCEPTed, but {len(blocking)} required scenario(s) failed.")
+    permanent = [f for f in blocking if f.origin is Origin.PERMANENT]
+    lead = blocking[0]
+    return EvaluatorDecision(
+        decision=Decision.FIX,
+        summary=(
+            f"{len(blocking)} required scenario(s) failed, including "
+            f"{'permanent regression coverage' if permanent else 'generated verification'}: "
+            f"{lead.scenario_id}"
+        ),
+        problems=[f.brief() for f in blocking],
+        observed_behavior=decision.observed_behavior,
+        evidence_paths=[f.evidence_path for f in blocking if f.evidence_path][:12],
+        correction_prompt=_suite_correction(suite_result),
+        requirement_reference=(
+            lead.requirement_reference
+            or "the active unit's acceptance criteria, as exercised by the scenario suite"
+        ),
+        product_principle_reference=(
+            "a button click, an HTTP 200 or a passing unit test is not success; the "
+            "underlying outcome must be verified"
+        ),
+        scenario=lead.scenario_id or scenario_name,
+        observed_result=suite_result.summary_block(),
+        expected_result=(
+            "Every required scenario passes: each situation the suite exercises produces "
+            "the observable outcome it expects, and none of the forbidden observations."
+        ),
+        preserve=(
+            "All behaviour the passing scenarios already demonstrate, every permanent "
+            "regression scenario, and every guard. Do not weaken or delete a scenario to "
+            "obtain a green result."
+        ),
+        retest=(
+            "Re-run the scenario suite. The failed scenarios rerun first, their risk "
+            "neighbours rerun with them, and the full required regression set must be "
+            "green before acceptance."
+        ),
+        confidence=0.85,
+    )
+
+
+def _suite_correction(suite_result: SuiteResult) -> str:
+    """A correction the builder can act on, organised by shared cause.
+
+    Clustered failures produce one instruction naming the domain, not one
+    instruction per symptom. Distinct failures stay distinct.
+    """
+    lines = [
+        "SCENARIO SUITE FAILURES — the running product did not behave as the "
+        "verification scenarios require.",
+        "",
+        suite_result.headline(),
+        "",
+    ]
+    grouped = [c for c in suite_result.clusters if not c.singleton]
+    singles = [c for c in suite_result.clusters if c.singleton]
+
+    if grouped:
+        lines.append(
+            "THESE FAILURES APPEAR TO SHARE ONE CAUSE. Fix the cause once; do not patch "
+            "each symptom separately:"
+        )
+        for cluster in grouped:
+            lines.append("")
+            lines.append(f"  {cluster.likely_failure_domain}")
+            for scenario_id in cluster.affected_scenarios:
+                outcome = suite_result.by_id(scenario_id)
+                if outcome is None:
+                    continue
+                lines.append(f"    - {outcome.scenario_id}: {outcome.scenario_name}")
+                if outcome.generated_because:
+                    lines.append(f"        exercised because: {outcome.generated_because}")
+                for assertion in outcome.failed_assertions[:3]:
+                    lines.append(f"        observed: {assertion}")
+            if cluster.evidence_paths:
+                lines.append(f"    evidence: {', '.join(cluster.evidence_paths[:4])}")
+
+    distinct = [c for c in singles if suite_result.by_id(c.affected_scenarios[0]) is not None]
+    if distinct:
+        lines.append("")
+        lines.append("THESE FAILURES ARE DISTINCT and need separate attention:")
+        for cluster in distinct:
+            outcome = suite_result.by_id(cluster.affected_scenarios[0])
+            if outcome is None:
+                continue
+            lines.append(f"  - {outcome.scenario_id}: {outcome.scenario_name}")
+            if outcome.generated_because:
+                lines.append(f"      exercised because: {outcome.generated_because}")
+            for assertion in outcome.failed_assertions[:3]:
+                lines.append(f"      observed: {assertion}")
+            if outcome.evidence_path:
+                lines.append(f"      evidence: {outcome.evidence_path}")
+
+    lines += [
+        "",
+        "Make the smallest correction that resolves the cause above. Do not change a "
+        "scenario, delete an assertion, or weaken a guard to make this pass — the "
+        "scenarios describe what the product promises, and a green result obtained by "
+        "editing them is worth nothing.",
+    ]
+    return "\n".join(lines)
 
 
 def _apply_protocol_precedence(
@@ -811,6 +1232,15 @@ async def cmd_run(args: argparse.Namespace) -> int:
         error(f"BLOCKED — {exc}")
         return 11
 
+    planner = _make_planner(config, args, store, scenario, founder, out)
+    if planner is not None:
+        out(
+            f"scenarios: adaptive generation enabled — up to "
+            f"{config.scenario_generation.max_total_scenarios} generated case(s) across "
+            f"{config.scenario_generation.max_waves} wave(s), "
+            f"{len(planner.approved_commands)} approved command(s)"
+        )
+
     from .builder import BuilderSession
     from .evaluator import EvaluatorSession
 
@@ -842,6 +1272,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     repo_loader=repo_loader,
                     auditor=CompletionAuditor(config.neyma_repo),
                     protocol_resolver=ProtocolResolver(config.neyma_repo),
+                    planner=planner,
                 )
     except KeyboardInterrupt:
         warn("\ninterrupted — saving state")
@@ -855,8 +1286,366 @@ async def cmd_run(args: argparse.Namespace) -> int:
         return 1
 
     _write_run_journal(store, state, config)
+    _report_coverage(result, store)
     _report_outcome(result, store)
     return _exit_code_for(result.status)
+
+
+def _permanent_scenarios(config: DriverConfig) -> list[Scenario]:
+    """Every handwritten scenario the repository holds.
+
+    These are the source of both the authoritative regression coverage and the
+    approved command set — a command is approved because a human wrote it into
+    one of these files.
+    """
+    scenarios: list[Scenario] = []
+    if config.scenarios_dir is None or not config.scenarios_dir.exists():
+        return scenarios
+    for path in sorted(config.scenarios_dir.glob("*.y*ml")):
+        try:
+            scenarios.append(load_scenario(path))
+        except Exception:
+            # A malformed scenario file is doctor's problem to report, not a
+            # reason to refuse to plan.
+            continue
+    return scenarios
+
+
+def _make_planner(
+    config: DriverConfig,
+    args: argparse.Namespace,
+    store: EvidenceStore,
+    scenario: Scenario,
+    founder: Any,
+    emit: Callable[[str], None],
+) -> Any:
+    """Build a ScenarioPlanner when this run asked for generated coverage.
+
+    Off unless BOTH the configuration enables it and the run opts in, or the
+    run passes ``--auto-scenarios`` explicitly. Generating and executing
+    scenarios against a real product is not something a config default should
+    switch on behind someone's back.
+    """
+    requested = bool(getattr(args, "auto_scenarios", False))
+    if not requested and not config.scenario_generation.enabled:
+        return None
+    if requested and not config.scenario_generation.enabled:
+        # --auto-scenarios is itself the opt-in; the config bound still applies.
+        config.scenario_generation.enabled = True
+
+    from .scenario_generator import LLMScenarioReasoner
+
+    return ScenarioPlanner(
+        repo=config.neyma_repo,
+        config=config.scenario_generation,
+        reasoner=LLMScenarioReasoner(
+            config.neyma_repo, model=config.scenario_generation.model
+        ),
+        store=store,
+        base_scenario=scenario,
+        permanent_scenarios=_permanent_scenarios(config),
+        founder=founder,
+        emit=emit,
+    )
+
+
+async def cmd_scenarios_plan(args: argparse.Namespace) -> int:
+    """Generate a scenario plan and print it. Executes nothing.
+
+    Useful on its own: it shows what the driver would verify for a task, and
+    what it refused to verify and why, without touching the product.
+    """
+    config = _config_from_args(args)
+    problems = config.validate_repo()
+    if problems:
+        for problem in problems:
+            error(problem)
+        return 2
+
+    task = args.task or config.task
+    if not task.strip():
+        error("No task given. Pass --task '...' or set 'task:' in the config file.")
+        return 2
+
+    try:
+        founder = load_founder_context(config.driver_root)
+    except ContextResolutionError as exc:
+        error(f"founder context unusable: {exc}")
+        return 2
+
+    try:
+        unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit()
+    except ContextResolutionError as exc:
+        error(f"BLOCKED — {exc}")
+        return 11
+
+    try:
+        base = load_scenario(config.scenario_path(args.scenario))
+    except (FileNotFoundError, ValueError) as exc:
+        error(str(exc))
+        return 2
+
+    config.scenario_generation.enabled = True
+    from .scenario_generator import LLMScenarioReasoner
+
+    planner = ScenarioPlanner(
+        repo=config.neyma_repo,
+        config=config.scenario_generation,
+        reasoner=LLMScenarioReasoner(config.neyma_repo, model=config.scenario_generation.model),
+        store=None,
+        base_scenario=base,
+        permanent_scenarios=_permanent_scenarios(config),
+        founder=founder,
+        emit=lambda m: None if getattr(args, "as_json", False) else note(m),
+    )
+    plan = planner.plan_initial(task=task, unit=unit)
+    if config.scenario_generation.diff_aware:
+        planner.refine_for_diff(task=task, unit=unit)
+
+    if getattr(args, "as_json", False):
+        print(json.dumps(plan.model_dump(mode="json"), indent=2, default=str))
+        return 0
+
+    header("GENERATED SCENARIO PLAN")
+    out(plan.render())
+    out("")
+    note(
+        "Nothing was executed. This plan is ephemeral: run it with\n"
+        "  python -m neyma_product_driver run --task '...' --auto-scenarios"
+    )
+    return 0
+
+
+def _open_run(config: DriverConfig, run_id: str | None) -> EvidenceStore | None:
+    assert config.runs_dir is not None
+    if run_id:
+        return EvidenceStore.open_run(config.runs_dir, run_id)
+    return EvidenceStore.latest_run(config.runs_dir)
+
+
+async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
+    """Re-execute a run's generated scenarios, without a builder or evaluator.
+
+    Reads the plan a run already persisted and runs it again. Nothing is
+    generated, nothing is judged, and no scenario is created — this is for
+    looking at a plan's behaviour directly.
+    """
+    config = _config_from_args(args)
+    store = _open_run(config, args.run)
+    if store is None:
+        error(f"No runs found under {config.runs_dir}. Pass --run <run-id>.")
+        return 2
+
+    plan_path = store.run_dir / "scenario-plan.json"
+    if not plan_path.exists():
+        error(f"Run {store.run_id} has no generated scenario plan ({plan_path}).")
+        return 2
+
+    from .scenario_plan import GeneratedScenarioPlan, compile_to_scenario
+
+    try:
+        plan = GeneratedScenarioPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        error(f"Could not read the scenario plan: {exc}")
+        return 2
+
+    try:
+        base = load_scenario(config.scenario_path(args.scenario))
+    except (FileNotFoundError, ValueError) as exc:
+        error(str(exc))
+        return 2
+
+    approved = _approved_commands(config, base)
+    compiled: list[tuple[Any, Scenario]] = []
+    for model in plan.scenarios:
+        allowed, _refusals = approved.resolve(model.command_strings())
+        try:
+            compiled.append((model, compile_to_scenario(model, base=base, approved_commands=allowed)))
+        except Exception as exc:
+            warn(f"skipping {model.id}: {exc}")
+
+    if not compiled:
+        error("No generated scenario in this plan could be compiled.")
+        return 2
+
+    suite = build_suite(generated=compiled)
+    artifact_root = store.run_dir / "replay"
+    header(f"REPLAYING {len(suite)} GENERATED SCENARIO(S) — run {store.run_id}")
+    executor = SuiteExecutor(
+        make_executor=lambda artifact_dir: ScenarioExecutor(
+            config.neyma_repo, config.run, artifact_dir
+        ),
+        artifact_root=artifact_root,
+        browser_enabled=config.run.browser_enabled,
+        execution_budget_s=config.scenario_generation.execution_budget_s,
+        max_parallel=config.scenario_generation.max_parallel,
+        emit=note,
+    )
+    result = await executor.run(suite, selection_reason="explicit replay")
+    store.write_json("replay/suite-result.json", result.model_dump(mode="json"))
+
+    out("")
+    out(result.summary_block())
+    out(f"\nevidence: {artifact_root}")
+    return 0 if result.everything_required_passed else 20
+
+
+def _approved_commands(config: DriverConfig, base: Scenario) -> Any:
+    from .scenario_validation import ApprovedCommands
+
+    return ApprovedCommands.from_sources(
+        scenarios=[*_permanent_scenarios(config), base],
+        configured=config.scenario_generation.approved_commands,
+    )
+
+
+def _approved_commands_from_scenarios(config: DriverConfig) -> Any:
+    """The approved set without a base scenario — what ``doctor`` reports."""
+    from .scenario_validation import ApprovedCommands
+
+    return ApprovedCommands.from_sources(
+        scenarios=_permanent_scenarios(config),
+        configured=config.scenario_generation.approved_commands,
+    )
+
+
+async def cmd_scenarios_promotion_candidates(args: argparse.Namespace) -> int:
+    """List the generated scenarios a run suggests for permanent coverage."""
+    config = _config_from_args(args)
+    store = _open_run(config, args.run)
+    if store is None:
+        error(f"No runs found under {config.runs_dir}. Pass --run <run-id>.")
+        return 2
+
+    candidates = PromotionLedger(store.run_dir).load()
+    if getattr(args, "as_json", False):
+        print(json.dumps([c.model_dump(mode="json") for c in candidates], indent=2, default=str))
+        return 0
+
+    header(f"PROMOTION CANDIDATES — run {store.run_id}")
+    if not candidates:
+        out(
+            "None. A generated scenario becomes a candidate only when it failed while a\n"
+            "real defect was present and passed after the fix."
+        )
+        return 0
+
+    for candidate in candidates:
+        out(f"\n{candidate.scenario_id}  [{candidate.priority} {candidate.risk_category}]")
+        out(f"  {candidate.title}")
+        out(f"  found a defect in iteration {candidate.discovered_in_iteration}: "
+            f"{candidate.bug_discovered[:200]}")
+        out(f"  passed in iteration {candidate.fixed_in_iteration}")
+        out(f"  verifies: {candidate.requirement_reference}")
+        out(f"  evidence: {candidate.evidence_path}")
+        out(f"  status:   {'PROMOTED' if candidate.promoted else 'candidate only'}")
+
+    note(
+        "\nThese are suggestions. Nothing has been added to the permanent regression\n"
+        "suite, and no run will ever add one on your behalf. To promote one:\n"
+        f"  python -m neyma_product_driver scenarios promote --run {store.run_id} "
+        "--scenario <id>"
+    )
+    return 0
+
+
+async def cmd_scenarios_promote(args: argparse.Namespace) -> int:
+    """Promote one candidate into the permanent suite. Asks first, always.
+
+    The only path by which a generated scenario becomes a repository file. It
+    shows the exact YAML, requires confirmation, and refuses to overwrite an
+    existing scenario file.
+    """
+    config = _config_from_args(args)
+    store = _open_run(config, args.run)
+    if store is None:
+        error(f"No runs found under {config.runs_dir}. Pass --run <run-id>.")
+        return 2
+
+    ledger = PromotionLedger(store.run_dir)
+    candidates = ledger.load()
+    candidate = next((c for c in candidates if c.scenario_id == args.scenario_id), None)
+    if candidate is None:
+        error(
+            f"No promotion candidate {args.scenario_id!r} in run {store.run_id}. "
+            "List them with 'scenarios promotion-candidates'."
+        )
+        return 2
+    if candidate.promoted:
+        out(f"{candidate.scenario_id} was already promoted.")
+        return 0
+
+    from .scenario_plan import GeneratedScenario, compile_to_scenario
+    from .scenario_planner import scenario_to_yaml_mapping
+
+    try:
+        model = GeneratedScenario.model_validate(candidate.scenario)
+    except Exception as exc:
+        error(f"The recorded scenario could not be read back: {exc}")
+        return 2
+
+    try:
+        base = load_scenario(config.scenario_path(args.scenario))
+    except (FileNotFoundError, ValueError) as exc:
+        error(str(exc))
+        return 2
+
+    approved = _approved_commands(config, base)
+    allowed, refusals = approved.resolve(model.command_strings())
+    if refusals:
+        error("Refusing to promote: the scenario uses commands that are no longer approved.")
+        for refusal in refusals:
+            out(f"  - {refusal}")
+        return 3
+
+    try:
+        compiled = compile_to_scenario(model, base=base, approved_commands=allowed)
+    except Exception as exc:
+        error(f"Refusing to promote: {exc}")
+        return 3
+
+    assert config.scenarios_dir is not None
+    destination = config.scenarios_dir / f"{model.id}.yaml"
+    if destination.exists():
+        error(f"Refusing to overwrite an existing scenario file: {destination}")
+        return 3
+
+    import yaml as _yaml
+
+    body = _yaml.safe_dump(
+        scenario_to_yaml_mapping(model, compiled), sort_keys=False, default_flow_style=False
+    )
+
+    header("PROPOSED ADDITION TO THE PERMANENT REGRESSION SUITE")
+    out(f"file: {destination}\n")
+    out(body)
+    out(
+        "This scenario was generated by a run, not written by you. Read it before\n"
+        "accepting it: once it is in the permanent suite, every future run treats a\n"
+        "failure in it as blocking."
+    )
+
+    if args.yes:
+        note("\n--yes given; writing.")
+    elif not sys.stdin.isatty():
+        error("\nRefusing to modify the permanent suite non-interactively. Re-run with --yes.")
+        return 3
+    else:
+        reply = input("\nAdd this scenario to the permanent suite? Type 'yes': ").strip().lower()
+        if reply != "yes":
+            out("Aborted. The permanent suite is unchanged.")
+            return 0
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(body, encoding="utf-8")
+    for entry in candidates:
+        if entry.scenario_id == candidate.scenario_id:
+            entry.promoted = True
+    ledger.save(candidates)
+
+    good(f"\nPromoted {model.id} to {destination}")
+    note("It is now permanent regression coverage. Commit it when you are ready.")
+    return 0
 
 
 def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConfig) -> None:
@@ -903,6 +1692,28 @@ def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConf
 
 def _indent(msg: str) -> str:
     return "\n".join("  " + ln for ln in msg.rstrip().splitlines()) if msg.strip() else ""
+
+
+def _report_coverage(result: LoopResult, store: EvidenceStore) -> None:
+    """State what was verified — as coverage, never as a proof of correctness."""
+    if result.suite is None:
+        return
+    header("VERIFIED COVERAGE")
+    out(result.suite.summary_block())
+    if result.promotion_candidates:
+        out("")
+        out(
+            f"{len(result.promotion_candidates)} generated scenario(s) marked as "
+            "regression-promotion candidates:"
+        )
+        for candidate in result.promotion_candidates:
+            out(f"  - {candidate.scenario_id}: {candidate.title}")
+        note(
+            "  Nothing was added to the permanent suite. Review them with:\n"
+            f"    python -m neyma_product_driver scenarios promotion-candidates "
+            f"--run {store.run_id}"
+        )
+    out(f"\nscenario plan: {store.run_dir / 'scenario-plan.json'}")
 
 
 def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
@@ -1349,6 +2160,46 @@ async def cmd_doctor(args: argparse.Namespace) -> int:
             check(f"scenario {path.stem} parses", False, str(exc), fatal=False)
         else:
             good(f"  PASS  scenario {path.stem} parses")
+
+    out("\nGenerated scenarios")
+    generation = config.scenario_generation
+    check(
+        "scenario generation",
+        True,
+        "enabled" if generation.enabled else "disabled (opt in with --auto-scenarios)",
+        fatal=False,
+    )
+    approved = _approved_commands_from_scenarios(config)
+    # The approved set is the whole safety story for generated commands: a
+    # generated scenario can never author shell, only choose from here. An empty
+    # set is not an error — it means generated scenarios get HTTP, browser,
+    # ordering, concurrency and restarts, and no commands at all.
+    check(
+        f"approved command set: {len(approved)} command(s)",
+        True,
+        ", ".join(list(approved.entries)[:3]) or "none — generated scenarios may run no commands",
+        fatal=False,
+    )
+    check(
+        "generated-scenario budgets",
+        generation.max_total_scenarios >= generation.max_initial_scenarios,
+        f"{generation.max_initial_scenarios} initial, "
+        f"{generation.max_adaptive_scenarios_per_wave}/adaptive wave, "
+        f"{generation.max_waves} waves, {generation.max_total_scenarios} total",
+        fatal=False,
+    )
+    check(
+        "promotion into the permanent suite requires a human",
+        generation.promotion_requires_approval,
+        "generated scenarios are never written to scenarios/ by a run",
+        fatal=False,
+    )
+    check(
+        "generated scenarios run sequentially",
+        generation.max_parallel == 1,
+        "scenarios share services, ports and a workspace; isolation is not yet provable",
+        fatal=False,
+    )
 
     header("SUMMARY")
     if failures:
@@ -2181,7 +3032,62 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--headed", action="store_true", help="show the browser window")
     run_p.add_argument("--resume-run", help="resume a previous run id")
     run_p.add_argument("--resume-session", help="resume a specific Claude builder session id")
+    run_p.add_argument(
+        "--auto-scenarios",
+        action="store_true",
+        dest="auto_scenarios",
+        help="generate an adaptive verification suite for this task, alongside "
+        "--scenario. Off unless asked for.",
+    )
     run_p.set_defaults(func=cmd_run)
+
+    scen_p = sub.add_parser(
+        "scenarios", help="plan, replay and promote generated verification scenarios"
+    )
+    scen_sub = scen_p.add_subparsers(dest="scenarios_command", required=True)
+
+    plan_p = scen_sub.add_parser(
+        "plan", help="generate a scenario plan for a task and print it (executes nothing)"
+    )
+    common(plan_p)
+    plan_p.add_argument("--task", help="what the builder would be asked to do")
+    plan_p.add_argument("--scenario", help="base scenario supplying services and app_url")
+    plan_p.add_argument("--json", action="store_true", dest="as_json")
+    plan_p.set_defaults(func=cmd_scenarios_plan)
+
+    replay_p = scen_sub.add_parser(
+        "run-generated", help="re-execute a run's generated scenarios (no builder, no evaluator)"
+    )
+    common(replay_p)
+    replay_p.add_argument("--run", help="run id (defaults to the latest)")
+    replay_p.add_argument("--scenario", help="base scenario supplying services and app_url")
+    replay_p.add_argument("--browser", action="store_true")
+    replay_p.add_argument("--headed", action="store_true")
+    replay_p.set_defaults(func=cmd_scenarios_run_generated)
+
+    cand_p = scen_sub.add_parser(
+        "promotion-candidates",
+        help="list generated scenarios a run suggests for permanent regression coverage",
+    )
+    common(cand_p)
+    cand_p.add_argument("--run", help="run id (defaults to the latest)")
+    cand_p.add_argument("--json", action="store_true", dest="as_json")
+    cand_p.set_defaults(func=cmd_scenarios_promotion_candidates)
+
+    promote_scen_p = scen_sub.add_parser(
+        "promote",
+        help="add one candidate to the permanent suite (shows the YAML, asks first)",
+    )
+    common(promote_scen_p)
+    promote_scen_p.add_argument("--run", help="run id (defaults to the latest)")
+    promote_scen_p.add_argument(
+        "--scenario-id", required=True, dest="scenario_id", help="the candidate's scenario id"
+    )
+    promote_scen_p.add_argument(
+        "--scenario", help="base scenario supplying services and app_url"
+    )
+    promote_scen_p.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    promote_scen_p.set_defaults(func=cmd_scenarios_promote)
 
     doctor_p = sub.add_parser("doctor", help="verify the local environment")
     common(doctor_p)

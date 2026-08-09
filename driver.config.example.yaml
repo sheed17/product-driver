@@ -82,6 +82,52 @@ run:
   headless: true
   capture_trace: true
 
+# Dynamic scenario generation and adaptive verification.
+#
+# OFF by default, and `--auto-scenarios` is the per-run opt-in. Turning this on
+# changes what gets executed against your running product, which is not a change
+# that should arrive silently.
+#
+# What generation can and cannot do: a generated scenario chooses WHICH approved
+# command runs, WHEN, with what HTTP payloads, in what order, with what
+# concurrency and restarts, and what must be observable afterwards. It can never
+# author a new shell command. The approved set is derived from commands you
+# already wrote into scenarios/*.yaml, plus anything listed below.
+scenario_generation:
+  enabled: false
+
+  # Bounds. Generation stops at whichever is reached first.
+  max_initial_scenarios: 12
+  max_adaptive_scenarios_per_wave: 8
+  max_waves: 3
+  max_total_scenarios: 30
+  max_scenarios_per_risk_category: 6
+  # Wall clock for one suite execution. Scenarios not reached are recorded as
+  # SKIPPED with that reason — never silently dropped.
+  execution_budget_s: 1800
+
+  # What informs generation.
+  diff_aware: true            # inspect what the builder actually changed
+  use_prior_failures: true    # expand around what failed
+  use_investigation_findings: true
+
+  # A generated scenario that caught a real defect and later passed becomes a
+  # promotion CANDIDATE. Promotion into scenarios/ is always an explicit human
+  # action (`scenarios promote`). This cannot be set to false.
+  promotion_requires_approval: true
+
+  # Sequential. Scenarios share services, ports, databases and a workspace, and
+  # nothing yet proves a given pair isolated. Values other than 1 are rejected.
+  max_parallel: 1
+
+  model: opus
+  # Extra commands generated scenarios may run, beyond those already present in
+  # your scenario files. Extra arguments are allowed; shell operators are not.
+  approved_commands: []
+  #   - ".venv/bin/python scripts/inspect_state.py"
+  # Requests may only address these hosts. Loopback only, by design.
+  local_http_hosts: ["127.0.0.1", "localhost", "::1"]
+
 # Neyma is normally dirty mid-phase, so this defaults to true.
 allow_dirty_tree: true
 # Refuse to run unless the repo is on this branch. null = any branch.

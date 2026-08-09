@@ -1,0 +1,608 @@
+"""Deterministic validation of generated scenarios. The safety boundary.
+
+This module is the wall between "a model proposed a situation" and "the driver
+executed something". Nothing a model writes reaches a subprocess, a socket or a
+browser without passing every rule here, and every rule is ordinary Python — no
+model is consulted about whether a model's output is safe.
+
+Two independent things are checked, and a scenario must pass both:
+
+**Safety.** May this run at all? Commands must come from the approved set, which
+contains only commands a human already wrote into a scenario file or into
+``driver.config.yaml`` — a generated scenario can *choose* which approved command
+to run and in what order, but it can never author a new one. HTTP must be
+loopback. Services may only be ones the base scenario declared. Nothing may touch
+repository authority or credential material. The existing command guard is
+consulted as well, so anything hard-blocked for the builder is hard-blocked here.
+
+**Quality.** Is this worth running? A scenario is refused when it has no
+requirement grounding, no observable outcome, duplicates coverage that already
+exists, tests implementation detail with no product meaning, claims an effect it
+has no oracle for, or mutates local state with no way to clean up.
+
+Every refusal produces a reason string, and every reason is persisted with the
+wave record, so a rejected proposal is visible evidence rather than a silent gap.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable, Sequence
+from urllib.parse import urlparse
+
+from .command_guard import classify_command, classify_worktree_ownership, is_secret_path
+from .scenario_plan import (
+    EFFECT_FAMILY,
+    GeneratedRequest,
+    GeneratedScenario,
+    GeneratedScenarioPlan,
+    Priority,
+    RiskCategory,
+)
+from .scenarios import Scenario
+
+#: Loopback hosts a generated request may address. A scenario that wants to talk
+#: to anything else is trying to produce an external effect, which is refused
+#: outright rather than approved case by case.
+DEFAULT_LOCAL_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"})
+
+#: Repository surfaces that carry authority. A verification scenario observes the
+#: product; it never edits the rules the product is judged against.
+_AUTHORITY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?:^|[/\s])CLAUDE\.md\b"),
+    re.compile(r"docs/implementation/"),
+    re.compile(r"docs/specifications/acceptance/"),
+    re.compile(r"IMPLEMENTATION-REGISTRY"),
+    re.compile(r"BUILD-STATUS"),
+    re.compile(r"(?:^|[/\s])\.claude/"),
+    re.compile(r"founder_context/"),
+)
+
+#: High-confidence credential shapes. Deliberately narrower than the redaction
+#: patterns used when persisting evidence: a scenario that exercises an
+#: authorization boundary legitimately posts something called "password", and
+#: refusing that would delete the whole authorization category. What is refused
+#: is material that looks like a *real* live credential.
+_SECRET_MATERIAL: tuple[re.Pattern[str], ...] = (
+    re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{16,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
+    re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}"),
+    # Reading a credential out of the environment, in any of the usual spellings.
+    re.compile(
+        r"\$\{?(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GITHUB_TOKEN|GH_TOKEN"
+        r"|[A-Z0-9_]*(?:_SECRET|_TOKEN|_PASSWORD|_API_KEY|_CREDENTIALS))\b"
+    ),
+)
+
+#: Upper bounds on anything a scenario can ask the executor to wait for. A
+#: generated plan cannot stall a run by proposing a ten-minute sleep.
+MAX_WAIT_MS = 60_000
+MAX_TIMEOUT_S = 900
+MIN_PURPOSE_CHARS = 20
+
+
+# --------------------------------------------------------------------------
+# The approved command set
+# --------------------------------------------------------------------------
+
+
+def _norm_command(command: str) -> str:
+    return re.sub(r"\s+", " ", (command or "").strip())
+
+
+#: Shell metacharacters that would let an approved prefix carry an unapproved
+#: tail. `pytest tests/` is approved; `pytest tests/ && git push` is not, and the
+#: difference is exactly these characters.
+_SHELL_COMPOSITION = re.compile(r"[;&|`\n]|\$\(|>>|>|<")
+
+
+class ApprovedCommands:
+    """Command strings a generated scenario is permitted to run.
+
+    The set is assembled from human-authored sources only: the commands already
+    written into the repository's scenario YAML files, plus anything explicitly
+    listed under ``scenario_generation.approved_commands`` in the driver config.
+    There is no built-in allowlist and no pattern language — a model chooses
+    *which* approved command runs *when*, and nothing more.
+
+    That is a real constraint, and it is the point. Generated scenarios get their
+    power from ordering, concurrency, repetition, restarts, HTTP payloads and
+    expectations; they do not get it from authoring shell.
+    """
+
+    def __init__(self, entries: Iterable[str]) -> None:
+        self.entries: tuple[str, ...] = tuple(
+            sorted({_norm_command(e) for e in entries if _norm_command(e)})
+        )
+
+    def __bool__(self) -> bool:
+        return bool(self.entries)
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    @classmethod
+    def from_sources(
+        cls,
+        *,
+        scenarios: Sequence[Scenario] = (),
+        configured: Sequence[str] = (),
+    ) -> "ApprovedCommands":
+        """Harvest every command a human already approved by writing it down."""
+        entries: list[str] = list(configured)
+        for scenario in scenarios:
+            entries.extend(scenario.setup)
+            entries.extend(scenario.teardown)
+            entries.extend(spec.run for spec in scenario.commands)
+            entries.extend(check.command for check in scenario.expect_state)
+            for step in scenario.steps:
+                if step.command is not None:
+                    entries.append(step.command.run)
+                if step.state_check is not None:
+                    entries.append(step.state_check.command)
+        return cls(entries)
+
+    def approves(self, command: str) -> tuple[bool, str]:
+        """Whether ``command`` may run, and why not when it may not."""
+        normalized = _norm_command(command)
+        if not normalized:
+            return False, "empty command"
+
+        guard = classify_command(normalized)
+        if guard is not None:
+            return False, f"hard-blocked command: {guard}"
+        ownership = classify_worktree_ownership(normalized)
+        if ownership is not None:
+            return False, f"worktree-ownership violation: {ownership}"
+
+        if not self.entries:
+            return False, (
+                "no approved commands are configured, so a generated scenario may not run "
+                "any command. Add commands under scenario_generation.approved_commands, or "
+                "write them into a scenario file first."
+            )
+
+        if normalized in self.entries:
+            return True, ""
+
+        for entry in self.entries:
+            if not normalized.startswith(entry):
+                continue
+            tail = normalized[len(entry) :]
+            if tail and not tail[0].isspace():
+                continue  # `pytest-x` is not `pytest `
+            if _SHELL_COMPOSITION.search(tail):
+                return False, (
+                    f"command extends the approved entry {entry!r} with shell composition "
+                    f"({tail.strip()!r}); only argument tails are permitted"
+                )
+            return True, ""
+
+        return False, (
+            f"command is not in the approved set: {normalized!r}. Generated scenarios may "
+            "only run commands a human already approved."
+        )
+
+    def resolve(self, commands: Iterable[str]) -> tuple[set[str], list[str]]:
+        """Split ``commands`` into the approved set and the refusal reasons."""
+        approved: set[str] = set()
+        reasons: list[str] = []
+        for command in commands:
+            ok, why = self.approves(command)
+            if ok:
+                approved.add(command)
+            else:
+                reasons.append(why)
+        return approved, reasons
+
+
+# --------------------------------------------------------------------------
+# Validation context
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class ValidationContext:
+    """Everything validation needs to judge a proposal, gathered by the planner."""
+
+    approved_commands: ApprovedCommands
+    #: Tokens that prove a requirement reference is grounded in repository
+    #: authority: the active unit id, its acceptance criteria, AC ids.
+    grounding_tokens: set[str] = field(default_factory=set)
+    #: Tokens that prove a product principle reference is grounded in founder
+    #: context: rubric category ids and never-acceptable/boundary ids.
+    principle_tokens: set[str] = field(default_factory=set)
+    #: Signatures of coverage that already exists (permanent + accepted).
+    existing_signatures: set[str] = field(default_factory=set)
+    existing_ids: set[str] = field(default_factory=set)
+    declared_services: set[str] = field(default_factory=set)
+    app_url: str = ""
+    local_hosts: frozenset[str] = DEFAULT_LOCAL_HOSTS
+    #: When False, a browser scenario still validates — the suite reports it as
+    #: SKIPPED with a reason, which is honest coverage reporting rather than a
+    #: silent gap.
+    browser_enabled: bool = True
+
+    def grounds_requirement(self, reference: str) -> bool:
+        text = (reference or "").strip().lower()
+        if not text:
+            return False
+        if re.search(r"\bAC-[A-Z]+-\d+\b", reference):
+            return True
+        return any(token and token in text for token in self.grounding_tokens)
+
+    def grounds_principle(self, reference: str) -> bool:
+        text = (reference or "").strip().lower()
+        if not text:
+            return False
+        return any(token and token in text for token in self.principle_tokens)
+
+
+def grounding_tokens_from(unit: object | None) -> set[str]:
+    """Lowercase tokens proving a reference names something the repository says."""
+    tokens: set[str] = set()
+    if unit is None:
+        return tokens
+    unit_id = str(getattr(unit, "unit_id", "") or "").strip().lower()
+    if unit_id:
+        tokens.add(unit_id)
+    name = str(getattr(unit, "name", "") or "").strip().lower()
+    if len(name) >= 4:
+        tokens.add(name)
+    for criterion in getattr(unit, "acceptance_criteria", None) or []:
+        if isinstance(criterion, dict):
+            label = str(criterion.get("criterion", "") or "").strip().lower()
+            if len(label) >= 4:
+                tokens.add(label)
+    return tokens
+
+
+def principle_tokens_from(founder: object | None) -> set[str]:
+    """Lowercase rubric ids a product-principle reference may name."""
+    tokens: set[str] = {"product rubric", "founder context"}
+    if founder is None:
+        return tokens
+    rubric = getattr(founder, "rubric", None)
+    if not isinstance(rubric, dict):
+        return tokens
+    for key in ("categories", "never_acceptable", "ask_user_boundaries"):
+        for item in rubric.get(key, []) or []:
+            if isinstance(item, dict):
+                ident = str(item.get("id", "") or "").strip().lower()
+                if ident:
+                    tokens.add(ident)
+    return tokens
+
+
+# --------------------------------------------------------------------------
+# Validation
+# --------------------------------------------------------------------------
+
+
+def validate_scenario(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """Return every reason ``generated`` must be refused. Empty means accepted."""
+    reasons: list[str] = []
+    reasons += _check_safety(generated, context)
+    reasons += _check_quality(generated, context)
+    return reasons
+
+
+def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
+    reasons: list[str] = []
+
+    # -- commands: approved set only, and never a hard-blocked action -------
+    for command in generated.command_strings():
+        ok, why = context.approved_commands.approves(command)
+        if not ok:
+            reasons.append(f"unsafe or unapproved operation: {why}")
+
+    # -- credential material anywhere in the proposal ----------------------
+    for text in _all_strings(generated):
+        for pattern in _SECRET_MATERIAL:
+            if pattern.search(text):
+                reasons.append(
+                    "scenario depends on credential material or a credential environment "
+                    f"variable ({pattern.pattern[:40]}...); scenarios never handle secrets"
+                )
+                break
+        if is_secret_path(text):
+            reasons.append(f"scenario references a secret/credential path ({text[:80]})")
+
+    # -- repository authority is never a scenario's target -----------------
+    for text in _all_strings(generated):
+        for pattern in _AUTHORITY_PATTERNS:
+            if pattern.search(text):
+                reasons.append(
+                    "scenario would touch repository authority "
+                    f"({pattern.pattern}); authority is read, never exercised"
+                )
+                break
+
+    # -- HTTP: loopback only ------------------------------------------------
+    for request in _all_requests(generated):
+        target = request.url or ""
+        if target:
+            problem = _local_url_problem(target, context.local_hosts)
+            if problem:
+                reasons.append(f"unsupported external effect: {problem}")
+        elif request.path:
+            if not context.app_url:
+                reasons.append(
+                    f"request {request.path!r} is relative but no base scenario supplies an "
+                    "app_url, so there is nothing local to address"
+                )
+            else:
+                problem = _local_url_problem(context.app_url, context.local_hosts)
+                if problem:
+                    reasons.append(f"unsupported external effect: {problem}")
+        else:
+            reasons.append("a request action names neither a url nor a path")
+        if request.timeout_s is not None and not 0 < request.timeout_s <= MAX_TIMEOUT_S:
+            reasons.append(f"request timeout {request.timeout_s}s is outside 1..{MAX_TIMEOUT_S}s")
+
+    # -- browser: relative or loopback navigation only ---------------------
+    for action in generated.actions:
+        for step in action.browser_steps:
+            if step.goto and step.goto.startswith(("http://", "https://")):
+                problem = _local_url_problem(step.goto, context.local_hosts)
+                if problem:
+                    reasons.append(f"unsupported external navigation: {problem}")
+
+    # -- services: only what the base scenario declared --------------------
+    unknown = sorted(set(generated.service_refs) - context.declared_services)
+    if unknown:
+        reasons.append(
+            "scenario references service(s) no base scenario declares: " + ", ".join(unknown)
+        )
+    for action in generated.actions:
+        if action.kind in {"restart_service", "stop_service", "start_service"}:
+            if action.service not in generated.service_refs:
+                reasons.append(
+                    f"{action.kind} names service {action.service!r}, which the scenario "
+                    "does not declare in service_refs"
+                )
+
+    # -- fixtures: a name, never a path ------------------------------------
+    for action in generated.actions:
+        if action.kind != "fixture":
+            continue
+        name = action.fixture_name
+        if not name or "/" in name or "\\" in name or ".." in name or Path(name).is_absolute():
+            reasons.append(
+                f"fixture name {name!r} must be a bare filename; fixtures are written "
+                "into the run's evidence directory and nowhere else"
+            )
+
+    # -- bounded waits and timeouts ----------------------------------------
+    for action in generated.actions:
+        if action.kind == "wait" and not 0 <= (action.wait_ms or 0) <= MAX_WAIT_MS:
+            reasons.append(f"wait of {action.wait_ms}ms exceeds the {MAX_WAIT_MS}ms bound")
+        if action.timeout_s is not None and not 0 < action.timeout_s <= MAX_TIMEOUT_S:
+            reasons.append(f"timeout {action.timeout_s}s is outside 1..{MAX_TIMEOUT_S}s")
+
+    return _dedupe(reasons)
+
+
+def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
+    reasons: list[str] = []
+
+    if not generated.actions:
+        reasons.append("scenario performs no actions, so it observes nothing")
+
+    # -- grounding ---------------------------------------------------------
+    if not generated.requirement_reference.strip():
+        reasons.append("no requirement_reference: a scenario must name what it verifies")
+    elif not context.grounds_requirement(generated.requirement_reference):
+        reasons.append(
+            f"requirement_reference {generated.requirement_reference!r} does not name the "
+            "active unit, one of its acceptance criteria, or an AC-<AREA>-<nnn> id — a "
+            "scenario may not invent a product requirement"
+        )
+    if not generated.product_principle_reference.strip():
+        reasons.append("no product_principle_reference")
+    elif not context.grounds_principle(generated.product_principle_reference):
+        reasons.append(
+            f"product_principle_reference {generated.product_principle_reference!r} does not "
+            "name a founder rubric category"
+        )
+    if len((generated.purpose or "").strip()) < MIN_PURPOSE_CHARS and not generated.rationale.strip():
+        reasons.append(
+            "scenario states neither a purpose nor a rationale, so its risk basis is unknown"
+        )
+
+    # -- observability -----------------------------------------------------
+    if not generated.has_observable_outcome():
+        reasons.append(
+            "scenario declares no observable outcome: nothing it does could pass or fail"
+        )
+
+    # -- an effect claim needs an oracle -----------------------------------
+    if generated.risk_category in EFFECT_FAMILY and not generated.inspects_persisted_state():
+        reasons.append(
+            f"a {generated.risk_category.value} scenario asserts something about whether an "
+            "effect durably happened, but inspects no persisted state. An HTTP status or a "
+            "local response is not evidence that the underlying outcome occurred."
+        )
+
+    # -- cleanup / isolation ----------------------------------------------
+    if generated.mutates_local_state() and not (generated.cleanup or generated.isolation_note.strip()):
+        reasons.append(
+            "scenario mutates local state but declares neither cleanup commands nor an "
+            "isolation strategy, so it would contaminate every scenario after it"
+        )
+
+    # -- duplicate coverage -------------------------------------------------
+    if generated.signature() in context.existing_signatures:
+        reasons.append(
+            "duplicate: this exercises the same situation with the same expectations as "
+            "coverage that already exists, and adds nothing"
+        )
+    if generated.id in context.existing_ids:
+        reasons.append(f"scenario id {generated.id!r} is already used in this run")
+
+    # -- regression scope ---------------------------------------------------
+    if generated.risk_category is RiskCategory.REGRESSION:
+        if not (generated.provenance.diff_files_consulted or generated.generated_from):
+            reasons.append(
+                "a regression scenario must name the diff or prior evidence that puts the "
+                "behaviour it guards inside this task's scope"
+            )
+
+    return _dedupe(reasons)
+
+
+def validate_plan(
+    scenarios: Sequence[GeneratedScenario], context: ValidationContext
+) -> tuple[list[GeneratedScenario], list[tuple[GeneratedScenario, list[str]]]]:
+    """Validate a batch, refusing later duplicates of earlier accepted entries.
+
+    Returns ``(accepted, [(refused, reasons), ...])``. Order is preserved so the
+    first of two identical proposals wins, which keeps the outcome deterministic
+    for a given batch.
+    """
+    accepted: list[GeneratedScenario] = []
+    refused: list[tuple[GeneratedScenario, list[str]]] = []
+    seen_signatures = set(context.existing_signatures)
+    seen_ids = set(context.existing_ids)
+
+    for scenario in scenarios:
+        local = ValidationContext(
+            approved_commands=context.approved_commands,
+            grounding_tokens=context.grounding_tokens,
+            principle_tokens=context.principle_tokens,
+            existing_signatures=seen_signatures,
+            existing_ids=seen_ids,
+            declared_services=context.declared_services,
+            app_url=context.app_url,
+            local_hosts=context.local_hosts,
+            browser_enabled=context.browser_enabled,
+        )
+        reasons = validate_scenario(scenario, local)
+        if reasons:
+            refused.append((scenario, reasons))
+            continue
+        accepted.append(scenario)
+        seen_signatures.add(scenario.signature())
+        seen_ids.add(scenario.id)
+    return accepted, refused
+
+
+def plan_signatures(plan: GeneratedScenarioPlan | None) -> set[str]:
+    return plan.signatures() if plan is not None else set()
+
+
+def permanent_signatures(scenarios: Sequence[Scenario]) -> set[str]:
+    """Coverage signatures for handwritten scenarios, for duplicate detection.
+
+    Built with the same :func:`~neyma_product_driver.scenario_plan.coverage_signature`
+    a generated scenario uses, so a proposal that merely restates a permanent
+    scenario's operations and expectations is refused as a duplicate.
+    """
+    from .scenario_plan import _norm, coverage_signature
+
+    out: set[str] = set()
+    for scenario in scenarios:
+        # `expect_state` is the phase form's *trailing* state check, which is
+        # what a generated scenario's `persisted_state_checks` compiles to. It
+        # therefore contributes to the state commands, not to the ordered
+        # actions — an inline, ordered state_check is a different situation and
+        # must not collide with it.
+        actions = [f"command:{_norm(c.run)}" for c in scenario.commands]
+        actions += [
+            f"request:{r.method.upper()}:{_norm(r.url or r.path or '')}" for r in scenario.requests
+        ]
+        out.add(
+            coverage_signature(
+                actions=actions,
+                expected=scenario.expect_visible,
+                forbidden=scenario.forbidden,
+                state_commands=[c.command for c in scenario.expect_state],
+            )
+        )
+    return out
+
+
+# --------------------------------------------------------------------------
+# helpers
+# --------------------------------------------------------------------------
+
+
+def _local_url_problem(url: str, local_hosts: frozenset[str]) -> str:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return f"unparseable url {url!r}"
+    if parsed.scheme not in {"http", "https", ""}:
+        return f"unsupported scheme {parsed.scheme!r} in {url!r}"
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return f"url {url!r} names no host"
+    if host not in local_hosts:
+        return (
+            f"url {url!r} addresses {host!r}, which is not loopback. Scenarios operate the "
+            "locally running product and never produce an external effect."
+        )
+    return ""
+
+
+def _all_requests(generated: GeneratedScenario) -> list[GeneratedRequest]:
+    out: list[GeneratedRequest] = []
+    for action in generated.actions:
+        if action.request is not None:
+            out.append(action.request)
+        out.extend(action.requests)
+    return out
+
+
+def _all_strings(generated: GeneratedScenario) -> list[str]:
+    """Every free-text field that could smuggle a path, a host or a credential."""
+    out: list[str] = list(generated.command_strings())
+    for action in generated.actions:
+        out.append(action.fixture_name)
+        out.append(action.fixture_content)
+        for request in [action.request, *action.requests]:
+            if request is None:
+                continue
+            out.append(request.url)
+            out.append(request.path)
+            out.append(request.body)
+            out.extend(request.headers.values())
+            if request.json_body is not None:
+                out.append(str(request.json_body))
+        for step in action.browser_steps:
+            out.extend(
+                s for s in (step.goto, step.click, step.fill, step.value, step.wait_for) if s
+            )
+    return [s for s in out if s]
+
+
+def _dedupe(reasons: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for reason in reasons:
+        if reason not in seen:
+            seen.add(reason)
+            out.append(reason)
+    return out
+
+
+__all__ = [
+    "ApprovedCommands",
+    "DEFAULT_LOCAL_HOSTS",
+    "Priority",
+    "ValidationContext",
+    "grounding_tokens_from",
+    "permanent_signatures",
+    "plan_signatures",
+    "principle_tokens_from",
+    "validate_plan",
+    "validate_scenario",
+]

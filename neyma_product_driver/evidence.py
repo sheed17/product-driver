@@ -202,6 +202,12 @@ class EvidenceStore:
                 },
             )
 
+        if record.suite:
+            # The aggregate. Per-scenario artifacts already live under
+            # iteration-NN/scenarios/<scenario-id>/, and each outcome in here
+            # carries that path, so evidence and scenario ids stay linked.
+            self.write_json(rel / "suite-result.json", record.suite)
+
         if record.context_provenance:
             self.write_json(rel / "context-provenance.json", record.context_provenance)
 
