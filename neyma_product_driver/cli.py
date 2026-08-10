@@ -20,7 +20,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol, Sequence
 
 from pydantic import ValidationError
 
@@ -69,11 +69,14 @@ from .scenario_planner import (
     diff_stat,
     record_promotion_candidates,
 )
+from .scenario_gate import evaluate_gate
 from .scenario_suite import (
     Origin,
+    Outcome,
     ScenarioSuite,
     SuiteExecutor,
     SuiteResult,
+    build_failure_evidence,
     build_suite,
     select_rerun,
 )
@@ -320,6 +323,8 @@ async def run_control_loop(
             )
 
         # 3. operate the product
+        suite: ScenarioSuite | None = None
+        suite_executor: SuiteExecutor | None = None
         if planner is None:
             emit(f"→ running scenario '{scenario.name}' ({scenario.mode})...")
             executor = make_executor(store.iteration_dir(iteration))
@@ -344,6 +349,8 @@ async def run_control_loop(
                     browser_enabled=config.run.browser_enabled,
                     execution_budget_s=config.scenario_generation.execution_budget_s,
                     max_parallel=config.scenario_generation.max_parallel,
+                    run_id=state.run_id,
+                    iteration=iteration,
                     emit=emit,
                 )
 
@@ -355,7 +362,7 @@ async def run_control_loop(
             # regression set now rather than discovering the gap after the
             # evaluator has already said yes. A fresh executor, so the widened
             # pass's results and evidence are the ones that get recorded.
-            if suite_result.everything_required_passed and not suite_result.full_run:
+            if suite_result.executed_required_all_passed and not suite_result.full_run:
                 emit("→ narrowed suite is green; running the full required regression set...")
                 suite_executor = new_suite_executor()
                 suite_result = await suite_executor.run(
@@ -375,6 +382,11 @@ async def run_control_loop(
                 record.suite,
             )
 
+            # Persisted before the evaluator is consulted: if this iteration dies
+            # later, a resumed run still knows what already ran.
+            planner.note_executed(
+                [o.scenario_id for o in suite_result.outcomes if o.outcome is not Outcome.SKIPPED]
+            )
             _record_defects(defects, suite_result, suite_executor, iteration)
             newly_promotable = record_promotion_candidates(
                 ledger=ledger,
@@ -603,7 +615,15 @@ async def run_control_loop(
         #     not get to overrule what the suite measured. Deliberately last, so
         #     protocol and completion-audit precedence stay exactly as they were.
         if suite_result is not None:
-            decision = _apply_suite_precedence(suite_result, decision, scenario.name, emit)
+            decision = _apply_suite_precedence(
+                suite_result,
+                decision,
+                scenario.name,
+                emit,
+                generation_problems=(
+                    planner.generation_problems() if planner is not None else ()
+                ),
+            )
 
         record.decision = decision
         _print_decision(decision, emit)
@@ -632,7 +652,18 @@ async def run_control_loop(
         #     coverage it has rather than generating forever.
         if planner is not None and suite_result is not None:
             requests = list(decision.scenario_requests)
-            failures = [f.brief() for f in suite_result.failures()]
+            # The structured brief, not one truncated line per failure: what was
+            # expected, every assertion that failed, and the output the product
+            # actually produced. A generator shown "an expectation failed" cannot
+            # target the risk that failure revealed.
+            diff_now = changed_files(config.neyma_repo)
+            failures = (
+                build_failure_evidence(
+                    suite, suite_result, suite_executor.results, diff_files=diff_now
+                )
+                if suite is not None and suite_executor is not None
+                else []
+            )
             if (failures or requests) and not planner.budget_exhausted():
                 emit("→ expanding verification around what failed...")
                 planner.expand_after_failures(
@@ -642,7 +673,7 @@ async def run_control_loop(
                     clusters=suite_result.clusters,
                     investigation_findings=_investigation_findings(record),
                     evaluator_requests=requests,
-                    diff_files=changed_files(config.neyma_repo),
+                    diff_files=diff_now,
                 )
             elif (failures or requests) and planner.budget_exhausted():
                 note = (
@@ -783,6 +814,7 @@ def _apply_suite_precedence(
     decision: EvaluatorDecision,
     scenario_name: str,
     emit: Callable[[str], None],
+    generation_problems: Sequence[str] = (),
 ) -> EvaluatorDecision:
     """A required scenario that failed cannot be accepted away.
 
@@ -799,11 +831,15 @@ def _apply_suite_precedence(
     if decision.decision is not Decision.ACCEPT:
         return decision
 
-    blocking = suite_result.blocking_failures()
-    if not blocking and suite_result.full_run:
+    # The authoritative gate. It recomputes from the outcome records, so a
+    # required scenario that failed, was skipped, never ran, or cannot show its
+    # evidence all reach here the same way: not verified.
+    verdict = evaluate_gate(suite_result, generation_problems=generation_problems)
+
+    if not verdict.blocks_acceptance and suite_result.full_run:
         return decision
 
-    if not blocking and not suite_result.full_run:
+    if not verdict.blocks_acceptance and not suite_result.full_run:
         emit("  an ACCEPT cannot rest on a partial suite; the full required set did not run.")
         return EvaluatorDecision(
             decision=Decision.BLOCKED,
@@ -814,6 +850,26 @@ def _apply_suite_precedence(
             problems=[suite_result.selection_reason],
             observed_behavior=decision.observed_behavior,
             evidence_paths=[o.evidence_path for o in suite_result.outcomes if o.evidence_path][:12],
+        )
+
+    blocking = suite_result.blocking_failures()
+    if not blocking:
+        # Nothing the product did is wrong as far as anyone knows — the
+        # verification simply did not happen. There is no grounded correction to
+        # send a builder, and inventing one would send it chasing a defect no
+        # evidence describes. This is a blocked run, not a failing product.
+        emit("  product evaluation ACCEPTed, but required verification did not run.")
+        for line in verdict.summary_block().splitlines():
+            emit(f"  {line}")
+        return EvaluatorDecision(
+            decision=Decision.BLOCKED,
+            summary=(
+                f"The product evaluation accepted, but {len(verdict.unverified)} required "
+                "scenario(s) never established a pass, so there is no evidence to accept on."
+            ),
+            problems=[c.brief() for c in verdict.unverified] + list(verdict.generation_problems),
+            observed_behavior=decision.observed_behavior,
+            evidence_paths=[c.evidence_path for c in verdict.unverified if c.evidence_path][:12],
         )
 
     emit(f"  product evaluation ACCEPTed, but {len(blocking)} required scenario(s) failed.")
@@ -1335,7 +1391,7 @@ def _make_planner(
 
     from .scenario_generator import LLMScenarioReasoner
 
-    return ScenarioPlanner(
+    planner = ScenarioPlanner(
         repo=config.neyma_repo,
         config=config.scenario_generation,
         reasoner=LLMScenarioReasoner(
@@ -1345,8 +1401,14 @@ def _make_planner(
         base_scenario=scenario,
         permanent_scenarios=_permanent_scenarios(config),
         founder=founder,
+        browser_enabled=config.run.browser_enabled,
         emit=emit,
     )
+    # Resuming continues the plan the run already made. Without this the planner
+    # began again at wave zero, regenerated what it had already decided, spent a
+    # fresh wave budget, and overwrote the earlier plan on the next persist.
+    planner.restore_from_store()
+    return planner
 
 
 async def cmd_scenarios_plan(args: argparse.Namespace) -> int:
@@ -1455,9 +1517,32 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
         error(str(exc))
         return 2
 
+    from .scenario_validation import ValidationContext, safety_reasons
+
     approved = _approved_commands(config, base)
+    # Replay is not a trusted path. The plan on disk was validated when it was
+    # made, but the file is editable and the repository has moved since; a
+    # scenario is re-validated here for the same reason it was validated the
+    # first time, so that no execution path reaches the product unchecked.
+    context = ValidationContext(
+        approved_commands=approved,
+        declared_services={s.name for s in base.services},
+        app_url=base.app_url,
+        local_hosts=frozenset(config.scenario_generation.local_http_hosts),
+        browser_enabled=config.run.browser_enabled,
+        known_failure_ids=set(plan.observed_failure_ids),
+        known_cluster_ids=set(plan.observed_cluster_ids),
+        # Grounding was established when the plan was generated against the
+        # repository of the day; replay re-checks safety, not authorship.
+        grounding_tokens=set(),
+        principle_tokens=set(),
+    )
     compiled: list[tuple[Any, Scenario]] = []
     for model in plan.scenarios:
+        unsafe = safety_reasons(model, context)
+        if unsafe:
+            warn(f"refusing to replay {model.id}: {unsafe[0]}")
+            continue
         allowed, _refusals = approved.resolve(model.command_strings())
         try:
             compiled.append((model, compile_to_scenario(model, base=base, approved_commands=allowed)))
@@ -1486,8 +1571,11 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
 
     out("")
     out(result.summary_block())
+    verdict = evaluate_gate(result)
+    out("")
+    out(verdict.summary_block())
     out(f"\nevidence: {artifact_root}")
-    return 0 if result.everything_required_passed else 20
+    return 20 if verdict.blocks_acceptance else 0
 
 
 def _approved_commands(config: DriverConfig, base: Scenario) -> Any:

@@ -27,7 +27,7 @@ wave record, so a rejected proposal is visible evidence rather than a silent gap
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 from urllib.parse import urlparse
@@ -92,14 +92,91 @@ MIN_PURPOSE_CHARS = 20
 # --------------------------------------------------------------------------
 
 
+#: Any control character. Checked on the *raw* string before normalization,
+#: because normalization collapses whitespace and a newline is whitespace: a
+#: scanner that runs after it can never see the one character that most reliably
+#: turns one approved command into two. Tab is included — no command needs one,
+#: and allowing it only widens what has to be reasoned about.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f  ]")
+
+
+def _control_character_problem(command: str) -> str:
+    """Refuse control characters before anything else touches the string."""
+    match = _CONTROL_CHARS.search(command or "")
+    if not match:
+        return ""
+    return (
+        f"command contains the control character {match.group(0)!r} "
+        f"(U+{ord(match.group(0)):04X}); a command is a single line of ordinary text"
+    )
+
+
 def _norm_command(command: str) -> str:
+    """Collapse whitespace runs. Only ever called after control chars are refused,
+    so this can no longer hide a separator inside what looks like a space."""
     return re.sub(r"\s+", " ", (command or "").strip())
 
 
-#: Shell metacharacters that would let an approved prefix carry an unapproved
-#: tail. `pytest tests/` is approved; `pytest tests/ && git push` is not, and the
-#: difference is exactly these characters.
-_SHELL_COMPOSITION = re.compile(r"[;&|`\n]|\$\(|>>|>|<")
+#: Shell syntax that composes one command out of several, or substitutes the
+#: output of another. Detected positionally and quote-aware by
+#: :func:`scan_shell_operators` — never by scanning raw text, because
+#: ``sqlite3 db "SELECT ... HAVING count(*) > 1"`` contains four of these
+#: characters and composes nothing at all.
+_OPERATOR_CHARS = frozenset(";&|<>()")
+
+
+def scan_shell_operators(command: str) -> tuple[list[tuple[int, str]], bool]:
+    """Locate shell composition operators that are *outside* quotes.
+
+    Returns ``([(index, operator), ...], quotes_unbalanced)``.
+
+    Quoting decides meaning, so quoting is tracked rather than pattern-matched:
+
+    * inside single quotes nothing expands, so nothing is an operator;
+    * inside double quotes ``$(`` and a backtick still substitute, so those are
+      operators there, while ``>``, ``|``, ``;`` and parentheses are literal;
+    * outside quotes every operator character composes.
+
+    A backslash escapes the next character except inside single quotes. Unbalanced
+    quotes are reported rather than guessed at — a command whose quoting does not
+    close means something different than it appears to, and is refused.
+    """
+    found: list[tuple[int, str]] = []
+    in_single = in_double = False
+    index, length = 0, len(command)
+
+    while index < length:
+        char = command[index]
+
+        if char == "\\" and not in_single:
+            index += 2
+            continue
+        if char == "'" and not in_double:
+            in_single = not in_single
+            index += 1
+            continue
+        if char == '"' and not in_single:
+            in_double = not in_double
+            index += 1
+            continue
+
+        # Substitution survives double quotes; it is only inert inside single ones.
+        if not in_single:
+            if command.startswith("$(", index):
+                found.append((index, "$("))
+                index += 2
+                continue
+            if char == "`":
+                found.append((index, "`"))
+                index += 1
+                continue
+
+        if not in_single and not in_double and char in _OPERATOR_CHARS:
+            found.append((index, char))
+
+        index += 1
+
+    return found, (in_single or in_double)
 
 
 class ApprovedCommands:
@@ -150,6 +227,13 @@ class ApprovedCommands:
 
     def approves(self, command: str) -> tuple[bool, str]:
         """Whether ``command`` may run, and why not when it may not."""
+        # Order matters. Control characters are refused against the raw string,
+        # before normalization, because normalization would turn a newline into
+        # a space and hide the composition entirely.
+        control = _control_character_problem(command)
+        if control:
+            return False, control
+
         normalized = _norm_command(command)
         if not normalized:
             return False, "empty command"
@@ -168,6 +252,15 @@ class ApprovedCommands:
                 "write them into a scenario file first."
             )
 
+        operators, unbalanced = scan_shell_operators(normalized)
+        if unbalanced:
+            return False, (
+                f"command has unbalanced quoting ({normalized[:80]!r}); what it would "
+                "actually run cannot be determined, so it is refused"
+            )
+
+        # A human wrote this exact string into a scenario file or the config. It
+        # is approved as written, composition and all — that is a human's call.
         if normalized in self.entries:
             return True, ""
 
@@ -177,10 +270,14 @@ class ApprovedCommands:
             tail = normalized[len(entry) :]
             if tail and not tail[0].isspace():
                 continue  # `pytest-x` is not `pytest `
-            if _SHELL_COMPOSITION.search(tail):
+            # Only operators the *tail* introduces are the model's doing; any that
+            # fall inside the human-approved prefix were already approved.
+            introduced = [op for position, op in operators if position >= len(entry)]
+            if introduced:
                 return False, (
                     f"command extends the approved entry {entry!r} with shell composition "
-                    f"({tail.strip()!r}); only argument tails are permitted"
+                    f"({', '.join(sorted(set(introduced)))} outside quotes); only argument "
+                    "tails are permitted"
                 )
             return True, ""
 
@@ -221,6 +318,11 @@ class ValidationContext:
     #: Signatures of coverage that already exists (permanent + accepted).
     existing_signatures: set[str] = field(default_factory=set)
     existing_ids: set[str] = field(default_factory=set)
+    #: Scenario ids that actually failed in this run, and the cluster ids those
+    #: failures were grouped into. An adaptive scenario may only cite these:
+    #: they are the evidence it claims to be responding to.
+    known_failure_ids: set[str] = field(default_factory=set)
+    known_cluster_ids: set[str] = field(default_factory=set)
     declared_services: set[str] = field(default_factory=set)
     app_url: str = ""
     local_hosts: frozenset[str] = DEFAULT_LOCAL_HOSTS
@@ -292,7 +394,97 @@ def validate_scenario(
     reasons: list[str] = []
     reasons += _check_safety(generated, context)
     reasons += _check_quality(generated, context)
+    reasons += _check_provenance(generated, context)
     return reasons
+
+
+#: The stages that may produce a scenario. Anything else is not a stage the
+#: planner runs, so a scenario claiming one did not come from this system.
+_KNOWN_STAGES = frozenset({"initial", "diff_refinement", "adaptive"})
+
+
+def _check_provenance(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
+    """A scenario must be able to answer "why did Product Driver test this?".
+
+    Provenance is load-bearing, not decoration: it is what lets a reader of
+    ``scenario-plan.json`` reconstruct the decision months later without the
+    model conversation. A scenario that cannot say which run generated it, at
+    which wave, from which repository state, and — when it claims to be a
+    response to a failure — *which* failure, is refused here rather than
+    executed and cited as evidence of something.
+    """
+    reasons: list[str] = []
+    provenance = generated.provenance
+
+    # Deliberately the fields that are always derivable from the run itself.
+    # ``repository_head`` is recorded and rendered, but is not a refusal
+    # condition: a target that is not a git checkout has no head, and refusing
+    # every scenario there would punish the proposal for the environment rather
+    # than for anything about the proposal.
+    missing = [
+        label
+        for label, value in (
+            ("run/task identity (task_hash)", provenance.task_hash),
+            ("generation stage", provenance.stage),
+            ("generation source (model or session_id)", provenance.model or provenance.session_id),
+        )
+        if not str(value).strip()
+    ]
+    if missing:
+        reasons.append(
+            "scenario carries no usable provenance, so nothing records why it exists: "
+            + ", ".join(missing)
+        )
+
+    if provenance.stage and provenance.stage not in _KNOWN_STAGES:
+        reasons.append(
+            f"scenario claims generation stage {provenance.stage!r}, which is not a stage "
+            f"this planner runs ({', '.join(sorted(_KNOWN_STAGES))})"
+        )
+
+    if provenance.wave < 1:
+        reasons.append(
+            f"scenario records generation wave {provenance.wave}, but waves are numbered "
+            "from 1; an unnumbered wave cannot be located in the run"
+        )
+
+    if not (provenance.generating_risk.strip() or generated.rationale.strip()):
+        reasons.append(
+            "scenario states neither a generating risk nor a rationale, so the risk it "
+            "was meant to cover cannot be recovered"
+        )
+
+    # An adaptive scenario exists *because something failed*. If it cannot name
+    # what, it is an ordinary proposal wearing an adaptive label, and the claim
+    # that verification responded to evidence would be unfounded.
+    if provenance.stage == "adaptive":
+        named = list(provenance.source_failures) + list(provenance.source_clusters)
+        if not named:
+            reasons.append(
+                "adaptive scenario names no source failure or failure cluster; an adaptive "
+                "case must record which observed failure caused it"
+            )
+        else:
+            known = context.known_failure_ids | context.known_cluster_ids
+            unknown = sorted(set(named) - known) if known else []
+            if unknown:
+                reasons.append(
+                    "adaptive scenario cites failure/cluster id(s) that this run never "
+                    f"observed: {', '.join(unknown)}"
+                )
+
+    return _dedupe(reasons)
+
+
+def safety_reasons(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
+    """Only the "may this run at all?" half of validation.
+
+    Used by paths that re-check a plan which was already judged for quality when
+    it was generated — replay, principally. Grounding and duplication are
+    authorship questions and are settled at generation time; safety is a
+    property of the moment of execution and is re-established every time.
+    """
+    return _check_safety(generated, context)
 
 
 def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
@@ -328,23 +520,18 @@ def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> l
 
     # -- HTTP: loopback only ------------------------------------------------
     for request in _all_requests(generated):
-        target = request.url or ""
-        if target:
-            problem = _local_url_problem(target, context.local_hosts)
-            if problem:
-                reasons.append(f"unsupported external effect: {problem}")
-        elif request.path:
-            if not context.app_url:
-                reasons.append(
-                    f"request {request.path!r} is relative but no base scenario supplies an "
-                    "app_url, so there is nothing local to address"
-                )
-            else:
-                problem = _local_url_problem(context.app_url, context.local_hosts)
-                if problem:
-                    reasons.append(f"unsupported external effect: {problem}")
-        else:
-            reasons.append("a request action names neither a url nor a path")
+        control = _control_character_problem(request.url or request.path or "")
+        if control:
+            reasons.append(f"unsupported request target: {control}")
+            continue
+        _target, problem = resolve_http_target(
+            app_url=context.app_url,
+            url=request.url or "",
+            path=request.path or "",
+            local_hosts=context.local_hosts,
+        )
+        if problem:
+            reasons.append(f"unsupported external effect: {problem}")
         if request.timeout_s is not None and not 0 < request.timeout_s <= MAX_TIMEOUT_S:
             reasons.append(f"request timeout {request.timeout_s}s is outside 1..{MAX_TIMEOUT_S}s")
 
@@ -474,16 +661,12 @@ def validate_plan(
     seen_ids = set(context.existing_ids)
 
     for scenario in scenarios:
-        local = ValidationContext(
-            approved_commands=context.approved_commands,
-            grounding_tokens=context.grounding_tokens,
-            principle_tokens=context.principle_tokens,
-            existing_signatures=seen_signatures,
-            existing_ids=seen_ids,
-            declared_services=context.declared_services,
-            app_url=context.app_url,
-            local_hosts=context.local_hosts,
-            browser_enabled=context.browser_enabled,
+        # Copied wholesale, with only the running duplicate-detection state
+        # replaced. Listing the fields by hand silently dropped every field
+        # added later, which is how an adaptive scenario citing a failure that
+        # never happened came to be admitted.
+        local = replace(
+            context, existing_signatures=seen_signatures, existing_ids=seen_ids
         )
         reasons = validate_scenario(scenario, local)
         if reasons:
@@ -533,6 +716,59 @@ def permanent_signatures(scenarios: Sequence[Scenario]) -> set[str]:
 # --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
+
+
+#: A leading scheme (``https:``, ``file:``, ``javascript:``) anywhere a *relative*
+#: path is expected. ``scenarios._join_url`` returns such a string verbatim, so a
+#: path that carries a scheme silently replaces the approved base URL.
+_HAS_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
+
+
+def resolve_http_target(
+    *, app_url: str, url: str, path: str, local_hosts: frozenset[str]
+) -> tuple[str, str]:
+    """Resolve what a generated request would actually address.
+
+    Returns ``(target, problem)``. A non-empty problem means refuse.
+
+    This is the single place that decides a generated request's destination, and
+    both validation and compilation call it, so the executor can never be handed
+    a target that nothing checked. ``path`` is deliberately *not* trusted to be
+    relative: an absolute or scheme-relative path overrides the approved base URL
+    entirely, which is exactly the bypass this closes.
+    """
+    if url and path:
+        return "", "a request names both a url and a path; only one may decide the target"
+
+    if url:
+        return url, _local_url_problem(url, local_hosts)
+
+    if not path:
+        return "", "a request action names neither a url nor a path"
+
+    # A relative path is the only supported shape. Anything that can re-point the
+    # request away from the approved base is refused rather than normalized —
+    # normalizing an attack into something safe-looking hides the intent.
+    if _HAS_SCHEME.match(path):
+        return "", (
+            f"request path {path[:80]!r} carries a URL scheme, so it would replace the "
+            "approved base URL. A generated request path must be relative."
+        )
+    if path.startswith("//") or path.startswith("\\\\"):
+        return "", (
+            f"request path {path[:80]!r} is scheme-relative, so it would address another "
+            "host. A generated request path must be relative."
+        )
+    if not app_url:
+        return "", (
+            f"request {path!r} is relative but no base scenario supplies an app_url, so "
+            "there is nothing local to address"
+        )
+
+    problem = _local_url_problem(app_url, local_hosts)
+    if problem:
+        return "", problem
+    return app_url.rstrip("/") + "/" + path.lstrip("/"), ""
 
 
 def _local_url_problem(url: str, local_hosts: frozenset[str]) -> str:

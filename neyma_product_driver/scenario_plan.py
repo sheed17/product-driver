@@ -343,6 +343,15 @@ class ScenarioProvenance(BaseModel):
     prior_failures_consulted: list[str] = Field(default_factory=list)
     #: The identified risk that caused this scenario to be generated.
     generating_risk: str = ""
+    #: The specific failures this scenario was generated in response to, by
+    #: scenario id. An adaptive scenario that cannot name one was not actually
+    #: caused by the evidence, and validation refuses it: without this edge
+    #: "which failure produced this case?" is unanswerable from the plan alone,
+    #: because every scenario in a wave otherwise shares one flat basis list.
+    source_failures: list[str] = Field(default_factory=list)
+    #: Failure-cluster ids (``C01``…) this scenario answers, when the failures
+    #: it responds to were grouped as sharing one cause.
+    source_clusters: list[str] = Field(default_factory=list)
     #: Which stage produced it: initial, diff_refinement, adaptive.
     stage: str = ""
     wave: int = 0
@@ -365,6 +374,10 @@ class ScenarioProvenance(BaseModel):
             lines.append("diff files consulted: " + ", ".join(self.diff_files_consulted[:10]))
         if self.prior_failures_consulted:
             lines.append("prior failures consulted: " + "; ".join(self.prior_failures_consulted[:6]))
+        if self.source_failures:
+            lines.append("generated in response to failure(s): " + ", ".join(self.source_failures))
+        if self.source_clusters:
+            lines.append("answering failure cluster(s): " + ", ".join(self.source_clusters))
         return "\n".join(lines)
 
 
@@ -603,6 +616,14 @@ class GeneratedScenarioPlan(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     unresolved_questions: list[str] = Field(default_factory=list)
     waves: list[WaveRecord] = Field(default_factory=list)
+    #: Failures and clusters this run observed, carried in the plan so a resumed
+    #: run can still check that an adaptive scenario names a cause that really
+    #: happened. Without these, resume would have to trust the citation.
+    observed_failure_ids: list[str] = Field(default_factory=list)
+    observed_cluster_ids: list[str] = Field(default_factory=list)
+    #: Scenario ids the run has already executed, and promotion candidates, so a
+    #: resumed run continues from what happened rather than from nothing.
+    executed_scenario_ids: list[str] = Field(default_factory=list)
 
     def by_id(self, scenario_id: str) -> GeneratedScenario | None:
         return next((s for s in self.scenarios if s.id == scenario_id), None)

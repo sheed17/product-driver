@@ -197,7 +197,20 @@ def make_scenario(
         "expected_observations": ["payments=1"],
         "cleanup": [APPROVED_CLEANUP],
         "isolation_key": "workflow-db",
-        "provenance": ScenarioProvenance(generating_risk="duplicate approval could double-pay"),
+        # A realistic stamp, matching what ``provenance_for`` produces on the
+        # real path. Generated scenarios never carry an empty one, and
+        # validation now refuses those, so a fixture without it would be
+        # testing a shape the planner cannot produce.
+        "provenance": ScenarioProvenance(
+            generating_risk="duplicate approval could double-pay",
+            task_hash="task-digest-fixture",
+            repository_head="0" * 40,
+            active_unit_id="U-042",
+            stage="initial",
+            wave=1,
+            model="opus",
+            session_id="fixture-session",
+        ),
     }
     data.update(overrides)
     return GeneratedScenario.model_validate(data)

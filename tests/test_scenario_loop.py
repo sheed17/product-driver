@@ -268,6 +268,8 @@ def _outcome(
     *,
     origin: Origin = Origin.GENERATED,
     priority: Priority = Priority.P0,
+    required: bool | None = None,
+    evidence_verified: bool | None = None,
 ) -> ScenarioOutcome:
     return ScenarioOutcome(
         scenario_id=scenario_id,
@@ -276,7 +278,17 @@ def _outcome(
         outcome=outcome,
         priority=priority,
         risk_category="idempotency",
+        # A generated case is required exactly when its priority blocks, which
+        # is what build_suite records on the real path.
+        required=priority.blocks_acceptance if required is None else required,
         evidence_path=f"/runs/x/{scenario_id}",
+        # The executor confirms a passing scenario's evidence and downgrades it
+        # to BLOCKED when it cannot, so a PASSED outcome that reached the gate
+        # always carries verified evidence. Synthesising one without it would be
+        # testing a state the executor cannot produce.
+        evidence_verified=(
+            (outcome is Outcome.PASSED) if evidence_verified is None else evidence_verified
+        ),
         failed_assertions=["expect_state: payments row count — got 2, want 1"],
     )
 

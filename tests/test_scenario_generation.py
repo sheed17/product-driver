@@ -383,9 +383,12 @@ class TestQualityContract:
         assert any("puts the behaviour it guards inside this task's scope" in r for r in reasons)
 
     def test_a_regression_scenario_grounded_in_the_diff_is_accepted(self):
-        scenario = make_scenario(
-            risk_category=RiskCategory.REGRESSION,
-            provenance=ScenarioProvenance(diff_files_consulted=["src/approval.py"]),
+        scenario = make_scenario(risk_category=RiskCategory.REGRESSION)
+        # Extend the realistic stamp rather than replacing it: the diff basis is
+        # what this test is about, and the rest of the provenance is what every
+        # generated scenario carries.
+        scenario.provenance = scenario.provenance.model_copy(
+            update={"diff_files_consulted": ["src/approval.py"]}
         )
         assert validate_scenario(scenario, validation_context()) == []
 

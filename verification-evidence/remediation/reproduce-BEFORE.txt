@@ -1,0 +1,43 @@
+/Users/sammyfammy/neyma-product-driver/neyma_product_driver/scenario_planner.py:351: RuntimeWarning: coroutine 'probe_b1.<locals>.Stub._session' was never awaited
+  return
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+[OPEN  ] B1  real reasoner through the async control loop
+         scenarios=[] reasoner_error='RuntimeError: Cannot run the event loop while another loop is running'
+
+[OPEN  ] B2.1 shell/control-character composition
+         admitted 4/12: ['carriage return', 'form feed', 'newline', 'vertical tab']
+
+[OPEN  ] B2.2 legitimate quoted state probes
+         wrongly refused 5/5: ['json argument', 'regex argument', 'sql concat marker', 'sql duplicate detection', 'sql range compare']
+
+[OPEN  ] B2.3 absolute/non-loopback URL via request.path
+         ungated 7/7: ['absolute http', 'absolute https', 'alternate scheme', 'decimal IP', 'non-loopback IPv6', 'scheme-relative', 'userinfo trick']
+
+[OPEN  ] B4  required scenario skipped, zero executed
+         executed=0 skipped=2 full_run=True decision=ACCEPT
+
+[OPEN  ] B5  provenance enforcement
+         empty provenance produced reasons=(none)
+
+[OPEN  ] B6  resume preserves generated state
+         before=['gen-a'] after_resume=[] waves_used=0
+
+[OPEN  ] B7  per-case evidence exists where cited
+         outcome=PASSED cited=/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmpze45ev6m/iteration-01/scenarios/evidence_probe files=[] non_empty=[]
+
+[OPEN  ] B8  per-wave scenario budget
+         max_initial_scenarios=2, model returned 10, accepted=10
+
+==========================================================================
+  OPEN    B1  real reasoner through the async control loop
+  OPEN    B2.1 shell/control-character composition
+  OPEN    B2.2 legitimate quoted state probes
+  OPEN    B2.3 absolute/non-loopback URL via request.path
+  OPEN    B4  required scenario skipped, zero executed
+  OPEN    B5  provenance enforcement
+  OPEN    B6  resume preserves generated state
+  OPEN    B7  per-case evidence exists where cited
+  OPEN    B8  per-wave scenario budget
+
+9 of 9 blockers OPEN
+written: /Users/sammyfammy/neyma-product-driver/verification-evidence/remediation/blocker-status.json

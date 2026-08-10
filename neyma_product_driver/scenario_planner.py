@@ -188,8 +188,12 @@ class ScenarioPlanner:
         base_scenario: Scenario | None = None,
         permanent_scenarios: Sequence[Scenario] = (),
         founder: Any = None,
+        browser_enabled: bool = False,
         emit: Callable[[str], None] = lambda _m: None,
     ) -> None:
+        #: Whether this run can actually drive a browser. Passed to the
+        #: generator so it does not propose coverage the suite will only skip.
+        self.browser_enabled = browser_enabled
         self.repo = Path(repo)
         self.config = config
         self.reasoner = reasoner
@@ -210,12 +214,31 @@ class ScenarioPlanner:
         #: The active READY unit as of the most recent basis. Validation needs
         #: its vocabulary to tell a grounded requirement from an invented one.
         self._unit: Any = None
+        #: Failures and clusters this run has actually observed. An adaptive
+        #: scenario may only name one of these as its cause.
+        self._observed_failure_ids: set[str] = set()
+        self._observed_cluster_ids: set[str] = set()
 
     # -- public API --------------------------------------------------------
 
     @property
     def waves_used(self) -> int:
         return self._wave
+
+    def generation_problems(self) -> list[str]:
+        """Waves that failed rather than waves that had nothing to add.
+
+        These are different facts and the difference decides an acceptance. A
+        generator that raised produced no coverage *and no information*; a
+        generator that answered with an empty list said something. Only the
+        first belongs here, and the acceptance gate refuses to accept a run that
+        has one.
+        """
+        return [
+            f"generation wave {record.wave} failed: {record.reasoner_error}"
+            for record in self.plan.waves
+            if record.reasoner_error
+        ]
 
     def budget_exhausted(self) -> bool:
         return (
@@ -263,7 +286,7 @@ class ScenarioPlanner:
         *,
         task: str,
         unit: Any = None,
-        failures: Sequence[str],
+        failures: Sequence[Any],
         clusters: Sequence[FailureCluster] = (),
         investigation_findings: Sequence[str] = (),
         evaluator_requests: Sequence[str] = (),
@@ -274,11 +297,28 @@ class ScenarioPlanner:
             return self.plan
         if not self.config.use_prior_failures:
             return self.plan
+
+        # Record what was actually observed, so an adaptive proposal can only
+        # cite a failure or cluster this run really produced, and so the
+        # scenario→failure edge can be checked rather than trusted.
+        rendered: list[str] = []
+        for failure in failures:
+            render = getattr(failure, "render", None)
+            rendered.append(render() if callable(render) else str(failure))
+            scenario_id = getattr(failure, "scenario_id", "")
+            if scenario_id:
+                self._observed_failure_ids.add(str(scenario_id))
+            cluster_id = getattr(failure, "cluster_id", "")
+            if cluster_id:
+                self._observed_cluster_ids.add(str(cluster_id))
+        for cluster in clusters:
+            self._observed_cluster_ids.add(cluster.cluster_id)
+
         basis = self._basis(
             task=task,
             unit=unit,
             diff_files=list(diff_files or []),
-            prior_failures=list(failures),
+            prior_failures=rendered,
             investigation_findings=(
                 list(investigation_findings) if self.config.use_investigation_findings else []
             ),
@@ -337,7 +377,11 @@ class ScenarioPlanner:
             available_commands=list(self.approved_commands.entries),
             available_services=[s.name for s in (self.base_scenario.services if self.base_scenario else [])],
             app_url=self.base_scenario.app_url if self.base_scenario else "",
-            browser_enabled=True,
+            # What is actually available, not what would be convenient. Telling
+            # the generator a browser exists when the run cannot drive one earns
+            # a wave of browser scenarios that the run then skips — coverage
+            # that was planned, reported, and never executed.
+            browser_enabled=self.browser_enabled,
             existing_coverage=[s.summary() for s in self.plan.scenarios],
             failure_clusters=[c.render() for c in clusters],
             product_principles=sorted(principle_tokens_from(self.founder)),
@@ -382,6 +426,22 @@ class ScenarioPlanner:
             RejectedScenario(id=s.id, title=s.title, reasons=reasons, raw={})
             for s, reasons in refused
         ]
+
+        # The per-wave allowance is enforced here, not merely requested of the
+        # model in the brief. A model that returns more than it was asked for is
+        # ordinary, and a budget that only holds when the model cooperates is not
+        # a budget.
+        if len(accepted) > allowed:
+            overflow = accepted[allowed:]
+            accepted = accepted[:allowed]
+            note = (
+                f"wave budget: {len(overflow)} scenario(s) beyond this wave's limit of "
+                f"{allowed} were not admitted"
+            )
+            record.budget_notes.append(note)
+            record.rejected += [
+                RejectedScenario(id=s.id, title=s.title, reasons=[note]) for s in overflow
+            ]
 
         for scenario in accepted:
             note = self._admit(scenario)
@@ -457,6 +517,11 @@ class ScenarioPlanner:
             },
             app_url=self.base_scenario.app_url if self.base_scenario else "",
             local_hosts=frozenset(self.config.local_http_hosts),
+            browser_enabled=self.browser_enabled,
+            # What an adaptive scenario is allowed to claim caused it. Anything
+            # outside this was not observed, so citing it is not provenance.
+            known_failure_ids=set(self._observed_failure_ids),
+            known_cluster_ids=set(self._observed_cluster_ids),
         )
 
     def _link_risks(self) -> None:
@@ -520,14 +585,96 @@ class ScenarioPlanner:
 
     # -- persistence -------------------------------------------------------
 
+    def restore_from_store(self) -> str:
+        """Continue a run's plan instead of starting a new one.
+
+        Returns a human-readable note about what was restored, or "" when there
+        was nothing to restore. Resuming without this silently began again at
+        wave zero: prior scenarios were forgotten, duplicates regenerated, the
+        wave budget started over, and the next ``persist()`` overwrote the
+        earlier plan — destroying the record of what the run had already
+        decided.
+
+        A plan generated against a different repository state is restored but
+        flagged: its scenarios were chosen for code that has since changed, and
+        that is a fact the run should state rather than paper over.
+        """
+        if self.store is None:
+            return ""
+        path = self.store.run_dir / PLAN_FILENAME
+        if not path.exists():
+            return ""
+
+        try:
+            plan = GeneratedScenarioPlan.model_validate_json(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            # A plan we cannot read is not a plan we may half-adopt.
+            self.emit(f"  could not restore the scenario plan ({type(exc).__name__}); "
+                      "this run will generate a new one")
+            return ""
+
+        self.plan = plan
+        self._wave = max((w.wave for w in plan.waves), default=0)
+        self._observed_failure_ids = set(plan.observed_failure_ids)
+        self._observed_cluster_ids = set(plan.observed_cluster_ids)
+
+        # Recompile rather than trusting a stored compilation: the approved
+        # command set is derived from the repository as it is *now*, so a
+        # scenario whose command is no longer approved must not come back to life.
+        restored, dropped = 0, []
+        for scenario in list(plan.scenarios):
+            approved = self._approved_for(scenario)
+            try:
+                self.compiled[scenario.id] = compile_to_scenario(
+                    scenario, base=self.base_scenario, approved_commands=approved
+                )
+                restored += 1
+            except Exception as exc:
+                dropped.append(f"{scenario.id} ({type(exc).__name__}: {exc})")
+                plan.scenarios.remove(scenario)
+        if dropped:
+            self.emit(
+                f"  {len(dropped)} restored scenario(s) no longer compile and were dropped: "
+                + "; ".join(dropped[:4])
+            )
+        plan.recompute_coverage()
+
+        note = (
+            f"resumed scenario plan: {restored} scenario(s), {self._wave} wave(s) already used"
+        )
+        previous_head = plan.generation_basis.repository_head
+        current_head = head_commit(self.repo)
+        if previous_head and current_head and previous_head != current_head:
+            note += (
+                f"; repository moved from {previous_head[:8]} to {current_head[:8]} since "
+                "the plan was made, so its coverage was chosen against different code"
+            )
+        self.emit(f"  {note}")
+        return note
+
+    def note_executed(self, scenario_ids: Sequence[str]) -> None:
+        """Record which scenarios have actually run, for a later resume."""
+        known = set(self.plan.executed_scenario_ids)
+        self.plan.executed_scenario_ids += [s for s in scenario_ids if s not in known]
+        self.persist()
+
     def persist(self) -> None:
         """Write the plan and each wave. Generated plans never enter git."""
         if self.store is None:
             return
+        # Carried in the plan so a resumed run can still verify an adaptive
+        # scenario's stated cause against what was actually observed.
+        self.plan.observed_failure_ids = sorted(self._observed_failure_ids)
+        self.plan.observed_cluster_ids = sorted(self._observed_cluster_ids)
         self.store.write_json(PLAN_FILENAME, self.plan.model_dump(mode="json"))
-        for record in self.plan.waves:
+        # Indexed by position in the wave list, not by wave number. A wave
+        # refused before it could run never increments the wave counter, so
+        # numbering these files by wave number silently overwrote each refusal
+        # record with the next one. Positions are unique by construction, and
+        # for an ordinary run position and wave number coincide.
+        for index, record in enumerate(self.plan.waves, start=1):
             self.store.write_json(
-                f"{WAVES_DIRNAME}/wave-{record.wave:02d}.json",
+                f"{WAVES_DIRNAME}/wave-{index:02d}.json",
                 record.model_dump(mode="json"),
             )
 

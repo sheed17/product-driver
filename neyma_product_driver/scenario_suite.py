@@ -22,6 +22,7 @@ artifacts stay on disk under the run directory, exactly as they always have.
 
 from __future__ import annotations
 
+import json
 import time
 from enum import Enum
 from pathlib import Path
@@ -31,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .evidence import sanitize_filename
 from .failure_clustering import FailureCluster, FailureRecord, cluster_failures
-from .models import ScenarioResult, utcnow
+from .models import ScenarioResult, redact, redact_obj, utcnow
 from .scenario_plan import GeneratedScenario, Priority, RiskCategory, neighbours
 from .scenarios import Scenario
 
@@ -100,6 +101,12 @@ class ScenarioOutcome(BaseModel):
     error: str = ""
     skip_reason: str = ""
     evidence_path: str = ""
+    #: Whether ``evidence_path`` was confirmed to hold this scenario's own
+    #: artifacts from this execution. A cited path that does not resolve is a
+    #: dangling claim, and a result that cannot show its evidence does not count
+    #: as verified — see :func:`verify_case_evidence`.
+    evidence_verified: bool = False
+    evidence_problem: str = ""
     #: Present only for generated scenarios: why this situation was exercised.
     generated_because: str = ""
     requirement_reference: str = ""
@@ -143,6 +150,11 @@ class SuiteResult(BaseModel):
     #: this False, which is what stops a partial pass from becoming an ACCEPT.
     full_run: bool = True
     selection_reason: str = ""
+    #: Every required scenario this suite set out to verify, recorded before
+    #: execution. The gate compares against this rather than against whatever
+    #: produced a result, so a required scenario that never ran is visible as a
+    #: gap instead of simply being absent from the counts.
+    expected_required_ids: list[str] = Field(default_factory=list)
     outcomes: list[ScenarioOutcome] = Field(default_factory=list)
     clusters: list[FailureCluster] = Field(default_factory=list)
 
@@ -198,8 +210,34 @@ class SuiteResult(BaseModel):
         return out
 
     @property
+    def executed_required_all_passed(self) -> bool:
+        """Did everything required that actually ran come back green?
+
+        A narrower question than the acceptance gate, and a different one. This
+        asks about the scenarios in *this* execution — which is what decides
+        whether a narrowed rerun has earned the widening pass over the full
+        required set. It deliberately says nothing about scenarios that were not
+        selected; the gate is what refuses to accept while those are unproven.
+        """
+        return all(
+            o.outcome is Outcome.PASSED and o.evidence_verified
+            for o in self.outcomes
+            if o.required
+        )
+
+    @property
     def everything_required_passed(self) -> bool:
-        return not self.blocking_failures()
+        """Convenience view of the authoritative gate. Never the gate itself.
+
+        Acceptance is decided by :func:`scenario_gate.evaluate_gate`, which
+        recomputes from the outcome records. This property exists for display
+        and for callers that want a quick answer; forcing it True cannot make an
+        unverified run acceptable, because nothing on the acceptance path reads
+        it.
+        """
+        from .scenario_gate import evaluate_gate
+
+        return not evaluate_gate(self).blocks_acceptance
 
     # -- rendering ---------------------------------------------------------
 
@@ -436,12 +474,18 @@ class SuiteExecutor:
         browser_enabled: bool = False,
         execution_budget_s: float | None = None,
         max_parallel: int = 1,
+        run_id: str = "",
+        iteration: int = 0,
         emit: Callable[[str], None] = lambda _m: None,
     ) -> None:
         self.make_executor = make_executor
         self.artifact_root = Path(artifact_root)
         self.browser_enabled = browser_enabled
         self.execution_budget_s = execution_budget_s
+        #: Stamped into every per-case evidence record, so a result can prove its
+        #: evidence belongs to this run and this iteration rather than a leftover.
+        self.run_id = run_id
+        self.iteration = iteration
         # Kept as configuration rather than a constant so the intent is visible;
         # anything above 1 is refused until isolation can actually be proven.
         self.max_parallel = max(1, int(max_parallel))
@@ -460,6 +504,9 @@ class SuiteExecutor:
         result = SuiteResult(
             full_run=only is None or len(order) == len(suite),
             selection_reason=selection_reason,
+            # Recorded from the suite, not from the selection: a narrowed rerun
+            # still owes evidence for every required scenario before acceptance.
+            expected_required_ids=[e.scenario_id for e in suite.entries if e.required],
         )
 
         budget_exhausted = False
@@ -490,9 +537,39 @@ class SuiteExecutor:
             scenario_result.origin = entry.origin.value  # type: ignore[assignment]
             self.results[entry.scenario_id] = scenario_result
             self.service_logs.update(getattr(executor, "service_logs", {}) or {})
-            result.outcomes.append(
-                self._outcome(entry, scenario_result, artifact_dir, time.monotonic())
+
+            # The evidence is written before the outcome is judged, and the
+            # outcome then carries whether that evidence actually resolves. A
+            # result may not cite a directory it cannot show.
+            try:
+                write_case_evidence(
+                    artifact_dir,
+                    scenario_result,
+                    scenario_id=entry.scenario_id,
+                    run_id=self.run_id,
+                    iteration=self.iteration,
+                )
+            except OSError as exc:
+                self.emit(f"    could not persist evidence for {entry.scenario_id}: {exc}")
+
+            outcome = self._outcome(entry, scenario_result, artifact_dir, time.monotonic())
+            problem = verify_case_evidence(
+                outcome.evidence_path,
+                scenario_id=entry.scenario_id,
+                run_id=self.run_id,
+                iteration=self.iteration,
             )
+            outcome.evidence_verified = not problem
+            outcome.evidence_problem = problem
+            if problem and outcome.outcome is Outcome.PASSED:
+                # A pass that cannot show its evidence is not a pass anyone can
+                # check. It becomes BLOCKED rather than being quietly believed.
+                outcome.outcome = Outcome.BLOCKED
+                outcome.error = (
+                    outcome.error or ""
+                ) + f" (evidence integrity: {problem})".strip()
+                self.emit(f"    evidence integrity failure: {problem}")
+            result.outcomes.append(outcome)
 
         result.duration_s = time.monotonic() - started
         result.clusters = cluster_failures(
@@ -598,6 +675,222 @@ def _category(value: str) -> RiskCategory | None:
         return None
 
 
+#: The per-case record every executed scenario writes into its own evidence
+#: directory. Its presence is what makes ``evidence_path`` a fact rather than a
+#: claim, and its contents are what the evaluator and the builder are invited to
+#: read when a summary is not enough.
+CASE_RECORD_FILENAME = "result.json"
+
+
+def write_case_evidence(
+    artifact_dir: Path,
+    result: ScenarioResult,
+    *,
+    scenario_id: str,
+    run_id: str = "",
+    iteration: int = 0,
+) -> None:
+    """Persist a scenario's own result beside its artifacts.
+
+    Without this the directory exists, is cited to the evaluator and to the
+    builder as ``evidence:``, and contains nothing. Stamping the run, iteration
+    and scenario id is what lets :func:`verify_case_evidence` tell this
+    execution's evidence from a leftover directory belonging to another run,
+    another iteration or another scenario.
+    """
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    record = result.model_dump(mode="json")
+    record["scenario_id"] = scenario_id
+    record["run_id"] = run_id
+    record["iteration"] = iteration
+    record["written_at"] = utcnow()
+    path = artifact_dir / CASE_RECORD_FILENAME
+    # Written whole, then moved into place: an interrupted write must not leave
+    # a half-parsed record that verification would read as corrupt evidence.
+    staging = artifact_dir / f".{CASE_RECORD_FILENAME}.partial"
+    staging.write_text(json.dumps(redact_obj(record), indent=2), encoding="utf-8")
+    staging.replace(path)
+
+
+def verify_case_evidence(
+    evidence_path: str,
+    *,
+    scenario_id: str,
+    run_id: str = "",
+    iteration: int = 0,
+) -> str:
+    """Return why this evidence cannot be trusted, or "" when it can.
+
+    Deterministic and cheap. Checks that the cited directory exists, holds this
+    execution's record, and that the record belongs to *this* scenario, run and
+    iteration — a stale directory from an earlier run is worse than no evidence,
+    because it reads as proof.
+    """
+    if not evidence_path:
+        return "the result cites no evidence directory"
+    directory = Path(evidence_path)
+    if not directory.exists():
+        return f"the cited evidence directory does not exist: {evidence_path}"
+    if not directory.is_dir():
+        return f"the cited evidence path is not a directory: {evidence_path}"
+
+    record_path = directory / CASE_RECORD_FILENAME
+    if not record_path.exists():
+        return (
+            f"the cited evidence directory holds no {CASE_RECORD_FILENAME}, so nothing "
+            f"records what this scenario actually did: {evidence_path}"
+        )
+    if record_path.stat().st_size == 0:
+        return f"the evidence record is empty: {record_path}"
+
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"the evidence record could not be read ({type(exc).__name__}): {record_path}"
+    if not isinstance(record, dict):
+        return f"the evidence record is not an object: {record_path}"
+
+    if str(record.get("scenario_id", "")) != scenario_id:
+        return (
+            f"the evidence at {evidence_path} belongs to scenario "
+            f"{record.get('scenario_id', '(unnamed)')!r}, not {scenario_id!r}"
+        )
+    if run_id and str(record.get("run_id", "")) != run_id:
+        return (
+            f"the evidence at {evidence_path} belongs to run "
+            f"{record.get('run_id', '(unnamed)')!r}, not {run_id!r}"
+        )
+    if iteration and int(record.get("iteration", 0) or 0) != iteration:
+        return (
+            f"the evidence at {evidence_path} was written in iteration "
+            f"{record.get('iteration')}, not {iteration}"
+        )
+    return ""
+
+
+class FailureEvidence(BaseModel):
+    """What a failure actually showed, in the shape adaptive generation needs.
+
+    ``ScenarioOutcome.brief()`` exists for humans and for clustering: one
+    assertion, truncated, with digit runs normalised away so that ``payments=2``
+    and ``payments=7`` cluster together. That normalisation is right for grouping
+    and wrong for generating — it deletes the one fact that says what went wrong.
+    A generator told "expected payments=<n>, got payments=<n>" has been told
+    nothing. This carries the observed values through intact.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_id: str
+    scenario_name: str = ""
+    risk_category: str = ""
+    priority: Priority = Priority.P2
+    requirement_reference: str = ""
+    generated_because: str = ""
+    #: What the scenario asserted, and what it forbade.
+    expected: list[str] = Field(default_factory=list)
+    forbidden: list[str] = Field(default_factory=list)
+    #: Every assertion that failed — not just the first.
+    failed_assertions: list[str] = Field(default_factory=list)
+    error: str = ""
+    #: A bounded excerpt of what the product actually produced. The
+    #: discriminating fact: "payments=2" rather than "an expectation failed".
+    observed: str = ""
+    evidence_path: str = ""
+    cluster_id: str = ""
+    affected_components: list[str] = Field(default_factory=list)
+
+    def render(self) -> str:
+        lines = [
+            f"[{self.scenario_id}] {self.scenario_name or ''}".rstrip(),
+            f"  risk: {self.risk_category or 'unclassified'} ({self.priority.value})"
+            + (f"  cluster: {self.cluster_id}" if self.cluster_id else ""),
+        ]
+        if self.requirement_reference:
+            lines.append(f"  verifies: {self.requirement_reference}")
+        if self.generated_because:
+            lines.append(f"  generated because: {self.generated_because}")
+        if self.expected:
+            lines.append("  expected: " + "; ".join(self.expected[:6]))
+        if self.forbidden:
+            lines.append("  must not appear: " + "; ".join(self.forbidden[:6]))
+        for assertion in self.failed_assertions[:8]:
+            lines.append(f"  FAILED: {assertion}")
+        if self.error:
+            lines.append(f"  error: {self.error}")
+        if self.observed:
+            lines.append(f"  observed output: {self.observed}")
+        if self.affected_components:
+            lines.append("  changed files in scope: " + ", ".join(self.affected_components[:10]))
+        if self.evidence_path:
+            lines.append(f"  evidence: {self.evidence_path}")
+        return "\n".join(lines)
+
+
+#: How much real output travels with a failure. Enough to name the value that
+#: was wrong; far short of pasting a log into a prompt.
+OBSERVED_EXCERPT_CHARS = 700
+
+
+def _observed_excerpt(result: ScenarioResult | None) -> str:
+    """The product's own output for a failed scenario, bounded and redacted."""
+    if result is None:
+        return ""
+    parts: list[str] = []
+    for command in result.commands:
+        text = f"{command.stdout}\n{command.stderr}".strip()
+        if text:
+            parts.append(f"$ {command.command}\n{text}")
+    for observation in result.http:
+        body = (observation.body_text or "").strip()
+        status = observation.status if observation.status is not None else observation.error
+        parts.append(f"{observation.name or 'request'} -> {status}\n{body}")
+    if result.browser is not None and result.browser.visible_text:
+        parts.append(f"browser: {result.browser.visible_text}")
+    joined = redact("\n".join(p for p in parts if p).strip())
+    if len(joined) <= OBSERVED_EXCERPT_CHARS:
+        return joined
+    return joined[:OBSERVED_EXCERPT_CHARS] + " …(truncated; full output in the evidence directory)"
+
+
+def build_failure_evidence(
+    suite: "ScenarioSuite",
+    result: SuiteResult,
+    results: dict[str, ScenarioResult],
+    *,
+    diff_files: Sequence[str] = (),
+) -> list[FailureEvidence]:
+    """Assemble the structured brief adaptive generation is given."""
+    cluster_of: dict[str, str] = {}
+    for cluster in result.clusters:
+        for scenario_id in cluster.affected_scenarios:
+            cluster_of[scenario_id] = cluster.cluster_id
+
+    evidence: list[FailureEvidence] = []
+    for outcome in result.failures():
+        entry = suite.by_id(outcome.scenario_id)
+        scenario = entry.scenario if entry is not None else None
+        evidence.append(
+            FailureEvidence(
+                scenario_id=outcome.scenario_id,
+                scenario_name=outcome.scenario_name,
+                risk_category=outcome.risk_category,
+                priority=outcome.priority,
+                requirement_reference=outcome.requirement_reference,
+                generated_because=outcome.generated_because,
+                expected=list(scenario.expect_visible) if scenario else [],
+                forbidden=list(scenario.forbidden) if scenario else [],
+                failed_assertions=list(outcome.failed_assertions),
+                error=outcome.error,
+                observed=_observed_excerpt(results.get(outcome.scenario_id)),
+                evidence_path=outcome.evidence_path,
+                cluster_id=cluster_of.get(outcome.scenario_id, ""),
+                affected_components=list(diff_files)[:20],
+            )
+        )
+    return evidence
+
+
 def build_suite(
     *,
     permanent: Iterable[tuple[str, Scenario]] = (),
@@ -627,7 +920,13 @@ def build_suite(
                 risk_category=model.risk_category,
                 isolation_key=model.isolation_key or "default",
                 generated=model,
-                required=True,
+                # `required` means required. A P2/P3 generated case is worth
+                # running and reporting but was never meant to hold the run, and
+                # marking it required-but-ignorable made the flag lie: the gate
+                # would have had to consult priority to know what "required"
+                # meant. The judgement still lives in the priority the generator
+                # assigned; it is simply recorded honestly here.
+                required=model.priority.blocks_acceptance,
             )
         )
     return suite

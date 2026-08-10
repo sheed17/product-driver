@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -115,8 +116,21 @@ class GenerationBrief:
         if self.basis.prior_failures:
             parts += [
                 "",
-                "WHAT FAILED EARLIER IN THIS RUN:",
-                *(f"  - {f}" for f in self.basis.prior_failures[:40]),
+                "WHAT FAILED EARLIER IN THIS RUN — this is the evidence you are "
+                "responding to. Each entry gives the scenario id, the risk it was "
+                "exercising, what it expected, every assertion that failed, and the "
+                "output the product actually produced:",
+                "",
+                *self.basis.prior_failures[:40],
+                "",
+                "Generate situations that probe the risk surface these failures just "
+                "revealed — the neighbouring cases that are now plausible *because of "
+                "what was observed*, not a fresh general-purpose batch. For every "
+                "scenario you return, set `source_failures` to the scenario id(s) above "
+                "that caused it (or `source_clusters` to the cluster id), and set "
+                "`generating_risk` to the risk that failure just revealed. A scenario "
+                "that cannot name the failure it answers, or the risk it probes, will "
+                "be refused.",
             ]
         if self.failure_clusters:
             parts += [
@@ -151,6 +165,35 @@ class GenerationBrief:
         parts += [f"  - {c}" for c in self.available_commands[:60]] or ["  (none)"]
         parts += [
             "",
+            "`setup` and `cleanup` are ALSO command lists, held to the same rule. They "
+            "are executed, not read. A precondition written as prose — \"ensure the api "
+            "service is running\", \"two tenants exist\" — is not a command, and it causes "
+            "the entire scenario to be refused. Express preconditions by choosing an "
+            "approved command, or leave setup and cleanup empty and state the assumption "
+            "in `purpose`.",
+            "",
+            "`expected_observations` and `forbidden_observations` are matched as LITERAL "
+            "substrings against everything the run observed — command output, response "
+            "bodies, visible browser text. They are not descriptions and nothing "
+            "interprets them. Write the exact text the product emits:",
+            "",
+            "    good : \"payments=1\"          (the probe prints exactly this)",
+            "    bad  : \"the ledger shows one payment\"   (never appears; fails against a",
+            "                                              correct product)",
+            "",
+            "If you cannot name the exact text a correct product would emit, assert the "
+            "property with a `persisted_state_check` and leave the observation lists empty. "
+            "A scenario that fails because its expectation was phrased as prose has told "
+            "you nothing about the product.",
+            "",
+            "Quoting is understood: an argument may contain >, <, |, ( or ) inside quotes, "
+            "so a SQL oracle such as",
+            "    sqlite3 data/app.sqlite3 \"SELECT key FROM grants GROUP BY key HAVING count(*) > 1\"",
+            "is accepted. What is refused is composition *outside* quotes — a second "
+            "command after ;, &&, a pipe, a redirect, or $( ).",
+        ]
+        parts += [
+            "",
             f"SERVICES you may reference / restart / stop / start: "
             f"{', '.join(self.available_services) or '(none)'}",
             f"LOCAL APP URL for relative request paths: {self.app_url or '(none)'}",
@@ -164,6 +207,47 @@ class GenerationBrief:
 # --------------------------------------------------------------------------
 # The seam
 # --------------------------------------------------------------------------
+
+
+def run_coroutine_blocking(coro: Any, *, timeout_s: float) -> Any:
+    """Run ``coro`` to completion and return its value, from any calling context.
+
+    The coroutine is driven by a fresh event loop on a dedicated thread, so this
+    is safe whether or not the caller already has a loop running. That is the
+    whole point: the sync ``ScenarioReasoner`` protocol is called from inside
+    ``run_control_loop``, where starting a loop in the calling thread raises.
+
+    Exceptions raised inside the coroutine are re-raised to the caller. A hung
+    call is abandoned rather than waited on forever — the thread is a daemon, so
+    it cannot keep the interpreter alive.
+    """
+    outcome: dict[str, Any] = {}
+
+    def runner() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            outcome["value"] = loop.run_until_complete(coro)
+        except BaseException as exc:  # re-raised on the calling thread below
+            outcome["error"] = exc
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    thread = threading.Thread(target=runner, name="scenario-reasoner", daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_s)
+    if thread.is_alive():
+        raise TimeoutError(
+            f"the scenario generator did not answer within {timeout_s:.0f}s"
+        )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
 
 
 class ScenarioReasoner(Protocol):
@@ -207,22 +291,78 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "purpose": {"type": "string"},
                     "risk_category": {"type": "string"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
-                    "rationale": {"type": "string"},
+                    "rationale": {
+                        "type": "string",
+                        "description": "Why this situation is worth exercising for "
+                        "THIS task, in one sentence. Recorded as provenance and "
+                        "required: a scenario nobody can explain later is a scenario "
+                        "nobody can act on.",
+                    },
                     "requirement_reference": {"type": "string"},
                     "product_principle_reference": {"type": "string"},
                     "mode": {"type": "string", "enum": ["backend", "browser"]},
-                    "setup": {"type": "array", "items": {"type": "string"}},
+                    "setup": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Commands run before the scenario, from the APPROVED "
+                        "COMMANDS list only. These are executed, not read: a precondition "
+                        "written as English prose ('ensure the service is running') is not a "
+                        "command and causes the whole scenario to be refused. Leave empty "
+                        "unless an approved command genuinely needs to run first.",
+                    },
                     "service_refs": {"type": "array", "items": {"type": "string"}},
                     "actions": {"type": "array", "items": {"type": "object"}},
                     "persisted_state_checks": {"type": "array", "items": {"type": "object"}},
-                    "expected_observations": {"type": "array", "items": {"type": "string"}},
-                    "forbidden_observations": {"type": "array", "items": {"type": "string"}},
-                    "cleanup": {"type": "array", "items": {"type": "string"}},
+                    "expected_observations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "LITERAL substrings that must appear somewhere in what "
+                        "the run observed: command stdout/stderr, HTTP response bodies, or "
+                        "visible browser text. These are matched with an exact substring "
+                        "test, not interpreted. 'payments=1' is a valid expectation because "
+                        "the probe prints exactly that; 'the ledger shows one payment' is "
+                        "not, and will fail against a perfectly correct product. If you "
+                        "cannot name the exact text, assert it with a persisted_state_check "
+                        "instead and leave this empty.",
+                    },
+                    "forbidden_observations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "LITERAL substrings that must NOT appear anywhere in "
+                        "what the run observed. Same exact-substring rule as "
+                        "expected_observations.",
+                    },
+                    "cleanup": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Commands run after the scenario, from the APPROVED "
+                        "COMMANDS list only. Same rule as setup: executable commands, never "
+                        "prose.",
+                    },
                     "isolation_note": {"type": "string"},
                     "isolation_key": {"type": "string"},
                     "generated_from": {"type": "array", "items": {"type": "string"}},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "generating_risk": {"type": "string"},
+                    "generating_risk": {
+                        "type": "string",
+                        "description": "The specific risk this scenario exists to "
+                        "probe, named in your own words ('a duplicate approval could "
+                        "double-pay'). Required. In an adaptive wave this is the risk "
+                        "the observed failure revealed.",
+                    },
+                    "source_failures": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Required for adaptive waves: the scenario id(s) from "
+                        "WHAT FAILED EARLIER IN THIS RUN that caused this scenario to be "
+                        "generated. This is the audit trail linking a case to its evidence.",
+                    },
+                    "source_clusters": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Alternative to source_failures: the failure cluster "
+                        "id(s) (C01, C02 …) this scenario answers.",
+                    },
                 },
                 "required": [
                     "id",
@@ -230,6 +370,8 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "purpose",
                     "risk_category",
                     "priority",
+                    "rationale",
+                    "generating_risk",
                     "requirement_reference",
                     "product_principle_reference",
                     "actions",
@@ -398,7 +540,18 @@ def parse_scenarios(
             "generated_from": _strings(raw.get("generated_from")),
             "confidence": _float(raw.get("confidence"), 0.5),
             "provenance": provenance.model_copy(
-                update={"generating_risk": str(raw.get("generating_risk") or "")}
+                update={
+                    "generating_risk": str(raw.get("generating_risk") or ""),
+                    # Which observed failure this case answers. Validation
+                    # checks these against what the run actually saw, so a
+                    # scenario cannot claim a cause that never happened.
+                    "source_failures": _strings(
+                        raw.get("source_failures") or raw.get("caused_by_failures")
+                    ),
+                    "source_clusters": _strings(
+                        raw.get("source_clusters") or raw.get("caused_by_clusters")
+                    ),
+                }
             ),
         }
         if not data["title"]:
@@ -493,19 +646,22 @@ class LLMScenarioReasoner:
         self.session_id: str | None = None
 
     def propose(self, brief: GenerationBrief) -> dict[str, Any] | None:
-        try:
-            return asyncio.run(self._session(brief.render()))
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(self._session(brief.render()))
-            finally:
-                loop.close()
-        except Exception:
-            # A generator that errors must not take the run with it: the planner
-            # records the wave as producing nothing and the run proceeds with
-            # whatever coverage it already has.
-            return None
+        """Ask the model for a wave, from a synchronous caller.
+
+        Every real call site is inside the already-running control loop, so this
+        must not start a loop in the calling thread — ``asyncio.run`` and
+        ``run_until_complete`` both refuse while another loop is running, and the
+        run would silently proceed with no generated coverage at all.
+
+        Errors are deliberately *not* swallowed here. "The generator failed" and
+        "the generator had nothing to add" are different facts, and a run that
+        cannot tell them apart will treat a dead generator as a clean bill of
+        health. The planner records the failure against the wave, and the
+        acceptance gate refuses to accept a run whose verification never ran.
+        """
+        return run_coroutine_blocking(
+            self._session(brief.render()), timeout_s=self.timeout_s + 60
+        )
 
     async def _session(self, prompt: str) -> dict[str, Any] | None:
         from claude_agent_sdk import (

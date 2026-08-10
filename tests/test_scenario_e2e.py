@@ -333,7 +333,12 @@ def initial_wave(app: dict) -> dict:
 
 
 def adaptive_wave(app: dict) -> dict:
-    """What a generator would propose once duplicate approval has failed."""
+    """What a generator would propose once duplicate approval has failed.
+
+    Each case names the failure that caused it, which is what an adaptive
+    proposal must do: without that link nothing records why the driver decided
+    to test this, and validation refuses it.
+    """
     probe_once = {
         "kind": "state_check",
         "name": "exactly one payment",
@@ -369,6 +374,7 @@ def adaptive_wave(app: dict) -> dict:
                 expected=["payments=1"],
                 forbidden_observations=["payments=2"],
                 cleanup=[app["reset"]],
+                source_failures=["gen-approve-twice"],
             ),
             _scenario(
                 "gen-restart-persistence",
@@ -400,6 +406,7 @@ def adaptive_wave(app: dict) -> dict:
                 ],
                 expected=["INV-4"],
                 cleanup=[app["reset"]],
+                source_failures=["gen-approve-twice"],
             ),
         ],
     }

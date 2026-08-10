@@ -27,6 +27,7 @@ from neyma_product_driver.scenario_planner import (
     record_promotion_candidates,
 )
 from neyma_product_driver.scenario_suite import (
+    FailureEvidence,
     Origin,
     Outcome,
     ScenarioOutcome,
@@ -155,11 +156,13 @@ class TestStagedGeneration:
                         "gen-concurrent",
                         risk_category="concurrency",
                         expected_observations=["exactly one approval recorded"],
+                        source_failures=["gen-refresh"],
                     ),
                     raw_scenario(
                         "gen-restart",
                         risk_category="restart_recovery",
                         expected_observations=["approval survives the restart"],
+                        source_failures=["gen-refresh"],
                     ),
                 ),
             ],
@@ -169,7 +172,15 @@ class TestStagedGeneration:
         planner.expand_after_failures(
             task="t",
             unit=FakeUnit(),
-            failures=["gen-refresh: approval disappeared after refresh"],
+            failures=[
+                FailureEvidence(
+                    scenario_id="gen-refresh",
+                    scenario_name="generated:gen-refresh",
+                    risk_category="stale_state",
+                    failed_assertions=["expect_state: approval present — not found"],
+                    observed="approvals=0",
+                )
+            ],
             evaluator_requests=["exercise two operators approving at once"],
         )
 
@@ -180,8 +191,18 @@ class TestStagedGeneration:
         ]
         assert planner.plan.waves[1].stage == "adaptive"
         brief = planner.reasoner.briefs[1].render()
-        assert "approval disappeared after refresh" in brief
+        # The failure reaches the generator identifiably, and — the point of the
+        # structured brief — so does what the product actually produced. A
+        # generator told only "an expectation failed" cannot target the risk the
+        # failure revealed.
+        assert "gen-refresh" in brief
+        assert "expect_state: approval present — not found" in brief
+        assert "approvals=0" in brief
         assert "two operators approving at once" in brief
+        # And the scenarios it produced record which failure caused them.
+        adaptive = [s for s in planner.plan.scenarios if s.provenance.stage == "adaptive"]
+        assert adaptive, "the adaptive wave produced nothing to check provenance on"
+        assert all(s.provenance.source_failures == ["gen-refresh"] for s in adaptive)
 
     def test_expansion_does_not_fire_without_failures_or_requests(self, tmp_path):
         planner = make_planner(tmp_path, [raw_payload(), raw_payload(raw_scenario("gen-2"))])
