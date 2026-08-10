@@ -143,7 +143,7 @@ class ProtocolRepo:
         (root / "eval").mkdir(exist_ok=True)
         (root / "scripts").mkdir(exist_ok=True)
 
-        self._git("init", "-q")
+        self._git("init", "-q", "-b", "main")
         self._git("config", "user.email", "t@e.com")
         self._git("config", "user.name", "t")
         self._git("config", "commit.gpgsign", "false")

@@ -617,7 +617,7 @@ def test_H_real_p4_topology_produces_no_amendment_option(tmp_path: Path) -> None
 def _complete_run(run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "journal.json").write_text(json.dumps({"run": "x"}), encoding="utf-8")
-    (run_dir / "founder-summary.md").write_text("# Summary\n\nReal content.\n", encoding="utf-8")
+    (run_dir / "FOUNDER-SUMMARY.md").write_text("# Summary\n\nReal content.\n", encoding="utf-8")
     it = run_dir / "iteration-001"
     it.mkdir(parents=True, exist_ok=True)
     (it / "git-status.txt").write_text(" M src/kernel.py\n", encoding="utf-8")
@@ -640,7 +640,7 @@ def test_I_a_complete_run_journal_is_admissible(tmp_path: Path) -> None:
         "iteration-001/git-diff-stat.txt",
         "iteration-001/record.json",
         "journal.json",
-        "founder-summary.md",
+        "FOUNDER-SUMMARY.md",
     ],
 )
 def test_I_zero_byte_evidence_fails_closed(tmp_path: Path, artifact: str) -> None:
