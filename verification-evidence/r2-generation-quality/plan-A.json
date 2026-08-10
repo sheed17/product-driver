@@ -1,0 +1,556 @@
+{
+  "run_id": "review-A",
+  "task": "Improve the exception detail screen so operators can understand the next action.",
+  "active_unit_id": "U-UI-11",
+  "generation_basis": {
+    "task": "Improve the exception detail screen so operators can understand the next action.",
+    "task_hash": "ecfcc59ed1f920c7",
+    "active_unit_id": "U-UI-11",
+    "acceptance_criteria": [
+      "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+      "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+      "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The exception detail screen (esp. the static packet page, which renders a captured ReviewPayload) can show a state/next-action the backend no longer holds \u2014 e.g. NEEDS_REVIEW actions for a run already closed to DONE \u2014 because the page is built once and only the operator console re-reads live state.",
+      "risk_category": "stale_state",
+      "severity": "P0",
+      "basis": "AC-3 'the screen never shows a state the backend does not currently hold' (weight 3); build_review_payload gates on NEEDS_REVIEW while packet_page._render_packet_page renders a captured payload with no live state re-read.",
+      "covered_by": [
+        "UUI11-S4"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "The screen change regresses the pilot site build or introduces a false-green in the render/reconciliation spine.",
+      "risk_category": "regression",
+      "severity": "P2",
+      "basis": "U-UI-11 touches review.py / packet_page.py / operator_console.py which the dogfood pilot and review tests exercise.",
+      "covered_by": [
+        "UUI11-S6"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "UUI11-S3",
+      "title": "Missing/unlinked evidence still surfaces honestly, never fabricated",
+      "purpose": "When the exception's backing document cannot be linked (unlinked packet or unresolved mailbox sha), the screen must still show the received evidence honestly and must not invent a source document \u2014 verified via the pilot's packet-link accuracy.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "_copy_mailbox_evidence silently skips mailbox:// links whose sha does not resolve and _render_unlinked_packet_page renders only payload evidence. test_pilot_session asserts packet_link_accuracy, the direct measure of whether rendered evidence links resolve to real artifacts rather than dead/fabricated ones.",
+      "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+      "product_principle_reference": "repository_silent",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "pilot-packet-link-accuracy",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_pilot_session.py eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "packet_link_accuracy holds (rendered evidence/packet links resolve to real artifacts)",
+        "Unlinked exceptions render a 'Received Evidence' section rather than a broken canonical source doc"
+      ],
+      "forbidden_observations": [
+        "A rendered evidence link that points at a document the run never received",
+        "An unlinked exception rendered as if it had full source docs"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only pilot tests build their site output under tempdirs; data/active_workspace untouched.",
+      "isolation_key": "pytest-suite",
+      "generated_from": [
+        "AC-2"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:05+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R3",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "d0191b73-b8b7-46f1-8557-0c6ebbac3293",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "UUI11-S4",
+      "title": "No exception review UI for a run the backend has already closed",
+      "purpose": "A run that has left NEEDS_REVIEW (e.g. DONE) must not render an exception detail screen offering review actions or a NEEDS_REVIEW state \u2014 the render layer must reflect the current backend state only.",
+      "risk_category": "stale_state",
+      "priority": "P0",
+      "rationale": "AC-3 (weight 3). build_review_payload returns None unless run.state==NEEDS_REVIEW, and operator_console._review_card shows 'No active review actions; current state is <X>' when the live re-read differs. Running the review + pilot render tests exercises this gate; the DB check establishes that terminal states really do exist so the guard is load-bearing.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "operational_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "render-state-gate-tests",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE state IN ('DONE','FAILED')\"",
+            "contains": [],
+            "not_contains": [
+              "Error",
+              "no such table"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT DISTINCT state FROM workflow_runs\"",
+          "contains": [],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Render/pilot tests pass: no review card / review actions are produced for runs not in NEEDS_REVIEW",
+        "workflow_runs contains terminal (DONE/FAILED) runs, proving the closed-run case is real"
+      ],
+      "forbidden_observations": [
+        "A review payload or action set produced for a run whose backend state is not NEEDS_REVIEW",
+        "sqlite error indicating the DB or table is missing"
+      ],
+      "cleanup": [],
+      "isolation_note": "pytest uses tempfile stores; the sqlite action is a read-only SELECT against the shared driver_probe DB and mutates nothing.",
+      "isolation_key": "driver_probe-workflow-db",
+      "generated_from": [
+        "AC-3"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:05+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "d0191b73-b8b7-46f1-8557-0c6ebbac3293",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "UUI11-S5",
+      "title": "Backend only ever holds a valid, closed set of states the screen can mirror",
+      "purpose": "Establish the ground truth AC-3 depends on: every persisted run holds exactly one state from the known WorkflowState enum and none is null/blank, so any state the screen displays can be checked against a real backend value.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P1",
+      "rationale": "AC-3 is a screen-vs-backend agreement claim. Since the exception screen is static output with no served route at 8001, the executable half of the invariant is: the backend's own state column is well-formed and drawn only from the enum the render layer maps. A null/foreign state would mean the screen is showing something the backend cannot justify.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "known_vs_inferred",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE state IS NULL OR state='' OR state NOT IN ('RECEIVED','EXTRACTED','RECONCILED','NEEDS_REVIEW','APPROVED','DISPUTED','REQUESTED_BACKUP','READY_FOR_ENTRY','ENTERING','ENTERED','DONE','FAILED','WAITING_FOR_SESSION')\"",
+            "contains": [
+              "0"
+            ],
+            "not_contains": [
+              "Error",
+              "no such table"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "Query returns 0: no run holds a null, blank, or unknown state",
+        "The set of states the screen could render is fully backed by the enum"
+      ],
+      "forbidden_observations": [
+        "A nonzero count (a run whose persisted state is outside the known enum)",
+        "sqlite error indicating a missing DB/table"
+      ],
+      "cleanup": [],
+      "isolation_note": "Single read-only SELECT; no writes, no cleanup needed.",
+      "isolation_key": "driver_probe-workflow-db",
+      "generated_from": [
+        "AC-3"
+      ],
+      "confidence": 0.6,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:05+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "d0191b73-b8b7-46f1-8557-0c6ebbac3293",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "UUI11-S6",
+      "title": "Exception-screen change does not regress the pilot spine (no false green)",
+      "purpose": "Guard against the render change breaking reconciliation, review, delivery, or the dogfood site build, and against a silently-passing false-green.",
+      "risk_category": "regression",
+      "priority": "P2",
+      "rationale": "review.py / packet_page.py / operator_console.py sit on the pilot spine. The canonical suite plus run_diagnostics is the broadest regression signal available under the approved commands.",
+      "requirement_reference": "U-UI-11",
+      "product_principle_reference": "founder_taste",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "full-canonical-suite",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "command",
+          "name": "diagnostics",
+          "command": ".venv/bin/python scripts/run_diagnostics.py",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "Full canonical suite passes with exit 0",
+        "run_diagnostics completes cleanly (exit 0)"
+      ],
+      "forbidden_observations": [
+        "Any failed/errored test in the canonical suite",
+        "Diagnostics exiting non-zero"
+      ],
+      "cleanup": [],
+      "isolation_note": "Canonical suite runs hermetically; run_diagnostics is a read/report script. Neither is expected to mutate data/active_workspace; if diagnostics writes a report artifact it is idempotent and self-contained.",
+      "isolation_key": "pytest-suite",
+      "generated_from": [
+        "U-UI-11"
+      ],
+      "confidence": 0.55,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:05+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R4",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "d0191b73-b8b7-46f1-8557-0c6ebbac3293",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 4,
+    "by_risk_category": {
+      "missing_data": 1,
+      "stale_state": 1,
+      "ui_backend_disagreement": 1,
+      "regression": 1
+    },
+    "by_priority": {
+      "P1": 2,
+      "P0": 1,
+      "P2": 1
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [
+    "No builder diff, existing-coverage list, or prior-failure list was actually included in this prompt, so scenarios are grounded strictly in the three ACs, the product principles, and the code I read (review.py, packet_page.py, operator_console.py, workflow.py, run_action_callback_server.py).",
+    "The 'exception detail screen' is the generated static HTML in packet_page.py (packet/exception detail) plus operator_console.py (review-card grid); there is no live exception-detail HTTP endpoint on the callback server at http://127.0.0.1:8001.",
+    "data/active_workspace/driver_probe/workflow.sqlite3 exists (it is named in an approved command) and contains the workflow_runs table with the WorkflowState enum values.",
+    "pytest fixtures for the review/pilot tests build their stores and site output in tempfiles and do not mutate data/active_workspace, so the pytest scenarios are effectively read-only.",
+    "The approved sqlite3 command accepts an inline SQL query as an extra argument (no shell operators)."
+  ],
+  "unresolved_questions": [
+    "Where is the improved exception detail screen actually served in the running product? The given app URL http://127.0.0.1:8001 is the callback/Slack server (routes: /email/action, /actions/signed, /slack/*) with no exception-detail HTML route; the static site is served at :8000 per run_teammate. Without a served route I cannot browser-verify the rendered screen against live backend state (the core of AC-3).",
+    "AC-3 enforcement asymmetry: operator_console._review_card re-reads live state and guards actions, but packet_page._render_packet_page renders a captured ReviewPayload with no live state re-read \u2014 does U-UI-11 require the packet detail page itself to reflect current backend state at view time, or is it acceptable for it to be a build-time snapshot? This determines whether a stale-state failure on the packet page is in scope.",
+    "Was any browser/UI-level test or served-page assertion added for U-UI-11? None was found (no test_operator_console.py; test_review.py does not assert 'names the owner' or the stale-state guard on the screen), so AC-1/AC-2/AC-3 appear to lack direct screen-level coverage and may need dedicated tests before the unit is trusted.",
+    "Which exact owner label must the screen show for the next action (e.g. 'owner/operator', a named person, or a role)? AC-1 requires naming who owns it but the requirement text does not fix the granularity, so I could not assert an exact string.",
+    "Do run_diagnostics.py / progress_status.py emit U-UI-11-specific signals I could assert on? Their output format was not confirmed, so S6 only checks exit status."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:32:41+00:00",
+      "basis": {
+        "task": "Improve the exception detail screen so operators can understand the next action.",
+        "task_hash": "ecfcc59ed1f920c7",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 6,
+      "accepted_ids": [
+        "UUI11-S3",
+        "UUI11-S4",
+        "UUI11-S5",
+        "UUI11-S6"
+      ],
+      "rejected": [
+        {
+          "id": "UUI11-S1",
+          "title": "Exception detail names the next action and who owns it",
+          "reasons": [
+            "unknown risk_category 'accountable-owner'"
+          ],
+          "raw": {
+            "id": "UUI11-S1",
+            "title": "Exception detail names the next action and who owns it",
+            "purpose": "Confirm the review/exception payload that feeds the detail screen carries a concrete next action (action_options with label + consequence) and surfaces the accountable owner (owner/operator), not a bare status.",
+            "risk_category": "accountable-owner",
+            "priority": "P1",
+            "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+            "product_principle_reference": "next_action_clarity",
+            "generating_risk": "R2",
+            "mode": "backend",
+            "rationale": "AC-1 has weight 3. The next-action + ownership logic lives in review._action_options_for and DogfoodClientProfile.operator_role; test_review_actions.py and test_review.py assert action options and operator_role, so a passing run is evidence the screen's inputs name the action and its owner.",
+            "generated_from": [
+              "AC-1"
+            ],
+            "requirement_reference_note": "AC-1",
+            "product_principle_reference_note": "accountable_owner also applies",
+            "setup": [
+              "Repo checked out with .venv present (scripts/check_env.py green)"
+            ],
+            "actions": [
+              {
+                "kind": "command",
+                "name": "review-action-and-owner-tests",
+                "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review_actions.py eval/tests/test_review.py -q",
+                "expect_exit_code": 0,
+                "expect_contains": [
+                  "passed"
+                ]
+              }
+            ],
+            "expected_observations": [
+              "Suite passes: action_options exist with a concrete label and consequence for each exception outcome",
+              "operator_role resolves to owner/operator, i.e. the human who owns the next action is named"
+            ],
+            "forbidden_observations": [
+              "An exception outcome with zero action_options (no next action named)",
+              "A rendered next action with no owner/role attached"
+            ],
+            "isolation_key": "pytest-suite",
+            "isolation_note": "Read-only: pytest fixtures build workflow stores in tempfiles and never touch data/active_workspace; no cleanup required.",
+            "confidence": 0.6
+          }
+        },
+        {
+          "id": "UUI11-S2",
+          "title": "Exception detail shows the evidence it was raised from",
+          "reasons": [
+            "unknown risk_category 'evidence-clarity'"
+          ],
+          "raw": {
+            "id": "UUI11-S2",
+            "title": "Exception detail shows the evidence it was raised from",
+            "purpose": "Confirm the exception detail payload carries the source evidence (carrier invoice + rate confirmation / received attachments) that triggered the exception, and that the text/render surface labels it as Evidence.",
+            "risk_category": "evidence-clarity",
+            "priority": "P1",
+            "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+            "product_principle_reference": "evidence_clarity",
+            "generating_risk": "R3",
+            "mode": "backend",
+            "rationale": "AC-2. test_review.py asserts evidence_links include carrier_invoice and rate_confirmation and that render_text contains an 'Evidence:' section; these are the exact inputs the packet page renders under its Evidence section.",
+            "generated_from": [
+              "AC-2"
+            ],
+            "setup": [],
+            "actions": [
+              {
+                "kind": "command",
+                "name": "evidence-links-tests",
+                "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py -q -k evidence or reason or payload",
+                "expect_exit_code": 0,
+                "expect_contains": [
+                  "passed"
+                ]
+              }
+            ],
+            "expected_observations": [
+              "Evidence links for the exception include the documents the exception was raised from (carrier_invoice, rate_confirmation)",
+              "Text render includes an Evidence section listing those links"
+            ],
+            "forbidden_observations": [
+              "An exception payload with an empty evidence_links list",
+              "Evidence section rendered with a link to a document not tied to this load/exception"
+            ],
+            "isolation_key": "pytest-suite",
+            "isolation_note": "Read-only pytest run using tempfile stores; no workspace mutation, no cleanup required.",
+            "confidence": 0.55
+          }
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+  8 proposed scenario(s) refused:
+    - S1-restart-survival: unsafe or unapproved operation: command is not in the approved set: 'The callback service is running against data/active_workspace/driver_probe/workflow.sqlite3 with its canonical/P3 schema applied.'. Generated scenarios may only run commands a human already approved.
+    - S2-crash-reexecute-matrix: unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.
+    - S3-witness-claim-idempotency: unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.
+    - S4-single-live-hold: unsafe or unapproved operation: command is not in the approved set: "The callback service's durable store exists at data/active_workspace/driver_probe/workflow.sqlite3.". Generated scenarios may only run commands a human already approved.
+    - S5-witness-append-only-1to1: unsafe or unapproved operation: command is not in the approved set: 'The durable store at data/active_workspace/driver_probe/workflow.sqlite3 has the P3 schema applied.'. Generated scenarios may only run commands a human already approved.
+    - S6-durable-schema-complete: unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.
+    - S7-full-regression: unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.
+    - S8-read-after-write-freshness-config: unsafe or unapproved operation: command is not in the approved set: 'The callback service has opened data/active_workspace/driver_probe/workflow.sqlite3 at least once (WAL mode is set at store construction).'. Generated scenarios may only run commands a human already approved.
+
+=== D: 0 accepted, 8 refused ===

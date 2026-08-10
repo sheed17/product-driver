@@ -1,0 +1,95 @@
+{
+  "S7-canonical-regression": {
+    "name": "generated:S7-canonical-regression",
+    "phase": "P3",
+    "description": "Canonical suite still green after schema/store/authorization changes\n\nrisk: regression (priority P1)\npurpose: Catch regressions the diff may introduce in the workflow store, schema readiness, and grant-state invariants the whole product relies on.\nrequirement: U-UI-11\nproduct principle: operational_clarity\nrationale: workflow_store.py (+163) and schema.py (+31) sit under existing canonical tests; a green run is the floor before trusting the UI change.\n\ngenerated at 2026-08-09T21:51:13+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: R6\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "run canonical suite",
+        "command": {
+          "name": "run canonical suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "The canonical pytest suite exits 0 with no failures."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any failure/error in workflow_store, schema, or authorization tests."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S8-checkpoint-matrix-guard": {
+    "name": "generated:S8-checkpoint-matrix-guard",
+    "phase": "P3",
+    "description": "Grant-state / checkpoint matrix invariants survive the store changes\n\nrisk: safety_invariant (priority P2)\npurpose: workflow_store.py grew significantly; verify the checkpoint state matrix (the states the exception screen reads) is still enforced structurally.\nrequirement: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: AC3 depends on the backend state space being exactly the canonical GRANT_STATES; a store change that widened it would let the screen show a state the schema never intended.\n\ngenerated at 2026-08-09T21:51:13+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: R6\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "checkpoint matrix",
+        "command": {
+          "name": "checkpoint matrix",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "The checkpoint state matrix tests pass, confirming the canonical state set is unchanged."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A new/unexpected state accepted by the store.",
+      "Matrix test failures."
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

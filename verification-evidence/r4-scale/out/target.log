@@ -1,0 +1,2 @@
+target listening on 127.0.0.1:8731 db=/tmp/r4-target.sqlite
+injected: BAD=[9, 33] DUP=[5, 44] ERR=[87]

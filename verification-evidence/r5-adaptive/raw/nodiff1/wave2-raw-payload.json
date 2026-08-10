@@ -1,0 +1,445 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "An approval is acknowledged (HTTP 200) but the record is held only in memory and is lost when the api process restarts, so the durably-recorded approval promised by AC-APPROVAL-002 disappears on the next read.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-002 approval state survives a re-read of persisted state; builder changed an approval endpoint with persistent state; gen-persist-approve only checks the write, not survival across a process restart."
+    },
+    {
+      "id": "R2",
+      "description": "Two approval requests for the same invoice arriving simultaneously each write a durable approval record, producing a duplicated/divergent approval that breaks the store invariant.",
+      "risk_category": "concurrency",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 approving an invoice records the approval durably; gen-idempotent-approve failed (C01), suggesting the once-only guarantee is not solid, and no covered scenario exercises a true simultaneous race."
+    },
+    {
+      "id": "R3",
+      "description": "Posting an approval for an invoice id that was never created records a phantom approval instead of rejecting it, corrupting persisted state.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 scopes durable recording to approving an invoice; nothing promises recording approvals for unknown invoices."
+    },
+    {
+      "id": "R4",
+      "description": "A malformed approval request body causes a partial or spurious state mutation (or a 500) rather than a clean rejection with no persisted effect.",
+      "risk_category": "malformed_input",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001 requires durable recording of a valid approval; an endpoint that mutates state on garbage input violates the durable-record contract."
+    },
+    {
+      "id": "R5",
+      "description": "Idempotency is enforced only in the live process, so re-approving the same invoice after a restart creates a second durable approval \u2014 the once-only guarantee does not survive persistence.",
+      "risk_category": "idempotency",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-002 approval state survives a re-read; gen-idempotent-approve (C01) already failed once in-process, so the across-restart case is higher risk."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-restart-approve",
+      "title": "Approval survives an api restart",
+      "purpose": "Verify a recorded approval is re-read from durable storage after the api process is fully restarted, not just held in memory.",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R1",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "api-service",
+      "isolation_note": "Uses a dedicated invoice id inv-rr1 not used by any other scenario; restarts the shared api service so it must run exclusively, not concurrently with other approval-store scenarios.",
+      "setup": [
+        "Choose invoice id inv-rr1 that no other scenario touches"
+      ],
+      "actions": [
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-rr1",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/inv-rr1/approve",
+            "json_body": {
+              "invoice_id": "inv-rr1"
+            },
+            "expect_status": 200,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-rr1",
+            "contains": [
+              "inv-rr1",
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "api"
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 1500
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-rr1",
+            "contains": [
+              "inv-rr1",
+              "approved"
+            ]
+          }
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py inv-rr1",
+          "contains": [
+            "approved"
+          ]
+        }
+      ],
+      "expected_observations": [
+        "Baseline read shows inv-rr1 not approved",
+        "Approve returns 200",
+        "Post-restart read still shows inv-rr1 approved"
+      ],
+      "forbidden_observations": [
+        "inv-rr1 approval absent after restart"
+      ],
+      "cleanup": [],
+      "generated_from": [
+        "AC-APPROVAL-002"
+      ],
+      "confidence": 0.6
+    },
+    {
+      "id": "gen-concurrent-approve",
+      "title": "Simultaneous approvals of one invoice record a single durable approval",
+      "purpose": "Exercise a true race: two approvals for the same invoice issued at once must not corrupt the store or create a divergent duplicate record.",
+      "risk_category": "concurrency",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R2",
+      "mode": "backend",
+      "isolation_key": "approval:inv-con2",
+      "isolation_note": "Uses dedicated invoice id inv-con2; contends only on its own record, no service restart.",
+      "actions": [
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-con2",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/inv-con2/approve",
+              "json_body": {
+                "invoice_id": "inv-con2"
+              },
+              "timeout_s": 5
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/inv-con2/approve",
+              "json_body": {
+                "invoice_id": "inv-con2"
+              },
+              "timeout_s": 5
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-con2",
+            "contains": [
+              "inv-con2",
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "command",
+          "name": "store invariant check",
+          "command": "python3 r5/fixture/state.py SMOKE",
+          "expect_exit_code": 0
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py inv-con2",
+          "contains": [
+            "approved"
+          ]
+        }
+      ],
+      "expected_observations": [
+        "inv-con2 is approved after the race",
+        "Store invariant self-check (SMOKE) exits 0"
+      ],
+      "forbidden_observations": [
+        "SMOKE reports corruption or non-zero exit",
+        "Store shows a divergent/duplicate approval record for inv-con2"
+      ],
+      "cleanup": [],
+      "generated_from": [
+        "AC-APPROVAL-001"
+      ],
+      "confidence": 0.5
+    },
+    {
+      "id": "gen-missing-invoice-approve",
+      "title": "Approving an unknown invoice records no phantom approval",
+      "purpose": "Confirm posting an approval for an invoice id that was never created is rejected and leaves no durable record.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R3",
+      "mode": "backend",
+      "isolation_key": "approval:inv-missing3",
+      "isolation_note": "Targets a non-existent invoice id inv-missing3 that no scenario creates; asserts absence only.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/inv-missing3/approve",
+            "json_body": {
+              "invoice_id": "inv-missing3"
+            },
+            "expect_status": 404,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-missing3",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py inv-missing3",
+          "not_contains": [
+            "approved"
+          ]
+        }
+      ],
+      "expected_observations": [
+        "Approve of unknown invoice returns a 4xx",
+        "No approval record exists for inv-missing3"
+      ],
+      "forbidden_observations": [
+        "inv-missing3 appears approved in persisted state"
+      ],
+      "cleanup": [],
+      "generated_from": [
+        "AC-APPROVAL-001"
+      ],
+      "confidence": 0.55
+    },
+    {
+      "id": "gen-malformed-approve",
+      "title": "Malformed approval body is rejected without mutating state",
+      "purpose": "Ensure a garbage/mis-typed request body produces a clean rejection with no partial persisted approval.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R4",
+      "mode": "backend",
+      "isolation_key": "approval:inv-mal4",
+      "isolation_note": "Targets dedicated invoice id inv-mal4; asserts the record never becomes approved.",
+      "actions": [
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-mal4",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/inv-mal4/approve",
+            "json_body": {
+              "invoice_id": 12345,
+              "approve": "not-a-bool"
+            },
+            "expect_status": 400,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-mal4",
+            "not_contains": [
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "command",
+          "name": "store invariant check",
+          "command": "python3 r5/fixture/state.py SMOKE",
+          "expect_exit_code": 0
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py inv-mal4",
+          "not_contains": [
+            "approved"
+          ]
+        }
+      ],
+      "expected_observations": [
+        "Malformed request returns a 4xx",
+        "inv-mal4 remains not approved",
+        "Store invariant self-check exits 0"
+      ],
+      "forbidden_observations": [
+        "inv-mal4 becomes approved",
+        "500 / unhandled error",
+        "SMOKE non-zero"
+      ],
+      "cleanup": [],
+      "generated_from": [
+        "AC-APPROVAL-001"
+      ],
+      "confidence": 0.45
+    },
+    {
+      "id": "gen-idempotent-across-restart",
+      "title": "Re-approving after a restart stays single and durable",
+      "purpose": "Verify idempotency is enforced against persisted state, not just the live process: re-approving the same invoice after a restart keeps exactly one durable approval.",
+      "risk_category": "idempotency",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R5",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "api-service",
+      "isolation_note": "Uses dedicated invoice id inv-idr5; restarts shared api so must run exclusively of other approval-store scenarios.",
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/inv-idr5/approve",
+            "json_body": {
+              "invoice_id": "inv-idr5"
+            },
+            "expect_status": 200,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "api"
+        },
+        {
+          "kind": "wait",
+          "wait_ms": 1500
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/inv-idr5/approve",
+            "json_body": {
+              "invoice_id": "inv-idr5"
+            },
+            "expect_status": 200,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py inv-idr5",
+            "contains": [
+              "inv-idr5",
+              "approved"
+            ]
+          }
+        },
+        {
+          "kind": "command",
+          "name": "store invariant check",
+          "command": "python3 r5/fixture/state.py SMOKE",
+          "expect_exit_code": 0
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "command": "python3 r5/fixture/state.py inv-idr5",
+          "contains": [
+            "approved"
+          ]
+        }
+      ],
+      "expected_observations": [
+        "First approve 200",
+        "Re-approve after restart 200 and still approved",
+        "Store invariant self-check exits 0"
+      ],
+      "forbidden_observations": [
+        "SMOKE reports a duplicated/second approval for inv-idr5",
+        "non-zero SMOKE exit"
+      ],
+      "cleanup": [],
+      "generated_from": [
+        "AC-APPROVAL-002"
+      ],
+      "confidence": 0.5
+    }
+  ],
+  "assumptions": [
+    "The approval endpoint is reachable as POST /api/invoices/{id}/approve on http://127.0.0.1:8961; if the real path differs, request-status assertions will need adjustment but the persisted-state evidence remains the load-bearing check.",
+    "python3 r5/fixture/state.py accepts an invoice id as an extra argument and prints that invoice's persisted approval state, including a token like the invoice id and 'approved'.",
+    "python3 r5/fixture/state.py SMOKE runs an internal store-integrity self-check and exits 0 when the persisted state is consistent.",
+    "The approval endpoint accepts an invoice_id in the JSON body and records approval against an existing invoice."
+  ],
+  "unresolved_questions": [
+    "The earlier idempotency failure (C01) asserted 'payments=<n>', which is not present in state.py output \u2014 it is unclear whether this product records 'payments' at all or only 'approvals'. If a payment side-effect is actually promised, that requirement is not stated in the ACs shown and should be clarified rather than assumed.",
+    "The exact output format of python3 r5/fixture/state.py (fields, tokens, whether it filters by a supplied id) is not documented; state_check contains/not_contains tokens may need calibration to the real format.",
+    "No product requirement defines the correct status code for approving an unknown invoice or for malformed input; 404/400 are assumptions, and the durable-state assertions are the true pass/fail signal.",
+    "Neither AC nor the listed principles promise authorization/approval-required controls on the approval endpoint, so no cross_tenant or authorization scenarios were generated \u2014 confirm whether access control is in scope."
+  ]
+}

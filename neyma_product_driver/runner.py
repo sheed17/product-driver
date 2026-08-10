@@ -37,9 +37,20 @@ def child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
 class ProcessRunner:
     """Runs shell commands with a hard timeout and captured output."""
 
-    def __init__(self, cwd: Path, default_timeout_s: int = 300) -> None:
+    def __init__(
+        self,
+        cwd: Path,
+        default_timeout_s: int = 300,
+        default_env: dict[str, str] | None = None,
+    ) -> None:
         self.cwd = Path(cwd)
         self.default_timeout_s = default_timeout_s
+        #: Applied to every command unless a call overrides it. A scenario's
+        #: `env:` configures the whole scenario — its services *and* the
+        #: commands and state probes that inspect what those services did.
+        #: Without this a state probe reads a different database than the
+        #: service wrote to, and reports an empty result as a product failure.
+        self.default_env = dict(default_env or {})
 
     async def run(
         self,
@@ -52,6 +63,7 @@ class ProcessRunner:
         timeout = timeout_s or self.default_timeout_s
         workdir = Path(cwd or self.cwd)
         started = time.monotonic()
+        merged_env = {**self.default_env, **(env or {})}
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -59,7 +71,7 @@ class ProcessRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(workdir),
-                env=child_env(env),
+                env=child_env(merged_env),
                 start_new_session=True,  # own process group, so timeout kills children
             )
         except OSError as exc:
@@ -139,11 +151,19 @@ class ServiceManager:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._procs: list[tuple[str, asyncio.subprocess.Process, Path]] = []
+        #: name -> (command, env), so a service can be restarted without the
+        #: caller re-supplying a command. Restarting is only ever a repeat of
+        #: what this manager already started; a scenario can never name a new
+        #: command through a restart step.
+        self._declared: dict[str, tuple[str, dict[str, str]]] = {}
 
     async def start(self, command: str, name: str, env: dict[str, str] | None = None) -> Path:
         """Launch a service in the background; returns its log path."""
+        self._declared[name] = (command, dict(env or {}))
         log_path = self.log_dir / f"service-{name}.log"
-        log_file = log_path.open("wb")
+        # Append, so a restart's output joins the same evidence file rather
+        # than erasing what the first incarnation logged.
+        log_file = log_path.open("ab")
         proc = await asyncio.create_subprocess_shell(
             command,
             stdout=log_file,
@@ -154,6 +174,36 @@ class ServiceManager:
         )
         self._procs.append((name, proc, log_path))
         return log_path
+
+    async def start_declared(self, name: str) -> Path:
+        """Start (again) a service this manager previously started.
+
+        Raises ``KeyError`` when the name was never declared — a scenario may
+        only act on services it itself started.
+        """
+        command, env = self._declared[name]
+        return await self.start(command, name, env=env)
+
+    async def stop(self, name: str, grace_s: float = 5.0) -> None:
+        """Stop every live process registered under ``name``."""
+        if name not in self._declared:
+            raise KeyError(name)
+        live = [entry for entry in self._procs if entry[0] == name]
+        for _n, proc, _p in live:
+            _kill_process_group(proc)
+        for _n, proc, _p in live:
+            with contextlib.suppress(asyncio.TimeoutError, Exception):
+                await asyncio.wait_for(proc.wait(), timeout=grace_s)
+        for _n, proc, _p in live:
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        self._procs = [entry for entry in self._procs if entry[0] != name]
+
+    async def restart(self, name: str, grace_s: float = 5.0) -> Path:
+        """Stop and re-launch ``name``. The crash/restart-recovery primitive."""
+        await self.stop(name, grace_s=grace_s)
+        return await self.start_declared(name)
 
     def log_text(self, name: str, limit: int = 20_000) -> str:
         for svc_name, _proc, path in self._procs:

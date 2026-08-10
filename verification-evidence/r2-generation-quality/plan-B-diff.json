@@ -1,0 +1,763 @@
+{
+  "run_id": "review-B",
+  "task": "Add supervised carrier invoice approval.",
+  "active_unit_id": "U-042",
+  "generation_basis": {
+    "task": "Add supervised carrier invoice approval.",
+    "task_hash": "b614b9b809fbe9f5",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "no payment effect occurs without a recorded approval (weight 3): PENDING",
+      "an operator without approval authority is refused (weight 2): PENDING",
+      "approval survives a restart (weight 2): PENDING",
+      "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A payment/write effect could reach a completed/verified state without a recorded, cryptographically-bound human approval (the two-halves F-01 seam).",
+      "risk_category": "safety_invariant",
+      "severity": "P0",
+      "basis": "AC 'no payment effect occurs without a recorded approval'; the join in governed_write_route.consume_governed_write_intent and the fail-closed branches in action_callback._maybe_handle_governed_write_approval.",
+      "covered_by": [
+        "U042-S1"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "Duplicate or concurrent approval taps for one approval_id could produce more than one adapter attempt or more than one Effect Grant, i.e. an invoice paid more than once.",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "AC 'an approved invoice is paid exactly once'; single-use claim_operation_action + effect_grants commit-once index.",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "An operator not on the operation's allowlist (or an unauthenticated caller) could record an approval and advance the pipeline.",
+      "risk_category": "authorization",
+      "severity": "P1",
+      "basis": "AC 'an operator without approval authority is refused'; UnauthorizedActor binding + authorize_command gate.",
+      "covered_by": [
+        "U042-S4"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "Another tenant's invoice, queued intent, claim, or approved amount could be read or approved across the tenant boundary.",
+      "risk_category": "cross_tenant",
+      "severity": "P0",
+      "basis": "AC 'an invoice belonging to another tenant is never visible or approvable'; tenant-scoped WorkflowStore reads and queued_write_intents.",
+      "covered_by": [
+        "U042-S5"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "After a restart, a recorded decision could be lost (re-approvable) or an in-memory grant handle could allow re-execution instead of failing closed.",
+      "risk_category": "restart_recovery",
+      "severity": "P1",
+      "basis": "AC 'approval survives a restart'; durable claim/ledger tables vs in-memory per-kernel handle.",
+      "covered_by": [
+        "U042-S6"
+      ]
+    },
+    {
+      "id": "R-EO-1",
+      "description": "A duplicate or concurrent approval tap on the same carrier invoice could produce more than one payment effect, breaking the exactly-once guarantee.",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "AC 'an approved invoice is paid exactly once' (weight 3, PENDING); diff touches governed_approval.py + carrier_invoice_write.py which mint/settle the payment effect.",
+      "covered_by": []
+    },
+    {
+      "id": "R-EO-2",
+      "description": "When the approval effect is persisted but the HTTP response is lost (timeout-after-effect), a client retry could double-pay.",
+      "risk_category": "timeout_after_effect",
+      "severity": "P0",
+      "basis": "AC 'an approved invoice is paid exactly once'; action_callback.py handles the callback that drives settlement and is retried by clients.",
+      "covered_by": []
+    },
+    {
+      "id": "R-EO-3",
+      "description": "Re-approving an invoice already in a paid state could emit a second payment effect instead of being refused as a no-op.",
+      "risk_category": "unexpected_state_transition",
+      "severity": "P1",
+      "basis": "AC 'an approved invoice is paid exactly once'; carrier_invoice_write.py state machine changes.",
+      "covered_by": []
+    },
+    {
+      "id": "R-EO-4",
+      "description": "A crash between recording the approval and emitting the payment could result in zero payments or a double payment on recovery, violating exactly-once.",
+      "risk_category": "crash_mid_workflow",
+      "severity": "P1",
+      "basis": "AC 'an approved invoice is paid exactly once' + 'approval survives a restart'; callback service is restartable and holds the ledger/claim state.",
+      "covered_by": []
+    },
+    {
+      "id": "R-EO-5",
+      "description": "The claim compare-and-swap / witness mechanism that enforces single settlement could silently regress with the diff's rewrite of governed_approval.py.",
+      "risk_category": "regression",
+      "severity": "P1",
+      "basis": "Existing eval/tests/test_phase3_claim_cas.py + test_phase3_witness.py guard the single-settlement claim; governed_approval.py changed 210 lines.",
+      "covered_by": [
+        "U042-S13"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "U042-S1",
+      "title": "Deployed governed route fails closed / ships dark: no payment effect without a bound approval",
+      "purpose": "Prove that at the real deployed entry point a governed tap never produces an external effect without a recorded, bound approval: the blocked route refuses explicitly, a missing provider/kernel fails closed, and the default capability is a proven non-occurrence.",
+      "risk_category": "safety_invariant",
+      "priority": "P0",
+      "rationale": "This suite drives the REAL action_callback handler built from run_action_callback_server._build_governed_write_route, so it exercises the deployed authority split rather than a fixture.",
+      "requirement_reference": "no payment effect occurs without a recorded approval",
+      "product_principle_reference": "success_without_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "deployed_governed_route_suite",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_deployed_governed_route.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_the_blocked_route_refuses_explicitly_rather_than_falling_through",
+            "test_provider_none_fails_closed",
+            "test_the_deployed_default_capability_is_dark",
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "All deployed-route tests pass; a governed tap on a blocked route yields state REFUSED / reason ROUTE_NOT_CONFIGURED and advances no pipeline.",
+        "With no writer injected the chain reaches FAILED (dark), never a laundered VERIFIED."
+      ],
+      "forbidden_observations": [
+        "Any test failure or error indicating the route advanced the pipeline or reached the adapter while unconfigured."
+      ],
+      "cleanup": [],
+      "isolation_note": "Runs pytest against ephemeral tmp_path SQLite DBs and reads repo source only; does not touch the live workspace DB or the callback service.",
+      "isolation_key": "pytest-canonical",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:20+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "91dda55a-fe9c-46da-b5de-70b78ab20ff6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "U042-S4",
+      "title": "Unauthorized actor / forged / mis-contexted tap is refused before any advance",
+      "purpose": "Prove an operator without approval authority (not on the allowlist), a forged signature, or a tap from the wrong channel/workspace/message is refused and records no decision.",
+      "risk_category": "authorization",
+      "priority": "P1",
+      "rationale": "Directly exercises the UnauthorizedActor and context bindings that back the 'refused' AC.",
+      "requirement_reference": "an operator without approval authority is refused",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "governed_approval_binding_suite",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_an_unauthorized_actor_is_refused",
+            "test_a_forged_signature_is_refused",
+            "test_a_tap_from_the_wrong_channel_is_refused",
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "Unauthorized actor raises UnauthorizedActor; forged/expired/mis-contexted envelopes raise the typed refusal; nothing is recorded."
+      ],
+      "forbidden_observations": [
+        "Any test failure showing an unauthorized or forged tap verifying or advancing the pipeline."
+      ],
+      "cleanup": [],
+      "isolation_note": "Ephemeral pytest DBs; no live state touched.",
+      "isolation_key": "pytest-canonical",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:20+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R3",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "91dda55a-fe9c-46da-b5de-70b78ab20ff6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "U042-S5",
+      "title": "Cross-tenant isolation: another tenant's claim/amount/effect is never visible or approvable",
+      "purpose": "Prove tenant-scoped reads and writes: a foreign tenant cannot see or approve another tenant's queued intents, claims, token amounts, or effects.",
+      "risk_category": "cross_tenant",
+      "priority": "P0",
+      "rationale": "The store-level tenant scoping tests are the load-bearing evidence for the cross-tenant AC (weight 3).",
+      "requirement_reference": "an invoice belonging to another tenant is never visible or approvable",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "tenant_scope_suite",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_u26bc_tenant_scope.py -v",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "test_action_claims_are_tenant_scoped",
+            "test_token_amounts_are_tenant_scoped",
+            "test_cross_tenant_update_changes_zero_rows",
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "All tenant-scope tests pass: same commit key is independent across tenants; a cross-tenant update changes zero rows; claims and amounts are not readable across tenants."
+      ],
+      "forbidden_observations": [
+        "Any failure showing one tenant reading or approving another tenant's row."
+      ],
+      "cleanup": [],
+      "isolation_note": "Ephemeral pytest DBs; no live state touched.",
+      "isolation_key": "pytest-canonical",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:20+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R4",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "91dda55a-fe9c-46da-b5de-70b78ab20ff6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "U042-S6",
+      "title": "Callback service recovers after restart with durable ledger/claim state intact",
+      "purpose": "Prove the supervised-approval surface survives a restart: the service comes back reachable and the durable tables that record approvals/claims/effects persist (in-memory grant handles are lost, which is the fail-closed direction).",
+      "risk_category": "restart_recovery",
+      "priority": "P1",
+      "rationale": "This is the only live observable for restart durability given the harness cannot mint a live approval; it confirms recovery + persistence of the durable state that holds recorded decisions.",
+      "requirement_reference": "approval survives a restart",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1500
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token"
+            ],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT name FROM sqlite_master WHERE type='table'\"",
+            "contains": [
+              "effect_grants",
+              "security_events"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "After restart the service answers on 8001 (400 for a tokenless action link), proving it came back up.",
+        "The durable effect_grants and security_events tables still exist in the workspace DB."
+      ],
+      "forbidden_observations": [
+        "Connection refused / timeout after restart (service failed to recover).",
+        "Missing effect_grants or security_events tables (durable approval/effect state lost on restart)."
+      ],
+      "cleanup": [],
+      "isolation_note": "Contends for the shared `callback` service on 127.0.0.1:8001; must not run concurrently with other 8001 scenarios. Leaves the service restarted and serving (no destructive mutation of the workspace DB \u2014 only a read state_check).",
+      "isolation_key": "callback-service-8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:39:20+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R5",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "91dda55a-fe9c-46da-b5de-70b78ab20ff6",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "U042-S13",
+      "title": "Regression guard: claim-CAS and witness suites still enforce single settlement",
+      "purpose": "Confirm the diff's rewrite of governed_approval.py did not weaken the compare-and-swap/witness tests that back the exactly-once claim.",
+      "risk_category": "regression",
+      "priority": "P1",
+      "rationale": "The existing CAS/witness suite is the codified single-settlement invariant; a green run is cheap high-signal protection against a silent regression in the 210-line approval rewrite.",
+      "requirement_reference": "an approved invoice is paid exactly once",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "claim-cas-and-witness",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "Claim CAS and witness tests pass, confirming single-settlement invariant intact"
+      ],
+      "forbidden_observations": [
+        "Any failure or error in the CAS/witness suite",
+        "Tests skipped/deselected such that the invariant is not actually exercised"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only test execution against ephemeral fixtures; does not mutate the active workspace db, so it cannot contaminate other scenarios.",
+      "isolation_key": "pytest-canonical",
+      "generated_from": [],
+      "confidence": 0.7,
+      "provenance": {
+        "generated_at": "2026-08-09T21:41:45+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/governed_approval.py",
+          "src/freight_recon/carrier_invoice_write.py",
+          "src/freight_recon/action_callback.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "R-EO-5",
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "c0ca6d33-5024-44d0-bc72-9977f5c0812a",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 5,
+    "by_risk_category": {
+      "safety_invariant": 1,
+      "authorization": 1,
+      "cross_tenant": 1,
+      "restart_recovery": 1,
+      "regression": 1
+    },
+    "by_priority": {
+      "P0": 2,
+      "P1": 3
+    },
+    "uncovered_risks": [
+      "Duplicate or concurrent approval taps for one approval_id could produce more than one adapter attempt or more than one Effect Grant, i.e. an invoice paid more than once.",
+      "A duplicate or concurrent approval tap on the same carrier invoice could produce more than one payment effect, breaking the exactly-once guarantee.",
+      "When the approval effect is persisted but the HTTP response is lost (timeout-after-effect), a client retry could double-pay.",
+      "Re-approving an invoice already in a paid state could emit a second payment effect instead of being refused as a no-op.",
+      "A crash between recording the approval and emitting the payment could result in zero payments or a double payment on recovery, violating exactly-once."
+    ]
+  },
+  "assumptions": [
+    "The canonical pytest suites listed as approved commands are this repository's sanctioned verification mechanism and are expected to be green; running them is legitimate evidence.",
+    "The `callback` service is scripts/run_action_callback_server.py listening on 127.0.0.1:8001.",
+    "The feature ships dark: the deployed governed route is BLOCKED (kernel=None) and no real external payment effect is expected in any state; verification confirms the fail-closed behavior rather than a live payment.",
+    "No signing secret is available to the harness, so a valid Slack-signed governed tap cannot be forged against the live server; live HTTP checks are limited to the unauthenticated/health surface.",
+    "The carrier-invoice approval endpoint is reachable at POST /api/carrier-invoice/approve on http://127.0.0.1:8001 and accepts invoice_id, approver, and idempotency_key; exact path/field names are inferred from the changed files (carrier_invoice_write.py, action_callback.py) and should be reconciled to the real router.",
+    "The payment effect and the approval are persisted in the active workspace db data/active_workspace/driver_probe/workflow.sqlite3 in tables reachable as action_ledger(effect='payment') and approval(invoice_id); exact table/column names are inferred and the SQL in state_checks should be adjusted to the canonical schema.",
+    "Each scenario ingests its own uniquely-named invoice for the operating tenant, so the exactly-once count assertions are scoped and cannot be confounded by other scenarios."
+  ],
+  "unresolved_questions": [
+    "Is the callback service on 8001 started with Slack interactivity and the governed seams wired, or fully dark/disabled? This determines whether any live governed-tap path exists to exercise at all.",
+    "U-042's acceptance ('an approved invoice is paid') cannot be exercised end-to-end against the live server because the execution kernel is intentionally BLOCKED pending AC-CKPT-6-missing adjudication (U8.1/P8). Does U-042 accept the dark/blocked state as satisfying its ACs, or is a live supervised write in scope for this unit?",
+    "There is no approved command to create a governed approval against the live workspace DB, so 'paid exactly once' and 'survives a restart' can only be proven via the pytest harness (substituted kernel), not via the live HTTP surface. Is that the intended evidence path?",
+    "No approved reset/delete command is available, so scenarios rely on unique invoice ids plus a shared-db isolation_key rather than explicit cleanup; is there a supported way to tear down per-scenario invoice/ledger rows between runs?",
+    "The exact approval endpoint path and request schema, and the exact ledger/approval table and column names, are not shown in the diff summary and must be confirmed against the canonical schema before these SQL state_checks are trusted.",
+    "Does the product expose a distinct 'settlement' step separate from 'approval', and if so does the exactly-once claim guard the settlement write specifically? The AC promises paid-exactly-once but the diff summary does not reveal where the actual external payment effect is emitted versus recorded locally."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:32:41+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 9,
+      "accepted_ids": [
+        "U042-S1",
+        "U042-S4",
+        "U042-S5",
+        "U042-S6"
+      ],
+      "rejected": [
+        {
+          "id": "U042-S2",
+          "title": "Ledger-level exactly-once: witness + claim CAS admits one commit per logical effect",
+          "reasons": [
+            "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S3",
+          "title": "Governed chain carries one identity and mints at most one grant",
+          "reasons": [
+            "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S7",
+          "title": "Callback service actually starts and routes (guards the tenant use-before-assignment startup crash)",
+          "reasons": [
+            "a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope"
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S8",
+          "title": "Canonical schema carries the durable ledger the single-use invariant rests on",
+          "reasons": [
+            "a persistence_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S9",
+          "title": "Full canonical suite regression gate",
+          "reasons": [
+            "a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope"
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 2,
+      "stage": "diff_refinement",
+      "requested_at": "2026-08-09T21:39:20+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [
+          "src/freight_recon/governed_approval.py",
+          "src/freight_recon/carrier_invoice_write.py",
+          "src/freight_recon/action_callback.py"
+        ],
+        "diff_stat": " src/freight_recon/governed_approval.py     | 210 ++++++++++++++++--\n src/freight_recon/carrier_invoice_write.py | 118 ++++++++--\n src/freight_recon/action_callback.py       |  36 +++-\n 3 files changed, 330 insertions(+), 34 deletions(-)",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 7,
+      "accepted_ids": [
+        "U042-S13"
+      ],
+      "rejected": [
+        {
+          "id": "U042-S7",
+          "title": "Exactly-once baseline: a single authorized approval yields exactly one payment and one recorded approval",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest a carrier invoice INV-U042-EO1 for the operating tenant with a claimable amount.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S8",
+          "title": "Duplicate approval request with same idempotency key pays exactly once",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO2 for the operating tenant.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S9",
+          "title": "Two simultaneous approval taps race to a single payment",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO3 for the operating tenant.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S10",
+          "title": "Retry after a lost response (timeout-after-effect) does not double-pay",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO4 for the operating tenant.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S11",
+          "title": "Re-approving an already-paid invoice is refused with no second effect",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO5 and approve it once so it reaches the paid state.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "U042-S12",
+          "title": "Crash between approval and payment recovers to exactly one payment",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO6 for the operating tenant.'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

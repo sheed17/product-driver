@@ -1,0 +1,54 @@
+=== LAYER C — IMMEDIATE EVIDENCE FROM THIS ITERATION ===
+ITERATION 1 of 3
+
+--- THE TASK GIVEN TO THE BUILDER ---
+t
+
+--- THE BUILDER'S LATEST CLAIM ---
+b
+
+--- GIT STATE (Neyma repo, read-only) ---
+(no git snapshot)
+
+--- WHAT THE DRIVER ACTUALLY OBSERVED BY OPERATING THE PRODUCT ---
+scenario: svc-000  (mode=backend)
+readiness: OK — all readiness checks passed
+services started: worker-000
+
+scenario overall: PASSED
+
+=== VERIFICATION SUITE — GENERATED + PERMANENT SCENARIOS ===
+5 generated case(s) + 0 permanent regression scenario(s): 5 passed, 0 failed, 0 blocked, 0 skipped
+risk categories exercised: service_unavailable
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.
+
+The generated scenarios are situations this run decided were worth exercising, derived from the task, the acceptance criteria, the diff and what has already failed. Each failure above names the risk it was generated for and the evidence directory holding its full artifacts.
+
+Judge four things:
+  1. does the observed behaviour satisfy the task?
+  2. did the generated scenarios expose a meaningful defect, or only a      mis-stated expectation? Say which.
+  3. was the coverage sufficient for the risk surface of what changed?
+  4. is further targeted verification warranted?
+
+Set additional_verification_needed and list scenario_requests when the coverage does not yet reach the risk surface. Those are advisory: they request more verification and never change your decision. A required scenario that failed cannot be accepted — the harness enforces that regardless of what you return, so do not argue around it.
+
+Describe coverage honestly. Never claim all possible cases were verified.
+
+=== SERVICE STARTUP OUTPUT ===
+--- worker-000 ---
+
+--- worker-001 ---
+
+--- worker-002 ---
+
+--- worker-003 ---
+
+--- worker-004 ---
+
+
+=== EVIDENCE DIRECTORY (use these paths in evidence_paths) ===
+/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out
+
+Return the JSON decision object now.

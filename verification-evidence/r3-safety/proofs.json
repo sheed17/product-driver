@@ -1,0 +1,53 @@
+[
+  {
+    "finding": "F-1 external HTTP effect via GeneratedRequest.path",
+    "payload": "https://api.stripe.com/v1/charges",
+    "validate_scenario_reasons": [],
+    "compiled_request_path": "https://api.stripe.com/v1/charges",
+    "compiled_request_method": "POST",
+    "compiled_headers": {
+      "X-Api-Key": "live"
+    },
+    "url_handed_to_http_client": "https://api.stripe.com/v1/charges",
+    "control_that_should_have_stopped_it": "scenario_validation.py:330-347",
+    "hole": "scenarios.py:907-912 _join_url returns an absolute path verbatim"
+  },
+  {
+    "finding": "F-2 replay path skips validate_scenario",
+    "validate_scenario_would_refuse_with": [
+      "unsupported external effect: url 'https://evil.example/exfil' addresses 'evil.example', which is not loopback. Scenarios operate the locally running product and never produce an external effect.",
+      "wait of 1000000000ms exceeds the 60000ms bound",
+      "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+    ],
+    "replay_compiled_url": "https://evil.example/exfil",
+    "replay_compiled_wait_ms": 1000000000,
+    "hole": "cli.py:1458-1465 \u2014 no validate_scenario call"
+  },
+  {
+    "finding": "F-1 scope",
+    "request_field_matrix": {
+      "url=external": {
+        "refused": true,
+        "reasons": [
+          "unsupported external effect: url 'https://evil.example/x' addresses 'evil.example', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+        ],
+        "final_url": "https://evil.example/x"
+      },
+      "path=external": {
+        "refused": false,
+        "reasons": [],
+        "final_url": "https://evil.example/x"
+      },
+      "path=protocol-relative": {
+        "refused": false,
+        "reasons": [],
+        "final_url": "http://127.0.0.1:8931/evil.example/x"
+      },
+      "path=traversal": {
+        "refused": false,
+        "reasons": [],
+        "final_url": "http://127.0.0.1:8931/../../../../etc/passwd"
+      }
+    }
+  }
+]

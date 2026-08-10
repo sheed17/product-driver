@@ -1,0 +1,233 @@
+{
+  "S-RO3-05": {
+    "name": "generated:S-RO3-05",
+    "phase": "P3",
+    "description": "Empty / whitespace-only filter degrades sensibly\n\nrisk: boundary (priority P1)\npurpose: Confirm an empty or whitespace-only filter does not crash and does not present a bare blank screen.\nrequirement: a filter with no matches says so rather than showing nothing\nproduct principle: operational_clarity\nrationale: Empty-query is the most common boundary a search box hits; it must resolve to either the full list or an explicit prompt, never a blank or an error.\n\ngenerated at 2026-08-09T21:37:30+00:00 (stage=initial, wave 1)\nbecause of risk: R1\nrepository HEAD 6e8127d, active unit U-RO-3, founder context 0cb51e5158467505\nacceptance criteria consulted: a search by reference returns the matching shipment (weight 3): PENDING; a filter with no matches says so rather than showing nothing (weight 2): PENDING; the view performs no write of any kind (weight 3): PENDING",
+    "mode": "browser",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "browser",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": {
+          "steps": [
+            {
+              "goto": "/shipments?q=%20%20",
+              "click": null,
+              "fill": null,
+              "value": null,
+              "press": null,
+              "wait_for": null,
+              "wait_ms": null,
+              "screenshot": null,
+              "expect_text": null
+            },
+            {
+              "goto": null,
+              "click": null,
+              "fill": null,
+              "value": null,
+              "press": null,
+              "wait_for": null,
+              "wait_ms": null,
+              "screenshot": null,
+              "expect_text": "shipment"
+            }
+          ],
+          "initial_screenshot": true,
+          "final_screenshot": true
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "A whitespace-only query renders either the shipment list or an explicit prompt/empty-state \u2014 the word 'shipment' appears in view chrome.",
+      "No traceback."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A completely blank page for an empty query.",
+      "A 500 / traceback."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S-RO3-07": {
+    "name": "generated:S-RO3-07",
+    "phase": "P3",
+    "description": "Concurrent searches stay consistent and write nothing\n\nrisk: concurrency (priority P2)\npurpose: Confirm simultaneous searches return correct results and do not trigger any write under concurrent read load.\nrequirement: the view performs no write of any kind\nproduct principle: outcome_verification\nrationale: A read view hit concurrently must not lazily materialize/cache into a mutation table; a race is the classic way a 'read-only' path sneaks a write.\n\ngenerated at 2026-08-09T21:37:30+00:00 (stage=initial, wave 1)\nbecause of risk: R2\nrepository HEAD 6e8127d, active unit U-RO-3, founder context 0cb51e5158467505\nacceptance criteria consulted: a search by reference returns the matching shipment (weight 3): PENDING; a filter with no matches says so rather than showing nothing (weight 2): PENDING; the view performs no write of any kind (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?q=101",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?q=ZZ-DOES-NOT-EXIST-99999",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?q=101",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants\"",
+          "contains": [],
+          "not_contains": [
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "All four concurrent requests return 200.",
+      "effect_grants count query succeeds and (compared to S-RO3-03 baseline) shows no growth attributable to the reads."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "A request errors or times out under concurrent load.",
+      "effect_grants grew during the concurrent read burst."
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S-RO3-08": {
+    "name": "generated:S-RO3-08",
+    "phase": "P3",
+    "description": "Canonical test suite stays green after the view is added\n\nrisk: regression (priority P2)\npurpose: Guard against the new view breaking or shadowing existing read/command routes and schema invariants.\nrequirement: U-RO-3\nproduct principle: tms_centrality\nrationale: The view is bolted onto the same app that serves existing routes; the canonical suite is the cheapest broad regression net and is an approved command.\n\ngenerated at 2026-08-09T21:37:30+00:00 (stage=initial, wave 1)\nbecause of risk: R6\nrepository HEAD 6e8127d, active unit U-RO-3, founder context 0cb51e5158467505\nacceptance criteria consulted: a search by reference returns the matching shipment (weight 3): PENDING; a filter with no matches says so rather than showing nothing (weight 2): PENDING; the view performs no write of any kind (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "canonical-suite",
+        "command": {
+          "name": "canonical-suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "The canonical pytest suite exits 0 with the shipment-search view present."
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Any previously-passing test fails after the view was added."
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

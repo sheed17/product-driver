@@ -1,0 +1,84 @@
+{
+  "1_browser_flows": {
+    "wall_s": 1.24,
+    "outcomes": {
+      "ui-201": "PASSED",
+      "ui-202": "PASSED",
+      "ui-9": "FAILED"
+    },
+    "per_case_evidence_files": {
+      "ui-201": [
+        "01-initial.png"
+      ],
+      "ui-202": [
+        "01-initial.png"
+      ],
+      "ui-9": [
+        "01-initial.png"
+      ]
+    },
+    "note": "item 9 has the injected wrong-owner defect; ui-9 must FAIL"
+  },
+  "2_backend_per_case_evidence": {
+    "be-0": {
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/growth-backend-evidence/scenarios/be-0",
+      "exists": true,
+      "file_count": 0
+    },
+    "be-1": {
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/growth-backend-evidence/scenarios/be-1",
+      "exists": true,
+      "file_count": 0
+    },
+    "be-2": {
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/growth-backend-evidence/scenarios/be-2",
+      "exists": true,
+      "file_count": 0
+    },
+    "be-3": {
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/growth-backend-evidence/scenarios/be-3",
+      "exists": true,
+      "file_count": 0
+    },
+    "be-4": {
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/growth-backend-evidence/scenarios/be-4",
+      "exists": true,
+      "file_count": 0
+    }
+  },
+  "3_service_log_growth": {
+    "5": {
+      "distinct_service_log_keys": 5,
+      "service_log_total_chars": 0,
+      "summary_block_chars": 279,
+      "evaluator_prompt_chars": 2055,
+      "evaluator_prompt_est_tokens": 513,
+      "wall_s": 0.02
+    },
+    "20": {
+      "distinct_service_log_keys": 20,
+      "service_log_total_chars": 0,
+      "summary_block_chars": 281,
+      "evaluator_prompt_chars": 2357,
+      "evaluator_prompt_est_tokens": 589,
+      "wall_s": 0.06
+    },
+    "50": {
+      "distinct_service_log_keys": 50,
+      "service_log_total_chars": 0,
+      "summary_block_chars": 281,
+      "evaluator_prompt_chars": 2957,
+      "evaluator_prompt_est_tokens": 739,
+      "wall_s": 0.14
+    }
+  },
+  "4_decision_with_100_failures": {
+    "decision": "FIX",
+    "problems_count": 100,
+    "evidence_paths_count": 12,
+    "correction_prompt_chars": 30016,
+    "decision_json_chars": 96776,
+    "decision_est_tokens": 24194,
+    "all_100_named_in_correction": 100
+  }
+}

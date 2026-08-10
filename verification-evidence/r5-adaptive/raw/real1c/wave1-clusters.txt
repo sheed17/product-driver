@@ -1,0 +1,4 @@
+[C01] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+  affected: gen-idempotent-approve
+  shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output; expect_state: exactly one payment: must not contain 'payments=<n>' — unexpectedly present
+  evidence: r5/raw/real1c/artifacts-w1/scenarios/gen-idempotent-approve

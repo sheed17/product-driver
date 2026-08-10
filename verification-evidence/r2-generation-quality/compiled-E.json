@@ -1,0 +1,48 @@
+{
+  "AUTHZ2-S9": {
+    "name": "generated:AUTHZ2-S9",
+    "phase": "P3",
+    "description": "Canonical test suite passes with role-based release authorization in place\n\nrisk: regression (priority P1)\npurpose: Run the authoritative canonical suite to catch regressions in the release/authz/tenant behavior at the unit level, since the live release path ships dark and secret-gated.\nrequirement: U-AUTHZ-2\nproduct principle: outcome_verification\nrationale: The real console/release surface is not fully reachable without secrets; the canonical suite is the most trustworthy check that all four acceptance behaviors hold.\n\ngenerated at 2026-08-09T21:46:08+00:00 (stage=initial, wave 1)\nbecause of risk: R7\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "canonical-suite",
+        "command": {
+          "name": "canonical-suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Suite passes, including any U-AUTHZ-2 authorization/tenant tests"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Authz/tenant tests fail or are absent"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

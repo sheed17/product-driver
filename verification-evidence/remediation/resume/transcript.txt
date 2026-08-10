@@ -1,0 +1,54 @@
+==============================================================================
+PROCESS 1 — generate, adapt after a failure, then die
+==============================================================================
+      wave 1 (initial): 2 scenario(s) accepted — gen-happy, gen-dup
+      wave 2 (adaptive): 1 scenario(s) accepted — gen-conc
+  scenarios             : ['gen-happy', 'gen-dup', 'gen-conc']
+  waves_used            : 2
+  budget_exhausted      : True
+  executed              : ['gen-happy', 'gen-dup']
+  observed_failures     : ['gen-dup']
+  observed_clusters     : ['C01']
+  compiled              : ['gen-conc', 'gen-dup', 'gen-happy']
+  adaptive_links        : {'gen-conc': ['gen-dup']}
+  promotion_candidates  : []
+
+  *** the process is interrupted here — nothing is carried in memory ***
+
+==============================================================================
+PROCESS 2 — a new process resumes the same run
+==============================================================================
+      resumed scenario plan: 3 scenario(s), 2 wave(s) already used
+  restore note          : resumed scenario plan: 3 scenario(s), 2 wave(s) already used
+  scenarios             : ['gen-happy', 'gen-dup', 'gen-conc']
+  waves_used            : 2
+  budget_exhausted      : True
+  executed              : ['gen-happy', 'gen-dup']
+  observed_failures     : ['gen-dup']
+  observed_clusters     : ['C01']
+  compiled              : ['gen-conc', 'gen-dup', 'gen-happy']
+  adaptive_links        : {'gen-conc': ['gen-dup']}
+  promotion_candidates  : []
+
+==============================================================================
+COMPARISON
+==============================================================================
+  [OK  ] scenarios
+  [OK  ] waves_used
+  [OK  ] budget_exhausted
+  [OK  ] executed
+  [OK  ] observed_failures
+  [OK  ] observed_clusters
+  [OK  ] compiled
+  [OK  ] adaptive_links
+  [OK  ] promotion_candidates
+
+  plan on disk before re-persist : ['gen-happy', 'gen-dup', 'gen-conc']
+  plan on disk after  re-persist : ['gen-happy', 'gen-dup', 'gen-conc']
+  run id preserved               : 'resume-001'
+
+RESULT: resume continued from persisted state.
+  - no scenario was regenerated (the reasoner had no payloads left to give)
+  - the wave budget was not refunded by restarting the process
+  - the adaptive scenario still records the failure that caused it
+  - re-persisting did not destroy the earlier plan

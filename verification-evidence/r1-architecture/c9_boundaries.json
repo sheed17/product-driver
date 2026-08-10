@@ -1,0 +1,10 @@
+{
+  "scenario_planner_mentions_investigator": false,
+  "scenario_generator_mentions_investigator": false,
+  "investigator_mentions_generator": false,
+  "investigator_mentions_planner": false,
+  "investigator_py_modified": false,
+  "completion_auditor_py_modified": false,
+  "protocol_resolver_py_modified": false,
+  "evaluator_py_modified": false
+}

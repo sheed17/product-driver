@@ -1,0 +1,1091 @@
+{
+  "run_id": "r5-uncertain",
+  "task": "Implement an approval endpoint with persistent state.",
+  "active_unit_id": "UNIT-APPROVAL",
+  "generation_basis": {
+    "task": "Implement an approval endpoint with persistent state.",
+    "task_hash": "cfd5ed6c31767ec1",
+    "active_unit_id": "UNIT-APPROVAL",
+    "acceptance_criteria": [
+      "AC-APPROVAL-001 approving an invoice records the approval durably",
+      "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+    ],
+    "founder_context_version": "r5-fixture",
+    "repository_head": "bbe0fd2",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "permanent:approval-smoke"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "Approval may not be recorded durably.",
+      "risk_category": "persistence_failure",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001",
+      "covered_by": [
+        "gen-persist-approve"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "Approving twice may apply the effect twice.",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001",
+      "covered_by": [
+        "gen-idempotent-approve"
+      ]
+    },
+    {
+      "id": "R-APR-1",
+      "description": "POST /approve may apply the durable approval+payment effect and then fail to acknowledge within a sane client timeout, so the caller cannot tell whether the approval landed. Every already-covered scenario timed out on exactly this call and none inspected the store afterward, so the effect's actual status is unverified.",
+      "risk_category": "timeout_after_effect",
+      "severity": "P0",
+      "basis": "Prior failures C01-C04 (all POST /approve timed out); AC-APPROVAL-001 (approval must be recorded durably).",
+      "covered_by": []
+    },
+    {
+      "id": "R-APR-2",
+      "description": "An approval that returns success may never be written to the durable store, so a re-read of persisted state (state.py, a fresh process) still shows pending while the API claims approved.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001 (records the approval durably); diff touches r5/fixture/app.py approval path.",
+      "covered_by": [
+        "gen2-ui-durable-disagree"
+      ]
+    },
+    {
+      "id": "R-APR-3",
+      "description": "Approval state may not survive a restart / independent re-read of the persisted store, violating the durability promise.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-002 (approval state survives a re-read of persisted state).",
+      "covered_by": [
+        "gen2-restart-approval-durability"
+      ]
+    },
+    {
+      "id": "R-APR-4",
+      "description": "Two approvals arriving simultaneously for the same invoice may each apply the payment effect, producing a double payment even though sequential idempotency is already covered.",
+      "risk_category": "concurrency",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-001 (records the approval durably); concurrency is untested (only sequential idempotency covered).",
+      "covered_by": [
+        "gen2-concurrent-approve-once"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-happy-approve",
+      "title": "Approving a pending invoice succeeds",
+      "purpose": "The core promise of the endpoint: an approval is accepted.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "approve",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W1A/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "alice"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 4
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "approved"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "uses its own invoice id, so it cannot contaminate others",
+      "isolation_key": "store",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:50:02+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-persist-approve",
+      "title": "An approval is written to durable storage",
+      "purpose": "A 200 is not evidence; the durable store must agree.",
+      "risk_category": "persistence_failure",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "approve",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W1B/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "alice"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 4
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "durable store shows approved",
+          "command": "python3 r5/fixture/state.py W1B",
+          "contains": [
+            "status=approved"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "uses its own invoice id",
+      "isolation_key": "store",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:50:02+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R1",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen-idempotent-approve",
+      "title": "Approving the same invoice twice pays once",
+      "purpose": "A repeated approval must not duplicate the payment effect.",
+      "risk_category": "idempotency",
+      "priority": "P0",
+      "rationale": "",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "approve once",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W1C/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "alice"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 4
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "approve again",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W1C/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "alice"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 4
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "exactly one payment",
+          "command": "python3 r5/fixture/state.py W1C",
+          "contains": [
+            "payments=1"
+          ],
+          "not_contains": [
+            "payments=2"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "uses its own invoice id",
+      "isolation_key": "store",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:50:02+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "R2",
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen2-ambiguous-approve",
+      "title": "Timed-out approve leaves an ambiguous durable effect",
+      "purpose": "Determine whether a POST /approve that fails to answer within a sane client timeout has nonetheless landed the approval in the durable store, which is the exact blind spot behind every prior timed-out scenario.",
+      "risk_category": "ambiguous_external_effect",
+      "priority": "P0",
+      "rationale": "The three covered scenarios all asserted status==200 and timed out; none inspected the store, so whether the effect actually happened is unknown. A durable read after a bounded-timeout request settles the ambiguity.",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W2A/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "alice"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 3
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "python3 r5/fixture/state.py W2A",
+            "contains": [
+              "W2A status=approved"
+            ],
+            "not_contains": [
+              "STORE MISSING"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "python3 r5/fixture/state.py W2A",
+          "contains": [
+            "W2A status=approved"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "POST /approve returns 200 with an approved acknowledgement within the 3s client timeout",
+        "The durable store (state.py W2A) reports W2A status=approved, matching the acknowledgement"
+      ],
+      "forbidden_observations": [
+        "The client receives no successful response within the timeout while state.py W2A already shows status=approved (a silent, ambiguous effect the caller cannot confirm)"
+      ],
+      "cleanup": [],
+      "isolation_note": "Uses a unique invoice id (W2A) created on first touch; asserts only against W2A rows in the store, so it cannot read or clobber another scenario's records. Shares the single store file/api service, so it must not run concurrently with other r5-store scenarios.",
+      "isolation_key": "r5-store",
+      "generated_from": [
+        "prior failures C01-C04",
+        "AC-APPROVAL-001"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:53:15+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [
+          "r5/fixture/app.py"
+        ],
+        "prior_failures_consulted": [
+          "[FAIL] P0 permanent permanent:approval-smoke  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-persist-approve  (persistence_failure)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P1 generated gen-happy-approve  (happy_path)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 \u2014 got timed out"
+        ],
+        "generating_risk": "R-APR-1",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "1e6cf695-eec5-4e56-9649-ad71ceca1d73",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen2-ui-durable-disagree",
+      "title": "Approve acknowledged by API but absent from durable store",
+      "purpose": "Detect divergence between what the approval endpoint reports (in-memory/HTTP response) and what a re-read of the durable store shows.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "AC-APPROVAL-001 requires the approval to be recorded durably, not merely reflected in a response body. Comparing the API's own read of the invoice against the file-backed oracle exposes a response that lies about persistence.",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W2C/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "carol"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/api/invoices/W2C",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "python3 r5/fixture/state.py W2C",
+            "contains": [
+              "W2C status=approved"
+            ],
+            "not_contains": [
+              "W2C status=pending"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "python3 r5/fixture/state.py W2C",
+          "contains": [
+            "W2C status=approved"
+          ],
+          "not_contains": [
+            "W2C status=pending"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "The API GET of W2C reports approved AND state.py W2C reports status=approved (response and durable store agree)"
+      ],
+      "forbidden_observations": [
+        "The API reports W2C approved while the durable store (state.py W2C) still shows status=pending"
+      ],
+      "cleanup": [],
+      "isolation_note": "Uses a unique invoice id (W2C) created on first touch and asserts only against W2C; shares the store file/api service so it must be serialized with other r5-store scenarios.",
+      "isolation_key": "r5-store",
+      "generated_from": [
+        "AC-APPROVAL-001",
+        "diff r5/fixture/app.py"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:53:15+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [
+          "r5/fixture/app.py"
+        ],
+        "prior_failures_consulted": [
+          "[FAIL] P0 permanent permanent:approval-smoke  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-persist-approve  (persistence_failure)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P1 generated gen-happy-approve  (happy_path)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 \u2014 got timed out"
+        ],
+        "generating_risk": "R-APR-2",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "1e6cf695-eec5-4e56-9649-ad71ceca1d73",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen2-restart-approval-durability",
+      "title": "Approval survives an api restart / independent re-read",
+      "purpose": "Verify that an approval recorded before a service restart is still present when the persisted store is re-read afterward, per the durability-across-re-read promise.",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "rationale": "AC-APPROVAL-002 promises approval state survives a re-read of persisted state. A restart is the strongest form of independent re-read: it proves the approval is on disk and not merely in a process's memory.",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/W2B/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "actor": "dave"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "python3 r5/fixture/state.py W2B",
+            "contains": [
+              "W2B status=approved"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "api",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "python3 r5/fixture/state.py W2B",
+            "contains": [
+              "W2B status=approved"
+            ],
+            "not_contains": [
+              "STORE MISSING"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "python3 r5/fixture/state.py W2B",
+          "contains": [
+            "W2B status=approved"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Before restart, state.py W2B shows status=approved",
+        "After the api restart, state.py W2B still shows status=approved"
+      ],
+      "forbidden_observations": [
+        "After restart the approval is gone: state.py W2B no longer shows status=approved, shows status=pending, or the store is reset/missing"
+      ],
+      "cleanup": [],
+      "isolation_note": "This scenario restarts the api service, which reinitializes the shared store; it is destructive to every other r5-store scenario and MUST run in isolation (serialized) from all of them. It uses invoice id W2B.",
+      "isolation_key": "r5-store",
+      "generated_from": [
+        "AC-APPROVAL-002"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:53:15+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [
+          "r5/fixture/app.py"
+        ],
+        "prior_failures_consulted": [
+          "[FAIL] P0 permanent permanent:approval-smoke  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-persist-approve  (persistence_failure)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P1 generated gen-happy-approve  (happy_path)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 \u2014 got timed out"
+        ],
+        "generating_risk": "R-APR-3",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "1e6cf695-eec5-4e56-9649-ad71ceca1d73",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "gen2-concurrent-approve-once",
+      "title": "Simultaneous approvals of one invoice pay exactly once",
+      "purpose": "Exercise two approvals racing on the same invoice at the same instant and confirm the durable store records a single payment, distinct from the already-covered sequential idempotency case.",
+      "risk_category": "concurrency",
+      "priority": "P1",
+      "rationale": "Covered idempotency is sequential (approve twice in order). A genuine race can slip past a check-then-write gap under locking, producing a double payment that sequential tests never reveal. The durable payment count is the oracle.",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/api/invoices/W2D/approve",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "actor": "eve"
+              },
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/api/invoices/W2D/approve",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "actor": "eve"
+              },
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "python3 r5/fixture/state.py W2D",
+            "contains": [
+              "W2D status=approved",
+              "payments=1"
+            ],
+            "not_contains": [
+              "payments=2"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "python3 r5/fixture/state.py W2D",
+          "contains": [
+            "payments=1"
+          ],
+          "not_contains": [
+            "payments=2"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "After two simultaneous approvals, state.py W2D shows status=approved with payments=1"
+      ],
+      "forbidden_observations": [
+        "state.py W2D shows payments=2 (or more) after the concurrent approvals \u2014 the invoice was paid twice"
+      ],
+      "cleanup": [],
+      "isolation_note": "Issues its two racing requests against a unique invoice id (W2D) and asserts only against W2D; shares the store file/api service so it must be serialized with other r5-store scenarios.",
+      "isolation_key": "r5-store",
+      "generated_from": [
+        "AC-APPROVAL-001",
+        "covered gen-idempotent-approve (sequential only)"
+      ],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-09T21:53:15+00:00",
+        "task_hash": "cfd5ed6c31767ec1",
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria_consulted": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "files_consulted": [
+          "permanent:approval-smoke"
+        ],
+        "diff_files_consulted": [
+          "r5/fixture/app.py"
+        ],
+        "prior_failures_consulted": [
+          "[FAIL] P0 permanent permanent:approval-smoke  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-persist-approve  (persistence_failure)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P1 generated gen-happy-approve  (happy_path)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 \u2014 got timed out"
+        ],
+        "generating_risk": "R-APR-4",
+        "stage": "adaptive",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "1e6cf695-eec5-4e56-9649-ad71ceca1d73",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 7,
+    "by_risk_category": {
+      "happy_path": 1,
+      "persistence_failure": 1,
+      "idempotency": 1,
+      "ambiguous_external_effect": 1,
+      "ui_backend_disagreement": 1,
+      "restart_recovery": 1,
+      "concurrency": 1
+    },
+    "by_priority": {
+      "P1": 2,
+      "P0": 5
+    },
+    "uncovered_risks": [
+      "POST /approve may apply the durable approval+payment effect and then fail to acknowledge within a sane client timeout, so the caller cannot tell whether the approval landed. Every already-covered scenario timed out on exactly this call and none inspected the store afterward, so the effect's actual status is unverified."
+    ]
+  },
+  "assumptions": [
+    "The approval endpoint is POST /api/invoices/{id}/approve.",
+    "The current run exhibits the stalling/timeout behavior (every prior POST /approve timed out), so bounded client timeouts plus a durable-store read are the reliable oracle; the state.py CLI reads the on-disk store, not the running process.",
+    "Invoices are created on first touch, so each scenario can safely use its own unique invoice id (W2A/W2B/W2C/W2D) without seeding.",
+    "state.py accepts an invoice id as an extra argument to scope its output to one record.",
+    "Restarting the api service reinitializes the shared store, making the restart scenario destructive and requiring serialization with all other r5-store scenarios."
+  ],
+  "unresolved_questions": [
+    "The acceptance criteria do not state a maximum acknowledgement latency for POST /approve, so it is unspecified whether an approval that lands durably but answers slowly (or times out) counts as a pass or a defect; the ambiguous-effect scenario flags the divergence but the intended contract needs confirmation.",
+    "Neither AC names concurrency or double-payment protection explicitly; AC-APPROVAL-001 ('records the approval durably') is the closest anchor, but whether 'exactly one payment per invoice' is a promised invariant should be confirmed with the founder.",
+    "AC-APPROVAL-002 says state survives a 're-read of persisted state' but does not clarify whether a full process restart is in scope; the restart scenario assumes it is."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:50:02+00:00",
+      "basis": {
+        "task": "Implement an approval endpoint with persistent state.",
+        "task_hash": "cfd5ed6c31767ec1",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "permanent:approval-smoke"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 3,
+      "accepted_ids": [
+        "gen-happy-approve",
+        "gen-persist-approve",
+        "gen-idempotent-approve"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 2,
+      "stage": "adaptive",
+      "requested_at": "2026-08-09T21:50:24+00:00",
+      "basis": {
+        "task": "Implement an approval endpoint with persistent state.",
+        "task_hash": "cfd5ed6c31767ec1",
+        "active_unit_id": "UNIT-APPROVAL",
+        "acceptance_criteria": [
+          "AC-APPROVAL-001 approving an invoice records the approval durably",
+          "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+        ],
+        "founder_context_version": "r5-fixture",
+        "repository_head": "bbe0fd2",
+        "diff_files": [
+          "r5/fixture/app.py"
+        ],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "permanent:approval-smoke"
+        ],
+        "prior_failures": [
+          "[FAIL] P0 permanent permanent:approval-smoke  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P0 generated gen-persist-approve  (persistence_failure)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 \u2014 got timed out",
+          "[FAIL] P1 generated gen-happy-approve  (happy_path)  \u2014 expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 \u2014 got timed out"
+        ],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 4,
+      "accepted_ids": [
+        "gen2-ambiguous-approve",
+        "gen2-ui-durable-disagree",
+        "gen2-restart-approval-durability",
+        "gen2-concurrent-approve-once"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

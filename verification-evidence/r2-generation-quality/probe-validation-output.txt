@@ -1,0 +1,25 @@
+PROBE 1 — is an invented AC id accepted as grounding?
+  reasons: ACCEPTED (grounding satisfied)
+
+PROBE 2 — is the always-present principle token 'founder context' enough?
+  reasons: ACCEPTED
+
+PROBE 3 — does a generated scenario re-running a PERMANENT scenario's own
+          command get caught as a duplicate?
+  permanent scenario commands: ['./probe.sh payments']
+  generated runs the same command; reasons: ACCEPTED (duplicate NOT detected)
+
+PROBE 4 — can an SQL oracle with a comparison or concat operator be used?
+  OK  sqlite3 db.sqlite3 "SELECT count(*) FROM t"
+      
+  NO  sqlite3 db.sqlite3 "SELECT count(*) FROM t WHERE n > 1"
+      command extends the approved entry 'sqlite3 db.sqlite3' with shell composition ('"SELECT count(*) FROM t WHERE n > 1"'); only argument tails are permitted
+  NO  sqlite3 db.sqlite3 "SELECT 'X:'||id FROM t"
+      command extends the approved entry 'sqlite3 db.sqlite3' with shell composition ('"SELECT \'X:\'||id FROM t"'); only argument tails are permitted
+  NO  sqlite3 db.sqlite3 "SELECT * FROM t WHERE a < b"
+      command extends the approved entry 'sqlite3 db.sqlite3' with shell composition ('"SELECT * FROM t WHERE a < b"'); only argument tails are permitted
+  OK  sqlite3 db.sqlite3 "SELECT * FROM t WHERE s LIKE 'a%'"
+      
+
+PROBE 5 — is a scenario that only runs the test suite accepted?
+  reasons: ACCEPTED — exit code 0 alone counts as an observable outcome

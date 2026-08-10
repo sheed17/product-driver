@@ -67,13 +67,28 @@ class EvaluatorDecision(BaseModel):
     customer_facing: bool = False
     rubric_categories: list[str] = Field(default_factory=list)
 
+    # -- adaptive verification --------------------------------------------
+    #: The evaluator's judgement that the coverage exercised so far does not yet
+    #: cover the risk surface. Advisory: it requests further verification, it
+    #: never changes the four terminal outcomes above, and an ACCEPT carrying it
+    #: is still an ACCEPT unless a required scenario actually failed.
+    additional_verification_needed: bool = False
+    #: Plain-language situations the evaluator wants exercised next. These are
+    #: an input to scenario generation, never executable instructions.
+    scenario_requests: list[str] = Field(default_factory=list)
+
     @field_validator("confidence")
     @classmethod
     def _clamp_confidence(cls, v: float) -> float:
         return max(0.0, min(1.0, float(v)))
 
     @field_validator(
-        "observed_behavior", "problems", "evidence_paths", "rubric_categories", mode="before"
+        "observed_behavior",
+        "problems",
+        "evidence_paths",
+        "rubric_categories",
+        "scenario_requests",
+        mode="before",
     )
     @classmethod
     def _coerce_list(cls, v: Any) -> Any:
@@ -187,6 +202,17 @@ class ScenarioResult(BaseModel):
     teardown: list[CommandResult] = Field(default_factory=list)
     error: str | None = None
 
+    # -- ordered-step scenarios -------------------------------------------
+    #: The ordered operations actually performed, in order. Empty for a
+    #: phase-form scenario, whose ordering is fixed and therefore implicit.
+    steps_performed: list[str] = Field(default_factory=list)
+    #: Absolute paths of temporary fixtures materialized during the run.
+    fixtures_written: list[str] = Field(default_factory=list)
+    #: Set when this result came from a generated scenario, so evidence can be
+    #: traced back to the plan entry that asked for it.
+    scenario_id: str = ""
+    origin: Literal["permanent", "generated"] = "permanent"
+
     @property
     def passed(self) -> bool:
         return (
@@ -194,6 +220,9 @@ class ScenarioResult(BaseModel):
             and self.readiness_ok
             and all(a.passed for a in self.assertions)
         )
+
+    def failed_assertions(self) -> list[AssertionResult]:
+        return [a for a in self.assertions if not a.passed]
 
 
 class GitSnapshot(BaseModel):
@@ -224,6 +253,10 @@ class IterationRecord(BaseModel):
     # Populated by the context layer; typed loosely to avoid a circular import.
     context_provenance: dict[str, Any] | None = None
     rejected_reasons: list[str] = Field(default_factory=list)
+    #: Aggregate ScenarioSuite outcome for this iteration, when the run used
+    #: one. Typed loosely, like the other cross-layer records below, so the
+    #: suite layer can evolve without a circular import.
+    suite: dict[str, Any] | None = None
     completion_audit: dict[str, Any] | None = None
     protocol_resolution: dict[str, Any] | None = None
     investigation: dict[str, Any] | None = None

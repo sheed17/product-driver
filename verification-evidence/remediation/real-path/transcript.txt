@@ -1,0 +1,176 @@
+==============================================================================
+STEP 1 — TASK
+==============================================================================
+Add supervised carrier invoice approval: an operator approves an invoice and the approval must be recorded durably, exactly once, and must survive a restart of the service.
+
+The product has two real defects: approving twice records two payments,
+and reads are served from memory so an approval vanishes after a restart.
+
+==============================================================================
+STEPS 2-9 — REAL GENERATION, EXECUTION, ADAPTATION, CORRECTION, RERUN
+==============================================================================
+→ planning verification scenarios for this task...
+      wave 1 (initial): 7 scenario(s) accepted — S01, S02, S03, S04, S05, S06, S07
+  7 generated case(s)
+  risk categories exercised: boundary, concurrency, happy_path, missing_data, repeated_request, restart_recovery, retry_safety
+  identified but NOT exercised: A retried or duplicated approval of the same invoice is paid twice (list grows to two entries) instead of exactly once.; After an api restart the service answers approvals from empty in-memory state, silently losing a durably-required approval record.; Dedup state is not consulted after a restart, so a post-restart retry of an already-approved invoice creates a second effect.
+→ builder working...
+→ refining the scenario plan against what the builder changed...
+      no repository changes to refine the scenario plan against
+→ running scenario suite (8 of 8): first pass: the full suite
+  → approval_backend (permanent)
+  → S01 (generated)
+  → S02 (generated)
+  → S03 (generated)
+  → S04 (generated)
+  → S05 (generated)
+  → S07 (generated)
+  → S06 (generated)
+  7 generated case(s) + 1 permanent regression scenario(s): 3 passed, 5 failed, 0 blocked, 0 skipped
+→ evaluating observed behaviour...
+  product evaluation ACCEPTed, but 5 required scenario(s) failed.
+  5 required scenario(s) failed, including generated verification: S02
+    observed: an approval succeeded
+    problem:  [FAIL] P0 generated S02  (repeated_request)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py: contains 'payments=1' — not found in command output
+    problem:  [FAIL] P0 generated S03  (concurrency)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py: contains 'payments=1' — not found in command output
+    problem:  [FAIL] P0 generated S04  (restart_recovery)  — expect_visible: GET http://127.0.0.1:60031/: contains 'INV-4001' — not found in response body
+    problem:  [FAIL] P0 generated S05  (retry_safety)  — expect_visible: POST http://127.0.0.1:60031/: contains 'already approved' — not found in response body
+    problem:  [FAIL] P1 generated S07  (boundary)  — expect_visible: GET http://127.0.0.1:60031/: contains 'INV-7001' — not found in response body
+→ expanding verification around what failed...
+      wave 2 (adaptive): 6 scenario(s) accepted — S08, S09, S10, S11, S12, S13
+→ builder working...
+→ refining the scenario plan against what the builder changed...
+      wave 3 (diff_refinement): 3 scenario(s) accepted — S14, S15, S16
+→ running scenario suite (16 of 17): failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (16 of 17)
+  → approval_backend (permanent)
+  → S02 (generated)
+  → S03 (generated)
+  → S04 (generated)
+  → S05 (generated)
+  → S08 (generated)
+  → S09 (generated)
+  → S10 (generated)
+  → S14 (generated)
+  → S15 (generated)
+  → S16 (generated)
+  → S07 (generated)
+  → S11 (generated)
+  → S12 (generated)
+  → S13 (generated)
+  → S06 (generated)
+→ narrowed suite is green; running the full required regression set...
+  → approval_backend (permanent)
+  → S01 (generated)
+  → S02 (generated)
+  → S03 (generated)
+  → S04 (generated)
+  → S05 (generated)
+  → S08 (generated)
+  → S09 (generated)
+  → S10 (generated)
+  → S14 (generated)
+  → S15 (generated)
+  → S16 (generated)
+  → S07 (generated)
+  → S11 (generated)
+  → S12 (generated)
+  → S13 (generated)
+  → S06 (generated)
+  promotion candidate: S02 found a defect in iteration 1 and now passes
+  promotion candidate: S03 found a defect in iteration 1 and now passes
+  promotion candidate: S04 found a defect in iteration 1 and now passes
+  promotion candidate: S05 found a defect in iteration 1 and now passes
+  promotion candidate: S07 found a defect in iteration 1 and now passes
+  16 generated case(s) + 1 permanent regression scenario(s): 17 passed, 0 failed, 0 blocked, 0 skipped
+→ evaluating observed behaviour...
+  the approval flow looked fine to me
+    observed: an approval succeeded
+
+==============================================================================
+STEP 10 — WHAT THE RUN DECIDED
+==============================================================================
+  status              : ACCEPTED
+  builder applied fix : True
+  evaluator said      : ACCEPT on every turn (deliberately hostile)
+  scenarios generated : 16
+    [P0 happy_path] S01  (wave 1, initial)
+        title    : Single approval is recorded and readable
+        because  : An approval is not durably recorded at all.
+    [P0 repeated_request] S02  (wave 1, initial)
+        title    : Sequential duplicate approval pays exactly once
+        because  : A retried approval of the same invoice is paid twice.
+    [P0 concurrency] S03  (wave 1, initial)
+        title    : Concurrent duplicate approvals pay exactly once
+        because  : Two simultaneous approvals of the same invoice both record a payment.
+    [P0 restart_recovery] S04  (wave 1, initial)
+        title    : Approval survives an api restart
+        because  : After restart the service answers from empty in-memory state and loses the approval.
+    [P0 retry_safety] S05  (wave 1, initial)
+        title    : Dedup survives a restart (durable exactly-once)
+        because  : The dedup record is not consulted after restart, so a post-restart retry creates a second effect.
+    [P2 missing_data] S06  (wave 1, initial)
+        title    : Invalid approval request records no effect
+        because  : An invalid/empty-invoice request produces a phantom payment record.
+    [P1 boundary] S07  (wave 1, initial)
+        title    : Multiple distinct approvals all survive a restart
+        because  : Distinct approvals are lost or over-deduped after restart.
+    [P0 concurrency] S08  (wave 2, adaptive)
+        title    : Concurrent duplicate approvals pay once and survive a restart
+        because  : R1: a race that double-pays could also be non-durable — after restart the single payment might vanish or the deduped duplicate might reappear.
+        caused by: S03, S04
+    [P0 persistence_failure] S09  (wave 2, adaptive)
+        title    : Approval survives an ungraceful stop then start (crash durability)
+        because  : R2: graceful restart lost the approval; an ungraceful stop/start would lose it just as surely if writes are not durably flushed at approval time.
+        caused by: S04
+    [P0 stale_state] S10  (wave 2, adaptive)
+        title    : Duplicate and distinct approvals interleaved, then restart
+        because  : R3: mixing a duplicate and a distinct approval could, after restart, drop the distinct one, resurrect the duplicate, or miscount.
+        caused by: S02, S04, S07
+    [P1 concurrency] S11  (wave 2, adaptive)
+        title    : Concurrent approvals of two distinct invoices are not over-deduped
+        because  : R4: a lock added to stop double-pay could over-dedup and collapse two distinct concurrent approvals into one payment.
+        caused by: S03, S07
+    [P1 repeated_request] S12  (wave 2, adaptive)
+        title    : Many rapid retries of one invoice pay once and dedup survives restart
+        because  : R5: idempotency proven for one retry may break under many rapid retries or fail to persist the dedup key across restart.
+        caused by: S02, S05
+    [P1 concurrency] S13  (wave 2, adaptive)
+        title    : Five-way concurrent duplicate approvals pay exactly once
+        because  : R5: two-way race dedup may still admit a second payment under higher contention.
+        caused by: S03
+    [P0 ui_backend_disagreement] S14  (wave 3, diff_refinement)
+        title    : API read path agrees with durable ledger after restart
+        because  : After a restart the API's GET could report an empty ledger while the invoice is durably persisted, so the operator's view disagrees with the recorded effect.
+    [P0 idempotency] S15  (wave 3, diff_refinement)
+        title    : Duplicate approval reports already-approved, not a second payment
+        because  : A second approval of the same invoice could append a duplicate payment or falsely report a fresh 'approved' effect instead of truthfully reporting it was already approved.
+    [P0 retry_safety] S16  (wave 3, diff_refinement)
+        title    : Durable dedup still reports truthfully after a restart
+        because  : After a restart a retried approval of an already-paid invoice could be double-paid or falsely reported as a fresh approval because dedup state was not reloaded from the durable ledger.
+  wave 1 (initial): proposed 7, accepted 7, refused 0
+  wave 2 (adaptive): proposed 6, accepted 6, refused 0
+  wave 3 (diff_refinement): proposed 3, accepted 3, refused 0
+
+  final suite:
+    PASSED   permanent  approval_backend  evidence_verified=True
+    PASSED   generated  S01  evidence_verified=True
+    PASSED   generated  S02  evidence_verified=True
+    PASSED   generated  S03  evidence_verified=True
+    PASSED   generated  S04  evidence_verified=True
+    PASSED   generated  S05  evidence_verified=True
+    PASSED   generated  S08  evidence_verified=True
+    PASSED   generated  S09  evidence_verified=True
+    PASSED   generated  S10  evidence_verified=True
+    PASSED   generated  S14  evidence_verified=True
+    PASSED   generated  S15  evidence_verified=True
+    PASSED   generated  S16  evidence_verified=True
+    PASSED   generated  S07  evidence_verified=True
+    PASSED   generated  S11  evidence_verified=True
+    PASSED   generated  S12  evidence_verified=True
+    PASSED   generated  S13  evidence_verified=True
+    PASSED   generated  S06  evidence_verified=True
+
+  scenario gate: VERIFIED — 16/16 required scenario(s) passed with resolvable evidence
+
+  evidence references, re-verified independently of the run:
+    dangling references: 0

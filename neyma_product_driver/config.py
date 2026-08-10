@@ -132,6 +132,106 @@ class ScenarioRunConfig(BaseModel):
     viewport_height: int = 900
 
 
+class ScenarioGenerationConfig(BaseModel):
+    """Dynamic scenario generation and adaptive verification.
+
+    **Off by default.** Turning it on changes what the driver executes against a
+    real product, which is not a change that should arrive with an upgrade. Every
+    bound below exists so that an enabled run stays finite and predictable: a
+    wave cannot propose unlimited scenarios, waves cannot recur forever, and the
+    whole suite cannot outgrow ``max_total_scenarios`` however many risks are
+    identified.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+
+    # -- budgets ----------------------------------------------------------
+    max_initial_scenarios: int = 12
+    max_adaptive_scenarios_per_wave: int = 8
+    max_waves: int = 3
+    max_total_scenarios: int = 30
+    max_scenarios_per_risk_category: int = 6
+    #: Wall-clock ceiling for one suite execution. Scenarios not reached are
+    #: recorded as SKIPPED with that reason, never silently dropped.
+    execution_budget_s: int = 1800
+
+    # -- what informs generation ------------------------------------------
+    diff_aware: bool = True
+    use_prior_failures: bool = True
+    use_investigation_findings: bool = True
+
+    # -- promotion --------------------------------------------------------
+    #: A generated scenario that caught a real defect and later passed becomes a
+    #: promotion *candidate*. Promotion into the permanent suite is always an
+    #: explicit human action; this switch cannot make it automatic, it can only
+    #: be left at its only supported value.
+    promotion_requires_approval: bool = True
+
+    # -- execution --------------------------------------------------------
+    #: Sequential until isolation can be proven per scenario. See
+    #: :mod:`~neyma_product_driver.scenario_suite`.
+    max_parallel: int = 1
+
+    # -- the generator ----------------------------------------------------
+    model: str = "opus"
+    #: Commands generated scenarios may run, beyond those already written into
+    #: the repository's scenario files. A generated scenario can never author a
+    #: command; it can only choose one from this derived set.
+    approved_commands: list[str] = Field(default_factory=list)
+    #: Hosts a generated request may address. Loopback only, by design.
+    local_http_hosts: list[str] = Field(
+        default_factory=lambda: ["127.0.0.1", "localhost", "::1"]
+    )
+
+    @field_validator(
+        "max_initial_scenarios",
+        "max_adaptive_scenarios_per_wave",
+        "max_waves",
+        "max_total_scenarios",
+        "max_scenarios_per_risk_category",
+    )
+    @classmethod
+    def _positive_bound(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("scenario generation bounds must be >= 1")
+        return v
+
+    @field_validator("max_total_scenarios")
+    @classmethod
+    def _sane_total(cls, v: int) -> int:
+        if v > 200:
+            raise ValueError(
+                "max_total_scenarios must be <= 200; an unbounded generated suite is "
+                "not a verification strategy"
+            )
+        return v
+
+    @field_validator("max_parallel")
+    @classmethod
+    def _no_unproven_parallelism(cls, v: int) -> int:
+        if v != 1:
+            raise ValueError(
+                "max_parallel must be 1: scenarios share services, ports, databases and a "
+                "filesystem workspace, and nothing yet proves a given pair is isolated. "
+                "Parallel execution stays unavailable until it can be proven safe rather "
+                "than assumed."
+            )
+        return v
+
+    @field_validator("promotion_requires_approval")
+    @classmethod
+    def _promotion_stays_manual(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError(
+                "promotion_requires_approval cannot be disabled: the permanent regression "
+                "suite is human-reviewed by definition, and a run may never write into it "
+                "on your behalf"
+            )
+        return v
+
+
 class DriverConfig(BaseModel):
     """Top-level configuration for a driver run."""
 
@@ -164,6 +264,9 @@ class DriverConfig(BaseModel):
     builder: BuilderConfig = Field(default_factory=BuilderConfig)
     evaluator: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     run: ScenarioRunConfig = Field(default_factory=ScenarioRunConfig)
+    scenario_generation: ScenarioGenerationConfig = Field(
+        default_factory=ScenarioGenerationConfig
+    )
 
     # Safety switches. All default to the conservative choice.
     allow_dirty_tree: bool = True  # Neyma is normally mid-phase and dirty.

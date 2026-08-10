@@ -494,6 +494,38 @@ _DESTRUCTIVE_OPS = (
 )
 
 _PATH_IN_CODE_RE = re.compile(r"[\"']((?:docs|src|eval|scripts|configs|data)/[\w./-]+\.\w{1,6})[\"']")
+
+#: A finalizer names two very different kinds of file: the derived status it
+#: WRITES, and the guard suites it RUNS. Only the first is finalizer-owned, and
+#: conflating them is not harmless — a content commit that touches a guard test
+#: gets reported as "content also carries derived status", a blocker that stops
+#: a legitimate independent review on a file the finalizer never writes.
+#:
+#: When the finalizer declares its own set (`STATUS_METADATA_FILES = (...)`),
+#: that declaration is authoritative and scraping is not needed. This matches
+#: the rule used everywhere else here: the repository's own statement about
+#: itself outranks an inference drawn from its source text.
+_OWNED_DECL_RE = re.compile(
+    r"^(?P<name>[A-Z][A-Z0-9_]*(?:STATUS|METADATA|OWNED|FINALIZER)[A-Z0-9_]*"
+    r"(?:FILES|PATHS))\s*=\s*[\(\[](?P<body>.*?)[\)\]]",
+    re.S | re.M,
+)
+
+
+def _is_test_path(path: str) -> bool:
+    """A test module, by the conventions pytest itself collects on."""
+    name = path.rsplit("/", 1)[-1]
+    return name.startswith("test_") or name.endswith(("_test.py", "_test.js", "_test.ts"))
+
+
+def _declared_owned_paths(text: str) -> list[str]:
+    """Paths the finalizer declares it owns, or [] if it declares none."""
+    out: list[str] = []
+    for decl in _OWNED_DECL_RE.finditer(text):
+        for match in _PATH_IN_CODE_RE.findall(decl.group("body")):
+            if match not in out:
+                out.append(match)
+    return out
 _STATUS_FILE_RE = re.compile(
     r"\b(BUILD-STATUS\.ya?ml|CURRENT\.md|IMPLEMENTATION-REGISTRY\.ya?ml)\b", re.I
 )
@@ -854,9 +886,23 @@ def discover_protocol(repo: Path) -> DiscoveredProtocol:
             # Structural facts from the implementations, not from their prose:
             # which files the finalizer actually writes.
             if category == "finalizer":
-                for match in _PATH_IN_CODE_RE.findall(text):
-                    if match not in finalizer_owned:
-                        finalizer_owned.append(match)
+                declared = _declared_owned_paths(text)
+                if declared:
+                    # The finalizer states which files it writes. Believe it.
+                    for match in declared:
+                        if match not in finalizer_owned:
+                            finalizer_owned.append(match)
+                else:
+                    # No declaration: fall back to scraping, but never claim a
+                    # test suite is derived status. A finalizer that WROTE its
+                    # own guard tests would be the false-green defect those
+                    # guards exist to catch, so a test path is always something
+                    # it runs, never something it owns.
+                    for match in _PATH_IN_CODE_RE.findall(text):
+                        if _is_test_path(match):
+                            continue
+                        if match not in finalizer_owned:
+                            finalizer_owned.append(match)
                 for match in _STATUS_FILE_RE.findall(text):
                     if match not in status_paths:
                         status_paths.append(match)

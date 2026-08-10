@@ -1,0 +1,17 @@
+  5 proposed scenario(s) refused:
+    - U042-S2: a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+    - U042-S3: a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+    - U042-S7: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+    - U042-S8: a persistence_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+    - U042-S9: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+  wave 1 (initial): 4 scenario(s) accepted — U042-S1, U042-S4, U042-S5, U042-S6
+  6 proposed scenario(s) refused:
+    - U042-S7: unsafe or unapproved operation: command is not in the approved set: 'Ingest a carrier invoice INV-U042-EO1 for the operating tenant with a claimable amount.'. Generated scenarios may only run commands a human already approved.
+    - U042-S8: unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO2 for the operating tenant.'. Generated scenarios may only run commands a human already approved.
+    - U042-S9: unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO3 for the operating tenant.'. Generated scenarios may only run commands a human already approved.
+    - U042-S10: unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO4 for the operating tenant.'. Generated scenarios may only run commands a human already approved.
+    - U042-S11: unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO5 and approve it once so it reaches the paid state.'. Generated scenarios may only run commands a human already approved.
+    - U042-S12: unsafe or unapproved operation: command is not in the approved set: 'Ingest carrier invoice INV-U042-EO6 for the operating tenant.'. Generated scenarios may only run commands a human already approved.
+  wave 2 (diff_refinement): 1 scenario(s) accepted — U042-S13
+
+=== B-diff: 5 accepted, 11 refused ===

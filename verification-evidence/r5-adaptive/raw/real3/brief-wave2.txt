@@ -1,0 +1,60 @@
+GENERATION STAGE: adaptive (wave 2)
+You may propose AT MOST 8 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Implement an approval endpoint with persistent state.
+
+ACTIVE READY UNIT: UNIT-APPROVAL
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - AC-APPROVAL-001 approving an invoice records the approval durably
+  - AC-APPROVAL-002 approval state survives a re-read of persisted state
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - founder context
+  - product rubric
+
+WHAT THE BUILDER ACTUALLY CHANGED:
+  - r5/fixture/app.py
+
+SITUATIONS ALREADY COVERED (do not repeat these):
+  - [P1 happy_path] gen-happy-approve: Approving a pending invoice succeeds
+  - [P0 persistence_failure] gen-persist-approve: An approval is written to durable storage
+  - [P0 idempotency] gen-idempotent-approve: Approving the same invoice twice pays once
+
+WHAT FAILED EARLIER IN THIS RUN:
+  - [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+  - [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+  - [FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+  - [FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+
+FAILURE CLUSTERS (several failures that appear to share one cause):
+  - [C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+  affected: permanent:approval-smoke
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+  evidence: r5/raw/real3/artifacts-w1/scenarios/permanent-approval-smoke
+  - [C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+  affected: gen-idempotent-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+  evidence: r5/raw/real3/artifacts-w1/scenarios/gen-idempotent-approve
+  - [C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+  affected: gen-persist-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+  evidence: r5/raw/real3/artifacts-w1/scenarios/gen-persist-approve
+  - [C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+  affected: gen-happy-approve
+  shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+  evidence: r5/raw/real3/artifacts-w1/scenarios/gen-happy-approve
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - python3 r5/fixture/state.py
+  - python3 r5/fixture/state.py SMOKE
+
+SERVICES you may reference / restart / stop / start: api
+LOCAL APP URL for relative request paths: http://127.0.0.1:8953
+BROWSER available: yes
+
+Return the JSON object now.

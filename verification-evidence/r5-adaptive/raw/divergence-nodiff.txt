@@ -1,0 +1,33 @@
+==============================================================================
+NO-DIFF FAMILY -- only the failure evidence differs between these runs
+==============================================================================
+
+nodiff1-nonidempotent   (seeded defect group: exp1)   [r5/raw/nodiff1]
+    [P1 concurrency             ] Simultaneous approvals of one invoice record a single durable approval
+    [P1 missing_data            ] Approving an unknown invoice records no phantom approval
+    [P2 malformed_input         ] Malformed approval body is rejected without mutating state
+    [P1 idempotency             ] Re-approving after a restart stays single and durable
+
+nodiff3-uncertain   (seeded defect group: exp3)   [r5/raw/nodiff3]
+    [P0 restart_recovery        ] Approval survives an api service restart and re-read of persisted state
+    [P0 concurrency             ] Two simultaneous approvals of the same invoice record a single durable approval
+    [P1 missing_data            ] Approving a non-existent invoice does not record a spurious approval
+    [P1 repeated_request        ] Re-approving after a restart keeps a single durable approval
+
+nodiff-CONTROL-no-evidence   (seeded defect group: CONTROL)   [r5/raw/nodiff-control]
+    [P0 timeout_after_effect    ] Approve that stalls past the client timeout still resolves to a definitive, single durable effect
+    [P1 concurrency             ] Two simultaneous approvals of the same invoice pay exactly once
+    [P1 persistence_failure     ] An approval survives an independent re-read after a later write to the store
+    [P2 missing_data            ] Approval with no actor is still recorded durably
+    [P2 malformed_input         ] Malformed approve body must not persist a spurious approval
+
+==============================================================================
+PAIRWISE SIMILARITY
+==============================================================================
+[BETWEEN-DEFECTS] nodiff1-nonidempotent        vs nodiff3-uncertain            cats=0.333 titles=0.265
+[CONTROL        ] nodiff1-nonidempotent        vs nodiff-CONTROL-no-evidence   cats=0.500 titles=0.186
+[CONTROL        ] nodiff3-uncertain            vs nodiff-CONTROL-no-evidence   cats=0.286 titles=0.200
+
+If the run driven by the TIMEOUT failures is no closer to timeout/ambiguity
+territory than the run that saw NO failures at all, the evidence is not
+steering generation.

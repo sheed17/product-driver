@@ -1,0 +1,37 @@
+30 generated case(s) + 1 permanent regression scenario(s): 1 passed, 0 failed, 0 blocked, 30 skipped
+risk categories exercised: ui_backend_disagreement
+
+SKIPPED (with reason):
+  ui-001: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-002: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-003: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-004: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-005: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-006: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-007: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-008: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-009: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-010: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-011: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-012: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-013: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-014: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-015: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-016: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-017: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-018: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-019: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-020: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-021: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-022: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-023: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-024: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-025: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-026: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-027: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-028: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-029: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+  ui-030: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.

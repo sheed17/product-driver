@@ -1,0 +1,32 @@
+60 generated case(s) + 1 permanent regression scenario(s): 36 passed, 0 failed, 0 blocked, 25 skipped
+risk categories exercised: cross_tenant
+
+SKIPPED (with reason):
+  clean-036: the suite's 0s execution budget was exhausted before this scenario ran
+  clean-037: the suite's execution budget was exhausted before this scenario ran
+  clean-038: the suite's execution budget was exhausted before this scenario ran
+  clean-039: the suite's execution budget was exhausted before this scenario ran
+  clean-040: the suite's execution budget was exhausted before this scenario ran
+  clean-041: the suite's execution budget was exhausted before this scenario ran
+  clean-042: the suite's execution budget was exhausted before this scenario ran
+  clean-043: the suite's execution budget was exhausted before this scenario ran
+  clean-044: the suite's execution budget was exhausted before this scenario ran
+  clean-045: the suite's execution budget was exhausted before this scenario ran
+  clean-046: the suite's execution budget was exhausted before this scenario ran
+  clean-047: the suite's execution budget was exhausted before this scenario ran
+  clean-048: the suite's execution budget was exhausted before this scenario ran
+  clean-049: the suite's execution budget was exhausted before this scenario ran
+  clean-050: the suite's execution budget was exhausted before this scenario ran
+  clean-051: the suite's execution budget was exhausted before this scenario ran
+  clean-052: the suite's execution budget was exhausted before this scenario ran
+  clean-053: the suite's execution budget was exhausted before this scenario ran
+  clean-054: the suite's execution budget was exhausted before this scenario ran
+  clean-055: the suite's execution budget was exhausted before this scenario ran
+  clean-056: the suite's execution budget was exhausted before this scenario ran
+  clean-057: the suite's execution budget was exhausted before this scenario ran
+  clean-058: the suite's execution budget was exhausted before this scenario ran
+  clean-059: the suite's execution budget was exhausted before this scenario ran
+  clean-060: the suite's execution budget was exhausted before this scenario ran
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.

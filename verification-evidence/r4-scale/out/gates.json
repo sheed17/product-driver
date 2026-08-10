@@ -1,0 +1,79 @@
+{
+  "A_budget_exhausted_all_green": {
+    "suite_size": 61,
+    "actually_executed": 36,
+    "skipped_for_budget": 25,
+    "passed": 36,
+    "failed": 0,
+    "blocked": 0,
+    "full_run_flag": true,
+    "everything_required_passed": true,
+    "blocking_failures": 0,
+    "ACCEPT_becomes": "ACCEPT",
+    "messages": [],
+    "VERDICT": "GATE HOLE: accepted after running 36/61"
+  },
+  "B_browser_disabled_all_skipped": {
+    "suite_size": 31,
+    "skipped": 30,
+    "passed": 1,
+    "full_run_flag": true,
+    "everything_required_passed": true,
+    "ACCEPT_becomes": "ACCEPT",
+    "messages": [],
+    "VERDICT": "GATE HOLE: accepted with 30/31 required P0 scenarios never run"
+  },
+  "C_dependency_skip_gate": {
+    "failed": 1,
+    "skipped": 5,
+    "blocking_failures": 1,
+    "ACCEPT_becomes": "FIX"
+  },
+  "D_narrowed_green_rerun": {
+    "narrowed_to": 5,
+    "of": 21,
+    "failed": 0,
+    "full_run_flag": false,
+    "ACCEPT_becomes": "BLOCKED",
+    "messages": [
+      "  an ACCEPT cannot rest on a partial suite; the full required set did not run."
+    ],
+    "evidence_paths_in_decision": 5
+  },
+  "E_blocked_vs_failed": {
+    "outcomes": {
+      "blocked-one": "BLOCKED",
+      "failed-one": "FAILED",
+      "passed-one": "PASSED"
+    },
+    "blocked_count": 1,
+    "failed_count": 1,
+    "blocked_separately_reported": true,
+    "both_block_acceptance": true,
+    "ACCEPT_becomes": "FIX"
+  },
+  "F_required_P2_failure": {
+    "failed": 1,
+    "in_summary": true,
+    "blocking_failures": 0,
+    "ACCEPT_becomes": "ACCEPT",
+    "note": "required=True but priority P2 -> blocks_acceptance is False"
+  },
+  "G_evidence_dir_sanitisation": {
+    "'a/b' vs 'a-b'": {
+      "a": "a-b",
+      "b": "a-b",
+      "collide": true
+    },
+    "'case 1' vs 'case_1'": {
+      "a": "case-1",
+      "b": "case_1",
+      "collide": false
+    },
+    "'Case-1' vs 'case-1'": {
+      "a": "Case-1",
+      "b": "case-1",
+      "collide": false
+    }
+  }
+}

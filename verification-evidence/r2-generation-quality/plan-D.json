@@ -1,0 +1,212 @@
+{
+  "run_id": "review-D",
+  "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+  "active_unit_id": "U-P5-1",
+  "generation_basis": {
+    "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+    "task_hash": "9f26b6d9cc85e0f0",
+    "active_unit_id": "U-P5-1",
+    "acceptance_criteria": [
+      "workflow state survives a process restart (weight 3): PENDING",
+      "a failed write leaves no partially applied workflow (weight 3): PENDING",
+      "a read after a write never returns stale state (weight 2): PENDING",
+      "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "If any workflow state still lives only in an in-process cache, a process restart reverts to the last durably-written state, silently losing transitions the operator already saw applied.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC 'workflow state survives a process restart'; unit U-P5-1 moves state from an in-process cache to the durable store.",
+      "covered_by": []
+    },
+    {
+      "id": "R2",
+      "description": "Rebuilding workflow/effect state from the persisted history on restart could re-drive an already-completed effect (double invoice / double commit) if a committed grant is treated as re-claimable.",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "AC 'rebuilding state from history never re-executes an effect'; checkpoint.py crash semantics: crash-after-commit -> grant EXPIRES unclaimed, re-checkpoint mints a NEW grant under the same commit_key.",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "A write that fails partway (transition UPDATE matches !=1 rows, FK violation, integrity error) could leave a workflow run or grant in a half-applied state instead of rolling back cleanly.",
+      "risk_category": "partial_failure",
+      "severity": "P0",
+      "basis": "AC 'a failed write leaves no partially applied workflow'; workflow.transition/_require_one_row rollback paths and _write_txn BEGIN IMMEDIATE.",
+      "covered_by": []
+    },
+    {
+      "id": "R4",
+      "description": "A read served from a stale in-process cache after a durable write would show the operator an old state (UI/backend disagreement).",
+      "risk_category": "stale_state",
+      "severity": "P1",
+      "basis": "AC 'a read after a write never returns stale state'; action_callback opens a fresh WorkflowStore per request (lines 320/368).",
+      "covered_by": []
+    },
+    {
+      "id": "R5",
+      "description": "The live-hold uniqueness (at most one GRANTED/CLAIMED/ATTEMPTED/VERIFIED/UNKNOWN_OUTCOME grant per (tenant,commit_key)) could be violated by the state-move change, permitting two live reservations for one logical effect.",
+      "risk_category": "safety_invariant",
+      "severity": "P1",
+      "basis": "migrations/phase3_checkpoint.py ix_effect_grants_live_hold partial unique index; workflow.operation_commit_claim raises on >1 live row.",
+      "covered_by": []
+    },
+    {
+      "id": "R6",
+      "description": "The checkpoint_witnesses append-only history could become mutable (missing triggers) or lose 1:1 witness:grant correspondence, corrupting the history that restart rebuilds from.",
+      "risk_category": "safety_invariant",
+      "severity": "P1",
+      "basis": "phase3_checkpoint.P3_TRIGGERS append-only triggers; checkpoint_witnesses UNIQUE(tenant,grant_id) FK to effect_grants.",
+      "covered_by": []
+    },
+    {
+      "id": "R7",
+      "description": "The cache->store move could regress the 22 tenant-scoped store methods or cross-tenant isolation guarantees.",
+      "risk_category": "regression",
+      "severity": "P0",
+      "basis": "workflow.py WorkflowStore tenant-first invariants; broad canonical suite.",
+      "covered_by": []
+    }
+  ],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": [
+      "If any workflow state still lives only in an in-process cache, a process restart reverts to the last durably-written state, silently losing transitions the operator already saw applied.",
+      "Rebuilding workflow/effect state from the persisted history on restart could re-drive an already-completed effect (double invoice / double commit) if a committed grant is treated as re-claimable.",
+      "A write that fails partway (transition UPDATE matches !=1 rows, FK violation, integrity error) could leave a workflow run or grant in a half-applied state instead of rolling back cleanly.",
+      "A read served from a stale in-process cache after a durable write would show the operator an old state (UI/backend disagreement).",
+      "The live-hold uniqueness (at most one GRANTED/CLAIMED/ATTEMPTED/VERIFIED/UNKNOWN_OUTCOME grant per (tenant,commit_key)) could be violated by the state-move change, permitting two live reservations for one logical effect.",
+      "The checkpoint_witnesses append-only history could become mutable (missing triggers) or lose 1:1 witness:grant correspondence, corrupting the history that restart rebuilds from.",
+      "The cache->store move could regress the 22 tenant-scoped store methods or cross-tenant isolation guarantees."
+    ]
+  },
+  "assumptions": [],
+  "unresolved_questions": [
+    "I could not drive an end-to-end proof of the cache->store move at the HTTP layer: every state-changing callback route (/actions/signed, /email/action, /slack/*) requires a valid signed action token or Slack signature, and I may not use secrets, so I cannot create-then-restart-then-read a NEW workflow run through the running service. The restart evidence (S1) therefore asserts durability/integrity of the existing store across restart plus service recovery, not the survival of a specific transition applied via the API. Is there an approved, secret-free way to seed a workflow transition into the driver_probe store (e.g., a fixture loader) so a true before/after-restart state comparison can be authored?",
+    "State-of-the-store invariant checks (S4, S5, S8) are vacuous if the driver_probe ledger is empty at run time. Confirm whether the dogfood service is expected to have persisted runs/grants/witnesses when these scenarios run, or whether a seeding step should precede them.",
+    "The AC 'a read after a write never returns stale state' has no secret-free HTTP driver available to me; I approximated it with the WAL/per-connection freshness mechanism (S8) plus the full suite (S7). If there is an approved endpoint or script that performs a write and an immediately-following read against driver_probe, a stronger direct scenario could be authored.",
+    "The repository does not point me at the specific in-process cache being removed by U-P5-1 (no clearly-named cache module surfaced); scenarios are grounded in the durable WorkflowStore/ledger semantics the ACs describe rather than in the exact code path deleted. Confirm the source module/field that previously held the cached state."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-09T21:41:53+00:00",
+      "basis": {
+        "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+        "task_hash": "9f26b6d9cc85e0f0",
+        "active_unit_id": "U-P5-1",
+        "acceptance_criteria": [
+          "workflow state survives a process restart (weight 3): PENDING",
+          "a failed write leaves no partially applied workflow (weight 3): PENDING",
+          "a read after a write never returns stale state (weight 2): PENDING",
+          "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 8,
+      "accepted_ids": [],
+      "rejected": [
+        {
+          "id": "S1-restart-survival",
+          "title": "Durable workflow store survives a callback process restart",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The callback service is running against data/active_workspace/driver_probe/workflow.sqlite3 with its canonical/P3 schema applied.'. Generated scenarios may only run commands a human already approved.",
+            "unsafe or unapproved operation: command is not in the approved set: 'Ensure the callback service is left running: start_service callback if it is down.'. Generated scenarios may only run commands a human already approved.",
+            "unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('\"SELECT \\'RUNS=\\'||count(*) FROM workflow_runs\"'); only argument tails are permitted",
+            "unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('\"SELECT \\'PARTIAL:\\'||id FROM workflow_runs WHERE state IS NULL OR created_at IS NULL OR updated_at IS NULL\"'); only argument tails are permitted"
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S2-crash-reexecute-matrix",
+          "title": "Crash/restart matrix never re-executes a committed effect",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.",
+            "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S3-witness-claim-idempotency",
+          "title": "Witness is single-use and the claim CAS admits exactly one claim",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved.",
+            "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S4-single-live-hold",
+          "title": "At most one live-hold grant per (tenant, commit_key) in the durable ledger",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: \"The callback service's durable store exists at data/active_workspace/driver_probe/workflow.sqlite3.\". Generated scenarios may only run commands a human already approved.",
+            "unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('\"SELECT \\'VIOLATION:\\'||tenant||\\'/\\'||commit_key||\\'=\\'||count(*) FROM effect_grants WHERE state IN (\\'GRANTED\\',\\'CLAIMED\\',\\'ATTEMPTED\\',\\'VERIFIED\\',\\'UNKNOWN_OUTCOME\\') GROUP BY tenant,commit_key HAVING count(*)>1\"'); only argument tails are permitted"
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S5-witness-append-only-1to1",
+          "title": "Witness history is append-only and 1:1 with its grant",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The durable store at data/active_workspace/driver_probe/workflow.sqlite3 has the P3 schema applied.'. Generated scenarios may only run commands a human already approved.",
+            "unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('\"SELECT \\'ORPHAN:\\'||w.checkpoint_id FROM checkpoint_witnesses w LEFT JOIN effect_grants g ON w.tenant=g.tenant AND w.grant_id=g.grant_id WHERE g.grant_id IS NULL\"'); only argument tails are permitted"
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S6-durable-schema-complete",
+          "title": "Canonical schema provides a durable home for all workflow state",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S7-full-regression",
+          "title": "Full canonical suite: no partial-write / stale-read / tenant regressions",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The canonical test environment is installed (.venv present).'. Generated scenarios may only run commands a human already approved."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S8-read-after-write-freshness-config",
+          "title": "Durable store is configured for fresh cross-connection reads (WAL)",
+          "reasons": [
+            "unsafe or unapproved operation: command is not in the approved set: 'The callback service has opened data/active_workspace/driver_probe/workflow.sqlite3 at least once (WAL mode is set at store construction).'. Generated scenarios may only run commands a human already approved.",
+            "unsafe or unapproved operation: command extends the approved entry 'sqlite3 data/active_workspace/driver_probe/workflow.sqlite3' with shell composition ('\"SELECT \\'NOSTATE:\\'||id FROM workflow_runs WHERE state IS NULL\"'); only argument tails are permitted"
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ]
+}

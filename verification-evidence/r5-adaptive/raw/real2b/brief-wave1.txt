@@ -1,0 +1,28 @@
+GENERATION STAGE: initial (wave 1)
+You may propose AT MOST 12 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Implement an approval endpoint with persistent state.
+
+ACTIVE READY UNIT: UNIT-APPROVAL
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - AC-APPROVAL-001 approving an invoice records the approval durably
+  - AC-APPROVAL-002 approval state survives a re-read of persisted state
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - founder context
+  - product rubric
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - python3 r5/fixture/state.py
+  - python3 r5/fixture/state.py SMOKE
+
+SERVICES you may reference / restart / stop / start: api
+LOCAL APP URL for relative request paths: http://127.0.0.1:8956
+BROWSER available: yes
+
+Return the JSON object now.

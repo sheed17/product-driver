@@ -1,0 +1,19 @@
+  9 proposed scenario(s) refused:
+    - S7: unknown risk_category 'agent-jargon'
+    - S1: unsafe or unapproved operation: command is not in the approved set: 'Callback service is serving on 127.0.0.1:8001 against data/active_workspace/driver_probe/workflow.sqlite3'. Generated scenarios may only run commands a human already approved.
+    - S2: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a real workflow_run currently in NEEDS_REVIEW (e.g. the newest NEEDS_REVIEW run), and records its prior state for cleanup'. Generated scenarios may only run commands a human already approved.
+    - S3: unsafe or unapproved operation: command is not in the approved set: 'At least one NEEDS_REVIEW run exists'. Generated scenarios may only run commands a human already approved.
+    - S4: unsafe or unapproved operation: command is not in the approved set: "Executor selects an exception whose backing load has a missing required document / unlinked evidence (e.g. a 'missing POD' or unlinked-packet run)". Generated scenarios may only run commands a human already approved.
+    - S5: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a run the backend holds in DONE or FAILED'. Generated scenarios may only run commands a human already approved.
+    - S6: unsafe or unapproved operation: command is not in the approved set: 'No workflow_run exists with id 999999999'. Generated scenarios may only run commands a human already approved.
+    - S8: unsafe or unapproved operation: command is not in the approved set: 'Executor binds RUN_ID to a real run and records its current backend state'. Generated scenarios may only run commands a human already approved.
+  6 proposed scenario(s) refused:
+    - S1-state-matches-backend: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run exists in data/active_workspace/driver_probe/workflow.sqlite3 (known load_id and state).'. Generated scenarios may only run commands a human already approved.
+    - S2-next-action-and-owner-named: unsafe or unapproved operation: command is not in the approved set: 'A seeded open exception run with an assigned owner exists.'. Generated scenarios may only run commands a human already approved.
+    - S3-owner-not-invented: unsafe or unapproved operation: command is not in the approved set: 'Force one exception run into an unassigned-owner state for the duration of the test.'. Generated scenarios may only run commands a human already approved.
+    - S4-evidence-shown: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run whose reason/evidence is recorded in the backend.'. Generated scenarios may only run commands a human already approved.
+    - S5-reload-reflects-new-state: unsafe or unapproved operation: command is not in the approved set: 'A seeded exception run in a known initial state.'. Generated scenarios may only run commands a human already approved.
+    - S6-cross-tenant-isolation: unsafe or unapproved operation: command is not in the approved set: 'Two tenants each with an exception run in the workspace DB.'. Generated scenarios may only run commands a human already approved.
+  wave 2 (diff_refinement): 2 scenario(s) accepted — S7-canonical-regression, S8-checkpoint-matrix-guard
+
+=== A2-diff: 2 accepted, 15 refused ===

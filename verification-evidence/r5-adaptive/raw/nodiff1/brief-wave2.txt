@@ -1,0 +1,42 @@
+GENERATION STAGE: adaptive (wave 2)
+You may propose AT MOST 8 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Implement an approval endpoint with persistent state.
+
+ACTIVE READY UNIT: UNIT-APPROVAL
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - AC-APPROVAL-001 approving an invoice records the approval durably
+  - AC-APPROVAL-002 approval state survives a re-read of persisted state
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - founder context
+  - product rubric
+
+SITUATIONS ALREADY COVERED (do not repeat these):
+  - [P1 happy_path] gen-happy-approve: Approving a pending invoice succeeds
+  - [P0 persistence_failure] gen-persist-approve: An approval is written to durable storage
+  - [P0 idempotency] gen-idempotent-approve: Approving the same invoice twice pays once
+
+WHAT FAILED EARLIER IN THIS RUN:
+  - [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+
+FAILURE CLUSTERS (several failures that appear to share one cause):
+  - [C01] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+  affected: gen-idempotent-approve
+  shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output; expect_state: exactly one payment: must not contain 'payments=<n>' — unexpectedly present
+  evidence: r5/raw/nodiff1/artifacts-w1/scenarios/gen-idempotent-approve
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - python3 r5/fixture/state.py
+  - python3 r5/fixture/state.py SMOKE
+
+SERVICES you may reference / restart / stop / start: api
+LOCAL APP URL for relative request paths: http://127.0.0.1:8961
+BROWSER available: yes
+
+Return the JSON object now.

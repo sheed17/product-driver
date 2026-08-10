@@ -6,23 +6,39 @@ plain YAML so they can be written by hand per Neyma phase.
 
 Execution is strictly observational: assertions are recorded, never enforced by
 raising. The evaluator decides what the observations mean.
+
+Two execution shapes exist, and they are mutually exclusive per scenario:
+
+*Phase form* — the original, and the only one a handwritten YAML file uses. The
+executor runs the fixed phase order ``setup → fixtures → services → readiness →
+commands → requests → browser → expect_state → global checks → teardown``. Every
+existing scenario file keeps working unchanged.
+
+*Step form* — an optional ordered ``steps:`` list, used by scenarios the planner
+compiles. Order is the whole point: "approve, then read back", "approve twice",
+"approve then restart the service" and "two operators approve simultaneously"
+are different situations only because of sequencing, and the phase form cannot
+express any of them. When ``steps`` is present the phase-level operate fields
+must be empty, so there is never an ambiguous mix of the two.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .config import ScenarioRunConfig
 from .models import (
     AssertionResult,
     BrowserObservation,
-    CommandResult,
+    HttpObservation,
     ScenarioResult,
     redact,
 )
@@ -54,6 +70,9 @@ class RequestSpec(BaseModel):
     body: str | None = None
     expect_status: int | None = None
     expect_contains: list[str] = Field(default_factory=list)
+    #: Per-request override. A scenario that exercises "timed out before the
+    #: effect landed" needs a deadline shorter than the run-wide one.
+    timeout_s: int | None = None
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -119,6 +138,68 @@ class BrowserSpec(BaseModel):
     final_screenshot: bool = True
 
 
+#: The step kinds the executor knows how to perform. Nothing outside this set is
+#: executable, which is what lets a generated scenario be checked mechanically:
+#: a proposed operation either compiles to one of these or it is refused.
+StepKind = Literal[
+    "command",
+    "request",
+    "parallel_requests",
+    "browser",
+    "state_check",
+    "fixture",
+    "wait",
+    "restart_service",
+    "stop_service",
+    "start_service",
+]
+
+
+class ScenarioStep(BaseModel):
+    """One ordered operation.
+
+    Exactly one payload field is meaningful per ``kind``; the rest stay unset.
+    A flat model rather than a discriminated union keeps the YAML readable and
+    keeps the compiler in :mod:`~neyma_product_driver.scenario_plan` total.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: StepKind
+    name: str = ""
+    command: CommandSpec | None = None
+    state_check: StateCheckSpec | None = None
+    request: RequestSpec | None = None
+    #: Issued concurrently. This is the only concurrency the executor offers,
+    #: and it is what a double-submit or two-operator race actually needs.
+    requests: list[RequestSpec] = Field(default_factory=list)
+    browser: BrowserSpec | None = None
+    #: Written under ``<artifact-dir>/fixtures/``; never at a caller-chosen path.
+    fixture_name: str = ""
+    fixture_content: str = ""
+    #: Names a service declared in ``services``. A step may never name a command.
+    service: str = ""
+    wait_ms: int | None = None
+
+    @model_validator(mode="after")
+    def _payload_matches_kind(self) -> "ScenarioStep":
+        required = {
+            "command": self.command is not None,
+            "state_check": self.state_check is not None,
+            "request": self.request is not None,
+            "parallel_requests": bool(self.requests),
+            "browser": self.browser is not None,
+            "fixture": bool(self.fixture_name),
+            "wait": self.wait_ms is not None,
+            "restart_service": bool(self.service),
+            "stop_service": bool(self.service),
+            "start_service": bool(self.service),
+        }[self.kind]
+        if not required:
+            raise ValueError(f"step kind {self.kind!r} is missing its payload")
+        return self
+
+
 class Scenario(BaseModel):
     """A full scenario definition."""
 
@@ -139,6 +220,10 @@ class Scenario(BaseModel):
     fixtures: list[str] = Field(default_factory=list)
     browser: BrowserSpec | None = None
 
+    #: Ordered form. Mutually exclusive with the phase-level operate fields
+    #: above; see the module docstring. Empty for every handwritten scenario.
+    steps: list[ScenarioStep] = Field(default_factory=list)
+
     expect_visible: list[str] = Field(default_factory=list)
     expect_state: list[StateCheckSpec] = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list)
@@ -150,6 +235,33 @@ class Scenario(BaseModel):
     @classmethod
     def _listify(cls, v: Any) -> Any:
         return [v] if isinstance(v, str) else (v or [])
+
+    @model_validator(mode="after")
+    def _one_execution_shape(self) -> "Scenario":
+        if not self.steps:
+            return self
+        conflicting = [
+            name
+            for name, value in (
+                ("commands", self.commands),
+                ("requests", self.requests),
+                ("browser", self.browser),
+                ("expect_state", self.expect_state),
+            )
+            if value
+        ]
+        if conflicting:
+            raise ValueError(
+                "a scenario using ordered 'steps' must not also set "
+                + ", ".join(conflicting)
+                + " — the two execution shapes have different orderings, and "
+                "silently interleaving them would make the observed sequence a guess"
+            )
+        return self
+
+    @property
+    def uses_steps(self) -> bool:
+        return bool(self.steps)
 
     def summary(self) -> str:
         """Short description handed to the builder so it knows how it'll be tested."""
@@ -167,11 +279,25 @@ class Scenario(BaseModel):
             )
         if self.commands:
             lines.append("commands: " + ", ".join(c.run for c in self.commands))
+        if self.steps:
+            lines.append("ordered steps: " + ", ".join(self._step_label(s) for s in self.steps))
         if self.expect_visible:
             lines.append("must be observable: " + "; ".join(self.expect_visible))
         if self.forbidden:
             lines.append("must NOT appear: " + "; ".join(self.forbidden))
         return "\n".join(lines)
+
+    @staticmethod
+    def _step_label(step: ScenarioStep) -> str:
+        if step.name:
+            return f"{step.kind}:{step.name}"
+        if step.kind == "request" and step.request is not None:
+            return f"request:{step.request.method} {step.request.url or step.request.path}"
+        if step.kind == "parallel_requests":
+            return f"parallel_requests:x{len(step.requests)}"
+        if step.kind in {"restart_service", "stop_service", "start_service"}:
+            return f"{step.kind}:{step.service}"
+        return step.kind
 
 
 def load_scenario(path: str | Path) -> Scenario:
@@ -204,10 +330,16 @@ class ScenarioExecutor:
         self.artifact_dir = Path(artifact_dir)
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.service_logs: dict[str, str] = {}
+        #: fixture name -> absolute path, for ``{{fixture:NAME}}`` substitution.
+        self._fixtures: dict[str, str] = {}
 
     async def execute(self, scenario: Scenario) -> ScenarioResult:
         result = ScenarioResult(scenario_name=scenario.name, mode=scenario.mode)
-        runner = ProcessRunner(self.repo, default_timeout_s=self.cfg.command_timeout_s)
+        runner = ProcessRunner(
+            self.repo,
+            default_timeout_s=self.cfg.command_timeout_s,
+            default_env=scenario.env,
+        )
         services = ServiceManager(self.repo, self.artifact_dir)
 
         try:
@@ -254,97 +386,32 @@ class ScenarioExecutor:
                     result.error = "product did not become ready; nothing was observed"
                     return await self._finish(result, scenario, runner, services)
 
-            # 5. operate — commands
-            for spec in scenario.commands:
-                res = await runner.run(spec.run, timeout_s=spec.timeout_s or self.cfg.command_timeout_s)
-                result.commands.append(res)
-                if spec.expect_exit_code is not None:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_state",
-                            target=f"{spec.name or spec.run}: exit == {spec.expect_exit_code}",
-                            passed=res.exit_code == spec.expect_exit_code,
-                            detail=f"got exit={res.exit_code}{' (timed out)' if res.timed_out else ''}",
-                        )
-                    )
-                combined = f"{res.stdout}\n{res.stderr}"
-                for needle in spec.expect_contains:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_visible",
-                            target=f"{spec.name or spec.run}: contains {needle!r}",
-                            passed=needle in combined,
-                            detail="" if needle in combined else "not found in output",
-                        )
-                    )
+            if scenario.uses_steps:
+                # 5-8 (ordered form). A browser step is what declares the need
+                # for a browser, so the capability check moves inside.
+                await self._run_steps(scenario, result, runner, services)
+            else:
+                # 5. operate — commands
+                for spec in scenario.commands:
+                    await self._do_command(result, spec, runner)
 
-            # 6. operate — API
-            for spec in scenario.requests:
-                url = spec.url or _join_url(scenario.app_url, spec.path or "/")
-                obs = await http_request(
-                    url,
-                    method=spec.method,
-                    headers=spec.headers,
-                    json_body=spec.json_body,
-                    body=spec.body,
-                    timeout_s=self.cfg.http_timeout_s,
-                    name=spec.name or url,
-                )
-                result.http.append(obs)
-                if spec.expect_status is not None:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_state",
-                            target=f"{spec.method} {url}: status == {spec.expect_status}",
-                            passed=obs.status == spec.expect_status,
-                            detail=f"got {obs.status if obs.status is not None else obs.error}",
-                        )
-                    )
-                for needle in spec.expect_contains:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_visible",
-                            target=f"{spec.method} {url}: contains {needle!r}",
-                            passed=needle in obs.body_text,
-                            detail="" if needle in obs.body_text else "not found in response body",
-                        )
-                    )
+                # 6. operate — API
+                for spec in scenario.requests:
+                    await self._do_request(result, spec, scenario.app_url)
 
-            # 7. operate — browser
-            if scenario.mode == "browser":
-                if not self.cfg.browser_enabled:
-                    result.error = (
-                        "scenario requires a browser but browser support is disabled "
-                        "(set run.browser_enabled: true or pass --browser)"
-                    )
-                    return await self._finish(result, scenario, runner, services)
-                result.browser = await self._run_browser(scenario)
+                # 7. operate — browser
+                if scenario.mode == "browser":
+                    if not self.cfg.browser_enabled:
+                        result.error = (
+                            "scenario requires a browser but browser support is disabled "
+                            "(set run.browser_enabled: true or pass --browser)"
+                        )
+                        return await self._finish(result, scenario, runner, services)
+                    result.browser = await self._run_browser(scenario, scenario.browser)
 
-            # 8. persisted-state checks
-            for check in scenario.expect_state:
-                res = await runner.run(
-                    check.command, timeout_s=check.timeout_s or self.cfg.command_timeout_s
-                )
-                result.commands.append(res)
-                combined = f"{res.stdout}\n{res.stderr}"
-                for needle in check.contains:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_state",
-                            target=f"{check.name or check.command}: contains {needle!r}",
-                            passed=needle in combined,
-                            detail="" if needle in combined else "not found in command output",
-                        )
-                    )
-                for needle in check.not_contains:
-                    result.assertions.append(
-                        AssertionResult(
-                            kind="expect_state",
-                            target=f"{check.name or check.command}: must not contain {needle!r}",
-                            passed=needle not in combined,
-                            detail="" if needle not in combined else "unexpectedly present",
-                        )
-                    )
+                # 8. persisted-state checks
+                for check in scenario.expect_state:
+                    await self._do_state_check(result, check, runner)
 
             # 9. global visible / forbidden checks over everything observed
             haystack = self._observed_text(result)
@@ -372,6 +439,289 @@ class ScenarioExecutor:
         except Exception as exc:  # never let a scenario crash the loop
             result.error = f"scenario execution raised: {type(exc).__name__}: {redact(str(exc))}"
             return await self._finish(result, scenario, runner, services)
+
+    # -- ordered steps ----------------------------------------------------
+
+    async def _run_steps(
+        self,
+        scenario: Scenario,
+        result: ScenarioResult,
+        runner: ProcessRunner,
+        services: ServiceManager,
+    ) -> None:
+        """Perform ``scenario.steps`` in order, recording everything observed.
+
+        A step that cannot run is recorded as a failed assertion rather than
+        raised: the evaluator judges observations, and "the service named by a
+        restart step does not exist" is an observation about the scenario, not a
+        crash of the harness.
+        """
+        for index, step in enumerate(scenario.steps, start=1):
+            label = step.name or f"step {index} ({step.kind})"
+            result.steps_performed.append(f"{index:02d}. {step.kind}: {label}")
+
+            if step.kind == "command" and step.command is not None:
+                await self._do_command(result, step.command, runner)
+
+            elif step.kind == "state_check" and step.state_check is not None:
+                await self._do_state_check(result, step.state_check, runner)
+
+            elif step.kind == "request" and step.request is not None:
+                await self._do_request(result, step.request, scenario.app_url)
+
+            elif step.kind == "parallel_requests":
+                # Concurrency is the point: issued together, awaited together.
+                observations = await asyncio.gather(
+                    *(
+                        self._do_request(result, spec, scenario.app_url, record=False)
+                        for spec in step.requests
+                    )
+                )
+                for spec, obs in zip(step.requests, observations):
+                    result.http.append(obs)
+                    self._assert_request(result, spec, obs)
+
+            elif step.kind == "browser" and step.browser is not None:
+                if not self.cfg.browser_enabled:
+                    result.assertions.append(
+                        AssertionResult(
+                            kind="expect_state",
+                            target=f"{label}: browser step",
+                            passed=False,
+                            detail="browser support is disabled (set run.browser_enabled: true)",
+                        )
+                    )
+                    continue
+                obs = await self._run_browser(scenario, step.browser, label=label)
+                self._merge_browser(result, obs)
+
+            elif step.kind == "fixture":
+                self._write_fixture(result, step)
+
+            elif step.kind == "wait":
+                await asyncio.sleep(min(max(int(step.wait_ms or 0), 0), 60_000) / 1000.0)
+
+            elif step.kind in {"restart_service", "stop_service", "start_service"}:
+                await self._do_service_step(result, step, services, label, scenario)
+
+    async def _do_service_step(
+        self,
+        result: ScenarioResult,
+        step: ScenarioStep,
+        services: ServiceManager,
+        label: str,
+        scenario: Scenario,
+    ) -> None:
+        action = {"restart_service": "restart", "stop_service": "stop", "start_service": "start"}[
+            step.kind
+        ]
+        try:
+            if step.kind == "restart_service":
+                await services.restart(step.service)
+            elif step.kind == "stop_service":
+                await services.stop(step.service)
+            else:
+                await services.start_declared(step.service)
+        except KeyError:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{label}: {action} service {step.service!r}",
+                    passed=False,
+                    detail=(
+                        f"no service named {step.service!r} is declared by this scenario; "
+                        "a step may only act on a service the scenario itself started"
+                    ),
+                )
+            )
+            return
+
+        detail = f"service {step.service!r} {action}ed"
+        # A restarted service is not a ready service. Without waiting, the very
+        # next step races the new process's bind and reports a connection error
+        # as a product defect — which is exactly the false signal a recovery
+        # scenario must not produce.
+        if step.kind in {"restart_service", "start_service"} and scenario.readiness:
+            ready, why = await wait_for_readiness(
+                scenario.readiness,
+                cwd=self.repo,
+                timeout_s=self.cfg.readiness_timeout_s,
+                poll_interval_s=self.cfg.readiness_poll_interval_s,
+            )
+            if not ready:
+                result.assertions.append(
+                    AssertionResult(
+                        kind="expect_state",
+                        target=f"{label}: service {step.service!r} became ready again",
+                        passed=False,
+                        detail=why,
+                    )
+                )
+                return
+            detail += "; readiness checks passed again"
+
+        result.assertions.append(
+            AssertionResult(
+                kind="expect_state",
+                target=f"{label}: {action} service {step.service!r}",
+                passed=True,
+                detail=detail,
+            )
+        )
+
+    def _write_fixture(self, result: ScenarioResult, step: ScenarioStep) -> None:
+        """Materialize a temporary fixture inside the run's artifact directory.
+
+        The caller supplies a *name*, never a path: the destination is derived
+        here, so no generated scenario can write outside the evidence root.
+        """
+        from .evidence import sanitize_filename
+
+        fixtures_dir = self.artifact_dir / "fixtures"
+        fixtures_dir.mkdir(parents=True, exist_ok=True)
+        path = fixtures_dir / sanitize_filename(step.fixture_name)
+        try:
+            path.write_text(step.fixture_content, encoding="utf-8")
+        except OSError as exc:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"fixture {step.fixture_name}",
+                    passed=False,
+                    detail=f"could not write fixture: {exc}",
+                )
+            )
+            return
+        self._fixtures[step.fixture_name] = str(path)
+        result.fixtures_written.append(str(path))
+
+    def _substitute(self, text: str | None) -> str:
+        """Replace ``{{fixture:NAME}}`` with the fixture's absolute path.
+
+        The only substitution the executor performs. A fixture that was never
+        written leaves its placeholder in place, so the failure is visible in
+        the evidence instead of silently becoming an empty string.
+        """
+        if not text or "{{fixture:" not in text:
+            return text or ""
+        return re.sub(
+            r"\{\{fixture:([^}]+)\}\}",
+            lambda m: self._fixtures.get(m.group(1).strip(), m.group(0)),
+            text,
+        )
+
+    def _merge_browser(self, result: ScenarioResult, obs: BrowserObservation) -> None:
+        if result.browser is None:
+            result.browser = obs
+            return
+        merged = result.browser
+        merged.url = obs.url or merged.url
+        merged.title = obs.title or merged.title
+        merged.visible_text = obs.visible_text or merged.visible_text
+        merged.screenshots.extend(obs.screenshots)
+        merged.console_errors.extend(obs.console_errors)
+        merged.network_failures.extend(obs.network_failures)
+        merged.steps.extend(obs.steps)
+        merged.trace_path = obs.trace_path or merged.trace_path
+
+    # -- shared observation recording -------------------------------------
+
+    async def _do_command(
+        self, result: ScenarioResult, spec: CommandSpec, runner: ProcessRunner
+    ) -> None:
+        command = self._substitute(spec.run)
+        res = await runner.run(command, timeout_s=spec.timeout_s or self.cfg.command_timeout_s)
+        result.commands.append(res)
+        if spec.expect_exit_code is not None:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{spec.name or command}: exit == {spec.expect_exit_code}",
+                    passed=res.exit_code == spec.expect_exit_code,
+                    detail=f"got exit={res.exit_code}{' (timed out)' if res.timed_out else ''}",
+                )
+            )
+        combined = f"{res.stdout}\n{res.stderr}"
+        for needle in spec.expect_contains:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_visible",
+                    target=f"{spec.name or command}: contains {needle!r}",
+                    passed=needle in combined,
+                    detail="" if needle in combined else "not found in output",
+                )
+            )
+
+    async def _do_state_check(
+        self, result: ScenarioResult, check: StateCheckSpec, runner: ProcessRunner
+    ) -> None:
+        command = self._substitute(check.command)
+        res = await runner.run(command, timeout_s=check.timeout_s or self.cfg.command_timeout_s)
+        result.commands.append(res)
+        combined = f"{res.stdout}\n{res.stderr}"
+        for needle in check.contains:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{check.name or command}: contains {needle!r}",
+                    passed=needle in combined,
+                    detail="" if needle in combined else "not found in command output",
+                )
+            )
+        for needle in check.not_contains:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{check.name or command}: must not contain {needle!r}",
+                    passed=needle not in combined,
+                    detail="" if needle not in combined else "unexpectedly present",
+                )
+            )
+
+    async def _do_request(
+        self,
+        result: ScenarioResult,
+        spec: RequestSpec,
+        app_url: str,
+        record: bool = True,
+    ) -> HttpObservation:
+        url = self._substitute(spec.url) or _join_url(app_url, self._substitute(spec.path) or "/")
+        obs = await http_request(
+            url,
+            method=spec.method,
+            headers=spec.headers,
+            json_body=spec.json_body,
+            body=self._substitute(spec.body) if spec.body is not None else None,
+            timeout_s=spec.timeout_s or self.cfg.http_timeout_s,
+            name=spec.name or url,
+        )
+        if record:
+            result.http.append(obs)
+            self._assert_request(result, spec, obs)
+        return obs
+
+    @staticmethod
+    def _assert_request(
+        result: ScenarioResult, spec: RequestSpec, obs: HttpObservation
+    ) -> None:
+        if spec.expect_status is not None:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{spec.method} {obs.url}: status == {spec.expect_status}",
+                    passed=obs.status == spec.expect_status,
+                    detail=f"got {obs.status if obs.status is not None else obs.error}",
+                )
+            )
+        for needle in spec.expect_contains:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_visible",
+                    target=f"{spec.method} {obs.url}: contains {needle!r}",
+                    passed=needle in obs.body_text,
+                    detail="" if needle in obs.body_text else "not found in response body",
+                )
+            )
 
     async def _finish(
         self,
@@ -407,8 +757,19 @@ class ScenarioExecutor:
 
     # -- browser ---------------------------------------------------------
 
-    async def _run_browser(self, scenario: Scenario) -> BrowserObservation:
-        """Drive the real UI with Playwright and capture what a user would see."""
+    async def _run_browser(
+        self,
+        scenario: Scenario,
+        spec: BrowserSpec | None,
+        label: str = "",
+    ) -> BrowserObservation:
+        """Drive the real UI with Playwright and capture what a user would see.
+
+        One browser session per call. A scenario that needs page state to
+        survive across interactions puts those interactions in a single browser
+        step; separate steps deliberately get separate sessions, which is what
+        makes "reopen the page after the backend changed" expressible.
+        """
         try:
             from playwright.async_api import async_playwright
         except ImportError:
@@ -416,11 +777,14 @@ class ScenarioExecutor:
                 steps=["playwright is not installed; run: pip install playwright && playwright install chromium"]
             )
 
+        from .evidence import sanitize_filename
+
         obs = BrowserObservation(url=scenario.app_url)
         shots_dir = self.artifact_dir / "screenshots"
         shots_dir.mkdir(parents=True, exist_ok=True)
-        trace_path = self.artifact_dir / "trace.zip"
-        spec = scenario.browser or BrowserSpec()
+        prefix = f"{sanitize_filename(label)}-" if label else ""
+        trace_path = self.artifact_dir / f"{prefix}trace.zip" if prefix else self.artifact_dir / "trace.zip"
+        spec = spec or BrowserSpec()
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=self.cfg.headless)
@@ -455,13 +819,15 @@ class ScenarioExecutor:
                     await page.goto(scenario.app_url, wait_until="domcontentloaded", timeout=30_000)
                     obs.steps.append(f"opened {scenario.app_url}")
                 if spec.initial_screenshot:
-                    obs.screenshots.append(await self._shot(page, shots_dir, "01-initial"))
+                    obs.screenshots.append(await self._shot(page, shots_dir, f"{prefix}01-initial"))
 
                 for idx, step in enumerate(spec.steps, start=1):
-                    await self._run_step(page, step, obs, shots_dir, idx, scenario.app_url)
+                    await self._run_step(
+                        page, step, obs, shots_dir, idx, scenario.app_url, prefix
+                    )
 
                 if spec.final_screenshot:
-                    obs.screenshots.append(await self._shot(page, shots_dir, "99-final"))
+                    obs.screenshots.append(await self._shot(page, shots_dir, f"{prefix}99-final"))
 
                 obs.url = page.url
                 obs.title = await page.title()
@@ -490,6 +856,7 @@ class ScenarioExecutor:
         shots_dir: Path,
         idx: int,
         app_url: str,
+        prefix: str = "",
     ) -> None:
         try:
             if step.goto is not None:
@@ -518,11 +885,15 @@ class ScenarioExecutor:
                     f"expect_text {step.expect_text!r}: {'FOUND' if present else 'NOT FOUND'}"
                 )
             if step.screenshot is not None:
-                obs.screenshots.append(await self._shot(page, shots_dir, f"{idx:02d}-{step.screenshot}"))
+                obs.screenshots.append(
+                    await self._shot(page, shots_dir, f"{prefix}{idx:02d}-{step.screenshot}")
+                )
         except Exception as exc:
             obs.steps.append(f"step {idx} FAILED: {type(exc).__name__}: {redact(str(exc))}")
             with contextlib.suppress(Exception):
-                obs.screenshots.append(await self._shot(page, shots_dir, f"{idx:02d}-failed"))
+                obs.screenshots.append(
+                    await self._shot(page, shots_dir, f"{prefix}{idx:02d}-failed")
+                )
 
     @staticmethod
     async def _shot(page: Any, shots_dir: Path, label: str) -> str:

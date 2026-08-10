@@ -1,0 +1,27 @@
+{
+  "INV-1": {
+    "id": "INV-1",
+    "status": "pending",
+    "approvals": [],
+    "payments": []
+  },
+  "INV-2": {
+    "id": "INV-2",
+    "status": "pending",
+    "approvals": [],
+    "payments": []
+  },
+  "W1A": {
+    "id": "W1A",
+    "status": "approved",
+    "approvals": [
+      "alice"
+    ],
+    "payments": [
+      {
+        "actor": "alice",
+        "amount": 100
+      }
+    ]
+  }
+}

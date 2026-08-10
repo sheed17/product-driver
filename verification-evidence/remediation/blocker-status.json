@@ -1,0 +1,47 @@
+[
+  {
+    "probe": "B1  real reasoner through the async control loop",
+    "status": "CLOSED",
+    "detail": "scenarios=['gen-a'] reasoner_error=''"
+  },
+  {
+    "probe": "B2.1 shell/control-character composition",
+    "status": "CLOSED",
+    "detail": "all 12 composition vectors refused"
+  },
+  {
+    "probe": "B2.2 legitimate quoted state probes",
+    "status": "CLOSED",
+    "detail": "all 5 quoted probes accepted"
+  },
+  {
+    "probe": "B2.3 absolute/non-loopback URL via request.path",
+    "status": "CLOSED",
+    "detail": "all 7 off-target URLs refused"
+  },
+  {
+    "probe": "B4  required scenario skipped, zero executed",
+    "status": "CLOSED",
+    "detail": "executed=0 skipped=2 full_run=True decision=BLOCKED"
+  },
+  {
+    "probe": "B5  provenance enforcement",
+    "status": "CLOSED",
+    "detail": "empty provenance produced reasons=['scenario carries no usable provenance, so nothing records why it exists: run/task identity (task_hash), generation stage, generation source (model or session_id)', 'scenario records generation wave 0, but waves are numbered from 1; an unnumbered wave cannot be located in the run']"
+  },
+  {
+    "probe": "B6  resume preserves generated state",
+    "status": "CLOSED",
+    "detail": "before=['gen-a'] after_resume=['gen-a'] waves_used before=1 after=1"
+  },
+  {
+    "probe": "B7  per-case evidence exists where cited",
+    "status": "CLOSED",
+    "detail": "outcome=PASSED cited=/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmph2aliuv8/iteration-01/scenarios/evidence_probe files=['result.json'] non_empty=['result.json']"
+  },
+  {
+    "probe": "B8  per-wave scenario budget",
+    "status": "CLOSED",
+    "detail": "max_initial_scenarios=2, model returned 10, accepted=2"
+  }
+]

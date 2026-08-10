@@ -1,0 +1,32 @@
+P1 suite entries compiled = ['gen-a'] compiled=['gen-a']
+P1 executed = ['i1:backend_generic', 'i1:gen-a', 'i2:backend_generic', 'i2:gen-a']
+P1 status=ACCEPTED full_run=True reason='failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (2 of 2)'
+P1 outcomes=[('backend_generic', 'PASSED'), ('gen-a', 'PASSED')]
+P2 select_rerun -> ['perm', 'gen-a'] (failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (2 of 3))
+P2 order for only -> ['perm', 'gen-a']; len(suite)=3
+P2 full_run would be: False
+P3 full_run=True outcomes=[('perm', 'SKIPPED')] everything_required_passed=True blocking=[]
+P3 decision after precedence = ACCEPT
+P3 summary_block:
+0 generated case(s) + 1 permanent regression scenario(s): 0 passed, 0 failed, 0 blocked, 1 skipped
+
+SKIPPED (with reason):
+  perm: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.
+P4 narrowed+failing -> FIX
+P5 status=ACCEPTED
+P5 outcomes=[('browser_generic', 'SKIPPED', 'P0', True, False), ('gen-ok', 'PASSED', 'P0', True, False)]
+P5 everything_required_passed=True full_run=True
+P5 primary scenario result recorded: passed=False error='the permanent scenario did not run: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)'
+P5 suite summary_block:
+1 generated case(s) + 1 permanent regression scenario(s): 1 passed, 0 failed, 0 blocked, 1 skipped
+risk categories exercised: idempotency
+
+SKIPPED (with reason):
+  browser_generic: this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.
+P6 assertionless scenario verdict = ['a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.']

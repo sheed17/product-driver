@@ -1,0 +1,48 @@
+GENERATED SCENARIO PLAN — run review-A
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+4 generated case(s)
+risk categories exercised: missing_data, regression, stale_state, ui_backend_disagreement
+
+IDENTIFIED RISKS:
+  [P0 stale_state] The exception detail screen (esp. the static packet page, which renders a captured ReviewPayload) can show a state/next-action the backend no longer holds — e.g. NEEDS_REVIEW actions for a run already closed to DONE — because the page is built once and only the operator console re-reads live state.  (covered by UUI11-S4)
+  [P2 regression] The screen change regresses the pilot site build or introduces a false-green in the render/reconciliation spine.  (covered by UUI11-S6)
+
+SCENARIOS:
+  [P1 missing_data] UUI11-S3: Missing/unlinked evidence still surfaces honestly, never fabricated
+      purpose: When the exception's backing document cannot be linked (unlinked packet or unresolved mailbox sha), the screen must still show the received evidence honestly and must not invent a source document — verified via the pilot's packet-link accuracy.
+      grounded in: U-UI-11: the screen shows the evidence the exception was raised from
+      because: R3
+  [P0 stale_state] UUI11-S4: No exception review UI for a run the backend has already closed
+      purpose: A run that has left NEEDS_REVIEW (e.g. DONE) must not render an exception detail screen offering review actions or a NEEDS_REVIEW state — the render layer must reflect the current backend state only.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: R1
+  [P1 ui_backend_disagreement] UUI11-S5: Backend only ever holds a valid, closed set of states the screen can mirror
+      purpose: Establish the ground truth AC-3 depends on: every persisted run holds exactly one state from the known WorkflowState enum and none is null/blank, so any state the screen displays can be checked against a real backend value.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: R1
+  [P2 regression] UUI11-S6: Exception-screen change does not regress the pilot spine (no false green)
+      purpose: Guard against the render change breaking reconciliation, review, delivery, or the dogfood site build, and against a silently-passing false-green.
+      grounded in: U-UI-11
+      because: R4
+
+ASSUMPTIONS:
+  - No builder diff, existing-coverage list, or prior-failure list was actually included in this prompt, so scenarios are grounded strictly in the three ACs, the product principles, and the code I read (review.py, packet_page.py, operator_console.py, workflow.py, run_action_callback_server.py).
+  - The 'exception detail screen' is the generated static HTML in packet_page.py (packet/exception detail) plus operator_console.py (review-card grid); there is no live exception-detail HTTP endpoint on the callback server at http://127.0.0.1:8001.
+  - data/active_workspace/driver_probe/workflow.sqlite3 exists (it is named in an approved command) and contains the workflow_runs table with the WorkflowState enum values.
+  - pytest fixtures for the review/pilot tests build their stores and site output in tempfiles and do not mutate data/active_workspace, so the pytest scenarios are effectively read-only.
+  - The approved sqlite3 command accepts an inline SQL query as an extra argument (no shell operators).
+
+UNRESOLVED QUESTIONS:
+  - Where is the improved exception detail screen actually served in the running product? The given app URL http://127.0.0.1:8001 is the callback/Slack server (routes: /email/action, /actions/signed, /slack/*) with no exception-detail HTML route; the static site is served at :8000 per run_teammate. Without a served route I cannot browser-verify the rendered screen against live backend state (the core of AC-3).
+  - AC-3 enforcement asymmetry: operator_console._review_card re-reads live state and guards actions, but packet_page._render_packet_page renders a captured ReviewPayload with no live state re-read — does U-UI-11 require the packet detail page itself to reflect current backend state at view time, or is it acceptable for it to be a build-time snapshot? This determines whether a stale-state failure on the packet page is in scope.
+  - Was any browser/UI-level test or served-page assertion added for U-UI-11? None was found (no test_operator_console.py; test_review.py does not assert 'names the owner' or the stale-state guard on the screen), so AC-1/AC-2/AC-3 appear to lack direct screen-level coverage and may need dedicated tests before the unit is trusted.
+  - Which exact owner label must the screen show for the next action (e.g. 'owner/operator', a named person, or a role)? AC-1 requires naming who owns it but the requirement text does not fix the granularity, so I could not assert an exact string.
+  - Do run_diagnostics.py / progress_status.py emit U-UI-11-specific signals I could assert on? Their output format was not confirmed, so S6 only checks exit status.
+
+REJECTED PROPOSALS:
+  UUI11-S1: unknown risk_category 'accountable-owner'
+  UUI11-S2: unknown risk_category 'evidence-clarity'
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

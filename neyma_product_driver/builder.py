@@ -62,8 +62,22 @@ from .command_guard import (
 )
 from .config import BuilderConfig
 from .models import redact
+from .ownership import BUILDER_LOCK_NAME, RepoLock
 from .paths import ApprovedRoots
 from .prompts import BUILDER_SYSTEM_APPEND
+
+
+def _head_of(repo: Path) -> str:
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo), capture_output=True, text=True, timeout=30, check=False,
+        )
+        return proc.stdout.strip() if proc.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 __all__ = [
     "BuilderSession",
@@ -117,6 +131,7 @@ class BuilderSession:
         on_progress: Callable[[str], None] | None = None,
         roots: ApprovedRoots | None = None,
         journal: Any | None = None,
+        own_worktree: bool = True,
     ) -> None:
         self.repo = Path(repo)
         self.config = config
@@ -130,7 +145,16 @@ class BuilderSession:
         self.roots = roots
         #: Optional RunJournal. Every tool use, denial and command flows into it.
         self.journal = journal
-        self.guard = CommandGuard(roots=roots, cwd=self.repo)
+        #: A builder OWNS the worktree it works in. While it does, ref movement
+        #: and worktree replacement are denied: the builder is holding the only
+        #: materialized copy of the in-progress episode, untracked files
+        #: included, and a `update-ref` or `reset` underneath it destroys work
+        #: that exists nowhere else.
+        self.own_worktree = bool(own_worktree)
+        self._worktree_lock: RepoLock | None = None
+        self.guard = CommandGuard(
+            roots=roots, cwd=self.repo, builder_owns_worktree=self.own_worktree
+        )
 
     # -- permission handling ---------------------------------------------
 
@@ -237,19 +261,47 @@ class BuilderSession:
         )
 
     async def __aenter__(self) -> "BuilderSession":
-        self._client = ClaudeSDKClient(options=self._options())
-        await self._client.connect()
+        if self.own_worktree:
+            # Taken BEFORE the session connects, so nothing can be issued against
+            # an unowned worktree. Non-blocking: if another builder already owns
+            # this tree, two builders must not share it.
+            lock = RepoLock(
+                self.repo,
+                BUILDER_LOCK_NAME,
+                kind="builder-worktree",
+                target_commit=_head_of(self.repo),
+                session_id=self.resume_session_id or "",
+            )
+            lock.acquire()
+            self._worktree_lock = lock
+
+        try:
+            self._client = ClaudeSDKClient(options=self._options())
+            await self._client.connect()
+        except BaseException:
+            self._release_worktree()
+            raise
         return self
 
     async def __aexit__(self, *_exc: Any) -> None:
         await self.close()
 
+    def _release_worktree(self) -> None:
+        lock, self._worktree_lock = self._worktree_lock, None
+        if lock is not None:
+            lock.release()
+
     async def close(self) -> None:
-        if self._client is not None:
-            try:
-                await self._client.disconnect()
-            finally:
-                self._client = None
+        try:
+            if self._client is not None:
+                try:
+                    await self._client.disconnect()
+                finally:
+                    self._client = None
+        finally:
+            # Released on every exit path, including failure: a crashed builder
+            # must not leave a worktree permanently owned.
+            self._release_worktree()
 
     # -- interaction ------------------------------------------------------
 

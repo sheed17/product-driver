@@ -1,0 +1,194 @@
+[
+  {
+    "case": "1 (no planner / legacy single-scenario path)",
+    "constructed": "unit-test commands exit 0; the scenario's UI assertion FAILS; evaluator returns ACCEPT",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "suite_result is None so _apply_suite_precedence never runs"
+  },
+  {
+    "case": "1 (with planner / suite path)",
+    "constructed": "same, but a suite runs: permanent scenario FAILS its UI assertion, generated pass, evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "2",
+    "constructed": "UI/permanent scenario passes; generated persisted-state check FAILS (payments=2); evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "2b (no planner)",
+    "constructed": "UI passes, no persisted-state coverage exists at all, evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "with generation off there is no state coverage; nothing forces any"
+  },
+  {
+    "case": "3",
+    "constructed": "all generated scenarios PASS; the permanent P0 regression scenario FAILS; evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "4 (CONTRADICTED)",
+    "constructed": "scenario passes, evaluator ACCEPTs, completion auditor reports CONTRADICTED/blocks_acceptance",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "4b (REQUIRES_INDEPENDENT_REVIEW)",
+    "constructed": "same, auditor requires an independent reviewer",
+    "status": "NEEDS_INDEPENDENT_REVIEW",
+    "decision": "ACCEPT",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "5 (VIOLATION)",
+    "constructed": "scenario passes, evaluator ACCEPTs, protocol resolver reports a repository VIOLATION",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "5b (BLOCKED_ENVIRONMENT)",
+    "constructed": "evaluator ACCEPTs, protocol resolver reports an environmental blocker",
+    "status": "BLOCKED",
+    "decision": "BLOCKED",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "6",
+    "constructed": "the generator returns MALFORMED payloads (bad shape, unapproved command, ungrounded requirement)",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "scenarios actually executed: ['backend_generic']; suite=0 generated case(s) + 1 permanent regression scenario(s): 1 passed, 0 failed, 0 blocked, 0 skipped"
+  },
+  {
+    "case": "6b",
+    "constructed": "the generator session DIES (raises) during planning",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "executed: ['backend_generic']"
+  },
+  {
+    "case": "7 (executor raises)",
+    "constructed": "a generated scenario's executor raises mid-run; evaluator would ACCEPT",
+    "status": "EXCEPTION_PROPAGATED",
+    "decision": "None",
+    "correct": true,
+    "note": "propagated RuntimeError: subprocess died"
+  },
+  {
+    "case": "7b (timeout / error, no assertions)",
+    "constructed": "a generated scenario times out (error set, zero assertions); evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "7c (service never came up)",
+    "constructed": "a generated scenario's product never became ready; evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "8 (required PERMANENT scenario skipped: no browser)",
+    "constructed": "the P0 permanent browser scenario cannot run (browser disabled) -> SKIPPED; generated pass; evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "skipped=['browser_generic']; executed=['gen-ok']"
+  },
+  {
+    "case": "8b (whole suite skipped: execution budget exhausted)",
+    "constructed": "execution_budget_s=0 so every required scenario is SKIPPED; evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "outcomes=[('backend_generic', 'SKIPPED'), ('gen-ok', 'SKIPPED')]; executed=[]"
+  },
+  {
+    "case": "8c (unit: SKIPPED required P0 outcome)",
+    "constructed": "_apply_suite_precedence given a suite whose only required P0 outcome is SKIPPED",
+    "status": "n/a (unit)",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "everything_required_passed=True"
+  },
+  {
+    "case": "9",
+    "constructed": "three P0 risks identified, ZERO scenarios generated for them; permanent scenario passes; evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "executed=['backend_generic']; uncovered_risks=['double payment on retry', 'an unauthorized user can approve']; coverage='0 generated case(s)\\nrisk categories exercised: none\\nidentified but NOT exercised: double payment on retry; an unauthorized user can approve'"
+  },
+  {
+    "case": "10",
+    "constructed": "builder claims COMPLETE/DONE up front; a required generated scenario FAILS; evaluator ACCEPTs",
+    "status": "MAX_ITERATIONS",
+    "decision": "FIX",
+    "correct": true,
+    "note": ""
+  },
+  {
+    "case": "extra: empty suite (zero outcomes)",
+    "constructed": "SuiteResult with no outcomes at all + evaluator ACCEPT",
+    "status": "n/a (unit)",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "everything_required_passed=True"
+  },
+  {
+    "case": "extra: generated scenarios at P2/P3 fail",
+    "constructed": "a genuine double-payment defect is caught by a scenario the GENERATOR labelled P2; evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "outcomes=[('backend_generic', 'P0', 'PASSED', True, False), ('gen-p2', 'P2', 'FAILED', True, False)]"
+  },
+  {
+    "case": "extra: narrowed rerun -> ACCEPT",
+    "constructed": "iteration 1 fails gen-a; iteration 2 narrows then must widen before ACCEPT",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "iteration-2 scenarios executed=['backend_generic', 'gen-a']; full_run=True"
+  },
+  {
+    "case": "extra: vacuous scenario (zero assertions)",
+    "constructed": "a generated scenario returns zero assertions and no error; evaluator ACCEPTs",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "outcomes=[('backend_generic', 'PASSED', 1), ('gen-vacuous', 'PASSED', 0)] (a zero-assertion result is ScenarioResult.passed==True)"
+  },
+  {
+    "case": "extra: suite_result is None bypass",
+    "constructed": "generation OFF (default). Scenario errors out entirely. Evaluator ACCEPTs.",
+    "status": "ACCEPTED",
+    "decision": "ACCEPT",
+    "correct": false,
+    "note": "no suite -> _apply_suite_precedence at cli.py:605 is skipped entirely"
+  }
+]

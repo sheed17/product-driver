@@ -1,0 +1,198 @@
+{
+  "status": "ACCEPTED",
+  "builder_applied_fix": true,
+  "iterations": 2,
+  "generated_scenarios": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15",
+    "S16"
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "proposed": 7,
+      "accepted": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S07"
+      ],
+      "refused": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 2,
+      "stage": "adaptive",
+      "proposed": 6,
+      "accepted": [
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13"
+      ],
+      "refused": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 3,
+      "stage": "diff_refinement",
+      "proposed": 3,
+      "accepted": [
+        "S14",
+        "S15",
+        "S16"
+      ],
+      "refused": [],
+      "reasoner_error": ""
+    }
+  ],
+  "adaptive_links": {
+    "S08": [
+      "S03",
+      "S04"
+    ],
+    "S09": [
+      "S04"
+    ],
+    "S10": [
+      "S02",
+      "S04",
+      "S07"
+    ],
+    "S11": [
+      "S03",
+      "S07"
+    ],
+    "S12": [
+      "S02",
+      "S05"
+    ],
+    "S13": [
+      "S03"
+    ]
+  },
+  "generation_problems": [],
+  "final_outcomes": [
+    {
+      "scenario_id": "approval_backend",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S01",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S02",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S03",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S04",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S05",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S08",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S09",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S10",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S14",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S15",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S16",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S07",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S11",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S12",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S13",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    },
+    {
+      "scenario_id": "S06",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "evidence_verified": true
+    }
+  ]
+}

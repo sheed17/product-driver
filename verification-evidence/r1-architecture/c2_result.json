@@ -1,0 +1,6 @@
+{
+  "status": "MAX_ITERATIONS",
+  "decision": "FIX",
+  "summary": "1 required scenario(s) failed, including generated verification: gen-dup",
+  "builder_prompt_count": 2
+}

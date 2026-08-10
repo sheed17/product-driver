@@ -1,0 +1,37 @@
+=== ui_lies: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 3 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve
+=== ui_lies: EXECUTING WAVE-1 SUITE AGAINST THE REAL APP ===
+  → permanent:approval-smoke (permanent)
+  → gen-idempotent-approve (generated)
+  → gen-persist-approve (generated)
+  → gen-happy-approve (generated)
+3 generated case(s) + 1 permanent regression scenario(s): 1 passed, 3 failed, 0 blocked, 0 skipped
+risk categories exercised: happy_path, idempotency, persistence_failure
+
+FAILURES:
+  [FAIL] P0 permanent permanent:approval-smoke  — expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+      failed: expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/permanent-approval-smoke
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      generated because: R2
+      verifies: AC-APPROVAL-001
+      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/gen-idempotent-approve
+  [FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      generated because: R1
+      verifies: AC-APPROVAL-001
+      failed: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/gen-persist-approve
+
+3 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive expansion from 3 failure(s)) ===
+  6 proposed scenario(s) refused:
+    - gen-w2-ui-disagreement-approve: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2-UI which no other scenario touches'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-survives-reread-noclobber: unsafe or unapproved operation: command is not in the approved set: 'Use invoice ids W2-KEEP-A and W2-KEEP-B'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-concurrent-approve-once: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2-RACE'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-retry-after-slow-approve: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2-AMBIG'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-approve-missing-actor: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2-NOACTOR'. Generated scenarios may only run commands a human already approved.
+    - gen-w2-read-does-not-approve: unsafe or unapproved operation: command is not in the approved set: 'Use invoice id W2-READONLY, never approved by any scenario'. Generated scenarios may only run commands a human already approved.
+wave 2 produced 0 accepted scenario(s):
+waves_used=2 budget_exhausted=False

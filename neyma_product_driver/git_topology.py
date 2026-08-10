@@ -30,6 +30,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from .protocol_sources import DiscoveredProtocol, RuleKind
+from .repo_state import RepositoryState, StateResolution, resolve_state
 
 _GIT_TIMEOUT_S = 30
 
@@ -157,6 +158,15 @@ class GitTopology(BaseModel):
 
     receipts: list[ReceiptBinding] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+
+    #: The repository's OWN state machine (FINALIZED/PRODUCING/BASELINE). This is
+    #: the single authority on whether the observed arrangement is legal; the
+    #: driver holds no competing interpretation of the same topology.
+    state: StateResolution = Field(default_factory=StateResolution)
+
+    @property
+    def state_is_legal(self) -> bool:
+        return self.state.legal
 
     # -- derived views -----------------------------------------------------
 
@@ -291,7 +301,9 @@ class GitTopologyAnalyzer:
             if found:
                 resolved = self._git("rev-parse", "--verify", f"{found}^{{commit}}")
                 if resolved:
-                    return self._historical_baseline(resolved, f"recorded in {rel}", 0.95)
+                    return self._promote_certified_pair(
+                        *self._historical_baseline(resolved, f"recorded in {rel}", 0.95)
+                    )
 
         for tag in self._git("tag", "--list").splitlines():
             if "baseline" in tag.lower():
@@ -361,6 +373,61 @@ class GitTopologyAnalyzer:
                 )
                 return parent, note, confidence
         return recorded, source, confidence
+
+    def is_pure_finalizer_metadata(self, sha: str) -> bool:
+        """Is ``sha`` a finalizer-written commit that touches ONLY derived status?
+
+        The certified-pair boundary rests on this: a commit that carries any
+        runtime content is not a metadata commit, however it is labelled.
+        """
+        if not sha:
+            return False
+        role = self.classify_commit(sha, seen_content=False)
+        return role.role is CommitRole.FINALIZER_GENERATED and not role.content_files
+
+    def _promote_certified_pair(
+        self, base: str, source: str, confidence: float
+    ) -> tuple[str, str, float]:
+        """Promote a certified CONTENT baseline to its pure finalizer child.
+
+        Neyma certifies a unit as a PAIR: the content commit, then the finalizer
+        metadata commit that binds derived status and receipts to that content
+        commit's tree. The recorded ``baseline_commit`` names the CONTENT half
+        (a commit cannot record its own hash). Taking that value literally as the
+        exclusion boundary leaves the finalizer metadata commit INSIDE the
+        analyzed range, where it has no preceding content commit — so the driver
+        reads a certified, already-adjudicated boundary as "status recorded for a
+        tree that did not exist yet" and proposes rewriting history to fix a
+        repository that is in fact legal.
+
+        The whole certified pair belongs to the baseline. When the first-parent
+        child of the recorded content commit is a pure finalizer metadata commit,
+        that metadata commit is the true exclusion boundary.
+
+        Determined mechanically from first-parent topology and files changed.
+        """
+        head = self._git("rev-parse", "HEAD")
+        if not base or not head or _matches(base, head):
+            return base, source, confidence
+
+        raw = self._git("rev-list", "--first-parent", "--reverse", f"{base}..HEAD")
+        shas = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not shas:
+            return base, source, confidence
+
+        child = shas[0]
+        # Only a DIRECT first-parent child certifies this baseline.
+        if not _matches(self._first_parent(child), base):
+            return base, source, confidence
+        if not self.is_pure_finalizer_metadata(child):
+            return base, source, confidence
+
+        note = (
+            f"{source}, which names the content half {base[:12]} of a certified pair; its "
+            f"first-parent child {child[:12]} is a pure finalizer metadata commit, so the "
+            f"certified pair boundary — and therefore the exclusion baseline — is {child[:12]}"
+        )
+        return child, note, confidence
 
     # -- path classification ----------------------------------------------
 
@@ -548,7 +615,13 @@ class GitTopologyAnalyzer:
 
     # -- receipts ----------------------------------------------------------
 
-    def _receipt_bindings(self, known: list[GitCommitRole], head: str, head_tree: str) -> list[ReceiptBinding]:
+    def _receipt_bindings(
+        self,
+        known: list[GitCommitRole],
+        head: str,
+        head_tree: str,
+        state: StateResolution | None = None,
+    ) -> list[ReceiptBinding]:
         bindings: list[ReceiptBinding] = []
         rels: list[str] = []
         for rel in self.protocol.sources.by_category.get("receipts", []):
@@ -573,6 +646,14 @@ class GitTopologyAnalyzer:
         head_parent = self._first_parent(head) if head_meta is not None else ""
         head_parent_tree = (
             self._git("rev-parse", f"{head_parent}^{{tree}}") if head_parent else ""
+        )
+
+        # The content half of the certified pair the repository's own state
+        # machine says the current state rests on. In PRODUCING this is the
+        # commit the on-disk receipts legitimately name.
+        certified_content = state.certified_content_commit if state is not None else ""
+        certified_tree = (
+            self._git("rev-parse", f"{certified_content}^{{tree}}") if certified_content else ""
         )
 
         for rel in rels:
@@ -611,6 +692,13 @@ class GitTopologyAnalyzer:
             # that names the commit that introduced it — is not fresh.
             commit_is_head = _matches(binding.recorded_commit, head)
             tree_is_head = _matches(binding.recorded_tree, head_tree)
+            binds_certified_baseline = (
+                state is not None
+                and state.state is RepositoryState.PRODUCING
+                and bool(certified_content)
+                and _matches(binding.recorded_commit, certified_content)
+                and _matches(binding.recorded_tree, certified_tree)
+            )
             binds_head_parent = (
                 head_meta is not None
                 and bool(head_parent)
@@ -626,6 +714,21 @@ class GitTopologyAnalyzer:
                 binding.fresh_reason = (
                     f"binds to the content commit {head_parent[:12]} (HEAD^) and its tree, which "
                     f"the finalizer metadata commit HEAD certified — two-commit convention"
+                )
+            elif binds_certified_baseline:
+                # PRODUCING: the repository is mid-unit. The receipts on disk are
+                # the ones the finalizer wrote for the certified pair the new
+                # content commit was built on, and they correctly name it. The
+                # next unit's receipts do not exist yet and cannot; demanding
+                # that a receipt already name HEAD in this state demands a
+                # receipt for a suite that has not run, which is the exact false
+                # green the whole receipt convention exists to prevent.
+                binding.fresh = True
+                binding.matches_head = True
+                binding.fresh_reason = (
+                    f"binds to the certified baseline {certified_content[:12]} and its tree in the "
+                    f"PRODUCING state — the receipt names the pair HEAD was built on, and the "
+                    f"receipt for HEAD is what this state is producing"
                 )
             for sha in known_shas:
                 if _matches(binding.recorded_commit, sha):
@@ -659,13 +762,21 @@ class GitTopologyAnalyzer:
         head_tree = self._git("rev-parse", "HEAD^{tree}")
         branch = self._git("branch", "--show-current")
 
+        # The repository's own state machine, resolved first: everything that
+        # judges the observed arrangement defers to it.
+        state = resolve_state(self)
+
         notes: list[str] = []
         if baseline:
             # A baseline the caller names but git cannot resolve is not a
             # baseline. It must never reach a generated command as if it were.
             resolved = self._git("rev-parse", "--verify", f"{baseline}^{{commit}}")
             if resolved:
-                base, source, confidence = resolved, "supplied by the caller", 0.9
+                # A caller-supplied baseline names the same certified pair the
+                # repository records, so the same boundary promotion applies.
+                base, source, confidence = self._promote_certified_pair(
+                    resolved, "supplied by the caller", 0.9
+                )
             else:
                 base, source, confidence = "", f"{baseline!r} does not resolve in this repository", 0.0
                 notes.append(f"the supplied baseline {baseline!r} does not resolve to a commit")
@@ -730,8 +841,9 @@ class GitTopologyAnalyzer:
             local_only_commits=local,
             push_state_determinable=determinable,
             push_state_detail=push_detail,
-            receipts=self._receipt_bindings(commits, head, head_tree),
+            receipts=self._receipt_bindings(commits, head, head_tree, state),
             notes=notes,
+            state=state,
         )
 
 

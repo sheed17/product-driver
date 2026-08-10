@@ -1,0 +1,26 @@
+{
+  "decision": "FIX",
+  "summary": "1 required scenario(s) failed, including generated verification: gen-approve-twice",
+  "observed_behavior": [
+    "an approval succeeded"
+  ],
+  "problems": [
+    "[FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output"
+  ],
+  "correction_prompt": "SCENARIO SUITE FAILURES — the running product did not behave as the verification scenarios require.\n\n3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\n\n\nTHESE FAILURES ARE DISTINCT and need separate attention:\n  - gen-approve-twice: generated:gen-approve-twice\n      exercised because: the approval effect may not be safe under idempotency\n      observed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      observed: expect_visible: payments=1 — not present in any observed output\n      observed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\nMake the smallest correction that resolves the cause above. Do not change a scenario, delete an assertion, or weaken a guard to make this pass — the scenarios describe what the product promises, and a green result obtained by editing them is worth nothing.",
+  "evidence_paths": [
+    "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice"
+  ],
+  "confidence": 0.85,
+  "requirement_reference": "U-042: an approved invoice is paid exactly once",
+  "product_principle_reference": "a button click, an HTTP 200 or a passing unit test is not success; the underlying outcome must be verified",
+  "scenario": "gen-approve-twice",
+  "observed_result": "3 generated case(s) + 1 permanent regression scenario(s): 3 passed, 1 failed, 0 blocked, 0 skipped\nrisk categories exercised: happy_path, idempotency, missing_data\n\nFAILURES:\n  [FAIL] P0 generated gen-approve-twice  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      generated because: the approval effect may not be safe under idempotency\n      verifies: U-042: an approved invoice is paid exactly once\n      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output\n      failed: expect_visible: payments=1 — not present in any observed output\n      failed: forbidden: payments=2 — present in observed output\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/driver/runs/20260809-e2e/iteration-01/scenarios/gen-approve-twice\n\n1 unresolved high-priority scenario failure(s)\nThis states verified coverage. It is not a claim that all possible cases were verified.",
+  "expected_result": "Every required scenario passes: each situation the suite exercises produces the observable outcome it expects, and none of the forbidden observations.",
+  "preserve": "All behaviour the passing scenarios already demonstrate, every permanent regression scenario, and every guard. Do not weaken or delete a scenario to obtain a green result.",
+  "retest": "Re-run the scenario suite. The failed scenarios rerun first, their risk neighbours rerun with them, and the full required regression set must be green before acceptance.",
+  "customer_facing": false,
+  "rubric_categories": [],
+  "additional_verification_needed": false,
+  "scenario_requests": []
+}

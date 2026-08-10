@@ -1,0 +1,78 @@
+{
+  "scenario_name": "approval_backend",
+  "mode": "backend",
+  "started_at": "2026-08-09T21:43:53+00:00",
+  "setup": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py",
+      "exit_code": 0,
+      "stdout": "reset\n",
+      "stderr": "",
+      "duration_s": 0.034011917000498215,
+      "timed_out": false,
+      "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+    }
+  ],
+  "services_started": [
+    "api"
+  ],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python probe.py",
+      "exit_code": 0,
+      "stdout": "payments=1\ninvoices=INV-1\n",
+      "stderr": "",
+      "duration_s": 0.037332249999963096,
+      "timed_out": false,
+      "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+    }
+  ],
+  "http": [
+    {
+      "name": "approve once",
+      "method": "POST",
+      "url": "http://127.0.0.1:55496/approve",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"status\": \"approved\", \"invoice\": \"INV-1\"}",
+      "json_body": {
+        "status": "approved",
+        "invoice": "INV-1"
+      },
+      "duration_s": 0.0008242909998443793
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "POST http://127.0.0.1:55496/approve: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_state",
+      "target": "one payment: contains 'payments=1'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python reset.py",
+      "exit_code": 0,
+      "stdout": "reset\n",
+      "stderr": "",
+      "duration_s": 0.034684082999774546,
+      "timed_out": false,
+      "cwd": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/e2e-basetemp/test_generate_execute_learn_ex0/product"
+    }
+  ],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "approval_backend",
+  "origin": "permanent"
+}

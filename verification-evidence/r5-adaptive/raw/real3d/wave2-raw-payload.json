@@ -1,0 +1,346 @@
+{
+  "risks": [
+    {
+      "id": "R-UI-LIES",
+      "description": "The approve endpoint answers 200/approved and its in-memory GET agrees, but the durable store is never written, so an independent re-read still sees 'pending'.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001 requires the approval to be recorded durably; the only changed file r5/fixture/app.py owns both the response and the write."
+    },
+    {
+      "id": "R-DUP-PAY",
+      "description": "Concurrent approves of the same invoice each apply the payment effect, so a race produces two payments for one approval.",
+      "risk_category": "concurrency",
+      "severity": "P0",
+      "basis": "AC-APPROVAL-001 says approving records THE approval (singular); r5/fixture/app.py is the mutation path."
+    },
+    {
+      "id": "R-CLOBBER",
+      "description": "Because the store is persisted by rewriting the whole file, a later approval of a different invoice could drop an earlier invoice's approval, so it does not survive a re-read.",
+      "risk_category": "persistence_failure",
+      "severity": "P1",
+      "basis": "AC-APPROVAL-002 requires approval state to survive a re-read of persisted state."
+    },
+    {
+      "id": "R-NO-ACTOR",
+      "description": "An approve request with no actor metadata may fail to record a durable approval at all.",
+      "risk_category": "missing_data",
+      "severity": "P2",
+      "basis": "AC-APPROVAL-001 requires an approval to be recorded durably regardless of optional request metadata."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-w2-ui-vs-durable",
+      "title": "Approved response must match the durable store, not just the in-memory view",
+      "purpose": "Catch a build that reports approval (200 + in-memory GET) while never writing it to durable storage, by comparing the API view against an independent file re-read.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-UI-LIES",
+      "generated_from": [
+        "AC-APPROVAL-001",
+        "r5/fixture/app.py"
+      ],
+      "rationale": "The prior happy/persist scenarios gated on POST status==200, which both the ui_lies and uncertain defects can satisfy or defeat. This scenario tolerates a slow response (generous timeout) and makes the load-bearing observation the durable oracle state.py, then cross-checks it against the API's own GET so an in-memory-only 'approved' is exposed as a disagreement.",
+      "requirement_reference_note": "AC-APPROVAL-001",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2UI",
+      "isolation_note": "Operates only on the fresh invoice id W2UI, created on first touch; no other scenario references this id, so it cannot contaminate or be contaminated. No cleanup needed because the store is per-id.",
+      "setup": [
+        "Use invoice id W2UI which no other scenario touches"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2UI/approve",
+            "json_body": {
+              "actor": "alice"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 15
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "GET",
+            "path": "/api/invoices/W2UI",
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 15
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2UI",
+            "contains": [
+              "W2UI status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "POST returns approved (possibly slowly)",
+        "GET reflects approved in the API view",
+        "Independent durable re-read via state.py shows W2UI status=approved with exactly one approval and one payment"
+      ],
+      "forbidden_observations": [
+        "state.py shows W2UI status=pending while the API reported approved",
+        "state.py reports STORE MISSING",
+        "payments count greater than 1"
+      ],
+      "cleanup": [],
+      "confidence": 0.8
+    },
+    {
+      "id": "gen-w2-concurrent-once",
+      "title": "Two simultaneous approvals of one invoice record a single approval",
+      "purpose": "Exercise the approve path under a genuine race to ensure the durable store records exactly one approval/payment even when two requests arrive at once.",
+      "risk_category": "concurrency",
+      "priority": "P0",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "product rubric",
+      "generating_risk": "R-DUP-PAY",
+      "generated_from": [
+        "AC-APPROVAL-001",
+        "r5/fixture/app.py"
+      ],
+      "rationale": "The already-covered idempotency scenario approves twice sequentially. A concurrent double-submit is a distinct 3am worry: a check-then-act without proper guarding double-pays only under a race. The oracle is the durable payment count, not the HTTP responses, so a slow answer does not defeat the assertion.",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2CC",
+      "isolation_note": "Both parallel requests and the state check address only invoice id W2CC, unique to this scenario; the in-scenario parallelism is the point and cannot leak to other scenarios because the id is not shared.",
+      "setup": [
+        "Use invoice id W2CC which no other scenario touches"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "requests": [
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2CC/approve",
+              "json_body": {
+                "actor": "alice"
+              },
+              "expect_status": 200,
+              "expect_contains": [
+                "approved"
+              ],
+              "timeout_s": 15
+            },
+            {
+              "method": "POST",
+              "path": "/api/invoices/W2CC/approve",
+              "json_body": {
+                "actor": "bob"
+              },
+              "expect_status": 200,
+              "expect_contains": [
+                "approved"
+              ],
+              "timeout_s": 15
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2CC",
+            "contains": [
+              "W2CC status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "payments=2",
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Durable re-read shows W2CC approved with approvals=1 and payments=1 despite two simultaneous approvals"
+      ],
+      "forbidden_observations": [
+        "state.py shows payments=2 or approvals=2 for W2CC",
+        "state.py shows W2CC status=pending"
+      ],
+      "cleanup": [],
+      "confidence": 0.78
+    },
+    {
+      "id": "gen-w2-reread-survives-intervening-write",
+      "title": "An earlier approval survives a later approval of a different invoice on re-read",
+      "purpose": "Verify AC-APPROVAL-002 by re-reading a previously approved invoice from a fresh process after an intervening durable write, catching whole-store-rewrite regressions and never-persisted approvals.",
+      "risk_category": "stale_state",
+      "priority": "P1",
+      "requirement_reference": "AC-APPROVAL-002",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R-CLOBBER",
+      "generated_from": [
+        "AC-APPROVAL-002",
+        "r5/fixture/app.py"
+      ],
+      "rationale": "AC-APPROVAL-002 asks that approval state survive a re-read of persisted state. The store is saved by rewriting the entire file, so an approval of a second invoice is the natural way to stress whether an earlier invoice's approval survives. The re-read is done by an independent CLI process (state.py), not the running server's memory, which is exactly what 'survives a re-read of persisted state' means. Note: the service reseeds its store on boot, so this AC cannot be checked via a restart, only via this independent re-read.",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2R1",
+      "isolation_note": "Uses two ids unique to this scenario (W2R1 approved and re-read, W2R2 the intervening write); neither is referenced elsewhere, so there is no cross-scenario contamination and no cleanup is required.",
+      "setup": [
+        "Use invoice ids W2R1 and W2R2, both unique to this scenario"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R1/approve",
+            "json_body": {
+              "actor": "alice"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 15
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2R2/approve",
+            "json_body": {
+              "actor": "bob"
+            },
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 15
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2R1",
+            "contains": [
+              "W2R1 status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "After approving W2R2, an independent re-read of W2R1 still shows status=approved with one approval and one payment"
+      ],
+      "forbidden_observations": [
+        "state.py shows W2R1 status=pending after the intervening approval of W2R2",
+        "state.py reports STORE MISSING",
+        "W2R1 approvals or payments count is 0"
+      ],
+      "cleanup": [],
+      "confidence": 0.75
+    },
+    {
+      "id": "gen-w2-missing-actor",
+      "title": "Approval with no actor metadata is still recorded durably",
+      "purpose": "Exercise the approve path when the optional actor field is absent to confirm a durable approval is still recorded exactly once.",
+      "risk_category": "missing_data",
+      "priority": "P2",
+      "requirement_reference": "AC-APPROVAL-001",
+      "product_principle_reference": "founder context",
+      "generating_risk": "R-NO-ACTOR",
+      "generated_from": [
+        "AC-APPROVAL-001",
+        "r5/fixture/app.py"
+      ],
+      "rationale": "AC-APPROVAL-001 promises a durable record of approval without conditioning on request metadata. Sending an empty body checks that a missing actor neither drops nor duplicates the durable approval. Truth is read from the durable oracle so a slow response does not defeat it.",
+      "mode": "backend",
+      "service_refs": [
+        "api"
+      ],
+      "isolation_key": "invoice:W2MD",
+      "isolation_note": "Only invoice id W2MD is touched, unique to this scenario; no cleanup needed and no contamination possible.",
+      "setup": [
+        "Use invoice id W2MD which no other scenario touches"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/invoices/W2MD/approve",
+            "json_body": {},
+            "expect_status": 200,
+            "expect_contains": [
+              "approved"
+            ],
+            "timeout_s": 15
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 r5/fixture/state.py W2MD",
+            "contains": [
+              "W2MD status=approved",
+              "approvals=1",
+              "payments=1"
+            ],
+            "not_contains": [
+              "status=pending"
+            ]
+          }
+        }
+      ],
+      "expected_observations": [
+        "Durable re-read shows W2MD approved with exactly one approval and one payment even though no actor was supplied"
+      ],
+      "forbidden_observations": [
+        "state.py shows W2MD status=pending",
+        "payments count other than 1 for W2MD"
+      ],
+      "cleanup": [],
+      "confidence": 0.6
+    }
+  ],
+  "assumptions": [
+    "state.py reads the same durable store file the approve endpoint writes, so it is a valid independent oracle for persisted state that is not fooled by an in-memory-only view.",
+    "A generous per-request timeout (15s) lets a slow-but-eventual response return, so the scenario's verdict rests on the durable state_check rather than on response latency.",
+    "Invoices are created on first touch, so each scenario can safely use a private invoice id (W2UI/W2CC/W2R1/W2R2/W2MD) with no seeding step.",
+    "The approved command 'python3 r5/fixture/state.py' accepts an invoice id as an extra argument (e.g. 'python3 r5/fixture/state.py W2UI') to scope the durable re-read."
+  ],
+  "unresolved_questions": [
+    "The acceptance criteria only promise durable recording (AC-APPROVAL-001) and survival of a re-read (AC-APPROVAL-002); they do NOT promise a bounded/timely response. A build that persists the approval but then stalls past a client deadline (the 'timed out' failures seen in wave 1) satisfies both ACs while leaving the caller unable to confirm the outcome. If a response-time or definitive-answer guarantee is intended, it needs its own acceptance criterion before it can be verified \u2014 I will not invent one.",
+    "AC-APPROVAL-002 ('survives a re-read of persisted state') cannot be exercised via a service restart in this fixture because the service reseeds its store on every boot; I have therefore verified 'survives a re-read' only via an independent CLI process re-reading the file. Confirm whether restart-durability (surviving a process restart) is actually required, since that would be a stronger and currently untestable claim.",
+    "The ACs do not promise authorization or approval-actor validation, so I did not author cross_tenant/authorization scenarios. If approvals must be attributable to or gated by a specific actor, that requirement is missing from the unit."
+  ]
+}

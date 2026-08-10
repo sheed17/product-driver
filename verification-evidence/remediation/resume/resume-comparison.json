@@ -1,0 +1,63 @@
+{
+  "before": {
+    "scenarios": [
+      "gen-happy",
+      "gen-dup",
+      "gen-conc"
+    ],
+    "waves_used": 2,
+    "budget_exhausted": true,
+    "executed": [
+      "gen-happy",
+      "gen-dup"
+    ],
+    "observed_failures": [
+      "gen-dup"
+    ],
+    "observed_clusters": [
+      "C01"
+    ],
+    "compiled": [
+      "gen-conc",
+      "gen-dup",
+      "gen-happy"
+    ],
+    "adaptive_links": {
+      "gen-conc": [
+        "gen-dup"
+      ]
+    },
+    "promotion_candidates": []
+  },
+  "after": {
+    "scenarios": [
+      "gen-happy",
+      "gen-dup",
+      "gen-conc"
+    ],
+    "waves_used": 2,
+    "budget_exhausted": true,
+    "executed": [
+      "gen-happy",
+      "gen-dup"
+    ],
+    "observed_failures": [
+      "gen-dup"
+    ],
+    "observed_clusters": [
+      "C01"
+    ],
+    "compiled": [
+      "gen-conc",
+      "gen-dup",
+      "gen-happy"
+    ],
+    "adaptive_links": {
+      "gen-conc": [
+        "gen-dup"
+      ]
+    },
+    "promotion_candidates": []
+  },
+  "mismatches": []
+}

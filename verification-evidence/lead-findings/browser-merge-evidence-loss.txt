@@ -1,0 +1,12 @@
+merged visible_text : 'Approved.'
+merged console_errs : ['boom: first step console error']
+
+haystack:
+Approved.
+boom: first step console error
+
+forbidden 'duplicate charge applied' detected in haystack? False
+
+RESULT: FALSE GREEN CONFIRMED — text observed in browser step 1 is absent
+        from the global haystack, so the `forbidden:` check passes.
+first-step console error also lost? False

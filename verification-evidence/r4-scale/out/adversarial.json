@@ -1,0 +1,99 @@
+{
+  "1_budget_exhaustion": {
+    "suite_size": 61,
+    "executed_not_skipped": 15,
+    "skipped": 46,
+    "passed": 14,
+    "failed": 1,
+    "full_run_flag": true,
+    "blocking_failures": 1,
+    "everything_required_passed": false,
+    "ACCEPT_becomes": "FIX",
+    "precedence_messages": [
+      "  product evaluation ACCEPTed, but 1 required scenario(s) failed."
+    ],
+    "summary_block_chars": 5190,
+    "summary_head": "60 generated case(s) + 1 permanent regression scenario(s): 14 passed, 1 failed, 0 blocked, 46 skipped\nrisk categories exercised: cross_tenant, idempotency, persistence_failure\n\nSKIPPED (with reason):\n  case-003-http: the suite's 0s execution budget was exhausted before this scenario ran\n  case-004-cmd: the suite's execution budget was exhausted before this scenario ran\n  case-006-http: the suite's"
+  },
+  "2_browser_disabled_skip": {
+    "suite_size": 21,
+    "skipped": 20,
+    "passed": 1,
+    "failed": 0,
+    "full_run_flag": true,
+    "blocking_failures": 0,
+    "ACCEPT_becomes": "ACCEPT",
+    "precedence_messages": []
+  },
+  "3_all_100_fail_prompt_growth": {
+    "failed": 100,
+    "clusters": 4,
+    "grouped": 1,
+    "summary_block_chars": 75485,
+    "evaluator_prompt_chars": 77549,
+    "evaluator_prompt_est_tokens": 19387,
+    "correction_prompt_chars": 47508,
+    "correction_est_tokens": 11877
+  },
+  "4_duplicate_scenario_ids": {
+    "entries_offered": 2,
+    "entries_in_suite": 1,
+    "outcomes": 1,
+    "results_dict_size": 1,
+    "silently_dropped": 1,
+    "any_warning": "none \u2014 build_suite/ScenarioSuite.add drop silently"
+  },
+  "5_id_truncation_collision": {
+    "input_ids_distinct": true,
+    "sanitised_a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-per",
+    "sanitised_b": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-per",
+    "collide_after_truncation": true,
+    "entries_in_suite": 1,
+    "second_scenario_dropped": true
+  },
+  "6_narrowed_rerun": {
+    "first_pass_failed": 2,
+    "first_ACCEPT_becomes": "FIX",
+    "rerun_selected": 14,
+    "rerun_of_total": 21,
+    "rerun_reason": "failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (14 of 21)",
+    "rerun_full_run_flag": false,
+    "rerun_failed": 2,
+    "rerun_ACCEPT_becomes": "FIX",
+    "rerun_messages": [
+      "  product evaluation ACCEPTed, but 2 required scenario(s) failed."
+    ]
+  },
+  "7_dependency_cascade": {
+    "leader": {
+      "outcome": "FAILED",
+      "skip_reason": ""
+    },
+    "other": {
+      "outcome": "PASSED",
+      "skip_reason": ""
+    },
+    "unrelated": {
+      "outcome": "PASSED",
+      "skip_reason": ""
+    },
+    "dependant": {
+      "outcome": "SKIPPED",
+      "skip_reason": "its prerequisite leader did not pass"
+    }
+  },
+  "8_late_failure_visibility": {
+    "case_087_outcome": "FAILED",
+    "case_087_blocks": true,
+    "case_087_named_in_summary": true,
+    "position_in_summary_pct": 67.3,
+    "everything_required_passed": false,
+    "ACCEPT_becomes": "FIX"
+  },
+  "9_max_parallel": {
+    "config_rejects_parallel_4": true,
+    "config_error": "1 validation error for ScenarioGenerationConfig\nmax_parallel\n  Value error, max_parallel must be 1: scenarios share serv",
+    "SuiteExecutor_accepts_max_parallel_32": 32,
+    "run_references_max_parallel": false
+  }
+}

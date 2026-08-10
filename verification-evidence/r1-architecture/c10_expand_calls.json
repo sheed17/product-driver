@@ -1,0 +1,12 @@
+[
+  {
+    "failures": [
+      "[FAIL] P0 generated gen-dup  (idempotency)  \u2014 expect_state: gen-dup: payments row count \u2014 got 2, want 1"
+    ],
+    "clusters": [
+      "[C01] generated:gen-dup: expect_state: gen-dup: payments row count \u2014 got 2, want 1\n  affected: gen-dup\n  shared: expect_state: gen-dup: payments row count \u2014 got <n>, want <n>\n  evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-44/test_c10_expand_after_failures0/driver/runs/r1-exp/iteration-01/scenarios/gen-dup"
+    ],
+    "evaluator_requests": [],
+    "diff_files": []
+  }
+]

@@ -149,6 +149,68 @@ _HISTORY_TRANSFORM_PATTERNS = [
     (re.compile(r"\bgit\s+reset\s+--soft\b"), "git reset --soft (commit consolidation)"),
 ]
 
+# Operations that move a ref, re-point HEAD, or hide/replace the materialized
+# working tree. They are denied WHILE A BUILDER OWNS THE WORKTREE, because the
+# builder is the thing holding the only copy of the in-progress work.
+#
+# Run 3 is the case: a builder moved the product branch with `update-ref` after
+# building a commit with `commit-tree`, and reset the worktree to a tree that did
+# not contain the episode's untracked files. The work survived only because a
+# preservation ref happened to exist. Nothing in the guard noticed, because each
+# individual command looked innocuous: `commit-tree` writes an object and moves
+# nothing, `update-ref` moves a ref and touches no file. It is the SEQUENCE that
+# rewrites history, and the ownership that makes it unsafe.
+# Scoped deliberately. A builder legitimately edits, reverts and commits its own
+# files all day — `git restore src/x.py` is the same act as rewriting that file
+# with the Write tool, and blocking one while permitting the other would be
+# theatre. What ownership forbids is operating on the TREE OR REFS WHOLESALE:
+# moving a branch, re-pointing HEAD, replacing the working tree, or discarding
+# everything at once.
+_WORKTREE_OWNERSHIP_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bgit\s+update-ref\b"), "git update-ref (moves a ref)"),
+    (re.compile(r"\bgit\s+symbolic-ref\b[^\n]*\srefs/"), "git symbolic-ref (re-points HEAD)"),
+    (re.compile(r"\bgit\s+branch\b[^\n]*(?:\s-f\b|\s--force\b)"),
+     "git branch --force (moves a branch ref)"),
+    (re.compile(r"\bgit\s+branch\b[^\n]*\s-(?:d|D)\b"), "git branch -d/-D (deletes a branch ref)"),
+    # `--soft` is the amendment path and is waivable below; every other reset
+    # moves the index or the working tree.
+    (re.compile(r"\bgit\s+reset\b(?![^\n]*--soft\b)"),
+     "git reset (moves the branch, index or working tree)"),
+    # Switching branches or replacing the whole tree. A path-scoped
+    # `git checkout -- src/x.py` is not this.
+    (re.compile(r"\bgit\s+checkout\b(?![^\n]*\s-{1,2}[bB]\b)(?![^\n]*\s--\s+\S)"),
+     "git checkout (replaces the materialized working tree or moves HEAD)"),
+    (re.compile(r"\bgit\s+checkout\b[^\n]*\s--\s+\.(?:\s|$)"),
+     "git checkout -- . (discards the whole working tree)"),
+    (re.compile(r"\bgit\s+switch\b"), "git switch (moves HEAD and the working tree)"),
+    (re.compile(r"\bgit\s+restore\b[^\n]*(?:\s--source\b|\s-s\b|\s\.(?:\s|$)|\s--\s+\.(?:\s|$))"),
+     "wholesale git restore (discards the working tree, or restores it from another commit)"),
+    (re.compile(r"\bgit\s+restore\b\s*$"), "git restore with no pathspec"),
+    (re.compile(r"\bgit\s+stash\b"), "git stash (hides the in-progress working tree)"),
+    (re.compile(r"\bgit\s+clean\b"), "git clean (deletes untracked product files)"),
+    (re.compile(r"\bgit\s+commit-tree\b"), "git commit-tree (builds a replacement commit)"),
+    (re.compile(r"\bgit\s+worktree\s+(?:remove|prune|move)\b"), "git worktree removal/move"),
+]
+
+# Operations the ownership rule denies by default but an authorized,
+# preservation-backed amendment may still perform. The authorization is granted
+# only after every precondition in `preservation.py` has passed, so this is the
+# "exact ref transition through a live approval" case rather than a loophole.
+_OWNERSHIP_AMENDMENT_WAIVABLE = re.compile(
+    r"\bgit\s+reset\s+--soft\b|\bgit\s+commit\b[^\n]*--amend\b"
+)
+
+_WORKTREE_OWNERSHIP_REASON = (
+    "{what} while a builder owns this product worktree. The builder holds the only "
+    "materialized copy of the in-progress work, including untracked files, so a ref "
+    "move or a worktree replacement can silently discard it. An exact ref transition "
+    "is permitted only through a live approval naming that exact old ref, new ref, "
+    "baseline and intended tree — and only when no builder owns the worktree."
+)
+
+# A finalizer launch, however it is spelled.
+_FINALIZER_LAUNCH_RE = re.compile(r"\bfinalize_status\.py\b", re.I)
+
 _HISTORY_TRANSFORM_REASON = (
     "{what} — a local history rewrite without a preservation-backed authorization. "
     "The affected commits must be proven unreachable from every remote-tracking "
@@ -352,11 +414,29 @@ def _code_reason(payload: str, *, inline: bool) -> str | None:
     return None
 
 
+def classify_worktree_ownership(command: str, *, allow_amend: bool = False) -> str | None:
+    """Reason ``command`` is unsafe while a builder owns the worktree, else None.
+
+    Applied only when ownership is actually held: outside a builder-owned
+    worktree these are ordinary git commands and must not be blocked.
+    """
+    if not command:
+        return None
+    if allow_amend and _OWNERSHIP_AMENDMENT_WAIVABLE.search(command):
+        return None
+    for pattern, what in _WORKTREE_OWNERSHIP_PATTERNS:
+        if pattern.search(command):
+            return _WORKTREE_OWNERSHIP_REASON.format(what=what)
+    return None
+
+
 def classify_command(
     command: str,
     *,
     _depth: int = 0,
     allow_amend: bool = False,
+    builder_owns_worktree: bool = False,
+    scanning_file_text: bool = False,
 ) -> str | None:
     """Return a reason string if ``command`` is hard-blocked, else ``None``.
 
@@ -364,9 +444,18 @@ def classify_command(
     payloads, command substitution, ``eval``, and base64. ``allow_amend`` is set
     only by :class:`CommandGuard` when a specific amendment has passed every
     preservation precondition.
+
+    ``scanning_file_text`` marks the caller as reading a *file* rather than a
+    command about to run, which switches off the checks whose whole rationale is
+    imminent execution. See :func:`_computed_command_name`.
     """
     if not command:
         return None
+
+    if builder_owns_worktree:
+        owned = classify_worktree_ownership(command, allow_amend=allow_amend)
+        if owned is not None:
+            return owned
 
     direct = _direct_reason(command)
     if direct is not None:
@@ -377,9 +466,22 @@ def classify_command(
         if not (allow_amend and waivable):
             return direct
 
-    computed = _computed_command_name(command)
-    if computed is not None:
-        return computed
+    # "I cannot see what this would run" is a statement about a command the
+    # guard is on the verge of allowing to execute. A line of file text is not
+    # that, and prose routinely looks like substitution: the P4 mutation battery
+    # documents its own target as `eval/phase0/import_probe.py` — Markdown
+    # backticks, in a module docstring — and that sentence was read as a
+    # computed command name and blocked a required gate. Nothing was going to be
+    # expanded, because nothing was going to be run.
+    #
+    # This is the same lesson as the ownership rule below, which was exempted
+    # from file text for exactly this reason and should have carried the rest of
+    # the execution-only checks with it. Literal hard-blocked commands written
+    # into a file are still caught, which is what this layer is actually for.
+    if not scanning_file_text:
+        computed = _computed_command_name(command)
+        if computed is not None:
+            return computed
 
     if _depth >= _MAX_INDIRECTION_DEPTH:
         return None
@@ -400,7 +502,13 @@ def classify_command(
         code = _code_reason(payload, inline=True)
         if code is not None:
             return code
-        inner = classify_command(payload, _depth=_depth + 1, allow_amend=allow_amend)
+        inner = classify_command(
+            payload,
+            _depth=_depth + 1,
+            allow_amend=allow_amend,
+            builder_owns_worktree=builder_owns_worktree,
+            scanning_file_text=scanning_file_text,
+        )
         if inner is not None:
             return f"{inner} (reached indirectly through an interpreter or substitution)"
 
@@ -541,10 +649,14 @@ class CommandGuard:
         roots: ApprovedRoots | None = None,
         cwd: Path | None = None,
         amendment_authorized: bool = False,
+        builder_owns_worktree: bool = False,
     ) -> None:
         self.roots = roots
         self.cwd = Path(cwd) if cwd is not None else None
         self.amendment_authorized = amendment_authorized
+        #: Set while a builder holds this product worktree. See
+        #: `_WORKTREE_OWNERSHIP_PATTERNS` for what it denies and why.
+        self.builder_owns_worktree = builder_owns_worktree
         #: Every path denied during this session, for the run journal.
         self.denied_paths: list[PathVerdict] = []
 
@@ -636,8 +748,28 @@ class CommandGuard:
                     stripped = line.strip()
                     if not stripped or stripped.startswith("#"):
                         continue
+                    # Worktree-ownership rules deliberately do NOT apply to a
+                    # script's text. Ownership governs what the builder issues
+                    # against the product worktree right now; a repository
+                    # script is a file, and its prose is not a command.
+                    #
+                    # The distinction is not academic. The P4 mutation battery
+                    # documents its own safety in a docstring — "original bytes
+                    # are held IN MEMORY - never `git checkout/restore/stash/
+                    # clean`" — and scanning that line for ownership violations
+                    # blocked a required gate on the strength of a sentence
+                    # promising the exact opposite. Docstrings are not `#`
+                    # comments, so no comment skip can rescue this; the rule was
+                    # simply the wrong shape for file text.
+                    #
+                    # What this layer exists to catch is unchanged and still
+                    # enforced: hard-blocked commands (push, rebase, rm -rf) and
+                    # credential reads written into a file to be run next turn.
                     reason = classify_command(
-                        stripped, allow_amend=self.amendment_authorized
+                        stripped,
+                        allow_amend=self.amendment_authorized,
+                        builder_owns_worktree=False,
+                        scanning_file_text=True,
                     )
                     if reason is not None:
                         break
@@ -650,11 +782,52 @@ class CommandGuard:
 
     # -- the whole decision ----------------------------------------------
 
+    # -- finalizer exclusivity --------------------------------------------
+
+    def check_finalizer_launch(self, command: str) -> str | None:
+        """Refuse to start a finalizer while another one owns the repository.
+
+        This is where "the finalizer lock is authoritative" becomes real. The
+        driver does not spawn finalizers itself — a builder runs
+        `scripts/finalize_status.py` as an ordinary command — so the launch has
+        to be intercepted here, before the process starts and long before it can
+        delete a receipt or write status.
+
+        A second finalizer is never started because a log looks stale or a
+        process listing was unreadable. Only the lock decides, and if it is held
+        the answer is to attach to or wait on the existing owner.
+        """
+        if not command or not _FINALIZER_LAUNCH_RE.search(command):
+            return None
+        if self.cwd is None:
+            return None
+        try:
+            from .ownership import finalizer_running
+
+            owner = finalizer_running(self.cwd)
+        except Exception:
+            return None
+        if owner is None:
+            return None
+        return (
+            "launching a finalizer while another finalizer already owns this repository: "
+            f"{owner.describe()}. Two finalizers delete each other's receipts and certify a "
+            "moving tree. Attach to or wait on the existing owner, or stop — and never infer "
+            "that it died from a missing log."
+        )
+
     def classify(self, tool_name: str, tool_input: dict[str, Any]) -> GuardDecision:
         """Classify one tool use across every layer this guard implements."""
         if tool_name == "Bash":
             command = str(tool_input.get("command", ""))
-            reason = classify_command(command, allow_amend=self.amendment_authorized)
+            duplicate = self.check_finalizer_launch(command)
+            if duplicate is not None:
+                return GuardDecision(duplicate, layer="finalizer-lock")
+            reason = classify_command(
+                command,
+                allow_amend=self.amendment_authorized,
+                builder_owns_worktree=self.builder_owns_worktree,
+            )
             if reason is not None:
                 return GuardDecision(reason, layer="command")
 

@@ -1,0 +1,26 @@
+CASE | STATUS | DECISION | CORRECT | NOTE
+----------------------------------------------------------------------------------------------------
+1 (no planner / legacy single-scenario path) | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | suite_result is None so _apply_suite_precedence never runs
+1 (with planner / suite path) | MAX_ITERATIONS | FIX | yes | 
+2 | MAX_ITERATIONS | FIX | yes | 
+2b (no planner) | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | with generation off there is no state coverage; nothing forces any
+3 | MAX_ITERATIONS | FIX | yes | 
+4 (CONTRADICTED) | MAX_ITERATIONS | FIX | yes | 
+4b (REQUIRES_INDEPENDENT_REVIEW) | NEEDS_INDEPENDENT_REVIEW | ACCEPT | yes | 
+5 (VIOLATION) | MAX_ITERATIONS | FIX | yes | 
+5b (BLOCKED_ENVIRONMENT) | BLOCKED | BLOCKED | yes | 
+6 | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | scenarios actually executed: ['backend_generic']; suite=0 generated case(s) + 1 permanent regression scenario(s): 1 passed, 0 failed, 0 blocked, 0 skipped
+6b | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | executed: ['backend_generic']
+7 (executor raises) | EXCEPTION_PROPAGATED | None | yes | propagated RuntimeError: subprocess died
+7b (timeout / error, no assertions) | MAX_ITERATIONS | FIX | yes | 
+7c (service never came up) | MAX_ITERATIONS | FIX | yes | 
+8 (required PERMANENT scenario skipped: no browser) | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | skipped=['browser_generic']; executed=['gen-ok']
+8b (whole suite skipped: execution budget exhausted) | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | outcomes=[('backend_generic', 'SKIPPED'), ('gen-ok', 'SKIPPED')]; executed=[]
+8c (unit: SKIPPED required P0 outcome) | n/a (unit) | ACCEPT | NO -- FALSE ACCEPT | everything_required_passed=True
+9 | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | executed=['backend_generic']; uncovered_risks=['double payment on retry', 'an unauthorized user can approve']; coverage='0 generated case(s)\nrisk categories exercised: none\nidentified but NOT exercised: double payment on retry; an unauthorized user can approve'
+10 | MAX_ITERATIONS | FIX | yes | 
+extra: empty suite (zero outcomes) | n/a (unit) | ACCEPT | NO -- FALSE ACCEPT | everything_required_passed=True
+extra: generated scenarios at P2/P3 fail | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | outcomes=[('backend_generic', 'P0', 'PASSED', True, False), ('gen-p2', 'P2', 'FAILED', True, False)]
+extra: narrowed rerun -> ACCEPT | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | iteration-2 scenarios executed=['backend_generic', 'gen-a']; full_run=True
+extra: vacuous scenario (zero assertions) | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | outcomes=[('backend_generic', 'PASSED', 1), ('gen-vacuous', 'PASSED', 0)] (a zero-assertion result is ScenarioResult.passed==True)
+extra: suite_result is None bypass | ACCEPTED | ACCEPT | NO -- FALSE ACCEPT | no suite -> _apply_suite_precedence at cli.py:605 is skipped entirely

@@ -1,0 +1,104 @@
+{
+  "started_at": "2026-08-09T21:57:36+00:00",
+  "duration_s": 2.168544916999963,
+  "full_run": true,
+  "selection_reason": "r5 audit pass",
+  "outcomes": [
+    {
+      "scenario_id": "permanent:approval-smoke",
+      "scenario_name": "permanent:approval-smoke",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "r5/raw/real1b/artifacts-w1/scenarios/permanent-approval-smoke",
+      "generated_because": "",
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "gen-idempotent-approve",
+      "scenario_name": "generated:gen-idempotent-approve",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 2,
+      "failed_assertions": [
+        "expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output",
+        "expect_state: exactly one payment: must not contain 'payments=2' \u2014 unexpectedly present"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "r5/raw/real1b/artifacts-w1/scenarios/gen-idempotent-approve",
+      "generated_because": "R2",
+      "requirement_reference": "AC-APPROVAL-001"
+    },
+    {
+      "scenario_id": "gen-persist-approve",
+      "scenario_name": "generated:gen-persist-approve",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "r5/raw/real1b/artifacts-w1/scenarios/gen-persist-approve",
+      "generated_because": "R1",
+      "requirement_reference": "AC-APPROVAL-001"
+    },
+    {
+      "scenario_id": "gen-happy-approve",
+      "scenario_name": "generated:gen-happy-approve",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "happy_path",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "r5/raw/real1b/artifacts-w1/scenarios/gen-happy-approve",
+      "generated_because": "R1",
+      "requirement_reference": "AC-APPROVAL-001"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "gen-idempotent-approve"
+      ],
+      "shared_observations": [
+        "expect_state: exactly one payment: contains 'payments=<n>' \u2014 not found in command output",
+        "expect_state: exactly one payment: must not contain 'payments=<n>' \u2014 unexpectedly present"
+      ],
+      "likely_failure_domain": "generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output",
+      "evidence_paths": [
+        "r5/raw/real1b/artifacts-w1/scenarios/gen-idempotent-approve"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "decision": "ACCEPT",
+  "summary": "the approval flow looked fine to me",
+  "observed_behavior": [
+    "an approval succeeded"
+  ],
+  "problems": [],
+  "correction_prompt": "",
+  "evidence_paths": [],
+  "confidence": 0.9,
+  "requirement_reference": "",
+  "product_principle_reference": "",
+  "scenario": "",
+  "observed_result": "",
+  "expected_result": "",
+  "preserve": "",
+  "retest": "",
+  "customer_facing": false,
+  "rubric_categories": [],
+  "additional_verification_needed": false,
+  "scenario_requests": []
+}

@@ -1,0 +1,14 @@
+[C01] permanent:approval-smoke: expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+  affected: permanent:approval-smoke
+  shared: expect_state: python3 r5/fixture/state.py smoke: contains 'status=approved' — not found in command output
+  evidence: r5/raw/real2/artifacts-w1/scenarios/permanent-approval-smoke
+
+[C02] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+  affected: gen-idempotent-approve
+  shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output
+  evidence: r5/raw/real2/artifacts-w1/scenarios/gen-idempotent-approve
+
+[C03] generated:gen-persist-approve: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+  affected: gen-persist-approve
+  shared: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+  evidence: r5/raw/real2/artifacts-w1/scenarios/gen-persist-approve

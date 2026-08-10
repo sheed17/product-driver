@@ -1,0 +1,178 @@
+[
+  {
+    "scenarios": 11,
+    "executed": 11,
+    "wall_s": 0.27,
+    "per_scenario_s": 0.025,
+    "passed": 9,
+    "failed": 2,
+    "blocked": 0,
+    "skipped": 0,
+    "independent_recount": {
+      "PASSED": 9,
+      "FAILED": 2,
+      "BLOCKED": 0,
+      "SKIPPED": 0
+    },
+    "counts_agree": true,
+    "total_equals_suite": true,
+    "duplicate_result_ids": 0,
+    "evidence_paths_correct": true,
+    "evidence_problems": [],
+    "blocking_failures": 2,
+    "expected_failures": [
+      "case-005-idem",
+      "case-009-http"
+    ],
+    "actual_failures": [
+      "case-005-idem",
+      "case-009-http"
+    ],
+    "failures_match_injection": true,
+    "clusters": 2,
+    "grouped_clusters": 0,
+    "summary_block_chars": 1844,
+    "evaluator_prompt_chars": 3936,
+    "evaluator_prompt_est_tokens": 984,
+    "all_failures_named_in_summary": true,
+    "accept_survives": "FIX",
+    "results_dict_size": 11,
+    "outcome_durations_all_zero": true
+  },
+  {
+    "scenarios": 51,
+    "executed": 51,
+    "wall_s": 1.27,
+    "per_scenario_s": 0.025,
+    "passed": 47,
+    "failed": 4,
+    "blocked": 0,
+    "skipped": 0,
+    "independent_recount": {
+      "PASSED": 47,
+      "FAILED": 4,
+      "BLOCKED": 0,
+      "SKIPPED": 0
+    },
+    "counts_agree": true,
+    "total_equals_suite": true,
+    "duplicate_result_ids": 0,
+    "evidence_paths_correct": true,
+    "evidence_problems": [],
+    "blocking_failures": 4,
+    "expected_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem"
+    ],
+    "actual_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem"
+    ],
+    "failures_match_injection": true,
+    "clusters": 3,
+    "grouped_clusters": 1,
+    "summary_block_chars": 3923,
+    "evaluator_prompt_chars": 6015,
+    "evaluator_prompt_est_tokens": 1503,
+    "all_failures_named_in_summary": true,
+    "accept_survives": "FIX",
+    "results_dict_size": 51,
+    "outcome_durations_all_zero": true
+  },
+  {
+    "scenarios": 101,
+    "executed": 101,
+    "wall_s": 2.51,
+    "per_scenario_s": 0.025,
+    "passed": 96,
+    "failed": 5,
+    "blocked": 0,
+    "skipped": 0,
+    "independent_recount": {
+      "PASSED": 96,
+      "FAILED": 5,
+      "BLOCKED": 0,
+      "SKIPPED": 0
+    },
+    "counts_agree": true,
+    "total_equals_suite": true,
+    "duplicate_result_ids": 0,
+    "evidence_paths_correct": true,
+    "evidence_problems": [],
+    "blocking_failures": 5,
+    "expected_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem",
+      "case-087-http"
+    ],
+    "actual_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem",
+      "case-087-http"
+    ],
+    "failures_match_injection": true,
+    "clusters": 4,
+    "grouped_clusters": 1,
+    "summary_block_chars": 4265,
+    "evaluator_prompt_chars": 6357,
+    "evaluator_prompt_est_tokens": 1589,
+    "all_failures_named_in_summary": true,
+    "accept_survives": "FIX",
+    "results_dict_size": 101,
+    "outcome_durations_all_zero": true
+  },
+  {
+    "scenarios": 201,
+    "executed": 201,
+    "wall_s": 5.18,
+    "per_scenario_s": 0.026,
+    "passed": 196,
+    "failed": 5,
+    "blocked": 0,
+    "skipped": 0,
+    "independent_recount": {
+      "PASSED": 196,
+      "FAILED": 5,
+      "BLOCKED": 0,
+      "SKIPPED": 0
+    },
+    "counts_agree": true,
+    "total_equals_suite": true,
+    "duplicate_result_ids": 0,
+    "evidence_paths_correct": true,
+    "evidence_problems": [],
+    "blocking_failures": 5,
+    "expected_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem",
+      "case-087-http"
+    ],
+    "actual_failures": [
+      "case-005-idem",
+      "case-009-http",
+      "case-033-http",
+      "case-044-idem",
+      "case-087-http"
+    ],
+    "failures_match_injection": true,
+    "clusters": 4,
+    "grouped_clusters": 1,
+    "summary_block_chars": 4266,
+    "evaluator_prompt_chars": 6358,
+    "evaluator_prompt_est_tokens": 1589,
+    "all_failures_named_in_summary": true,
+    "accept_survives": "FIX",
+    "results_dict_size": 201,
+    "outcome_durations_all_zero": true
+  }
+]

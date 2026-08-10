@@ -23,3 +23,6 @@ driver.config.yaml
 driver.config.local.yaml
 
 .DS_Store
+
+# Harness-created agent worktrees: full source duplicates, never published.
+.claude/worktrees/

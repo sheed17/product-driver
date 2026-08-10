@@ -1,0 +1,654 @@
+[
+  {
+    "id": "gen-concurrent-approve",
+    "title": "Simultaneous approvals of one invoice record a single durable approval",
+    "purpose": "Exercise a true race: two approvals for the same invoice issued at once must not corrupt the store or create a divergent duplicate record.",
+    "risk_category": "concurrency",
+    "priority": "P1",
+    "rationale": "",
+    "requirement_reference": "AC-APPROVAL-001",
+    "product_principle_reference": "product rubric",
+    "mode": "backend",
+    "setup": [],
+    "service_refs": [],
+    "actions": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-con2",
+          "contains": [],
+          "not_contains": [
+            "approved"
+          ],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/inv-con2/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice_id": "inv-con2"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/api/invoices/inv-con2/approve",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "invoice_id": "inv-con2"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          }
+        ],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-con2",
+          "contains": [
+            "inv-con2",
+            "approved"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "command",
+        "name": "store invariant check",
+        "command": "python3 r5/fixture/state.py SMOKE",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "persisted_state_checks": [
+      {
+        "name": "",
+        "command": "python3 r5/fixture/state.py inv-con2",
+        "contains": [
+          "approved"
+        ],
+        "not_contains": [],
+        "timeout_s": null
+      }
+    ],
+    "expected_observations": [
+      "inv-con2 is approved after the race",
+      "Store invariant self-check (SMOKE) exits 0"
+    ],
+    "forbidden_observations": [
+      "SMOKE reports corruption or non-zero exit",
+      "Store shows a divergent/duplicate approval record for inv-con2"
+    ],
+    "cleanup": [],
+    "isolation_note": "Uses dedicated invoice id inv-con2; contends only on its own record, no service restart.",
+    "isolation_key": "approval:inv-con2",
+    "generated_from": [
+      "AC-APPROVAL-001"
+    ],
+    "confidence": 0.5,
+    "provenance": {
+      "generated_at": "2026-08-09T22:27:04+00:00",
+      "task_hash": "cfd5ed6c31767ec1",
+      "founder_context_version": "r5-fixture",
+      "repository_head": "bbe0fd2",
+      "active_unit_id": "UNIT-APPROVAL",
+      "acceptance_criteria_consulted": [
+        "AC-APPROVAL-001 approving an invoice records the approval durably",
+        "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+      ],
+      "files_consulted": [
+        "permanent:approval-smoke"
+      ],
+      "diff_files_consulted": [],
+      "prior_failures_consulted": [
+        "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output"
+      ],
+      "generating_risk": "R2",
+      "stage": "adaptive",
+      "wave": 2,
+      "model": "opus",
+      "session_id": "fe4a408b-c593-4a0a-878c-8ac8aa996864",
+      "kind": "ephemeral"
+    }
+  },
+  {
+    "id": "gen-missing-invoice-approve",
+    "title": "Approving an unknown invoice records no phantom approval",
+    "purpose": "Confirm posting an approval for an invoice id that was never created is rejected and leaves no durable record.",
+    "risk_category": "missing_data",
+    "priority": "P1",
+    "rationale": "",
+    "requirement_reference": "AC-APPROVAL-001",
+    "product_principle_reference": "founder context",
+    "mode": "backend",
+    "setup": [],
+    "service_refs": [],
+    "actions": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/invoices/inv-missing3/approve",
+          "url": "",
+          "headers": {},
+          "json_body": {
+            "invoice_id": "inv-missing3"
+          },
+          "body": "",
+          "expect_status": 404,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-missing3",
+          "contains": [],
+          "not_contains": [
+            "approved"
+          ],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "persisted_state_checks": [
+      {
+        "name": "",
+        "command": "python3 r5/fixture/state.py inv-missing3",
+        "contains": [],
+        "not_contains": [
+          "approved"
+        ],
+        "timeout_s": null
+      }
+    ],
+    "expected_observations": [
+      "Approve of unknown invoice returns a 4xx",
+      "No approval record exists for inv-missing3"
+    ],
+    "forbidden_observations": [
+      "inv-missing3 appears approved in persisted state"
+    ],
+    "cleanup": [],
+    "isolation_note": "Targets a non-existent invoice id inv-missing3 that no scenario creates; asserts absence only.",
+    "isolation_key": "approval:inv-missing3",
+    "generated_from": [
+      "AC-APPROVAL-001"
+    ],
+    "confidence": 0.55,
+    "provenance": {
+      "generated_at": "2026-08-09T22:27:04+00:00",
+      "task_hash": "cfd5ed6c31767ec1",
+      "founder_context_version": "r5-fixture",
+      "repository_head": "bbe0fd2",
+      "active_unit_id": "UNIT-APPROVAL",
+      "acceptance_criteria_consulted": [
+        "AC-APPROVAL-001 approving an invoice records the approval durably",
+        "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+      ],
+      "files_consulted": [
+        "permanent:approval-smoke"
+      ],
+      "diff_files_consulted": [],
+      "prior_failures_consulted": [
+        "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output"
+      ],
+      "generating_risk": "R3",
+      "stage": "adaptive",
+      "wave": 2,
+      "model": "opus",
+      "session_id": "fe4a408b-c593-4a0a-878c-8ac8aa996864",
+      "kind": "ephemeral"
+    }
+  },
+  {
+    "id": "gen-malformed-approve",
+    "title": "Malformed approval body is rejected without mutating state",
+    "purpose": "Ensure a garbage/mis-typed request body produces a clean rejection with no partial persisted approval.",
+    "risk_category": "malformed_input",
+    "priority": "P2",
+    "rationale": "",
+    "requirement_reference": "AC-APPROVAL-001",
+    "product_principle_reference": "product rubric",
+    "mode": "backend",
+    "setup": [],
+    "service_refs": [],
+    "actions": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-mal4",
+          "contains": [],
+          "not_contains": [
+            "approved"
+          ],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/invoices/inv-mal4/approve",
+          "url": "",
+          "headers": {},
+          "json_body": {
+            "invoice_id": 12345,
+            "approve": "not-a-bool"
+          },
+          "body": "",
+          "expect_status": 400,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-mal4",
+          "contains": [],
+          "not_contains": [
+            "approved"
+          ],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "command",
+        "name": "store invariant check",
+        "command": "python3 r5/fixture/state.py SMOKE",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "persisted_state_checks": [
+      {
+        "name": "",
+        "command": "python3 r5/fixture/state.py inv-mal4",
+        "contains": [],
+        "not_contains": [
+          "approved"
+        ],
+        "timeout_s": null
+      }
+    ],
+    "expected_observations": [
+      "Malformed request returns a 4xx",
+      "inv-mal4 remains not approved",
+      "Store invariant self-check exits 0"
+    ],
+    "forbidden_observations": [
+      "inv-mal4 becomes approved",
+      "500 / unhandled error",
+      "SMOKE non-zero"
+    ],
+    "cleanup": [],
+    "isolation_note": "Targets dedicated invoice id inv-mal4; asserts the record never becomes approved.",
+    "isolation_key": "approval:inv-mal4",
+    "generated_from": [
+      "AC-APPROVAL-001"
+    ],
+    "confidence": 0.45,
+    "provenance": {
+      "generated_at": "2026-08-09T22:27:04+00:00",
+      "task_hash": "cfd5ed6c31767ec1",
+      "founder_context_version": "r5-fixture",
+      "repository_head": "bbe0fd2",
+      "active_unit_id": "UNIT-APPROVAL",
+      "acceptance_criteria_consulted": [
+        "AC-APPROVAL-001 approving an invoice records the approval durably",
+        "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+      ],
+      "files_consulted": [
+        "permanent:approval-smoke"
+      ],
+      "diff_files_consulted": [],
+      "prior_failures_consulted": [
+        "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output"
+      ],
+      "generating_risk": "R4",
+      "stage": "adaptive",
+      "wave": 2,
+      "model": "opus",
+      "session_id": "fe4a408b-c593-4a0a-878c-8ac8aa996864",
+      "kind": "ephemeral"
+    }
+  },
+  {
+    "id": "gen-idempotent-across-restart",
+    "title": "Re-approving after a restart stays single and durable",
+    "purpose": "Verify idempotency is enforced against persisted state, not just the live process: re-approving the same invoice after a restart keeps exactly one durable approval.",
+    "risk_category": "idempotency",
+    "priority": "P1",
+    "rationale": "",
+    "requirement_reference": "AC-APPROVAL-002",
+    "product_principle_reference": "product rubric",
+    "mode": "backend",
+    "setup": [],
+    "service_refs": [
+      "api"
+    ],
+    "actions": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/invoices/inv-idr5/approve",
+          "url": "",
+          "headers": {},
+          "json_body": {
+            "invoice_id": "inv-idr5"
+          },
+          "body": "",
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "api",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1500
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/invoices/inv-idr5/approve",
+          "url": "",
+          "headers": {},
+          "json_body": {
+            "invoice_id": "inv-idr5"
+          },
+          "body": "",
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": "",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": {
+          "name": "",
+          "command": "python3 r5/fixture/state.py inv-idr5",
+          "contains": [
+            "inv-idr5",
+            "approved"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "command",
+        "name": "store invariant check",
+        "command": "python3 r5/fixture/state.py SMOKE",
+        "expect_exit_code": 0,
+        "expect_contains": [],
+        "timeout_s": null,
+        "request": null,
+        "requests": [],
+        "browser_steps": [],
+        "state_check": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "persisted_state_checks": [
+      {
+        "name": "",
+        "command": "python3 r5/fixture/state.py inv-idr5",
+        "contains": [
+          "approved"
+        ],
+        "not_contains": [],
+        "timeout_s": null
+      }
+    ],
+    "expected_observations": [
+      "First approve 200",
+      "Re-approve after restart 200 and still approved",
+      "Store invariant self-check exits 0"
+    ],
+    "forbidden_observations": [
+      "SMOKE reports a duplicated/second approval for inv-idr5",
+      "non-zero SMOKE exit"
+    ],
+    "cleanup": [],
+    "isolation_note": "Uses dedicated invoice id inv-idr5; restarts shared api so must run exclusively of other approval-store scenarios.",
+    "isolation_key": "api-service",
+    "generated_from": [
+      "AC-APPROVAL-002"
+    ],
+    "confidence": 0.5,
+    "provenance": {
+      "generated_at": "2026-08-09T22:27:04+00:00",
+      "task_hash": "cfd5ed6c31767ec1",
+      "founder_context_version": "r5-fixture",
+      "repository_head": "bbe0fd2",
+      "active_unit_id": "UNIT-APPROVAL",
+      "acceptance_criteria_consulted": [
+        "AC-APPROVAL-001 approving an invoice records the approval durably",
+        "AC-APPROVAL-002 approval state survives a re-read of persisted state"
+      ],
+      "files_consulted": [
+        "permanent:approval-smoke"
+      ],
+      "diff_files_consulted": [],
+      "prior_failures_consulted": [
+        "[FAIL] P0 generated gen-idempotent-approve  (idempotency)  \u2014 expect_state: exactly one payment: contains 'payments=1' \u2014 not found in command output"
+      ],
+      "generating_risk": "R5",
+      "stage": "adaptive",
+      "wave": 2,
+      "model": "opus",
+      "session_id": "fe4a408b-c593-4a0a-878c-8ac8aa996864",
+      "kind": "ephemeral"
+    }
+  }
+]

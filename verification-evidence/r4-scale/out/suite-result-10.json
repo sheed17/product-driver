@@ -1,0 +1,252 @@
+{
+  "started_at": "2026-08-09T21:35:34+00:00",
+  "duration_s": 0.2745893339997565,
+  "full_run": true,
+  "selection_reason": "",
+  "outcomes": [
+    {
+      "scenario_id": "permanent-health",
+      "scenario_name": "case-001-http",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/permanent-health",
+      "generated_because": "",
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "case-005-idem",
+      "scenario_name": "case-005-idem",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 2,
+      "failed_assertions": [
+        "expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py 5: contains 'item=5 approval_rows=1' — not found in command output",
+        "expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py 5: must not contain 'approval_rows=2' — unexpectedly present"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-005-idem",
+      "generated_because": "item 5 is representative of the idempotency surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-010-cmd",
+      "scenario_name": "case-010-cmd",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-010-cmd",
+      "generated_because": "item 10 is representative of the persistence_failure surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-001-cmd",
+      "scenario_name": "case-001-cmd",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-001-cmd",
+      "generated_because": "item 1 is representative of the persistence_failure surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-002-idem",
+      "scenario_name": "case-002-idem",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-002-idem",
+      "generated_because": "item 2 is representative of the idempotency surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-003-http",
+      "scenario_name": "case-003-http",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-003-http",
+      "generated_because": "item 3 is representative of the cross_tenant surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-004-cmd",
+      "scenario_name": "case-004-cmd",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-004-cmd",
+      "generated_because": "item 4 is representative of the persistence_failure surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-006-http",
+      "scenario_name": "case-006-http",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-006-http",
+      "generated_because": "item 6 is representative of the cross_tenant surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-007-cmd",
+      "scenario_name": "case-007-cmd",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-007-cmd",
+      "generated_because": "item 7 is representative of the persistence_failure surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-008-idem",
+      "scenario_name": "case-008-idem",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-008-idem",
+      "generated_because": "item 8 is representative of the idempotency surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    },
+    {
+      "scenario_id": "case-009-http",
+      "scenario_name": "case-009-http",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 2,
+      "failed_assertions": [
+        "expect_visible: GET http://127.0.0.1:8731/item/9: contains '\"owner\": \"tenant-a\"' — not found in response body",
+        "forbidden: tenant-b — present in observed output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-009-http",
+      "generated_because": "item 9 is representative of the cross_tenant surface",
+      "requirement_reference": "R4-SCALE-AUDIT"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "case-005-idem"
+      ],
+      "shared_observations": [
+        "expect_state: /users/sammyfammy/neyma-product-driver/.venv/bin/python /users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py <n>: contains 'item=<n> approval_rows=<n>' — not found in command output",
+        "expect_state: /users/sammyfammy/neyma-product-driver/.venv/bin/python /users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py <n>: must not contain 'approval_rows=<n>' — unexpectedly present"
+      ],
+      "likely_failure_domain": "case-005-idem: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/work/target/probe.py",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-005-idem"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C02",
+      "affected_scenarios": [
+        "case-009-http"
+      ],
+      "shared_observations": [
+        "expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '\"owner\": \"tenant-a\"' — not found in response body",
+        "forbidden: tenant-b — present in observed output"
+      ],
+      "likely_failure_domain": "case-009-http: expect_visible: GET http://127.0.0.1:8731/item/9: contains '\"owner\": \"tenant-a\"' — not found in response body",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/r4-scale/out/run-10/scenarios/case-009-http"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "cross_tenant"
+      ],
+      "singleton": true
+    }
+  ]
+}

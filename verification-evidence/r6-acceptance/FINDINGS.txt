@@ -1,0 +1,172 @@
+REVIEWER 6 — FALSE CONFIDENCE / ACCEPTANCE ATTACK
+Target: run_control_loop (neyma_product_driver/cli.py:195-668) and its
+acceptance combination. All results produced by EXECUTING the real loop with
+fake builder/evaluator/planner/executor objects.
+
+NOTE ON WHAT WAS TESTED
+  The assigned git worktree contained a STALE copy of the package (89 KB cli.py,
+  no scenario_suite.py / scenario_planner.py). The code under review is
+  UNCOMMITTED in the shared checkout. Everything below was run against a
+  byte-identical rsync snapshot of /Users/sammyfammy/neyma-product-driver
+  (verified with `diff -r --brief` after the run: no differences).
+
+VERDICT: FAIL — false ACCEPTs were produced.
+
+=========================================================================
+CRITICAL 1 — A SKIPPED REQUIRED SCENARIO IS INVISIBLE TO ACCEPTANCE
+=========================================================================
+Outcome.SKIPPED is excluded from every acceptance gate.
+
+  scenario_suite.py:107-113  ScenarioOutcome.blocks_acceptance
+                             -> only FAILED / BLOCKED count
+  scenario_suite.py:200-202  SuiteResult.everything_required_passed
+                             -> `not self.blocking_failures()` (vacuously True)
+  scenario_suite.py:460-463  full_run = only is None or len(order)==len(suite)
+                             -> a pass in which NOTHING executed is still "full"
+  cli.py:802-804             `if not blocking and suite_result.full_run:
+                                  return decision`   <- ACCEPT survives
+  cli.py:358-365             the widening branch requires
+                             everything_required_passed, which skips satisfy
+
+Reproduced end-to-end (real loop, RunStatus.ACCEPTED):
+  * case 8   P0 PERMANENT browser scenario, browser disabled -> SKIPPED;
+             one generated case passes -> ACCEPTED
+  * case 8b  execution_budget_s=0 -> all required scenarios SKIPPED,
+             ZERO scenarios executed -> ACCEPTED
+  * W3       same via the widened "full required regression set" pass:
+             full_run=True, everything_required_passed=True, executed=[]
+  * W4       permanent + 2 generated skipped, 1 generated passes -> ACCEPTED
+  * 8c       unit: _apply_suite_precedence on a suite whose only required P0
+             outcome is SKIPPED -> ACCEPT
+
+Aggravating: cli.py:711-732 (_primary_result) already builds a ScenarioResult
+with passed=False and error="the permanent scenario did not run: <reason>".
+The information is present and simply never gated on. The protocol resolver has
+exactly the right rule for this shape (cli.py:594-605, BLOCKED_ENVIRONMENT ->
+RunStatus.BLOCKED); the suite has no equivalent.
+
+BLOCKS ACCEPTANCE: YES
+Evidence: results.txt (cases 8, 8b, 8c), probe2.txt (P3, P5), probe3.txt (W3, W4)
+
+=========================================================================
+CRITICAL 2 — DEFAULT CONFIGURATION HAS NO HARD SCENARIO GATE AT ALL
+=========================================================================
+config.py:148   ScenarioGenerationConfig.enabled = False  (documented default)
+cli.py:1329-1331 _make_planner returns None unless --auto-scenarios / enabled
+cli.py:323-334   planner is None -> suite_result = None
+cli.py:605       `if suite_result is not None:` -> _apply_suite_precedence SKIPPED
+
+On the default path the evaluator's ACCEPT is final. Nothing in the loop reads
+scenario_result.passed.
+
+Reproduced (RunStatus.ACCEPTED):
+  * case 1   unit-test commands exit 0, the scenario's UI assertion FAILS
+  * case 2b  no persisted-state coverage exists and none is required
+  * extra    the scenario ERRORS OUT entirely ("the app crashed on startup",
+             zero assertions) -> ACCEPTED
+
+The identical condition under the suite path is Outcome.BLOCKED and correctly
+becomes FIX (verified: cases 7b, 7c). The two paths disagree, and the weaker one
+is the default.
+
+BLOCKS ACCEPTANCE: YES
+Evidence: results.txt (case 1, case 2b, "extra: suite_result is None bypass")
+
+=========================================================================
+HIGH 3 — IDENTIFIED-BUT-UNCOVERED RISKS NEVER REACH THE DECISION
+=========================================================================
+scenario_plan.py:614-632  recompute_coverage() computes uncovered_risks
+cli.py:273                the coverage summary is emit()ted to the terminal ONLY
+prompts.py:459-467        the evaluator receives suite.summary_block() only
+cli.py:781-858            _apply_suite_precedence never consults coverage
+
+case 9: three P0 risks identified (double payment, unauthorized approval, state
+loss), ZERO scenarios generated for any of them. coverage_summary rendered
+"identified but NOT exercised: double payment on retry; an unauthorized user can
+approve". Run: ACCEPTED.
+
+prompts.py:474-479 asks the evaluator "was the coverage sufficient for the risk
+surface of what changed?" while withholding the list of risks that were
+identified and not exercised, and the count of proposals that were refused.
+
+BLOCKS ACCEPTANCE: YES
+Evidence: results.txt (case 9)
+
+=========================================================================
+HIGH 4 — GENERATION COLLAPSE DEGRADES SILENTLY TO ACCEPT
+=========================================================================
+case 6   every proposal malformed (bad payload shape, unapproved command,
+         ungrounded requirement) -> 0 generated scenarios compiled -> ACCEPTED
+case 6b  the generator session RAISES -> swallowed by the planner -> ACCEPTED
+
+Rejections are recorded on the wave record and printed
+(scenario_planner.py:370-390, 476-479) but never enter the acceptance
+combination. A run explicitly asked for adaptive verification, performed none,
+and reported ACCEPTED. Not fail-closed.
+
+BLOCKS ACCEPTANCE: YES
+Evidence: results.txt (cases 6, 6b)
+
+=========================================================================
+MEDIUM 5 — THE GENERATOR PICKS THE PRIORITY THAT DECIDES WHETHER ITS OWN
+           FINDING BLOCKS
+=========================================================================
+scenario_plan.py:173-175  Priority.blocks_acceptance -> P0/P1 only
+scenario_suite.py:620-632 build_suite takes priority=model.priority verbatim
+                          from the model payload (required is hardcoded True,
+                          so priority is the ONLY ignore-lever)
+
+extra case: a genuine double-payment failure caught by a scenario the generator
+labelled P2 -> ACCEPTED, with the failure listed in the summary block.
+
+This is intentional and tested (tests/test_scenario_loop.py
+::test_a_low_priority_failure_does_not_block_acceptance), but the label is
+chosen by an unreviewed model, so a mislabelled P0 defect is silently accepted.
+
+BLOCKS ACCEPTANCE: reviewer judgement — flagged, not asserted
+
+=========================================================================
+INFO 6 — ZERO-ASSERTION RESULTS COUNT AS PASSED
+=========================================================================
+models.py:216-222  ScenarioResult.passed -> all([]) is True
+
+Plan-level validation DOES refuse an assertion-less generated scenario
+(scenario_validation.py:424; verified directly, probe2 P6), so this is only
+reachable if an executed scenario yields no assertions at runtime. Not
+demonstrated against the real ScenarioExecutor.
+
+=========================================================================
+DEFENCES THAT HELD (attacks that correctly failed)
+=========================================================================
+case 1 (suite path)  permanent scenario's UI assertion fails -> FIX
+case 2               generated persisted-state check fails    -> FIX
+case 3               permanent P0 regression fails            -> FIX
+case 4               auditor CONTRADICTED                     -> FIX
+case 4b              auditor REQUIRES_INDEPENDENT_REVIEW      -> NEEDS_INDEPENDENT_REVIEW
+case 5               protocol VIOLATION                       -> FIX (never ACCEPT)
+case 5b              protocol BLOCKED_ENVIRONMENT             -> BLOCKED
+case 7               executor raises  -> exception propagates, never a PASS
+case 7b              timeout (error, no assertions)           -> BLOCKED outcome -> FIX
+case 7c              service never became ready               -> BLOCKED outcome -> FIX
+case 10              builder claims COMPLETE, a required scenario fails -> FIX
+W1/W2                the narrowed-rerun widening at cli.py:358 is REAL: a green
+                     narrowed pass reruns the full set before ACCEPT, and a
+                     regression outside the narrowed set is caught (-> FIX).
+                     I attacked this specifically and could not break it.
+(An earlier apparent failure of the widening test was an artifact of my own
+fixture: only one of three proposals compiled, so no narrowing occurred.
+Re-tested with a fully controlled planner — see probe3.txt W1/W2.)
+
+=========================================================================
+ATTACKS I COULD NOT CONSTRUCT
+=========================================================================
+* Literal case 1 / case 2 (real UI wrong, real persisted state wrong): no
+  running Neyma product in this environment. Modelled at the assertion level.
+* Case 7 with a real subprocess death / OS-level timeout inside the true
+  ScenarioExecutor: simulated at the executor boundary instead.
+* A genuinely EMPTY suite through the loop: _assemble_suite (cli.py:676-690)
+  always adds the permanent scenario, so a zero-entry suite is only reachable
+  by calling SuiteResult/_apply_suite_precedence directly (tested that way;
+  everything_required_passed is vacuously True).
+* required=False entries: build_suite hardcodes required=True, so the
+  "optional scenario" lever does not exist. Priority is the only lever.

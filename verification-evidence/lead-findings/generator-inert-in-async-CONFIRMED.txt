@@ -1,0 +1,5 @@
+/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e6274be2-8fc0-43b3-b810-1a6a33341c77/scratchpad/mut/control/neyma_product_driver/scenario_planner.py:351: RuntimeWarning: coroutine 'Stub._session' was never awaited
+  return
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+scenarios: []
+error: RuntimeError: Cannot run the event loop while another loop is running

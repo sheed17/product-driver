@@ -1,0 +1,12 @@
+[
+  "--- iteration 1 ---",
+  "backend_generic",
+  "generated:gen-dup",
+  "generated:gen-other",
+  "--- iteration 2 ---",
+  "backend_generic",
+  "generated:gen-dup",
+  "backend_generic",
+  "generated:gen-dup",
+  "generated:gen-other"
+]

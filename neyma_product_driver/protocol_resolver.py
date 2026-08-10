@@ -48,6 +48,7 @@ from .git_topology import (
     expected_graph,
 )
 from .models import utcnow
+from .repo_state import RepositoryState
 from .protocol_sources import (
     DiscoveredProtocol,
     ProtocolConflict,
@@ -121,6 +122,7 @@ class ProtocolResolution(BaseModel):
     sources_read: list[str] = Field(default_factory=list)
     unit_id: str = ""
     plan_hash: str = ""
+    repo_path: str = ""
     resolved_at: str = Field(default_factory=utcnow)
 
     # -- views -------------------------------------------------------------
@@ -180,6 +182,10 @@ class ProtocolResolution(BaseModel):
         if self.conflicts:
             lines += ["", "PROTOCOL CONFLICT:"]
             lines += [c.render() for c in self.conflicts]
+
+        if self.topology is not None and self.topology.state.determined:
+            lines += ["", "REPOSITORY STATE (the repository's own state machine):",
+                      f"  {self.topology.state.describe()}"]
 
         lines += ["", "CURRENT GRAPH:", self.current_graph or "(not determined)"]
         lines += ["", "EXPECTED GRAPH:", self.expected_graph or "(the repository states no rule)"]
@@ -350,9 +356,26 @@ class ProtocolResolver:
 
             # Status before content: the status commit describes a tree that did
             # not exist yet.
+            #
+            # This check may only speak where the REPOSITORY'S OWN state machine
+            # has already found the arrangement illegal. The repository defines
+            # three legal states (FINALIZED / PRODUCING / BASELINE) and PRODUCING
+            # legitimately places a finalizer metadata commit before the next
+            # content commit — the certified pair the new content was built on.
+            # Enforcing a private "status must never precede content" ordering on
+            # top of that is a stronger separation rule than the repository
+            # states, and it condemned a legal PRODUCING repository (a certified
+            # pair plus one fresh content commit) as corrupt, then recommended
+            # rewriting the certified history to "repair" it. The driver has no
+            # standing to invent a convention and then enforce it.
             first_status = next((i for i, c in enumerate(topology.commits) if c.is_status), None)
             first_content = next((i for i, c in enumerate(topology.commits) if c.is_content), None)
-            if first_status is not None and first_content is not None and first_status < first_content:
+            if (
+                first_status is not None
+                and first_content is not None
+                and first_status < first_content
+                and not topology.state.legal
+            ):
                 violations.append(
                     ProtocolViolation(
                         rule_id=rule.rule_id,
@@ -432,6 +455,31 @@ class ProtocolResolver:
                         rule_citation=receipt_rule.cite() if receipt_rule else "",
                     )
                 )
+
+        # The repository's own state machine is the authority on whether the
+        # arrangement of recorded status and checked-out commit is legal. When it
+        # says the state is illegal, that is a real violation reported in the
+        # repository's own words — not the driver's paraphrase of it.
+        if topology.state.state is RepositoryState.ILLEGAL:
+            violations.append(
+                ProtocolViolation(
+                    rule_id=rule.rule_id if rule is not None else "",
+                    observed_state=topology.state.reason,
+                    expected_state=(
+                        "the repository is in one of its three legal states: FINALIZED "
+                        "(recorded == HEAD^), PRODUCING (recorded == HEAD^^ with a pure "
+                        "status-metadata HEAD^), or BASELINE (recorded == HEAD)"
+                    ),
+                    evidence_paths=(
+                        [topology.state.source_path] if topology.state.source_path else []
+                    )
+                    + topology.state.stray_files[:8],
+                    severity="blocker",
+                    violation_type=ViolationType.HISTORY,
+                    detail="the repository is not in any state its own status-reality guard allows",
+                    rule_citation=rule.cite() if rule is not None else "",
+                )
+            )
 
         if not topology.baseline_commit:
             violations.append(
@@ -630,6 +678,7 @@ class ProtocolResolver:
             sources_read=protocol.sources.all_paths(),
             unit_id=unit_id,
             plan_hash=best.plan_hash if best else "",
+            repo_path=str(self.repo),
         )
         resolution.next_safe_action = self._next_safe_action(resolution)
         resolution.approval_prompt = build_approval_prompt(resolution)
@@ -826,6 +875,23 @@ def approve_option(
     if reasons:
         return None, reasons
 
+    from .remediation_planner import working_state_fingerprint
+    from .worktree_state import capture_worktree_state
+
+    topology = resolution.topology
+    # What is being approved is stated explicitly on the record: the baseline,
+    # the exact ref transition, and the stable topology it was computed against.
+    # The working-tree state is recorded as ADVISORY only — it is re-verified
+    # before execution, but ordinary editing must not expire the approval.
+    advisory: dict = {}
+    if resolution.repo_path:
+        try:
+            advisory = working_state_fingerprint(
+                capture_worktree_state(Path(resolution.repo_path))
+            )
+        except Exception:
+            advisory = {}
+
     record = ApprovalRecord(
         option_id=option.option_id,
         plan_hash=option.plan_hash,
@@ -833,6 +899,10 @@ def approve_option(
         approval_phrase=option.approval_phrase,
         run_id=run_id,
         remote_impact=option.affects_remote_history,
+        approved_baseline=option.baseline_commit or (topology.baseline_commit if topology else ""),
+        ref_transition=option.ref_transition(),
+        topology_fingerprint=dict(option.topology_fingerprint),
+        working_state=advisory,
     )
     store.add(record)
     return record, []

@@ -1,0 +1,770 @@
+
+==============================================================================
+EXPERIMENT 1 -- seeded defect: approval is NOT idempotent
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real1
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output; expect_state: exactly one payment: must not contain 'payments=<n>' — unexpectedly present
+      evidence: r5/raw/real1/artifacts-w1/scenarios/gen-idempotent-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 timeout_after_effect] a2w2-uncertain-timeout-after-effect
+      title    : Approve that stalls past client timeout still leaves exactly one durable approval
+      purpose  : Exercise the uncertain/ambiguous-effect path: a client that times out waiting for /approve must still be able to learn, from the durable oracle, that the approval landed exactly once and unambiguously.
+      rationale: The uncertain defect applies the effect then sleeps past any sane client timeout; an HTTP 200 is not evidence, so the load-bearing check is a durable state read after the client would have given up.
+      action   : POST /api/invoices/INV-A2W2-TMO/approve expect None timeout=3
+      action   : wait 9000
+      action   : state_check `python3 r5/fixture/state.py INV-A2W2-TMO` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'payments=2', 'payments=0']
+      because  : generating_risk='R-UNCERTAIN' stage=adaptive wave=2
+    [P0 retry_safety] a2w2-retry-after-ambiguous-timeout
+      title    : Retrying an approval after an ambiguous timeout does not double-record
+      purpose  : A client that times out and safely retries the same approval must not cause a second payment; the durable store must show exactly one approval after both attempts.
+      rationale: Distinct from sequential idempotency: this models the realistic retry-after-timeout the uncertain path forces, where the client cannot know the first attempt succeeded. Verified only via the durable oracle.
+      action   : POST /api/invoices/INV-A2W2-RETRY/approve expect None timeout=3
+      action   : wait 9000
+      action   : POST /api/invoices/INV-A2W2-RETRY/approve expect None timeout=3
+      action   : wait 9000
+      action   : state_check `python3 r5/fixture/state.py INV-A2W2-RETRY` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'approvals=2', 'status=pending']
+      because  : generating_risk='R-RETRY-DOUBLE' stage=adaptive wave=2
+    [P0 concurrency] a2w2-concurrent-double-approve
+      title    : Two simultaneous approvals of one invoice record a single payment
+      purpose  : Exercise the race: two approvals of the same invoice arriving at once must collapse to exactly one durable approval and one payment, exercising the lock/guard rather than the sequential path.
+      rationale: Sequential idempotency (already covered) does not exercise concurrent contention on the shared record; a missing or mis-scoped guard shows up only under true parallelism, verified by the durable oracle.
+      action   : PARALLEL POST /api/invoices/INV-A2W2-CONC/approve
+      action   : PARALLEL POST /api/invoices/INV-A2W2-CONC/approve
+      action   : state_check `python3 r5/fixture/state.py INV-A2W2-CONC` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'approvals=2', 'status=pending']
+      because  : generating_risk='R-DOUBLE-CONCURRENT' stage=adaptive wave=2
+    [P0 ui_backend_disagreement] a2w2-reread-survives-persisted-state
+      title    : A 200-approved response must agree with an independent re-read of persisted state
+      purpose  : Directly exercise AC-APPROVAL-002: after the endpoint answers approved, an independent process re-reading the durable store must also see approved — catching a UI/backend disagreement where the response lies about persistence.
+      rationale: AC-APPROVAL-002 is about survival across a re-read, not the write instant. The oracle is a separate process reading the file, so a response that reports persisted:true while never calling _save() is exposed. Restart is deliberately NOT used because the fixture reseeds the store on boot.
+      action   : POST /api/invoices/INV-A2W2-REREAD/approve expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py INV-A2W2-REREAD` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'payments=0']
+      because  : generating_risk='R-UI-LIES' stage=adaptive wave=2
+    [P2 missing_data] a2w2-approve-missing-actor
+      title    : Approval with no actor supplied is still recorded durably exactly once
+      purpose  : Exercise missing input: an approve request with an empty body must still durably record exactly one approval (with a defaulted actor), never silently drop it or record it twice.
+      rationale: AC-APPROVAL-001 promises durable recording regardless of caller-supplied actor detail; the empty-body path defaults actor to unknown and must still persist one approval.
+      action   : POST /api/invoices/INV-A2W2-NOACTOR/approve expect None timeout=5
+      action   : state_check `python3 r5/fixture/state.py INV-A2W2-NOACTOR` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'approvals=2', 'payments=2']
+      because  : generating_risk='R-MISSING-ACTOR' stage=adaptive wave=2
+
+==============================================================================
+EXPERIMENT 1 -- REPLICATE a (identical inputs)
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real1b
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output; expect_state: exactly one payment: must not contain 'payments=<n>' — unexpectedly present
+      evidence: r5/raw/real1b/artifacts-w1/scenarios/gen-idempotent-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    NONE ACCEPTED -- every proposal was refused by validation.
+
+-- WAVE 2 RAW MODEL PROPOSALS (5) --
+    [timeout_after_effect] Approve must answer before the client times out, and the durable store must record exactly one payment
+    [concurrency] Two simultaneous approvals of the same invoice record exactly one payment
+    [stale_state] A recorded approval is still present on repeated independent re-reads of the durable store
+    [safety_invariant] Approving one invoice leaves an unrelated invoice pending in the durable store
+    [malformed_input] Approve with a non-JSON body still records the approval durably without crashing
+
+==============================================================================
+EXPERIMENT 1 -- REPLICATE b (identical inputs)
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real1c
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output; expect_state: exactly one payment: must not contain 'payments=<n>' — unexpectedly present
+      evidence: r5/raw/real1c/artifacts-w1/scenarios/gen-idempotent-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 ui_backend_disagreement] gen-w2-ui-disagree
+      title    : API read says approved but durable store must agree
+      purpose  : Catch the case where /approve reports success and the in-memory GET reflects it, yet the durable store was never updated (UI/backend drift).
+      rationale: An HTTP 200 and the process's in-memory view are not evidence of durability; the state.py oracle reads the file, so disagreement between the API response and the persisted record is directly observable.
+      action   : POST /api/invoices/UICHK-1/approve expect 200 timeout=5
+      action   : GET /api/invoices/UICHK-1 expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py UICHK-1` contains=['UICHK-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'payments=0']
+      because  : generating_risk='R1' stage=adaptive wave=2
+    [P0 restart_recovery] gen-w2-restart-survives
+      title    : Approval survives a service restart / re-read of persisted state
+      purpose  : Verify a recorded approval is still present after the api process is restarted, exercising AC-APPROVAL-002 survival across a fresh read of the durable store.
+      rationale: Boot logic can re-seed or unlink the store; the only trustworthy check is reading the durable file after the process has been recycled.
+      action   : POST /api/invoices/RSTRT-1/approve expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py RSTRT-1` contains=['RSTRT-1 status=approved', 'payments=1'] not_contains=['STORE MISSING']
+      action   : restart_service apiNone
+      action   : wait 1500
+      action   : state_check `python3 r5/fixture/state.py RSTRT-1` contains=['RSTRT-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'STORE MISSING']
+      because  : generating_risk='R2' stage=adaptive wave=2
+    [P0 timeout_after_effect] gen-w2-timeout-after-effect
+      title    : Approve that times out client-side must have either not paid or paid exactly once
+      purpose  : Detect the ambiguous case where the approval effect lands durably but the response stalls past the client timeout, leaving the caller unsure what happened.
+      rationale: A correct implementation returns quickly; a stall past the client timeout with the effect already persisted is the defect. The durable store is the authoritative oracle regardless of whether the HTTP call returned, so the state_check — not the response — decides the verdict.
+      action   : POST /api/invoices/TMO-1/approve expect 200 timeout=3
+      action   : wait 9000
+      action   : state_check `python3 r5/fixture/state.py TMO-1` contains=['TMO-1 status=approved', 'payments=1'] not_contains=['payments=2', 'payments=3']
+      because  : generating_risk='R3' stage=adaptive wave=2
+    [P1 concurrency] gen-w2-concurrent-approve
+      title    : Two simultaneous approvals of one invoice pay exactly once
+      purpose  : Exercise a race: fire two /approve calls at the same invoice concurrently and confirm the durable store records only one payment.
+      rationale: Sequential idempotency passing does not guarantee race safety; simultaneous requests can each append a payment if the check-then-write is not atomic. This is distinct from the covered sequential double-approve.
+      action   : PARALLEL POST /api/invoices/RACE-1/approve
+      action   : PARALLEL POST /api/invoices/RACE-1/approve
+      action   : state_check `python3 r5/fixture/state.py RACE-1` contains=['RACE-1 status=approved', 'payments=1'] not_contains=['payments=2', 'payments=3']
+      because  : generating_risk='R4' stage=adaptive wave=2
+    [P2 boundary] gen-w2-invoice-isolation
+      title    : Approving one invoice leaves other invoices untouched
+      purpose  : Confirm an approval writes only the targeted invoice's durable record and does not flip or create state on a sibling invoice.
+      rationale: A record write that mutates the whole store must not corrupt or approve invoices other than the target.
+      action   : GET /api/invoices/ISOL-B expect 200 timeout=5
+      action   : POST /api/invoices/ISOL-A/approve expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py ISOL-A` contains=['ISOL-A status=approved', 'payments=1'] not_contains=[]
+      action   : state_check `python3 r5/fixture/state.py ISOL-B` contains=['ISOL-B status=pending', 'approvals=0', 'payments=0'] not_contains=['status=approved']
+      because  : generating_risk='R5' stage=adaptive wave=2
+
+==============================================================================
+EXPERIMENT 2 -- seeded defect: UI/API says success, durable store never written
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real2
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+      affected: permanent:approval-smoke
+      shared: expect_state: python3 r5/fixture/state.py smoke: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output
+      evidence: r5/raw/real2/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      affected: gen-persist-approve
+      shared: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2/artifacts-w1/scenarios/gen-persist-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 concurrency] wave2-concurrent-approve
+      title    : Two simultaneous approvals of one invoice record a single payment durably
+      purpose  : Exercise the race between two approve requests on the same invoice: after both land, the durable store must show exactly one approval and one payment, not two.
+      rationale: The covered idempotency case is two SEQUENTIAL approves. A concurrent pair stresses the in-process lock plus the status guard together, which is the realistic double-pay path. Correct code keeps payments=1/approvals=1; a missing guard yields payments=2/approvals=2; a non-durable write yields pending/payments=0. Durable state (not the 200s) is the oracle.
+      action   : PARALLEL POST /api/invoices/W2-CONC/approve
+      action   : PARALLEL POST /api/invoices/W2-CONC/approve
+      action   : wait 400
+      action   : state_check `python3 r5/fixture/state.py W2-CONC` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'approvals=2', 'status=pending']
+      oracle   : `python3 r5/fixture/state.py W2-CONC` contains=['status=approved', 'payments=1'] not_contains=['payments=2']
+      because  : generating_risk='RISK-APPROVAL-DOUBLEPAY' stage=adaptive wave=2
+    [P0 stale_state] wave2-reread-persists-after-activity
+      title    : Approval survives a fresh-process re-read after intervening operations
+      purpose  : Approve one invoice, then perform other traffic (approve a different invoice, GET the first), then re-read the first invoice's DURABLE state from a fresh process — it must still be approved.
+      rationale: AC-APPROVAL-002 is about surviving a RE-READ, distinct from the covered immediate write check. Reading via state.py is a fresh OS process reading the file, and the intervening approve+GET ensure the value is durable through subsequent activity rather than a transient in-memory reflection. A UI-lies defect surfaces as status=pending on the durable re-read.
+      action   : POST /api/invoices/W2-READ/approve expect 200 timeout=5
+      action   : POST /api/invoices/W2-READ-OTHER/approve expect 200 timeout=5
+      action   : GET /api/invoices/W2-READ expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py W2-READ` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending', 'payments=2']
+      oracle   : `python3 r5/fixture/state.py W2-READ` contains=['status=approved'] not_contains=['status=pending']
+      because  : generating_risk='RISK-APPROVAL-REREAD' stage=adaptive wave=2
+    [P0 timeout_after_effect] wave2-timeout-durable-record
+      title    : Approval is durably recorded even when the client request times out
+      purpose  : Issue an approve with a short client timeout; regardless of whether the response returns, the durable store must reflect exactly one recorded approval — the caller cannot rely on the 200.
+      rationale: The endpoint may apply the effect and then stall past the client timeout. Per the hard rule, an ambiguous-outcome scenario must inspect persisted state: the request may or may not return, but the durable store must show status=approved / payments=1. Correct or effect-lands-then-stalls both pass; a non-durable defect surfaces as pending/payments=0.
+      action   : POST /api/invoices/W2-TMO/approve expect 200 timeout=3
+      action   : wait 500
+      action   : state_check `python3 r5/fixture/state.py W2-TMO` contains=['status=approved', 'payments=1'] not_contains=['status=pending', 'payments=2']
+      oracle   : `python3 r5/fixture/state.py W2-TMO` contains=['status=approved', 'payments=1'] not_contains=['status=pending']
+      because  : generating_risk='RISK-APPROVAL-AMBIGUOUS' stage=adaptive wave=2
+    [P1 retry_safety] wave2-retry-after-ambiguous-timeout
+      title    : Retrying an approve after an ambiguous timeout does not double-pay
+      purpose  : Model the 3am client behavior: the first approve times out ambiguously, the operator retries the same invoice, and the durable store must still show a single payment.
+      rationale: Distinct from the covered two-clean-approves idempotency case: here the first call is ambiguous (short timeout), then the client retries. This is the realistic retry path that must remain safe. Correct/effect-then-stall keeps payments=1 across the retry; an unguarded approve records payments=2; a non-durable defect shows pending. Durable state is the oracle, since the caller could not confirm the first attempt.
+      action   : POST /api/invoices/W2-RTY/approve expect 200 timeout=3
+      action   : wait 600
+      action   : POST /api/invoices/W2-RTY/approve expect 200 timeout=12
+      action   : state_check `python3 r5/fixture/state.py W2-RTY` contains=['status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'payments=3', 'status=pending']
+      oracle   : `python3 r5/fixture/state.py W2-RTY` contains=['status=approved', 'payments=1'] not_contains=['payments=2']
+      because  : generating_risk='RISK-APPROVAL-DOUBLEPAY' stage=adaptive wave=2
+
+==============================================================================
+EXPERIMENT 2 -- REPLICATE a
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real2b
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+      affected: permanent:approval-smoke
+      shared: expect_state: python3 r5/fixture/state.py smoke: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      affected: gen-persist-approve
+      shared: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2b/artifacts-w1/scenarios/gen-persist-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    NONE ACCEPTED -- every proposal was refused by validation.
+
+-- WAVE 2 RAW MODEL PROPOSALS (6) --
+    [ui_backend_disagreement] Approve response says approved but durable store must agree
+    [stale_state] Approval survives re-read and a later unrelated approval
+    [concurrency] Two simultaneous approvals of one invoice pay exactly once
+    [ambiguous_external_effect] Delayed approval lands durably and a retry does not double-pay
+    [missing_data] Approval with no actor is still recorded durably
+    [safety_invariant] Reading an invoice never records an approval
+
+==============================================================================
+EXPERIMENT 2 -- REPLICATE b
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real2c
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: python3 r5/fixture/state.py SMOKE: contains 'status=approved' — not found in command output
+      affected: permanent:approval-smoke
+      shared: expect_state: python3 r5/fixture/state.py smoke: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2c/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      affected: gen-idempotent-approve
+      shared: expect_state: exactly one payment: contains 'payments=<n>' — not found in command output
+      evidence: r5/raw/real2c/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      affected: gen-persist-approve
+      shared: expect_state: durable store shows approved: contains 'status=approved' — not found in command output
+      evidence: r5/raw/real2c/artifacts-w1/scenarios/gen-persist-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 ui_backend_disagreement] gen-ui-vs-durable
+      title    : API claims approved but the durable re-read must agree
+      purpose  : Catch a service that reports approval success (200 + in-memory GET) while the persisted store never receives the write, i.e. the API lies about durability.
+      rationale: The prior persistence failure suggests the success response and the durable store disagree. This scenario reads BOTH the in-memory GET and the independent state CLI so a drift between them is observable.
+      action   : POST /api/invoices/UIVS-1/approve expect 200 timeout=5
+      action   : GET /api/invoices/UIVS-1 expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py UIVS-1` contains=['UIVS-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending']
+      because  : generating_risk='RISK-APPROVAL-UILIES' stage=adaptive wave=2
+    [P0 timeout_after_effect] gen-timeout-after-effect
+      title    : Approve that stalls past client timeout must still have persisted exactly once
+      purpose  : When the client times out waiting for the approve response, confirm the durable effect either landed exactly once or not at all — never silently lost — so the ambiguity can be resolved from persisted state.
+      rationale: A correct system that stalls after committing must show the single durable effect on re-read; the client's inability to see the response must not translate into lost or duplicated state.
+      action   : POST /api/invoices/TMO-1/approve expect None timeout=3
+      action   : wait 1000
+      action   : state_check `python3 r5/fixture/state.py TMO-1` contains=['TMO-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'payments=0', 'status=pending']
+      because  : generating_risk='RISK-APPROVAL-UNCERTAIN' stage=adaptive wave=2
+    [P0 retry_safety] gen-retry-after-timeout
+      title    : Client retry after an ambiguous timeout must not double-pay
+      purpose  : Model the realistic recovery from an uncertain approve: the client times out, cannot tell if it worked, and retries. The retry must be safe — still exactly one approval and one payment.
+      rationale: Distinct from a plain double-approve: this exercises the retry path that follows a timeout, which is exactly when a non-idempotent approve produces a duplicate payment.
+      action   : POST /api/invoices/RETRY-1/approve expect None timeout=3
+      action   : wait 1000
+      action   : POST /api/invoices/RETRY-1/approve expect None timeout=10
+      action   : state_check `python3 r5/fixture/state.py RETRY-1` contains=['RETRY-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'approvals=2', 'status=pending']
+      because  : generating_risk='RISK-APPROVAL-NONIDEMPOTENT' stage=adaptive wave=2
+    [P1 concurrency] gen-concurrent-approve
+      title    : Two simultaneous approvals of one invoice pay exactly once
+      purpose  : Exercise the race window where two approve calls hit the same invoice at once, ensuring only one approval and one payment are recorded durably.
+      rationale: Sequential idempotency was already covered; a true simultaneous race can slip past a check that isn't guarded, producing a double payment only under concurrency.
+      action   : PARALLEL POST /api/invoices/CONC-1/approve
+      action   : PARALLEL POST /api/invoices/CONC-1/approve
+      action   : wait 1000
+      action   : state_check `python3 r5/fixture/state.py CONC-1` contains=['CONC-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['payments=2', 'approvals=2', 'status=pending']
+      because  : generating_risk='RISK-APPROVAL-CONCURRENCY' stage=adaptive wave=2
+    [P2 missing_data] gen-approve-missing-actor
+      title    : Approve with no actor still records durably
+      purpose  : Ensure the durable write does not depend on the presence of an actor field — an approve with an empty body must still be persisted, not dropped.
+      rationale: Tests the persist path against degenerate input; a mishandled missing actor could skip or corrupt the durable record.
+      action   : POST /api/invoices/MALF-1/approve expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py MALF-1` contains=['MALF-1 status=approved', 'approvals=1', 'payments=1'] not_contains=['status=pending']
+      because  : generating_risk='RISK-APPROVAL-MISSINGACTOR' stage=adaptive wave=2
+
+==============================================================================
+EXPERIMENT 3 -- seeded defect: effect lands, then the call times out (uncertain outcome)
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real3
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+[FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8953/api/invoices/SMOKE/approve: status == 200 — got timed out
+      affected: permanent:approval-smoke
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1C/approve: status == 200 — got timed out
+      affected: gen-idempotent-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1B/approve: status == 200 — got timed out
+      affected: gen-persist-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-persist-approve
+    
+    [C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8953/api/invoices/W1A/approve: status == 200 — got timed out
+      affected: gen-happy-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3/artifacts-w1/scenarios/gen-happy-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 ambiguous_external_effect] gen2-ambiguous-approve
+      title    : Timed-out approve leaves an ambiguous durable effect
+      purpose  : Determine whether a POST /approve that fails to answer within a sane client timeout has nonetheless landed the approval in the durable store, which is the exact blind spot behind every prior timed-out scenario.
+      rationale: The three covered scenarios all asserted status==200 and timed out; none inspected the store, so whether the effect actually happened is unknown. A durable read after a bounded-timeout request settles the ambiguity.
+      action   : POST /api/invoices/W2A/approve expect 200 timeout=3
+      action   : state_check `python3 r5/fixture/state.py W2A` contains=['W2A status=approved'] not_contains=['STORE MISSING']
+      oracle   : `python3 r5/fixture/state.py W2A` contains=['W2A status=approved'] not_contains=[]
+      because  : generating_risk='R-APR-1' stage=adaptive wave=2
+    [P0 ui_backend_disagreement] gen2-ui-durable-disagree
+      title    : Approve acknowledged by API but absent from durable store
+      purpose  : Detect divergence between what the approval endpoint reports (in-memory/HTTP response) and what a re-read of the durable store shows.
+      rationale: AC-APPROVAL-001 requires the approval to be recorded durably, not merely reflected in a response body. Comparing the API's own read of the invoice against the file-backed oracle exposes a response that lies about persistence.
+      action   : POST /api/invoices/W2C/approve expect 200 timeout=5
+      action   : GET /api/invoices/W2C expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py W2C` contains=['W2C status=approved'] not_contains=['W2C status=pending']
+      oracle   : `python3 r5/fixture/state.py W2C` contains=['W2C status=approved'] not_contains=['W2C status=pending']
+      because  : generating_risk='R-APR-2' stage=adaptive wave=2
+    [P0 restart_recovery] gen2-restart-approval-durability
+      title    : Approval survives an api restart / independent re-read
+      purpose  : Verify that an approval recorded before a service restart is still present when the persisted store is re-read afterward, per the durability-across-re-read promise.
+      rationale: AC-APPROVAL-002 promises approval state survives a re-read of persisted state. A restart is the strongest form of independent re-read: it proves the approval is on disk and not merely in a process's memory.
+      action   : POST /api/invoices/W2B/approve expect 200 timeout=5
+      action   : state_check `python3 r5/fixture/state.py W2B` contains=['W2B status=approved'] not_contains=[]
+      action   : restart_service apiNone
+      action   : wait 1000
+      action   : state_check `python3 r5/fixture/state.py W2B` contains=['W2B status=approved'] not_contains=['STORE MISSING']
+      oracle   : `python3 r5/fixture/state.py W2B` contains=['W2B status=approved'] not_contains=[]
+      because  : generating_risk='R-APR-3' stage=adaptive wave=2
+    [P1 concurrency] gen2-concurrent-approve-once
+      title    : Simultaneous approvals of one invoice pay exactly once
+      purpose  : Exercise two approvals racing on the same invoice at the same instant and confirm the durable store records a single payment, distinct from the already-covered sequential idempotency case.
+      rationale: Covered idempotency is sequential (approve twice in order). A genuine race can slip past a check-then-write gap under locking, producing a double payment that sequential tests never reveal. The durable payment count is the oracle.
+      action   : PARALLEL POST /api/invoices/W2D/approve
+      action   : PARALLEL POST /api/invoices/W2D/approve
+      action   : state_check `python3 r5/fixture/state.py W2D` contains=['W2D status=approved', 'payments=1'] not_contains=['payments=2']
+      oracle   : `python3 r5/fixture/state.py W2D` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R-APR-4' stage=adaptive wave=2
+
+==============================================================================
+EXPERIMENT 3 -- REPLICATE a
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real3b
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8957/api/invoices/SMOKE/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1C/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1B/approve: status == 200 — got timed out
+[FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8957/api/invoices/W1A/approve: status == 200 — got timed out
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8957/api/invoices/SMOKE/approve: status == 200 — got timed out
+      affected: permanent:approval-smoke
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+      evidence: r5/raw/real3b/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8957/api/invoices/W1C/approve: status == 200 — got timed out
+      affected: gen-idempotent-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+      evidence: r5/raw/real3b/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8957/api/invoices/W1B/approve: status == 200 — got timed out
+      affected: gen-persist-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+      evidence: r5/raw/real3b/artifacts-w1/scenarios/gen-persist-approve
+    
+    [C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8957/api/invoices/W1A/approve: status == 200 — got timed out
+      affected: gen-happy-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3b/artifacts-w1/scenarios/gen-happy-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    NONE ACCEPTED -- every proposal was refused by validation.
+
+-- WAVE 2 RAW MODEL PROPOSALS (6) --
+    [restart_recovery] Approval survives an api restart and re-read of persisted state
+    [retry_safety] Retrying an approve after a timeout records exactly one approval
+    [concurrency] Two simultaneous approvals of one invoice record a single approval
+    [missing_data] Approving a non-existent invoice fails cleanly without recording
+    [malformed_input] Malformed approve payload is rejected and writes no state
+    [partial_failure] Approve while api is stopped leaves no phantom record after recovery
+
+==============================================================================
+EXPERIMENT 3 -- REPLICATE b
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real3c
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8959/api/invoices/SMOKE/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8959/api/invoices/W1C/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8959/api/invoices/W1B/approve: status == 200 — got timed out
+[FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8959/api/invoices/W1A/approve: status == 200 — got timed out
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8959/api/invoices/SMOKE/approve: status == 200 — got timed out
+      affected: permanent:approval-smoke
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+      evidence: r5/raw/real3c/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8959/api/invoices/W1C/approve: status == 200 — got timed out
+      affected: gen-idempotent-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+      evidence: r5/raw/real3c/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8959/api/invoices/W1B/approve: status == 200 — got timed out
+      affected: gen-persist-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+      evidence: r5/raw/real3c/artifacts-w1/scenarios/gen-persist-approve
+    
+    [C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8959/api/invoices/W1A/approve: status == 200 — got timed out
+      affected: gen-happy-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3c/artifacts-w1/scenarios/gen-happy-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    NONE ACCEPTED -- every proposal was refused by validation.
+
+-- WAVE 2 RAW MODEL PROPOSALS (6) --
+    [restart_recovery] Approval of SMOKE survives an api restart and re-read
+    [retry_safety] Retrying an approve after a timeout records exactly one durable approval
+    [timeout_after_effect] A timed-out approve does not leave ambiguous half-written state
+    [concurrency] Two simultaneous approvals of one invoice record a single durable approval
+    [missing_data] Approving an unknown invoice is rejected and records nothing
+    [malformed_input] Malformed approve body is rejected without persisting
+
+==============================================================================
+EXPERIMENT 3 -- REPLICATE c
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/real3d
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    [P1 happy_path] gen-happy-approve
+      title    : Approving a pending invoice succeeds
+      purpose  : The core promise of the endpoint: an approval is accepted.
+      action   : POST /api/invoices/W1A/approve expect 200 timeout=4
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 persistence_failure] gen-persist-approve
+      title    : An approval is written to durable storage
+      purpose  : A 200 is not evidence; the durable store must agree.
+      action   : POST /api/invoices/W1B/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1B` contains=['status=approved'] not_contains=[]
+      because  : generating_risk='R1' stage=initial wave=1
+    [P0 idempotency] gen-idempotent-approve
+      title    : Approving the same invoice twice pays once
+      purpose  : A repeated approval must not duplicate the payment effect.
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      action   : POST /api/invoices/W1C/approve expect 200 timeout=4
+      oracle   : `python3 r5/fixture/state.py W1C` contains=['payments=1'] not_contains=['payments=2']
+      because  : generating_risk='R2' stage=initial wave=1
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    [FAIL] P0 permanent permanent:approval-smoke  — expect_state: POST http://127.0.0.1:8960/api/invoices/SMOKE/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1C/approve: status == 200 — got timed out
+[FAIL] P0 generated gen-persist-approve  (persistence_failure)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1B/approve: status == 200 — got timed out
+[FAIL] P1 generated gen-happy-approve  (happy_path)  — expect_state: POST http://127.0.0.1:8960/api/invoices/W1A/approve: status == 200 — got timed out
+
+-- FAILURE CLUSTERS SHOWN TO WAVE 2 --
+    [C01] permanent:approval-smoke: expect_state: POST http://127.0.0.1:8960/api/invoices/SMOKE/approve: status == 200 — got timed out
+      affected: permanent:approval-smoke
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/smoke/approve: status == <n> — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/permanent-approval-smoke
+    
+    [C02] generated:gen-idempotent-approve: expect_state: POST http://127.0.0.1:8960/api/invoices/W1C/approve: status == 200 — got timed out
+      affected: gen-idempotent-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1c/approve: status == <n> — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-idempotent-approve
+    
+    [C03] generated:gen-persist-approve: expect_state: POST http://127.0.0.1:8960/api/invoices/W1B/approve: status == 200 — got timed out
+      affected: gen-persist-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1b/approve: status == <n> — got timed out
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-persist-approve
+    
+    [C04] generated:gen-happy-approve: expect_state: POST http://127.0.0.1:8960/api/invoices/W1A/approve: status == 200 — got timed out
+      affected: gen-happy-approve
+      shared: expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/invoices/w1a/approve: status == <n> — got timed out; expect_visible: approved — not present in any observed output
+      evidence: r5/raw/real3d/artifacts-w1/scenarios/gen-happy-approve
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    NONE ACCEPTED -- every proposal was refused by validation.
+
+-- WAVE 2 RAW MODEL PROPOSALS (4) --
+    [ui_backend_disagreement] Approved response must match the durable store, not just the in-memory view
+    [concurrency] Two simultaneous approvals of one invoice record a single approval
+    [stale_state] An earlier approval survives a later approval of a different invoice on re-read
+    [missing_data] Approval with no actor metadata is still recorded durably
+
+==============================================================================
+CONTROL -- identical task and wave 1, FAILURE EVIDENCE REMOVED
+evidence: /Users/sammyfammy/neyma-product-driver/.claude/worktrees/agent-a9ec8bf92160f33b3/r5/raw/control
+==============================================================================
+
+-- WAVE 1 (identical scripted batch in every run) --
+    (control run: wave 1 planned but not executed)
+
+-- WHAT WAVE 1 OBSERVED (the evidence handed to wave 2) --
+    (no failures -- evidence deliberately withheld)
+
+-- WAVE 2 (adaptive, real model) ACCEPTED --
+    [P0 timeout_after_effect] wave2-timeout-after-effect
+      title    : Approve that stalls past client timeout still lands exactly one durable effect
+      purpose  : Detect the case where the approval effect is persisted but the response never arrives within the client timeout, leaving the caller unable to confirm the outcome — the durable store must be the source of truth showing exactly one approval/payment.
+      rationale: The uncertain-defect class applies the effect under lock then sleeps past any sane client timeout. An HTTP-only verifier cannot distinguish success from failure; only a read of the durable store reveals the effect landed. This is the single largest uncovered defect class from wave 1.
+      action   : POST /api/invoices/INV-W2-TMO-1/approve expect None timeout=3
+      action   : wait 500
+      action   : state_check `python3 r5/fixture/state.py INV-W2-TMO-1` contains=['INV-W2-TMO-1 status=approved', 'payments=1'] not_contains=['status=pending', 'payments=2']
+      because  : generating_risk='RISK-TMO-EFFECT' stage=adaptive wave=2
+    [P0 retry_safety] wave2-retry-after-timeout
+      title    : Retry after an ambiguous timeout must not double-pay
+      purpose  : A client that times out and retries the approval must not cause a second payment; the durable store must reflect a single approval effect after the retry.
+      rationale: Combines the two most dangerous defect classes: an ambiguous timeout (uncertain) driving a client retry, and a non-idempotent handler (nonidempotent) that pays again. The wave-1 idempotency scenario was sequential-with-clean-responses; this exercises retry under genuine timeout ambiguity.
+      action   : POST /api/invoices/INV-W2-RTY-1/approve expect None timeout=3
+      action   : wait 500
+      action   : POST /api/invoices/INV-W2-RTY-1/approve expect None timeout=15
+      action   : wait 500
+      action   : state_check `python3 r5/fixture/state.py INV-W2-RTY-1` contains=['INV-W2-RTY-1 status=approved', 'payments=1'] not_contains=['payments=2', 'payments=3']
+      because  : generating_risk='RISK-RETRY-DOUBLE' stage=adaptive wave=2
+    [P0 concurrency] wave2-concurrent-approve
+      title    : Two simultaneous approvals of one invoice pay exactly once
+      purpose  : Exercise a genuine race: two approve requests issued at the same instant against the same pending invoice must collapse to a single durable approval and single payment.
+      rationale: The wave-1 idempotency coverage was sequential. A threaded server can interleave two approvals; a handler lacking an already-approved guard double-pays under concurrency even if it looked idempotent sequentially. Distinct operation and failure surface from the covered idempotency case.
+      action   : PARALLEL POST /api/invoices/INV-W2-CON-1/approve
+      action   : PARALLEL POST /api/invoices/INV-W2-CON-1/approve
+      action   : wait 500
+      action   : state_check `python3 r5/fixture/state.py INV-W2-CON-1` contains=['INV-W2-CON-1 status=approved', 'payments=1'] not_contains=['payments=2', 'status=pending']
+      because  : generating_risk='RISK-CONCURRENT-DOUBLE' stage=adaptive wave=2
+    [P1 ui_backend_disagreement] wave2-ui-backend-disagreement
+      title    : In-memory GET and durable store agree after approval
+      purpose  : Ensure the API's own read-back of an approved invoice does not diverge from the durable store — a 200 with an in-memory approved view must be backed by a persisted approved record.
+      rationale: Targets the ui_lies class from a distinct angle than a plain durability probe: it juxtaposes the endpoint's own GET (served from in-memory _MEM) against the durable oracle. When they disagree, the API is lying about persistence. Directly exercises AC-APPROVAL-002's re-read guarantee.
+      action   : POST /api/invoices/INV-W2-UBD-1/approve expect None timeout=15
+      action   : GET /api/invoices/INV-W2-UBD-1 expect 200 timeout=None
+      action   : wait 300
+      action   : state_check `python3 r5/fixture/state.py INV-W2-UBD-1` contains=['INV-W2-UBD-1 status=approved', 'payments=1'] not_contains=['status=pending']
+      because  : generating_risk='RISK-UI-LIES' stage=adaptive wave=2
+    [P1 restart_recovery] wave2-restart-durability
+      title    : Approval survives an api service restart
+      purpose  : Verify the strongest form of durability: an approval recorded before a restart is still present when persisted state is re-read after the service comes back.
+      rationale: AC-APPROVAL-002 promises approval state survives a re-read of persisted state; a service restart is the most demanding re-read. This surfaces any boot-time reset of the durable store, which would silently discard committed approvals.
+      action   : POST /api/invoices/INV-W2-RST-1/approve expect None timeout=15
+      action   : wait 500
+      action   : state_check `python3 r5/fixture/state.py INV-W2-RST-1` contains=['INV-W2-RST-1 status=approved', 'payments=1'] not_contains=[]
+      action   : restart_service apiNone
+      action   : wait 1000
+      action   : state_check `python3 r5/fixture/state.py INV-W2-RST-1` contains=['INV-W2-RST-1 status=approved', 'payments=1'] not_contains=['STORE MISSING', 'status=pending']
+      because  : generating_risk='RISK-RESTART-WIPE' stage=adaptive wave=2

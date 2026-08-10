@@ -1,0 +1,15 @@
+{
+  "status": "ACCEPTED",
+  "executed": [],
+  "outcomes": [
+    [
+      "backend_generic",
+      "SKIPPED"
+    ],
+    [
+      "gen-dup",
+      "SKIPPED"
+    ]
+  ],
+  "full_run": true
+}

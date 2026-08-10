@@ -1,0 +1,94 @@
+{
+  "A_service_log_prompt_growth": {
+    "note": "prompts.py:490-493 emits every service_logs entry, tail-truncated to 8000 chars each; SuiteExecutor.service_logs accumulates one entry per distinct service name across the whole suite (50 distinct keys observed in a real 50-scenario run).",
+    "rows": [
+      {
+        "distinct_services": 0,
+        "prompt_chars": 2341,
+        "est_tokens": 585
+      },
+      {
+        "distinct_services": 1,
+        "prompt_chars": 10393,
+        "est_tokens": 2598
+      },
+      {
+        "distinct_services": 10,
+        "prompt_chars": 82573,
+        "est_tokens": 20643
+      },
+      {
+        "distinct_services": 50,
+        "prompt_chars": 403373,
+        "est_tokens": 100843
+      },
+      {
+        "distinct_services": 100,
+        "prompt_chars": 804373,
+        "est_tokens": 201093
+      }
+    ]
+  },
+  "B_failure_count_growth": [
+    {
+      "scenarios": 100,
+      "failed": 4,
+      "wall_s": 0.09,
+      "summary_block_chars": 2984,
+      "evaluator_prompt_chars": 4989,
+      "evaluator_prompt_est_tokens": 1247,
+      "builder_correction_chars": 6374,
+      "builder_correction_est_tokens": 1593,
+      "failures_named_in_summary": "4/4",
+      "decision": "FIX"
+    },
+    {
+      "scenarios": 100,
+      "failed": 8,
+      "wall_s": 0.1,
+      "summary_block_chars": 4712,
+      "evaluator_prompt_chars": 6717,
+      "evaluator_prompt_est_tokens": 1679,
+      "builder_correction_chars": 9682,
+      "builder_correction_est_tokens": 2420,
+      "failures_named_in_summary": "8/8",
+      "decision": "FIX"
+    },
+    {
+      "scenarios": 100,
+      "failed": 27,
+      "wall_s": 0.09,
+      "summary_block_chars": 12224,
+      "evaluator_prompt_chars": 14229,
+      "evaluator_prompt_est_tokens": 3557,
+      "builder_correction_chars": 22799,
+      "builder_correction_est_tokens": 5699,
+      "failures_named_in_summary": "27/27",
+      "decision": "FIX"
+    },
+    {
+      "scenarios": 100,
+      "failed": 51,
+      "wall_s": 0.09,
+      "summary_block_chars": 23508,
+      "evaluator_prompt_chars": 25513,
+      "evaluator_prompt_est_tokens": 6378,
+      "builder_correction_chars": 41241,
+      "builder_correction_est_tokens": 10310,
+      "failures_named_in_summary": "51/51",
+      "decision": "FIX"
+    },
+    {
+      "scenarios": 100,
+      "failed": 100,
+      "wall_s": 0.1,
+      "summary_block_chars": 45029,
+      "evaluator_prompt_chars": 47034,
+      "evaluator_prompt_est_tokens": 11758,
+      "builder_correction_chars": 76891,
+      "builder_correction_est_tokens": 19222,
+      "failures_named_in_summary": "100/100",
+      "decision": "FIX"
+    }
+  ]
+}

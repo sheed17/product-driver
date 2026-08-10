@@ -1,0 +1,39 @@
+{
+  "1_id_integrity_200": {
+    "suite": 201,
+    "outcomes": 201,
+    "wall_s": 5.17,
+    "unique_ids": 201,
+    "permanent_entry": {
+      "scenario_id": "permanent-health",
+      "scenario_name": "case-001-http",
+      "origin": "permanent",
+      "outcome": "PASSED"
+    },
+    "generated_id_name_mismatches": 0,
+    "evidence_dir_wrong_case": [],
+    "failure_detail_misattributed": [],
+    "results_dict_keys_match_outcomes": true
+  },
+  "2_executor_reuse": {
+    "first_run_outcomes": 11,
+    "results_after_first": 11,
+    "second_run_outcomes": 3,
+    "results_after_second": 11,
+    "second_result_ids": [
+      "permanent-health",
+      "case-001-cmd",
+      "case-002-idem"
+    ],
+    "stale_results_retained": true,
+    "second_full_run_flag": false,
+    "clusters_only_from_current_run": true
+  },
+  "3_select_rerun_200": {
+    "selected": 134,
+    "of": 201,
+    "all_failures_reselected": true,
+    "all_permanent_reselected": true,
+    "reason": "failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (134 of 201)"
+  }
+}

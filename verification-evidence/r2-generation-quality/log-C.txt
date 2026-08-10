@@ -1,0 +1,9 @@
+  5 proposed scenario(s) refused:
+    - S-RO3-03: persisted_state_checks.0.command: Field required
+    - S-RO3-01: unsafe or unapproved operation: command is not in the approved set: 'Assumes the read-only view is reachable at /shipments and accepts a reference filter via the q query parameter.'. Generated scenarios may only run commands a human already approved.
+    - S-RO3-02: unsafe or unapproved operation: command is not in the approved set: 'Uses a reference string that cannot exist so the empty result is deterministic.'. Generated scenarios may only run commands a human already approved.
+    - S-RO3-04: unsafe or unapproved operation: command is not in the approved set: 'Sends SQL-injection-shaped, script-shaped, and long inputs as the reference filter.'. Generated scenarios may only run commands a human already approved.
+    - S-RO3-06: unsafe or unapproved operation: command is not in the approved set: 'Requires a shipment reference known to belong to a tenant OTHER than the one the running app is bound to. If no cross-tenant fixture exists this scenario cannot be executed as written — see unresolved questions.'. Generated scenarios may only run commands a human already approved.
+  wave 1 (initial): 3 scenario(s) accepted — S-RO3-05, S-RO3-07, S-RO3-08
+
+=== C: 3 accepted, 5 refused ===
