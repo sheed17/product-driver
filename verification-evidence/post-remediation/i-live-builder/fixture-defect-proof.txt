@@ -1,0 +1,14 @@
+=== 1. the repository's own tests, against the DEFECTIVE code ===
+Ran 3 tests in 0.002s
+
+OK
+
+=== 2. sequential repeat approval (the visible defect) ===
+INV-1 status=approved approvals=2 payments=2
+
+=== 3. after the obvious first-pass fix (port 50152) ===
+applied: guard on record['status'] inside _approve
+  sequential repeat, expect payments=1:
+    INV-1 status=approved approvals=1 payments=1
+  CONCURRENT, expect payments=1 and the defect gives 2:
+    INV-2 status=approved approvals=1 payments=2

@@ -1,0 +1,210 @@
+{
+  "started_at": "2026-08-10T04:57:00+00:00",
+  "duration_s": 7.042506624999078,
+  "full_run": true,
+  "selection_reason": "browser e2e proof",
+  "expected_required_ids": [
+    "permanent:exception-detail-smoke",
+    "S1",
+    "S2",
+    "S3"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "permanent:exception-detail-smoke",
+      "scenario_name": "permanent:exception-detail-smoke",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 3,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/permanent-exception-detail-smoke",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "S2",
+      "scenario_name": "generated:S2",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "ui_backend_disagreement",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 9,
+      "assertions_failed": 5,
+      "failed_assertions": [
+        "expect_visible: step-1-browser: browser step 3: expect_text 'status: resolved' \u2014 not present in the page text at that point",
+        "expect_visible: step-1-browser: browser step 4: expect_text 'next action: none; the exception is closed' \u2014 not present in the page text at that point",
+        "expect_state: python3 fixture/state.py EX-1: contains 'EX-1 status=resolved owner=Neyma' \u2014 not found in command output",
+        "expect_visible: status: resolved \u2014 not present in any observed output",
+        "expect_visible: next action: none; the exception is closed \u2014 not present in any observed output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S2",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "R1 \u2014 a stale render keeps serving the first status after resolution, so the screen and the durable store disagree.",
+      "requirement_reference": "AC-UI-002"
+    },
+    {
+      "scenario_id": "S3",
+      "scenario_name": "generated:S3",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "stale_state",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 8,
+      "assertions_failed": 2,
+      "failed_assertions": [
+        "expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200",
+        "expect_state: python3 fixture/state.py EX-1: contains 'EX-1 status=resolved owner=Neyma' \u2014 not found in command output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S3",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "R1 \u2014 the GET endpoint could keep returning the first-rendered status after the store moves to resolved.",
+      "requirement_reference": "AC-UI-002"
+    },
+    {
+      "scenario_id": "S1",
+      "scenario_name": "generated:S1",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "happy_path",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 11,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S1",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "R2 \u2014 the screen could render without naming owner or next action, leaving the operator nothing to act on.",
+      "requirement_reference": "AC-UI-001"
+    },
+    {
+      "scenario_id": "S4",
+      "scenario_name": "generated:S4",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P2",
+      "risk_category": "idempotency",
+      "required": false,
+      "duration_s": 0.0,
+      "assertions_total": 10,
+      "assertions_failed": 3,
+      "failed_assertions": [
+        "expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200",
+        "expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200",
+        "expect_state: python3 fixture/state.py EX-1: contains 'EX-1 status=resolved owner=Neyma' \u2014 not found in command output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S4",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "R4 \u2014 a repeated resolve could corrupt the durable status or owner, desyncing screen and store.",
+      "requirement_reference": "AC-UI-002"
+    },
+    {
+      "scenario_id": "S5",
+      "scenario_name": "generated:S5",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P2",
+      "risk_category": "boundary",
+      "required": false,
+      "duration_s": 0.0,
+      "assertions_total": 5,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S5",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "R3 \u2014 an unknown id could fabricate/default a status instead of 404.",
+      "requirement_reference": "AC-UI-002"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "S2"
+      ],
+      "shared_observations": [
+        "expect_state: python3 fixture/state.py ex-<n>: contains 'ex-<n> status=resolved owner=neyma' \u2014 not found in command output",
+        "expect_visible: next action: none; the exception is closed \u2014 not present in any observed output",
+        "expect_visible: status: resolved \u2014 not present in any observed output",
+        "expect_visible: step-<n>-browser: browser step <n>: expect_text 'next action: none; the exception is closed' \u2014 not present in the page text at that point",
+        "expect_visible: step-<n>-browser: browser step <n>: expect_text 'status: resolved' \u2014 not present in the page text at that point"
+      ],
+      "likely_failure_domain": "generated:S2: expect_visible: step-1-browser: browser step 3: expect_text 'status: resolved' \u2014 not present in the page text at that point",
+      "evidence_paths": [
+        "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S2"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "ui_backend_disagreement"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C02",
+      "affected_scenarios": [
+        "S3"
+      ],
+      "shared_observations": [
+        "expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/exceptions/ex-<n>/resolve: status == <n> \u2014 got <n>",
+        "expect_state: python3 fixture/state.py ex-<n>: contains 'ex-<n> status=resolved owner=neyma' \u2014 not found in command output"
+      ],
+      "likely_failure_domain": "generated:S3: expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200",
+      "evidence_paths": [
+        "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S3"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "stale_state"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C03",
+      "affected_scenarios": [
+        "S4"
+      ],
+      "shared_observations": [
+        "expect_state: post http://<n>.<n>.<n>.<n>:<port>/api/exceptions/ex-<n>/resolve: status == <n> \u2014 got <n>",
+        "expect_state: python3 fixture/state.py ex-<n>: contains 'ex-<n> status=resolved owner=neyma' \u2014 not found in command output"
+      ],
+      "likely_failure_domain": "generated:S4: expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200",
+      "evidence_paths": [
+        "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S4"
+      ],
+      "highest_priority": "P2",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    }
+  ]
+}

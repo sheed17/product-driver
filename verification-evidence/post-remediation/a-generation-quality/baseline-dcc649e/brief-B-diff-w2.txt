@@ -1,0 +1,97 @@
+GENERATION STAGE: diff_refinement (wave 2)
+You may propose AT MOST 8 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Add supervised carrier invoice approval.
+
+ACTIVE READY UNIT: U-042
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - an approved invoice is paid exactly once (weight 3): PENDING
+  - no payment effect occurs without a recorded approval (weight 3): PENDING
+  - an operator without approval authority is refused (weight 2): PENDING
+  - approval survives a restart (weight 2): PENDING
+  - an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - accountable_owner
+  - agent_jargon_leak
+  - approval_quality
+  - authority_clarity
+  - business_loop_closure
+  - channel_consistency
+  - channel_promotion
+  - customer_language
+  - dead_end_error
+  - evidence_clarity
+  - failure_recovery
+  - founder context
+  - founder_taste
+  - inference_presented_as_fact
+  - known_vs_inferred
+  - low_confidence
+  - materially_different_experiences
+  - next_action_clarity
+  - noise_control
+  - obligation_visibility
+  - operational_clarity
+  - outcome_verification
+  - proactivity
+  - product rubric
+  - product_identity
+  - repository_silent
+  - success_without_verification
+  - tms_centrality
+  - unowned_obligation
+
+WHAT THE BUILDER ACTUALLY CHANGED:
+  - src/freight_recon/governed_approval.py
+  - src/freight_recon/carrier_invoice_write.py
+  - src/freight_recon/action_callback.py
+
+ src/freight_recon/governed_approval.py     | 210 ++++++++++++++++--
+ src/freight_recon/carrier_invoice_write.py | 118 ++++++++--
+ src/freight_recon/action_callback.py       |  36 +++-
+ 3 files changed, 330 insertions(+), 34 deletions(-)
+
+SITUATIONS ALREADY COVERED (do not repeat these):
+  - [P0 safety_invariant] S1: A correctly-bound approval drives the full governed order to the dark adapter under one identity
+  - [P1 authorization] S4: An actor without approval authority is refused before any effect
+  - [P0 cross_tenant] S5: A cross-tenant approval/invoice is never verifiable, visible, or approvable
+  - [P0 conflicting_evidence] S6: A prior approval cannot authorize a changed effect (amount/load/target/revision drift)
+  - [P0 malformed_input] S7: Forged, wrong-secret, modified, or expired approvals are refused
+  - [P0 safety_invariant] S8: No effect without a queued, in-scope, sandbox-bound approval (darkness holds)
+  - [P1 restart_recovery] S10: Callback service recovers after restart and the single-use claim store persists durably
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+  - .venv/bin/python -m pytest -c pytest-canonical.ini
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q
+  - .venv/bin/python scripts/check_env.py
+  - .venv/bin/python scripts/progress_status.py
+  - .venv/bin/python scripts/run_diagnostics.py
+  - sqlite3 data/active_workspace/driver_probe/workflow.sqlite3
+
+`setup` and `cleanup` are ALSO command lists, held to the same rule. They are executed, not read. A precondition written as prose — "ensure the api service is running", "two tenants exist" — is not a command, and it causes the entire scenario to be refused. Express preconditions by choosing an approved command, or leave setup and cleanup empty and state the assumption in `purpose`.
+
+`expected_observations` and `forbidden_observations` are matched as LITERAL substrings against everything the run observed — command output, response bodies, visible browser text. They are not descriptions and nothing interprets them. Write the exact text the product emits:
+
+    good : "payments=1"          (the probe prints exactly this)
+    bad  : "the ledger shows one payment"   (never appears; fails against a
+                                              correct product)
+
+If you cannot name the exact text a correct product would emit, assert the property with a `persisted_state_check` and leave the observation lists empty. A scenario that fails because its expectation was phrased as prose has told you nothing about the product.
+
+Quoting is understood: an argument may contain >, <, |, ( or ) inside quotes, so a SQL oracle such as
+    sqlite3 data/app.sqlite3 "SELECT key FROM grants GROUP BY key HAVING count(*) > 1"
+is accepted. What is refused is composition *outside* quotes — a second command after ;, &&, a pipe, a redirect, or $( ).
+
+SERVICES you may reference / restart / stop / start: callback
+LOCAL APP URL for relative request paths: http://127.0.0.1:8001
+BROWSER available: no
+
+Return the JSON object now.

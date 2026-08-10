@@ -1,0 +1,254 @@
+{
+  "grand_proposed": 53,
+  "grand_accepted": 33,
+  "acceptance_rate": 0.623,
+  "tasks_with_zero_usable_scenarios": [],
+  "rejection_taxonomy": {
+    "effect-family-without-oracle": 7,
+    "state-check-schema-mismatch": 6,
+    "regression-without-scope": 4,
+    "duplicate": 2,
+    "invented-risk-category": 1
+  },
+  "accepted_action_kinds": {
+    "request": 18,
+    "command": 17,
+    "state_check": 14,
+    "restart_service": 2,
+    "wait": 1,
+    "parallel_requests": 1
+  },
+  "accepted_with_persisted_state_check": 13,
+  "quality": {
+    "category_relevance": 0.857,
+    "bare_suite_invocations": 15,
+    "bare_suite_proportion": 0.455,
+    "grounded": 33,
+    "grounded_proportion": 1.0,
+    "mechanically_scorable": 33,
+    "mechanically_scorable_proportion": 1.0,
+    "effect_family_cases": 5,
+    "effect_family_with_state_oracle": 5,
+    "redundant_shapes_total": 3
+  },
+  "per_task": [
+    {
+      "task": "A",
+      "proposed": 5,
+      "accepted": 4,
+      "rejected": 1,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 5,
+      "risks_uncovered": 1,
+      "P0/P1_risks_uncovered": 1,
+      "rejection_reasons": {
+        "regression-without-scope": 1
+      },
+      "accepted_categories": [
+        "missing_data",
+        "stale_state",
+        "ui_backend_disagreement"
+      ],
+      "off_topic_categories": [],
+      "category_relevance": 1.0,
+      "redundant_shapes": 1,
+      "bare_suite_invocations": 4,
+      "bare_suite_proportion": 1.0,
+      "grounded": 4,
+      "mechanically_scorable": 4,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0
+    },
+    {
+      "task": "A2-diff",
+      "proposed": 11,
+      "accepted": 8,
+      "rejected": 3,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 5,
+      "risks_uncovered": 1,
+      "P0/P1_risks_uncovered": 1,
+      "rejection_reasons": {
+        "duplicate": 1,
+        "effect-family-without-oracle": 1,
+        "regression-without-scope": 1
+      },
+      "accepted_categories": [
+        "happy_path",
+        "malformed_input",
+        "missing_data",
+        "regression",
+        "stale_state"
+      ],
+      "off_topic_categories": [],
+      "category_relevance": 1.0,
+      "redundant_shapes": 1,
+      "bare_suite_invocations": 4,
+      "bare_suite_proportion": 0.5,
+      "grounded": 8,
+      "mechanically_scorable": 8,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0
+    },
+    {
+      "task": "B-diff",
+      "proposed": 18,
+      "accepted": 8,
+      "rejected": 10,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 13,
+      "risks_uncovered": 4,
+      "P0/P1_risks_uncovered": 4,
+      "rejection_reasons": {
+        "invented-risk-category": 1,
+        "effect-family-without-oracle": 3,
+        "state-check-schema-mismatch": 6
+      },
+      "accepted_categories": [
+        "authorization",
+        "conflicting_evidence",
+        "cross_tenant",
+        "malformed_input",
+        "regression",
+        "restart_recovery",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [
+        "conflicting_evidence"
+      ],
+      "category_relevance": 0.875,
+      "redundant_shapes": 1,
+      "bare_suite_invocations": 7,
+      "bare_suite_proportion": 0.875,
+      "grounded": 8,
+      "mechanically_scorable": 8,
+      "effect_family_cases": 1,
+      "effect_family_with_state_oracle": 1
+    },
+    {
+      "task": "C",
+      "proposed": 6,
+      "accepted": 5,
+      "rejected": 1,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 4,
+      "risks_uncovered": 2,
+      "P0/P1_risks_uncovered": 2,
+      "rejection_reasons": {
+        "regression-without-scope": 1
+      },
+      "accepted_categories": [
+        "happy_path",
+        "idempotency",
+        "malformed_input",
+        "missing_data",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [
+        "idempotency"
+      ],
+      "category_relevance": 0.8,
+      "redundant_shapes": 0,
+      "bare_suite_invocations": 0,
+      "bare_suite_proportion": 0.0,
+      "grounded": 5,
+      "mechanically_scorable": 5,
+      "effect_family_cases": 1,
+      "effect_family_with_state_oracle": 1
+    },
+    {
+      "task": "D",
+      "proposed": 5,
+      "accepted": 1,
+      "rejected": 4,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 5,
+      "risks_uncovered": 4,
+      "P0/P1_risks_uncovered": 4,
+      "rejection_reasons": {
+        "effect-family-without-oracle": 3,
+        "regression-without-scope": 1
+      },
+      "accepted_categories": [
+        "restart_recovery"
+      ],
+      "off_topic_categories": [],
+      "category_relevance": 1.0,
+      "redundant_shapes": 0,
+      "bare_suite_invocations": 0,
+      "bare_suite_proportion": 0.0,
+      "grounded": 1,
+      "mechanically_scorable": 1,
+      "effect_family_cases": 1,
+      "effect_family_with_state_oracle": 1
+    },
+    {
+      "task": "E",
+      "proposed": 8,
+      "accepted": 7,
+      "rejected": 1,
+      "produced_zero_usable_scenarios": false,
+      "risks_identified": 6,
+      "risks_uncovered": 1,
+      "P0/P1_risks_uncovered": 0,
+      "rejection_reasons": {
+        "duplicate": 1
+      },
+      "accepted_categories": [
+        "authorization",
+        "concurrency",
+        "cross_tenant",
+        "happy_path",
+        "malformed_input",
+        "persistence_failure",
+        "repeated_request"
+      ],
+      "off_topic_categories": [
+        "persistence_failure",
+        "repeated_request"
+      ],
+      "category_relevance": 0.714,
+      "redundant_shapes": 0,
+      "bare_suite_invocations": 0,
+      "bare_suite_proportion": 0.0,
+      "grounded": 7,
+      "mechanically_scorable": 7,
+      "effect_family_cases": 2,
+      "effect_family_with_state_oracle": 2
+    }
+  ],
+  "comparison_with_r2": {
+    "proposed": [
+      64,
+      53
+    ],
+    "accepted": [
+      15,
+      33
+    ],
+    "acceptance_rate": [
+      0.234,
+      0.623
+    ],
+    "tasks_with_zero_usable_scenarios": [
+      [
+        "D"
+      ],
+      []
+    ],
+    "r2_rejection_taxonomy": {
+      "prose-written-into-setup/cleanup": 39,
+      "invented-risk-category": 3,
+      "regression-without-scope": 3,
+      "effect-family-without-oracle": 3,
+      "schema-mismatch": 1
+    },
+    "now_rejection_taxonomy": {
+      "effect-family-without-oracle": 7,
+      "state-check-schema-mismatch": 6,
+      "regression-without-scope": 4,
+      "duplicate": 2,
+      "invented-risk-category": 1
+    }
+  }
+}

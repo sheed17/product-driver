@@ -1,0 +1,623 @@
+{
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Durable store re-opens intact and consistent after a clean process restart\n\nrisk: restart_recovery (priority P0)\npurpose: Exercise 'state survives a process restart': restart the callback process and confirm the durable DB re-opens, the workflow tables are still present, integrity is intact, and no foreign-key (orphan) violations were introduced.\nrequirement: U-P5-1: workflow state survives a process restart\nproduct principle: failure_recovery\nrationale: The unit's headline promise is that restarting the process does not lose or corrupt persisted workflow state; a restart followed by integrity/FK inspection is the direct oracle available without a signer secret.\n\ngenerated at 2026-08-10T06:25:58+00:00 (stage=initial, wave 1)\nbecause of risk: A restart could drop un-flushed state or leave the store corrupted/unreadable.\nrepository HEAD 6e8127d, active unit U-P5-1, founder context 0cb51e5158467505\nacceptance criteria consulted: workflow state survives a process restart (weight 3): PENDING; a failed write leaves no partially applied workflow (weight 3): PENDING; a read after a write never returns stale state (weight 2): PENDING; rebuilding state from history never re-executes an effect (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+          "contains": [
+            "ok"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=2 THEN 'CORE_TABLES_PRESENT' ELSE 'CORE_TABLES_MISSING' END FROM sqlite_master WHERE type='table' AND name IN ('workflow_runs','effect_grants')\"",
+          "contains": [
+            "CORE_TABLES_PRESENT"
+          ],
+          "not_contains": [
+            "CORE_TABLES_MISSING"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'FK_CLEAN' ELSE 'FK_DIRTY' END FROM pragma_foreign_key_check\"",
+          "contains": [
+            "FK_CLEAN"
+          ],
+          "not_contains": [
+            "FK_DIRTY"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "durable db integrity after restart",
+        "command": null,
+        "state_check": {
+          "name": "durable db integrity after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+          "contains": [
+            "ok"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no orphan rows after restart",
+        "command": null,
+        "state_check": {
+          "name": "no orphan rows after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'FK_CLEAN' ELSE 'FK_DIRTY' END FROM pragma_foreign_key_check\"",
+          "contains": [
+            "FK_CLEAN"
+          ],
+          "not_contains": [
+            "FK_DIRTY"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "ok",
+      "CORE_TABLES_PRESENT",
+      "FK_CLEAN"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "CORE_TABLES_MISSING",
+      "FK_DIRTY"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Ungraceful stop mid-flight leaves no partially applied workflow\n\nrisk: crash_mid_workflow (priority P0)\npurpose: Exercise 'a failed write leaves no partially applied workflow': stop the callback process abruptly and restart it, then confirm WAL recovery yields a consistent store with no orphaned checkpoint witness (a witness with no grant is a half-applied authorization).\nrequirement: U-P5-1: a failed write leaves no partially applied workflow\nproduct principle: outcome_verification\nrationale: A crash between the witness insert and the grant mint (or before commit) is exactly the partial-apply hazard the AC forbids; an ungraceful stop+start is the closest reproducible trigger available.\n\ngenerated at 2026-08-10T06:25:58+00:00 (stage=initial, wave 1)\nbecause of risk: An interrupted/failed write could persist a witness without its grant, or otherwise a half-applied workflow.\nrepository HEAD 6e8127d, active unit U-P5-1, founder context 0cb51e5158467505\nacceptance criteria consulted: workflow state survives a process restart (weight 3): PENDING; a failed write leaves no partially applied workflow (weight 3): PENDING; a read after a write never returns stale state (weight 2): PENDING; rebuilding state from history never re-executes an effect (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "stop_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "start_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+          "contains": [
+            "ok"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'FK_CLEAN' ELSE 'FK_DIRTY' END FROM pragma_foreign_key_check\"",
+          "contains": [
+            "FK_CLEAN"
+          ],
+          "not_contains": [
+            "FK_DIRTY"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ORPHAN_NONE' ELSE 'ORPHAN_FOUND' END FROM checkpoint_witnesses w WHERE NOT EXISTS (SELECT 1 FROM effect_grants g WHERE g.tenant=w.tenant AND g.grant_id=w.grant_id)\"",
+          "contains": [
+            "ORPHAN_NONE"
+          ],
+          "not_contains": [
+            "ORPHAN_FOUND"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no witness without its grant after crash+recovery",
+        "command": null,
+        "state_check": {
+          "name": "no witness without its grant after crash+recovery",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ORPHAN_NONE' ELSE 'ORPHAN_FOUND' END FROM checkpoint_witnesses w WHERE NOT EXISTS (SELECT 1 FROM effect_grants g WHERE g.tenant=w.tenant AND g.grant_id=w.grant_id)\"",
+          "contains": [
+            "ORPHAN_NONE"
+          ],
+          "not_contains": [
+            "ORPHAN_FOUND"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "durable db consistent after ungraceful stop",
+        "command": null,
+        "state_check": {
+          "name": "durable db consistent after ungraceful stop",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+          "contains": [
+            "ok"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "ok",
+      "FK_CLEAN",
+      "ORPHAN_NONE"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "FK_DIRTY",
+      "ORPHAN_FOUND"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Rebuild after restart does not create a second commitment for one effect\n\nrisk: retry_safety (priority P0)\npurpose: Exercise 'rebuilding state from history never re-executes an effect': after a restart (state re-derived from durable history), confirm the ledger still holds at most one live-or-committed grant per (tenant, commit_key) and at most one CLAIMED grant per effect.\nrequirement: U-P5-1: rebuilding state from history never re-executes an effect\nproduct principle: outcome_verification\nrationale: Re-executing an effect on rebuild would surface as a duplicate live/CLAIMED grant for the same commit_key; the live-hold and commit-once uniqueness are exactly the durable guards this AC leans on.\n\ngenerated at 2026-08-10T06:25:58+00:00 (stage=initial, wave 1)\nbecause of risk: Startup rebuild could re-run an already-committed effect, minting a duplicate reservation/commitment.\nrepository HEAD 6e8127d, active unit U-P5-1, founder context 0cb51e5158467505\nacceptance criteria consulted: workflow state survives a process restart (weight 3): PENDING; a failed write leaves no partially applied workflow (weight 3): PENDING; a read after a write never returns stale state (weight 2): PENDING; rebuilding state from history never re-executes an effect (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'LIVE_UNIQUE' ELSE 'LIVE_DUP' END FROM (SELECT tenant,commit_key FROM effect_grants WHERE state IN ('GRANTED','CLAIMED') GROUP BY tenant,commit_key HAVING count(*)>1)\"",
+          "contains": [
+            "LIVE_UNIQUE"
+          ],
+          "not_contains": [
+            "LIVE_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'CLAIMED_ONCE' ELSE 'CLAIMED_DUP' END FROM (SELECT tenant,commit_key FROM effect_grants WHERE state='CLAIMED' GROUP BY tenant,commit_key HAVING count(*)>1)\"",
+          "contains": [
+            "CLAIMED_ONCE"
+          ],
+          "not_contains": [
+            "CLAIMED_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "one live-or-committed grant per effect after rebuild",
+        "command": null,
+        "state_check": {
+          "name": "one live-or-committed grant per effect after rebuild",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'LIVE_UNIQUE' ELSE 'LIVE_DUP' END FROM (SELECT tenant,commit_key FROM effect_grants WHERE state IN ('GRANTED','CLAIMED') GROUP BY tenant,commit_key HAVING count(*)>1)\"",
+          "contains": [
+            "LIVE_UNIQUE"
+          ],
+          "not_contains": [
+            "LIVE_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "effect claimed at most once after rebuild",
+        "command": null,
+        "state_check": {
+          "name": "effect claimed at most once after rebuild",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'CLAIMED_ONCE' ELSE 'CLAIMED_DUP' END FROM (SELECT tenant,commit_key FROM effect_grants WHERE state='CLAIMED' GROUP BY tenant,commit_key HAVING count(*)>1)\"",
+          "contains": [
+            "CLAIMED_ONCE"
+          ],
+          "not_contains": [
+            "CLAIMED_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "LIVE_UNIQUE",
+      "CLAIMED_ONCE"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "LIVE_DUP",
+      "CLAIMED_DUP"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S5": {
+    "name": "generated:S5",
+    "phase": "P3",
+    "description": "Witness-to-grant stays 1:1 across a restart-driven rebuild\n\nrisk: safety_invariant (priority P1)\npurpose: Exercise 'rebuilding state from history never re-executes an effect' from the witness side: after restart, every checkpoint-minted grant has exactly one witness and no grant has two witnesses, so a replay cannot fabricate a second authorized effect.\nrequirement: U-P5-1: rebuilding state from history never re-executes an effect\nproduct principle: outcome_verification\nrationale: The kernel's contract is witness:grant = 1:1; a rebuild that duplicated or dropped a witness would either re-authorize or orphan an effect, both violations of the AC.\n\ngenerated at 2026-08-10T06:25:58+00:00 (stage=initial, wave 1)\nbecause of risk: Rebuild could duplicate a witness (re-authorize) or leave a checkpoint-minted grant unwitnessed.\nrepository HEAD 6e8127d, active unit U-P5-1, founder context 0cb51e5158467505\nacceptance criteria consulted: workflow state survives a process restart (weight 3): PENDING; a failed write leaves no partially applied workflow (weight 3): PENDING; a read after a write never returns stale state (weight 2): PENDING; rebuilding state from history never re-executes an effect (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ALL_WITNESSED' ELSE 'UNWITNESSED_GRANT' END FROM effect_grants g WHERE g.checkpoint_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM checkpoint_witnesses w WHERE w.tenant=g.tenant AND w.grant_id=g.grant_id)\"",
+          "contains": [
+            "ALL_WITNESSED"
+          ],
+          "not_contains": [
+            "UNWITNESSED_GRANT"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'WITNESS_UNIQUE' ELSE 'WITNESS_DUP' END FROM (SELECT tenant,grant_id FROM checkpoint_witnesses GROUP BY tenant,grant_id HAVING count(*)>1)\"",
+          "contains": [
+            "WITNESS_UNIQUE"
+          ],
+          "not_contains": [
+            "WITNESS_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "every checkpoint-minted grant has a witness",
+        "command": null,
+        "state_check": {
+          "name": "every checkpoint-minted grant has a witness",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ALL_WITNESSED' ELSE 'UNWITNESSED_GRANT' END FROM effect_grants g WHERE g.checkpoint_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM checkpoint_witnesses w WHERE w.tenant=g.tenant AND w.grant_id=g.grant_id)\"",
+          "contains": [
+            "ALL_WITNESSED"
+          ],
+          "not_contains": [
+            "UNWITNESSED_GRANT"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no grant carries two witnesses after rebuild",
+        "command": null,
+        "state_check": {
+          "name": "no grant carries two witnesses after rebuild",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'WITNESS_UNIQUE' ELSE 'WITNESS_DUP' END FROM (SELECT tenant,grant_id FROM checkpoint_witnesses GROUP BY tenant,grant_id HAVING count(*)>1)\"",
+          "contains": [
+            "WITNESS_UNIQUE"
+          ],
+          "not_contains": [
+            "WITNESS_DUP"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "ALL_WITNESSED",
+      "WITNESS_UNIQUE"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "UNWITNESSED_GRANT",
+      "WITNESS_DUP"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

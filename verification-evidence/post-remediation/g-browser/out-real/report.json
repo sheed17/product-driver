@@ -1,0 +1,203 @@
+{
+  "defect": "stale_read",
+  "real_model": true,
+  "brief_states_browser_available": true,
+  "generation": {
+    "proposed": 5,
+    "accepted": 5,
+    "accepted_browser": 2,
+    "refused": []
+  },
+  "compile": {
+    "compiled": 5,
+    "browser_mode_preserved": [
+      "S1",
+      "S2"
+    ]
+  },
+  "execution": {
+    "outcomes": [
+      {
+        "id": "permanent:exception-detail-smoke",
+        "outcome": "PASSED",
+        "mode": "browser"
+      },
+      {
+        "id": "S2",
+        "outcome": "FAILED",
+        "mode": "browser"
+      },
+      {
+        "id": "S3",
+        "outcome": "FAILED",
+        "mode": "browser"
+      },
+      {
+        "id": "S1",
+        "outcome": "PASSED",
+        "mode": "browser"
+      },
+      {
+        "id": "S4",
+        "outcome": "FAILED",
+        "mode": "browser"
+      },
+      {
+        "id": "S5",
+        "outcome": "PASSED",
+        "mode": "browser"
+      }
+    ],
+    "skipped": [],
+    "evidence": [
+      {
+        "scenario_id": "permanent:exception-detail-smoke",
+        "outcome": "PASSED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "01-initial.png",
+          "99-final.png",
+          "result.json",
+          "service-ui.log",
+          "trace.zip"
+        ],
+        "screenshots": [
+          "01-initial.png",
+          "99-final.png"
+        ]
+      },
+      {
+        "scenario_id": "S2",
+        "outcome": "FAILED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log",
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png",
+          "step-1-browser-trace.zip"
+        ],
+        "screenshots": [
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png"
+        ]
+      },
+      {
+        "scenario_id": "S3",
+        "outcome": "FAILED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log"
+        ],
+        "screenshots": []
+      },
+      {
+        "scenario_id": "S1",
+        "outcome": "PASSED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log",
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png",
+          "step-1-browser-trace.zip"
+        ],
+        "screenshots": [
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png"
+        ]
+      },
+      {
+        "scenario_id": "S4",
+        "outcome": "FAILED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log"
+        ],
+        "screenshots": []
+      },
+      {
+        "scenario_id": "S5",
+        "outcome": "PASSED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log"
+        ],
+        "screenshots": []
+      }
+    ],
+    "screenshots_captured": 6,
+    "visible_text_sample": {
+      "S2": "Exception EX-1\n\nstatus: open\n\nwhy: proof of delivery missing\n\nowner: Neyma\n\nnext action: chase the carrier for proof of delivery\n\nResolve",
+      "S1": "Exception EX-1\n\nstatus: open\n\nwhy: proof of delivery missing\n\nowner: Neyma\n\nnext action: chase the carrier for proof of delivery\n\nResolve"
+    }
+  },
+  "aggregation": {
+    "total": 6,
+    "passed": 3,
+    "failed": 3,
+    "blocked": 0,
+    "skipped": 0,
+    "coverage_by_risk_category": {
+      "ui_backend_disagreement": {
+        "passed": 0,
+        "failed": 1,
+        "blocked": 0,
+        "skipped": 0
+      },
+      "stale_state": {
+        "passed": 0,
+        "failed": 1,
+        "blocked": 0,
+        "skipped": 0
+      },
+      "happy_path": {
+        "passed": 1,
+        "failed": 0,
+        "blocked": 0,
+        "skipped": 0
+      },
+      "idempotency": {
+        "passed": 0,
+        "failed": 1,
+        "blocked": 0,
+        "skipped": 0
+      },
+      "boundary": {
+        "passed": 1,
+        "failed": 0,
+        "blocked": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "gate": {
+    "status": "NOT_VERIFIED",
+    "blocks_acceptance": true,
+    "required_total": 4,
+    "required_passed": 2,
+    "unverified": [
+      "[FAILED] S2 \u2014 the scenario failed: expect_visible: step-1-browser: browser step 3: expect_text 'status: resolved' \u2014 not present in the page text at that point",
+      "[FAILED] S3 \u2014 the scenario failed: expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200"
+    ],
+    "uncovered_risks": [
+      "[P0] ui_backend_disagreement \u2014 The screen serves a stale status (e.g. still 'open') after the exception has been resolved in the durable store, so the operator acts on a status the store no longer holds.  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 failed))",
+      "[P1] missing_data \u2014 The exception detail screen fails to name the next action and/or who owns it, leaving the operator with nothing actionable.  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "summary": "scenario gate: NOT VERIFIED \u2014 2 of 4 required scenario(s) did not establish a pass (6 executed); 2 identified acceptance-blocking risk(s) have no passing scenario\n  [FAILED] S2 \u2014 the scenario failed: expect_visible: step-1-browser: browser step 3: expect_text 'status: resolved' \u2014 not present in the page text at that point\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S2\n  [FAILED] S3 \u2014 the scenario failed: expect_state: POST http://127.0.0.1:49797/api/exceptions/EX-1/resolve: status == 303 \u2014 got 200\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/real/artifacts/scenarios/S3\n  KNOWN COVERAGE GAPS \u2014 risks this run identified and did not verify:\n    [P0] ui_backend_disagreement \u2014 The screen serves a stale status (e.g. still 'open') after the exception has been resolved in the durable store, so the operator acts on a status the store no longer holds.  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 failed))\n    [P1] missing_data \u2014 The exception detail screen fails to name the next action and/or who owns it, leaving the operator with nothing actionable.  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+  },
+  "browser_actually_driven": [
+    "S2",
+    "S1"
+  ],
+  "RESULT": "BROWSER PATH PROVEN END TO END"
+}

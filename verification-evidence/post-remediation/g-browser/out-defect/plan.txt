@@ -1,0 +1,24 @@
+GENERATED SCENARIO PLAN — run g-browser
+task: Add an exception detail screen an operator can act on: it must state the status, why the exception was raised, who owns it, and the next action.
+active unit: UNIT-EXCEPTION-UI
+
+2 generated case(s)
+risk categories exercised: stale_state, ui_backend_disagreement
+
+IDENTIFIED RISKS:
+  [P0 ui_backend_disagreement] the screen may not tell an operator who owns the next action  (covered by gen-browser-next-action)
+
+SCENARIOS:
+  [P0 ui_backend_disagreement] gen-browser-next-action: the exception screen names the next action and its owner
+      purpose: an operator must be able to act without asking anyone
+      grounded in: AC-UI-001
+      because: the screen may omit the owner or the next action
+  [P0 stale_state] gen-browser-screen-matches-store: the screen never shows a status the durable store does not hold
+      purpose: a rendered status is not evidence; the store must agree
+      grounded in: AC-UI-002
+      because: the page may keep serving a status the store has moved past
+
+ASSUMPTIONS:
+  - the exception detail screen is served at /
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

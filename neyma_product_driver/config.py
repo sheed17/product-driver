@@ -170,12 +170,22 @@ class ScenarioGenerationConfig(BaseModel):
     promotion_requires_approval: bool = True
 
     # -- execution --------------------------------------------------------
-    #: Sequential until isolation can be proven per scenario. See
-    #: :mod:`~neyma_product_driver.scenario_suite`.
+    #: Must be 1. The suite executor is sequential — see
+    #: :attr:`~neyma_product_driver.scenario_suite.SuiteExecutor.MAX_PARALLEL`,
+    #: which refuses any other value rather than ignoring it. This key exists so
+    #: the execution model is stated where an operator will look for it, not
+    #: because there is a choice to make.
     max_parallel: int = 1
 
     # -- the generator ----------------------------------------------------
     model: str = "opus"
+    #: Turns the read-only generator session may spend before it must answer.
+    #: It reads the repository to ground its proposals; against a large product
+    #: that is tens of Read/Grep calls before it writes anything. Measured too
+    #: low at 16: the session ended `error_max_turns` having produced nothing,
+    #: and the wave was recorded as empty. Raise it for exploration-heavy tasks.
+    #: This is a budget on a read-only session, not a guard.
+    generator_max_turns: int = 40
     #: Commands generated scenarios may run, beyond those already written into
     #: the repository's scenario files. A generated scenario can never author a
     #: command; it can only choose one from this derived set.

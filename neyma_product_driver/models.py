@@ -163,6 +163,22 @@ class HttpObservation(BaseModel):
     duration_s: float = 0.0
 
 
+class BrowserTextExpectation(BaseModel):
+    """One ``expect_text`` step and whether the page satisfied it.
+
+    Recorded structurally rather than only narrated into ``steps``. A narration
+    line saying ``NOT FOUND`` reads like a failure and is not one: nothing scores
+    it, so a browser scenario whose only oracle was ``expect_text`` could not
+    fail whatever the page said.
+    """
+
+    text: str
+    present: bool
+    #: Which step in the browser sequence asked for it, for attribution.
+    step: int = 0
+    label: str = ""
+
+
 class BrowserObservation(BaseModel):
     """What Playwright actually saw on the page."""
 
@@ -174,6 +190,13 @@ class BrowserObservation(BaseModel):
     network_failures: list[str] = Field(default_factory=list)
     trace_path: str | None = None
     steps: list[str] = Field(default_factory=list)
+    #: Every ``expect_text`` checked while driving the page, in order.
+    text_expectations: list[BrowserTextExpectation] = Field(default_factory=list)
+    #: Steps that raised — a click on a selector that is not there, a navigation
+    #: that timed out. Recorded structurally for the same reason as
+    #: ``text_expectations``: a step that did not happen is not a step that
+    #: passed, and narration alone is not scored.
+    step_failures: list[str] = Field(default_factory=list)
 
 
 class AssertionResult(BaseModel):

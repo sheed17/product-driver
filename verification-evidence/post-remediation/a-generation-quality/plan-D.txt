@@ -1,0 +1,40 @@
+GENERATED SCENARIO PLAN — run post-D
+task: Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.
+active unit: U-P5-1
+
+1 generated case(s)
+risk categories exercised: restart_recovery
+identified but NOT exercised: A write that fails partway leaves a partially applied workflow row (dangling reference / half-updated state) instead of atomically rolling back.; Rebuilding workflow state from history re-executes an already-performed external effect, causing a duplicate business action.; A read issued after a committed write returns stale state (e.g. from a residual in-process cache), so callers act on an outdated view.; The durable workflow store table is never actually created in the canonical schema, so state silently remains process-local and cannot survive restart.
+
+IDENTIFIED RISKS:
+  [P0 restart_recovery] In-flight workflow state held in the durable store is lost or corrupted when the process/callback service restarts, so the workflow cannot resume.  (covered by S1-restart-durability)
+  [P0 partial_failure] A write that fails partway leaves a partially applied workflow row (dangling reference / half-updated state) instead of atomically rolling back.  (NOT covered)
+  [P0 idempotency] Rebuilding workflow state from history re-executes an already-performed external effect, causing a duplicate business action.  (NOT covered)
+  [P1 stale_state] A read issued after a committed write returns stale state (e.g. from a residual in-process cache), so callers act on an outdated view.  (NOT covered)
+  [P1 persistence_failure] The durable workflow store table is never actually created in the canonical schema, so state silently remains process-local and cannot survive restart.  (NOT covered)
+
+SCENARIOS:
+  [P0 restart_recovery] S1-restart-durability: Workflow store survives a live callback restart intact
+      purpose: Restart the callback service and confirm the durable workflow SQLite store is still structurally intact (not corrupted/truncated) afterward, exercising the real restart path rather than a simulated one.
+      grounded in: workflow state survives a process restart
+      because: A restart loses or corrupts the durable workflow state so the workflow cannot resume (R1).
+
+ASSUMPTIONS:
+  - The phase3 suites (checkpoint_matrix, witness, claim_cas) are the components encoding the durable-store invariants — restart/checkpoint atomicity, effect-replay avoidance, and compare-and-swap read freshness — because those are the only approved fault-injection levers available.
+  - 'callback' is the service whose restart meaningfully exercises the process-restart recovery path for workflow state.
+  - The targeted pytest invocations run against pytest-managed temporary databases rather than data/active_workspace/driver_probe/workflow.sqlite3, so they do not contaminate the live store checked in S1.
+  - The durable workflow store table is part of create_canonical_schema and its name contains the substring 'workflow'.
+
+UNRESOLVED QUESTIONS:
+  - The exact table and column names of data/active_workspace/driver_probe/workflow.sqlite3 were not provided, so I could not author precise SQL invariant queries (e.g. duplicate-effect detection via GROUP BY ... HAVING count(*)>1, or dangling-reference detection for partial writes) directly against the live store; those invariants are exercised only through the pytest matrices.
+  - No approved command seeds a workflow, commits a write, or forces a mid-write crash against the running app at http://127.0.0.1:8001, so live read-after-write staleness (weight 2) and live atomicity/idempotency cannot be observed end-to-end and are covered only via the test suites — the stale-read AC in particular has no dedicated live probe.
+  - Whether the driver_probe workflow.sqlite3 contains seeded workflow rows is unknown, so S1 can only assert the store is structurally intact after restart (PRAGMA integrity_check ok), not that specific pre-restart data survived.
+  - If the durable workflow table name does not contain the substring 'workflow', S4's expectation is wrong against a correct product — the actual table name should be confirmed.
+
+REJECTED PROPOSALS:
+  S2-checkpoint-atomicity: a partial_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S3-witness-cas-no-reexecute: a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S4-durable-schema-present: a persistence_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S5-full-suite-regression: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

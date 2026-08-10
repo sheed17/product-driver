@@ -1,0 +1,65 @@
+GENERATED SCENARIO PLAN — run post-E
+task: Add role-based authorization to the operator console so only a supervisor can release an operation.
+active unit: U-AUTHZ-2
+
+7 generated case(s)
+risk categories exercised: authorization, concurrency, cross_tenant, happy_path, malformed_input, persistence_failure, repeated_request
+identified but NOT exercised: A retried/duplicate supervisor release double-applies the release effect or writes duplicate audit rows.
+
+IDENTIFIED RISKS:
+  [P0 authorization] A non-supervisor (operator role) can successfully release an operation because the authorization check is missing, applied on the wrong path, or fails open.  (covered by S2)
+  [P0 cross_tenant] A supervisor authenticated for tenant A can release an operation belonging to tenant B because the check verifies role but not tenant ownership.  (covered by S3)
+  [P1 persistence_failure] A refusal returns the right status to the caller but writes no audit record, so refused release attempts leave no accountable trail.  (covered by S4)
+  [P1 concurrency] Concurrent release requests (one authorized, one not) race, allowing a release that a serial check would refuse, or producing two releases.  (covered by S8)
+  [P2 malformed_input] A missing or malformed role/tenant field causes the gate to crash (500) or fall through to allow, rather than a clean refusal.  (covered by S6)
+  [P2 idempotency] A retried/duplicate supervisor release double-applies the release effect or writes duplicate audit rows.  (NOT covered)
+
+SCENARIOS:
+  [P0 happy_path] S1: Supervisor releases an operation in their own tenant
+      purpose: Confirm the primary authorized path: a supervisor of the owning tenant can release an operation and the release is durably recorded.
+      grounded in: U-AUTHZ-2: a supervisor can release an operation
+      because: The new gate over-restricts and refuses even a valid supervisor, or reports success without persisting the release.
+  [P0 authorization] S2: Non-supervisor is refused and no release occurs
+      purpose: Confirm an operator-role caller is refused AND that the operation's state is unchanged (fail closed, not just a cosmetic error).
+      grounded in: U-AUTHZ-2: a non-supervisor is refused and no release occurs
+      because: The gate returns an error to the client but the release effect still lands, or the gate fails open for unknown roles.
+  [P0 cross_tenant] S3: Supervisor of tenant A cannot release tenant B's operation
+      purpose: Confirm the check enforces tenant ownership, not just role: a valid supervisor for the wrong tenant is refused and tenant B's operation is unchanged.
+      grounded in: U-AUTHZ-2: a supervisor of one tenant cannot release another tenant's operation
+      because: Authorization checks role='supervisor' but never compares the actor's tenant to the operation's tenant, allowing cross-tenant release.
+  [P1 persistence_failure] S4: Every refusal is written to the audit log
+      purpose: Confirm that a refused release attempt produces a durable audit record naming the operation and refused actor, not just an in-memory 4xx.
+      grounded in: U-AUTHZ-2: every refusal is recorded in the audit log
+      because: The refusal path returns before writing to the audit log, or logs only successes.
+  [P2 malformed_input] S6: Malformed role value is refused cleanly, not a 500
+      purpose: Confirm an unknown/garbage role produces a controlled refusal rather than an unhandled crash or a fall-through allow.
+      grounded in: U-AUTHZ-2: a non-supervisor is refused and no release occurs
+      because: Unrecognized role string throws before the gate decision, or is compared loosely and matched as supervisor.
+  [P2 repeated_request] S7: Repeated supervisor release does not double-apply
+      purpose: Confirm a duplicate/retried release of the same operation leaves exactly one release effect and does not error on the second call.
+      grounded in: U-AUTHZ-2: a supervisor can release an operation
+      because: The second release re-applies the effect, transitions an already-released op, or writes a conflicting audit trail.
+  [P1 concurrency] S8: Concurrent authorized+unauthorized release race
+      purpose: Confirm that when a supervisor and a non-supervisor hit the same operation simultaneously, the non-supervisor is still refused and the operation is released at most once.
+      grounded in: U-AUTHZ-2: a non-supervisor is refused and no release occurs
+      because: A non-atomic authorize-then-release lets the operator's request land during the window, or produces two releases.
+
+ASSUMPTIONS:
+  - The operator console exposes release as an HTTP POST to a path shaped like /api/operations/{id}/release on http://127.0.0.1:8001; the exact route was not provided in the diff/context shown to me.
+  - The actor's role and tenant are supplied in the request body (role/tenant/actor fields) rather than via an auth header or session, because the approved request action exposes json_body but no header field.
+  - The driver_probe workflow.sqlite3 is pre-seeded with releasable operations: op-a1..op-a4 owned by tenant A (status 'pending') and op-b1 owned by tenant B. If these ids do not exist, setup/cleanup and state_checks must be re-pointed to real seeded ids.
+  - Operation release state is represented as operations.status='released' and refusals are written to a table named audit_log with an 'actor' column. The exact schema (table and column names) was not shown; the first approved schema-probe command should be used to confirm real table names before trusting these SQL oracles.
+  - A refused release returns HTTP 403; the exact refusal status code is an assumption.
+
+UNRESOLVED QUESTIONS:
+  - What is the exact release endpoint path and method, and how is the caller's role/tenant conveyed (request body, header, or authenticated session)?
+  - What are the real table and column names for operation release state and for the audit log, and what value distinguishes a refusal record from a success record?
+  - Which operation ids (and their tenant ownership + initial status) are actually seeded in data/active_workspace/driver_probe/workflow.sqlite3, so scenarios target real rows instead of assumed op-a1/op-b1 ids?
+  - What HTTP status and response body does a correct refusal emit, so expected/forbidden observations can be asserted as literal substrings rather than only via persisted-state oracles?
+  - Is release intended to be idempotent, and what is the defined behavior of releasing an already-released operation? No acceptance criterion covers this, so S7's expected outcome is an inference the founder should confirm.
+  - The ACs cover refusal auditing but do not state whether successful releases must also be audited; if accountability requires it, that is a missing requirement rather than something I can verify.
+
+REJECTED PROPOSALS:
+  S5: duplicate: this exercises the same situation with the same expectations as coverage that already exists, and adds nothing
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

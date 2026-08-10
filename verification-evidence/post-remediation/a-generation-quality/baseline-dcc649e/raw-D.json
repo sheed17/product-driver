@@ -1,0 +1,240 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "In-flight workflow state held in the durable store is lost or corrupted when the process/callback service restarts, so the workflow cannot resume.",
+        "risk_category": "restart_recovery",
+        "severity": "P0",
+        "basis": "AC 'workflow state survives a process restart' (weight 3), still PENDING; diff moves state out of in-process cache."
+      },
+      {
+        "id": "R2",
+        "description": "A write that fails partway leaves a partially applied workflow row (dangling reference / half-updated state) instead of atomically rolling back.",
+        "risk_category": "partial_failure",
+        "severity": "P0",
+        "basis": "AC 'a failed write leaves no partially applied workflow' (weight 3), PENDING."
+      },
+      {
+        "id": "R3",
+        "description": "Rebuilding workflow state from history re-executes an already-performed external effect, causing a duplicate business action.",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "basis": "AC 'rebuilding state from history never re-executes an effect' (weight 3), PENDING."
+      },
+      {
+        "id": "R4",
+        "description": "A read issued after a committed write returns stale state (e.g. from a residual in-process cache), so callers act on an outdated view.",
+        "risk_category": "stale_state",
+        "severity": "P1",
+        "basis": "AC 'a read after a write never returns stale state' (weight 2), PENDING."
+      },
+      {
+        "id": "R5",
+        "description": "The durable workflow store table is never actually created in the canonical schema, so state silently remains process-local and cannot survive restart.",
+        "risk_category": "persistence_failure",
+        "severity": "P1",
+        "basis": "Unit U-P5-1 requires state moved to the durable workflow store; if the schema lacks the table the move is incomplete."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1-restart-durability",
+        "title": "Workflow store survives a live callback restart intact",
+        "purpose": "Restart the callback service and confirm the durable workflow SQLite store is still structurally intact (not corrupted/truncated) afterward, exercising the real restart path rather than a simulated one.",
+        "risk_category": "restart_recovery",
+        "priority": "P0",
+        "rationale": "The whole unit exists so state outlives a process restart; a live restart of the only restartable service is the most direct probe of that promise.",
+        "generating_risk": "A restart loses or corrupts the durable workflow state so the workflow cannot resume (R1).",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "failure_recovery",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Only restarts the callback service and runs a read-only PRAGMA integrity_check; it does not insert, update, or delete any workflow rows, so it cannot contaminate later scenarios.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+              "contains": [
+                "ok"
+              ]
+            }
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+            "contains": [
+              "ok"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "ok"
+        ],
+        "forbidden_observations": [],
+        "confidence": 0.6
+      },
+      {
+        "id": "S2-checkpoint-atomicity",
+        "title": "Fault-injection checkpoint matrix leaves no partial workflow",
+        "purpose": "Run the phase3 checkpoint matrix, which exercises write/checkpoint combinations under injected faults, to confirm a failed write never commits a partially applied workflow.",
+        "risk_category": "partial_failure",
+        "priority": "P0",
+        "rationale": "The matrix suite is the only approved lever that injects mid-write failures across states; it directly targets the atomicity acceptance criterion.",
+        "generating_risk": "A write failing partway leaves a half-applied workflow row instead of rolling back atomically (R2).",
+        "requirement_reference": "a failed write leaves no partially applied workflow",
+        "product_principle_reference": "failure_recovery",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "Assumed to run against its own temporary databases (pytest fixtures), not the driver_probe live store; read-only with respect to shared state.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "checkpoint-matrix",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "id": "S3-witness-cas-no-reexecute",
+        "title": "Rebuild from history does not re-execute effects and reads are not stale",
+        "purpose": "Run the witness and claim-CAS suites together (the single approved invocation) to confirm rebuilding state from history does not re-fire an effect and that compare-and-swap writes prevent stale reads.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "Witness tests guard effect-replay and CAS tests guard read-after-write freshness; both are the recovery invariants the durable-store move must preserve.",
+        "generating_risk": "Rebuilding state from history re-executes an already-performed external effect, and/or a post-write read returns stale state (R3, R4).",
+        "requirement_reference": "rebuilding state from history never re-executes an effect",
+        "product_principle_reference": "outcome_verification",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "Assumed to use pytest-managed temporary stores, not the driver_probe live database; does not mutate shared state.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "witness-and-cas",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ],
+        "confidence": 0.55
+      },
+      {
+        "id": "S4-durable-schema-present",
+        "title": "Durable workflow store table exists in the canonical schema",
+        "purpose": "Build the canonical schema in isolation and confirm a workflow-related table is created, verifying the state actually moved into the durable schema rather than remaining process-local.",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "Restart survival is impossible if the durable schema has no workflow table; this checks the precondition that the store was truly relocated.",
+        "generating_risk": "The durable workflow table is never created in the canonical schema, so state stays in-process and cannot survive restart (R5).",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "operational_clarity",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "schema-probe-tempdir",
+        "isolation_note": "The probe writes only into a fresh tempfile.mkdtemp() directory it creates itself; it never touches shared or live state.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "schema-probe",
+            "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "workflow"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "workflow"
+        ],
+        "forbidden_observations": [],
+        "confidence": 0.4
+      },
+      {
+        "id": "S5-full-suite-regression",
+        "title": "Full canonical suite passes after the store migration",
+        "purpose": "Run the full canonical test suite as a regression guard to confirm moving workflow state to the durable store did not break existing behavior across the unit.",
+        "risk_category": "regression",
+        "priority": "P1",
+        "rationale": "A store relocation touches read/write paths broadly; a full-suite pass is the cheapest signal that no adjacent behavior regressed.",
+        "generating_risk": "The migration silently breaks an existing workflow path not covered by the targeted matrices.",
+        "requirement_reference": "U-P5-1",
+        "product_principle_reference": "failure_recovery",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "Runs the pytest suite against its own fixtures/temp stores; does not mutate the driver_probe live database.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "full-canonical",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ],
+        "confidence": 0.5
+      }
+    ],
+    "assumptions": [
+      "The phase3 suites (checkpoint_matrix, witness, claim_cas) are the components encoding the durable-store invariants \u2014 restart/checkpoint atomicity, effect-replay avoidance, and compare-and-swap read freshness \u2014 because those are the only approved fault-injection levers available.",
+      "'callback' is the service whose restart meaningfully exercises the process-restart recovery path for workflow state.",
+      "The targeted pytest invocations run against pytest-managed temporary databases rather than data/active_workspace/driver_probe/workflow.sqlite3, so they do not contaminate the live store checked in S1.",
+      "The durable workflow store table is part of create_canonical_schema and its name contains the substring 'workflow'."
+    ],
+    "unresolved_questions": [
+      "The exact table and column names of data/active_workspace/driver_probe/workflow.sqlite3 were not provided, so I could not author precise SQL invariant queries (e.g. duplicate-effect detection via GROUP BY ... HAVING count(*)>1, or dangling-reference detection for partial writes) directly against the live store; those invariants are exercised only through the pytest matrices.",
+      "No approved command seeds a workflow, commits a write, or forces a mid-write crash against the running app at http://127.0.0.1:8001, so live read-after-write staleness (weight 2) and live atomicity/idempotency cannot be observed end-to-end and are covered only via the test suites \u2014 the stale-read AC in particular has no dedicated live probe.",
+      "Whether the driver_probe workflow.sqlite3 contains seeded workflow rows is unknown, so S1 can only assert the store is structurally intact after restart (PRAGMA integrity_check ok), not that specific pre-restart data survived.",
+      "If the durable workflow table name does not contain the substring 'workflow', S4's expectation is wrong against a correct product \u2014 the actual table name should be confirmed."
+    ]
+  }
+]

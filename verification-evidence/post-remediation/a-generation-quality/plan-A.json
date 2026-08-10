@@ -1,0 +1,435 @@
+{
+  "run_id": "post-A",
+  "task": "Improve the exception detail screen so operators can understand the next action.",
+  "active_unit_id": "U-UI-11",
+  "generation_basis": {
+    "task": "Improve the exception detail screen so operators can understand the next action.",
+    "task_hash": "ecfcc59ed1f920c7",
+    "active_unit_id": "U-UI-11",
+    "acceptance_criteria": [
+      "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+      "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+      "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The exception detail screen is built from a ReviewPayload that snapshots WorkflowState at build time, while the packet page re-reads live state via store.get_run. If these paths ever diverge (payload rendered, then the run transitions APPROVED/DISPUTED/DONE), the operator can see a state the backend no longer holds and act on a stale next-action.",
+      "risk_category": "stale_state",
+      "severity": "P0",
+      "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3); review.py build_review_payload gates on run.state==NEEDS_REVIEW and stores state as a snapshot, packet_page.py line 51 reads live run.",
+      "covered_by": [
+        "S-U-UI-11-04"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "A signed action generated from a stale screen must not apply after the run's state has moved; otherwise the screen effectively drove an action against a state the backend does not hold.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "action_callback.py WorkflowError path returns 409 'The workflow state has changed, so this action was not applied.'; AC3.",
+      "covered_by": [
+        "S-U-UI-11-05"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "The screen may name a next action without naming who owns it, or vice versa, leaving an unowned obligation.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'names the next action and who owns it' (weight 3); routing/operator_role and action_options in review.py.",
+      "covered_by": [
+        "S-U-UI-11-02",
+        "S-U-UI-11-03"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "Evidence the exception was raised from may be omitted or unlinked, so the operator cannot see why the exception exists.",
+      "risk_category": "missing_data",
+      "severity": "P2",
+      "basis": "AC 'shows the evidence the exception was raised from' (weight 2); evidence_links in review.py / packet_page.py.",
+      "covered_by": [
+        "S-U-UI-11-02",
+        "S-U-UI-11-03"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "The UI change regresses existing rendering/state-machine behavior across the packet site, operator console, or callback path.",
+      "risk_category": "regression",
+      "severity": "P1",
+      "basis": "U-UI-11 touches the review/packet rendering surface shared with action_callback and workflow state transitions.",
+      "covered_by": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S-U-UI-11-02",
+      "title": "Review payload names the next action and its owner",
+      "purpose": "Verify the data the exception detail screen renders actually carries a concrete next action AND the role/owner accountable for it.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "AC1 has two halves (next action + who owns it); a screen that names one without the other leaves an unowned obligation.",
+      "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+      "product_principle_reference": "accountable_owner",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "review-payload-tests",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "passed"
+      ],
+      "forbidden_observations": [
+        "FAILURES",
+        "ERRORS"
+      ],
+      "cleanup": [],
+      "isolation_note": "Hermetic pytest run in temp dirs; no shared state mutated.",
+      "isolation_key": "canonical-pytest",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T04:23:15+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The screen shows a next action with no named owner, or an owner with no action, so no human is accountable for closing the exception.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "0a53b43a-a06b-4070-bcec-b5961939880f",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-U-UI-11-03",
+      "title": "Packet detail page renders the evidence the exception was raised from",
+      "purpose": "Verify the rendered exception detail page includes the evidence links / source documents the exception was raised from.",
+      "risk_category": "missing_data",
+      "priority": "P2",
+      "rationale": "AC2 requires the operator to see the evidence behind the exception; packet_page.py builds evidence links from the payload and can silently drop them for unlinked or missing-doc cases.",
+      "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+      "product_principle_reference": "evidence_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "packet-page-tests",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_packet_page.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "passed"
+      ],
+      "forbidden_observations": [
+        "FAILURES",
+        "ERRORS"
+      ],
+      "cleanup": [],
+      "isolation_note": "Hermetic pytest run in temp dirs; no shared state mutated.",
+      "isolation_key": "canonical-pytest",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T04:23:15+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The exception detail page omits (or leaves unlinked) the evidence the exception was raised from, so the operator cannot see why it exists.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "0a53b43a-a06b-4070-bcec-b5961939880f",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-U-UI-11-04",
+      "title": "A stale action is refused, not applied, after the backend state moves",
+      "purpose": "Verify that an action generated from the exception detail screen cannot apply once the run's state has transitioned, and the payload is only built for the state the backend actually holds.",
+      "risk_category": "stale_state",
+      "priority": "P0",
+      "rationale": "AC3 is load-bearing (weight 3): the payload snapshots state while the page reads live state, so the highest risk is the screen surfacing/acting on a state the backend already left.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "operational_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "callback-and-review-state-tests",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_action_callback.py eval/tests/test_review.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "passed"
+      ],
+      "forbidden_observations": [
+        "FAILURES",
+        "ERRORS"
+      ],
+      "cleanup": [],
+      "isolation_note": "Hermetic pytest run in per-test temp DBs; does not touch data/active_workspace. No cleanup needed.",
+      "isolation_key": "canonical-pytest",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T04:23:15+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "After a run leaves NEEDS_REVIEW, the screen still offers its old next-action and a signed callback applies it, mutating a run whose state no longer permits it.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "0a53b43a-a06b-4070-bcec-b5961939880f",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-U-UI-11-05",
+      "title": "Status/receipt reality guards hold \u2014 displayed state matches backend truth",
+      "purpose": "Exercise the existing status-vs-reality guards, the closest runtime check that a displayed state is one the backend currently holds.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P1",
+      "rationale": "AC3 forbids showing a state the backend does not hold; the status-reality and build-status-receipt-consistency guards are the standing invariants that catch surfaced state diverging from persisted truth.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "known_vs_inferred",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "status-reality-guards",
+          "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_status_reality.py eval/tests/test_build_status_receipt_consistency.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "passed"
+      ],
+      "forbidden_observations": [
+        "FAILURES",
+        "ERRORS"
+      ],
+      "cleanup": [],
+      "isolation_note": "Hermetic pytest run in temp dirs; no shared state mutated.",
+      "isolation_key": "canonical-pytest",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T04:23:15+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A rendered/reported state is derived from a stale snapshot or receipt rather than the backend's current state, so the operator trusts a state that no longer exists.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "0a53b43a-a06b-4070-bcec-b5961939880f",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 4,
+    "by_risk_category": {
+      "missing_data": 2,
+      "stale_state": 1,
+      "ui_backend_disagreement": 1
+    },
+    "by_priority": {
+      "P1": 2,
+      "P2": 1,
+      "P0": 1
+    },
+    "uncovered_risks": [
+      "The UI change regresses existing rendering/state-machine behavior across the packet site, operator console, or callback path."
+    ]
+  },
+  "assumptions": [],
+  "unresolved_questions": [
+    "No browser and no live HTTP route in the approved surface reaches the rendered exception detail screen (the callback service at 127.0.0.1:8001 serves signed actions, not the packet/detail page, which is a statically generated file). Runtime verification of the exact DOM the operator sees is therefore not possible with the approved commands \u2014 coverage here is via unit/integration tests and backend-truth guards, not the live rendered page. A live-render or browser harness would be needed to verify the actual screen text.",
+    "No code symbol literally named 'exception detail screen' exists; I mapped it to the packet detail page (packet_page.py) built from ReviewPayload (review.py), rendering state, reasons, evidence_links, action_options and routing/operator_role. If U-UI-11 targets a different UI surface, requirement_references and the cited tests must be revised.",
+    "The three acceptance criteria are PENDING and I could not confirm the suite contains assertions that specifically bind the exception detail screen to (a) a named owner for the next action, (b) the raised-from evidence, or (c) live-vs-snapshot state equality. A green run of the pre-existing test_review.py / test_packet_page.py proves no regression but does not by itself prove the new AC behavior; if the builder added those assertions they live in these files and are exercised by scenarios 02\u201304. A dedicated stale-state test (build payload at state NEEDS_REVIEW, transition the run, assert the rendered page shows the new state and offers no stale action) appears to be the key missing guard for AC3.",
+    "review.py defaults operator_role to 'owner/operator' and evidence_base_url to localhost:8000 \u2014 I could not confirm whether the exception detail screen names a real accountable owner per exception or a static default role; if it is a static default, AC1's 'who owns it' may be satisfied only nominally."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T04:17:45+00:00",
+      "basis": {
+        "task": "Improve the exception detail screen so operators can understand the next action.",
+        "task_hash": "ecfcc59ed1f920c7",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 5,
+      "accepted_ids": [
+        "S-U-UI-11-02",
+        "S-U-UI-11-03",
+        "S-U-UI-11-04",
+        "S-U-UI-11-05"
+      ],
+      "rejected": [
+        {
+          "id": "S-U-UI-11-01",
+          "title": "Full canonical suite stays green after the exception-detail change",
+          "reasons": [
+            "a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope"
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

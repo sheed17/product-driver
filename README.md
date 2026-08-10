@@ -322,9 +322,12 @@ stops generation, the run says so rather than looking complete.
 
 A run executes a **ScenarioSuite**: the permanent scenarios plus the generated
 ones. Execution is sequential — scenarios share services, ports, databases and a
-workspace, and `max_parallel` above 1 is refused until isolation can be proven
-rather than assumed. The suite still computes its isolation partition, so safe
-parallelism can be added later without a redesign.
+workspace. Sequential is a property of `SuiteExecutor`, not a setting:
+`SuiteExecutor.MAX_PARALLEL` is 1, the constructor *refuses* any other value
+rather than storing one it will not act on, and the config validator refuses it
+one layer earlier. The suite still computes its isolation partition, so safe
+parallelism can be added later without a redesign — but nothing anywhere reports
+a concurrency the executor does not implement.
 
 Failures that share signals *and* a risk family are clustered, so twenty-five
 symptoms of one non-durable transition produce one grounded correction instead of

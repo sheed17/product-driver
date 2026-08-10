@@ -1,0 +1,335 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "severity": "P0",
+        "risk_category": "success_without_verification",
+        "description": "On the deployed callback service the governed execution kernel is not wired (run_action_callback_server._build_governed_write_route returns kernel_factory=None) and the effect boundary ships dark, so even a perfectly valid, authorized tap is refused with ROUTE_NOT_CONFIGURED and no payment can occur. AC 'an approved invoice is paid exactly once' therefore cannot be positively demonstrated through the running product \u2014 its success half is verifiable only at module/integration level, not by driving the service.",
+        "basis": "run_action_callback_server.py _build_governed_write_route: 'kernel_factory = None ... The governed handler fails closed.' and freight_operations/effect_boundary darkness."
+      },
+      {
+        "id": "R2",
+        "severity": "P1",
+        "risk_category": "authorization",
+        "description": "Every governed tap passes through verify_slack_signature BEFORE any approval/authorization/binding/single-use/tenant logic. Without the Slack signing secret (which I may not use) no authorized approval, no operator-authority refusal, no payload/tenant binding, and no single-use replay path can be reached from the product boundary. ACs 'operator without approval authority is refused' and 'no payment without recorded approval' are only reachable at the signature-refused layer over HTTP.",
+        "basis": "action_callback._maybe_handle_governed_write_approval verifies slack signature first and 401s; _handle_slack tries the governed route before anything else."
+      },
+      {
+        "id": "R3",
+        "severity": "P1",
+        "risk_category": "cross_tenant",
+        "description": "The callback service is single-tenant (CallbackAppConfig.tenant is one required value); cross-tenant visibility/approvability is enforced only inside WorkflowStore (WHERE tenant=?). The AC 'an invoice belonging to another tenant is never visible or approvable' cannot be exercised against a single running server instance; it needs two tenant-bound stores at module/integration level.",
+        "basis": "action_callback.CallbackAppConfig.tenant; workflow.security_events() 'SELECT * FROM security_events WHERE tenant = ?'."
+      },
+      {
+        "id": "R4",
+        "severity": "P1",
+        "risk_category": "restart_recovery",
+        "description": "The checkpoint kernel handle key is per-kernel and in-memory; a restart deliberately drops unclaimed grants (fail-closed). A recorded decision (security_events) is durable, but an in-flight grant minted-but-unclaimed does not survive. 'approval survives a restart' can be shown only for the durable decision record, not for an in-flight write, and the in-flight-restart timing cannot be exercised while the route is dark.",
+        "basis": "run_action_callback_server _build_governed_write_route: 'The handle key is per-kernel and in memory: a restart loses it, unclaimed grants expire, nothing happened.'"
+      },
+      {
+        "id": "R5",
+        "severity": "P2",
+        "risk_category": "stale_state",
+        "description": "All persisted-state oracles assume the running callback service uses workspace data/active_workspace/driver_probe with db workflow.sqlite3 (the only approved sqlite3 handle). If the service was launched with a different --db/--workspace, or the DB schema is not yet initialized, the oracles read the wrong or a nonexistent DB and pass/fail spuriously.",
+        "basis": "run_action_callback_server db_path default = workspace/workflow.sqlite3; approved command targets data/active_workspace/driver_probe/workflow.sqlite3; that file was not present in the repo tree at design time."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1",
+        "title": "Forged/unsigned governed tap performs no payment and queues no write intent",
+        "purpose": "Prove an unauthenticated caller cannot cause a governed carrier-invoice effect: a Slack /slack/actions POST carrying a governed-approval-shaped token but no valid HMAC signature must be refused before any governed handling, leaving zero payment effect and zero queued write intent in the durable store.",
+        "risk_category": "safety_invariant",
+        "priority": "P0",
+        "rationale": "The whole feature's safety hinge is that only an authenticated, recorded approval can advance the pipeline; a forged tap is the single most likely real-world attack and must land nothing.",
+        "generating_risk": "An unsigned or forged Slack tap could slip past the signature wall and queue or complete a governed write, paying a carrier with no recorded human approval.",
+        "requirement_reference": "no payment effect occurs without a recorded approval",
+        "product_principle_reference": "outcome_verification",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "The tap is rejected at the Slack signature boundary before any governed handling, so it creates no governed-write state; at most a rejected-signature audit row is appended, which does not change the governed-effect counts the oracle reads.",
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtYXBwci0xIn0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          }
+        ],
+        "forbidden_observations": [
+          "Recorded. The approved write is governed",
+          "Neyma action applied",
+          "GovernedWriteCompleted",
+          "VERIFIED"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no governed write completed",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "no governed write escalated",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteEscalated'\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "no write intent queued",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S2",
+        "title": "Two simultaneous forged governed taps do not race into a double effect",
+        "purpose": "Issue two identical forged governed taps at the same instant and confirm the persisted store still shows zero completed governed writes and zero queued intents \u2014 no race turns two refusals into one (or two) effects.",
+        "risk_category": "concurrency",
+        "priority": "P0",
+        "rationale": "'Paid exactly once' is a concurrency property; the classic failure is two near-simultaneous approvals both landing, so the race must be exercised, not assumed.",
+        "generating_risk": "Two concurrent taps for the same invoice could both slip through and pay a carrier twice, or one could land despite being unauthenticated.",
+        "requirement_reference": "an approved invoice is paid exactly once",
+        "product_principle_reference": "outcome_verification",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Both taps are refused at the signature boundary and create no governed-write state; only rejected-signature audit rows may be appended, which do not affect the asserted governed-effect counts.",
+        "actions": [
+          {
+            "kind": "parallel_requests",
+            "requests": [
+              {
+                "method": "POST",
+                "path": "/slack/actions",
+                "json_body": {
+                  "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+                },
+                "timeout_s": 5
+              },
+              {
+                "method": "POST",
+                "path": "/slack/actions",
+                "json_body": {
+                  "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+                },
+                "timeout_s": 5
+              }
+            ]
+          }
+        ],
+        "forbidden_observations": [
+          "Recorded. The approved write is governed",
+          "Neyma action applied",
+          "GovernedWriteCompleted",
+          "VERIFIED"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no governed write completed after race",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "no write intent queued after race",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S3",
+        "title": "Replayed forged governed tap never accumulates an effect",
+        "purpose": "Replay the same forged governed tap five times in sequence and confirm the governed-effect counts stay exactly zero \u2014 repeated delivery of an unauthenticated approval accumulates nothing.",
+        "risk_category": "repeated_request",
+        "priority": "P1",
+        "rationale": "Slack retries and manual re-clicks make repeated delivery routine; the store must not drift toward an effect under repetition.",
+        "generating_risk": "Repeated delivery of the same tap could, on some Nth attempt, be mishandled into a queued intent or a completed write.",
+        "requirement_reference": "no payment effect occurs without a recorded approval",
+        "product_principle_reference": "outcome_verification",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Every replay is refused at the signature boundary; no governed-write state is created, only harmless rejected-signature audit rows.",
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          }
+        ],
+        "forbidden_observations": [
+          "Recorded. The approved write is governed",
+          "Neyma action applied",
+          "GovernedWriteCompleted",
+          "VERIFIED"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no governed write completed after replays",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "no write intent queued after replays",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S4",
+        "title": "Restart of the callback service fabricates no governed effect and leaves the audit store intact",
+        "purpose": "Restart the callback service, then send one forged governed tap, and confirm: the security_events store is still queryable (durable), zero governed writes were completed (restart did not fabricate an effect or auto-resume anything), and the service is still fail-closed after restart.",
+        "risk_category": "restart_recovery",
+        "priority": "P1",
+        "rationale": "A restart is where in-memory grant handles are deliberately dropped; the durable decision store must survive and the process must not resurrect or invent an effect on the way back up.",
+        "generating_risk": "A restart could replay a durable queue into an executed write, or drop the audit store, so a governed effect appears (or an approval record vanishes) with no human in the loop.",
+        "requirement_reference": "approval survives a restart",
+        "product_principle_reference": "failure_recovery",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "Only the callback service is restarted and one signature-refused tap is sent; no governed-write state is created, so the run leaves the DB in the same governed-effect state it found it.",
+        "actions": [
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1000
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/slack/actions",
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVzdGFydCJ9.deadbeef\"}]}"
+              },
+              "timeout_s": 5
+            }
+          }
+        ],
+        "forbidden_observations": [
+          "Recorded. The approved write is governed",
+          "Neyma action applied",
+          "GovernedWriteCompleted",
+          "VERIFIED"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "security_events store durable and readable after restart",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)>=0 FROM security_events\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "restart fabricated no completed governed write",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+            "contains": [
+              "1"
+            ]
+          },
+          {
+            "name": "restart auto-resumed no queued intent",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      }
+    ],
+    "unresolved_questions": [
+      "Success-half unverifiable through the product: on the deployed callback service _build_governed_write_route returns kernel_factory=None, so a valid governed tap is refused with ROUTE_NOT_CONFIGURED and the effect boundary is dark. How should AC 'an approved invoice is paid exactly once' be verified for U-042 \u2014 is module/integration-level proof (test_p4_governed_write_route / effect_boundary) the intended oracle, and should the running-product acceptance for U-042 be explicitly scoped to the fail-closed envelope until P12 wires the kernel?",
+      "No product-boundary path to an authorized approval: verify_governed_approval sits behind the Slack HMAC wall and I am forbidden from using the signing secret, so authorization refusal ('operator without approval authority is refused'), payload/tenant/revision binding, and single-use replay cannot be driven over HTTP. Is there an approved, secret-free way to mint a signed governed tap against the loopback server, or must these ACs be verified only at unit level?",
+      "Cross-tenant AC needs two tenants: the callback service binds exactly one tenant (CallbackAppConfig.tenant). 'An invoice belonging to another tenant is never visible or approvable' cannot be exercised against one running instance. Is a second tenant-bound service instance/DB available, or is this AC intended to be proven only via WorkflowStore-level tests (e.g. test_u26bc_tenant_scope)?",
+      "DB/oracle binding: the only approved sqlite3 handle is data/active_workspace/driver_probe/workflow.sqlite3, but that file was not present at design time and I could not confirm the running callback service on :8001 uses that exact --db/--workspace and has its canonical schema initialized. Can this be confirmed, so the persisted-state oracles read the service's real store?",
+      "'Approval survives a restart' scope: the kernel handle is in-memory and unclaimed grants are dropped on restart by design. Is the AC satisfied by durability of the recorded decision (security_events) plus expiry of in-flight grants (fail-closed), or does it require demonstrating that a recorded-but-unconsumed approval is re-consumable after restart \u2014 which is not reachable while the route is dark?"
+    ]
+  },
+  null
+]

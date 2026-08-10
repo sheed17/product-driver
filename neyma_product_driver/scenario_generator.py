@@ -250,6 +250,28 @@ def run_coroutine_blocking(coro: Any, *, timeout_s: float) -> Any:
     return outcome.get("value")
 
 
+class GenerationSessionError(RuntimeError):
+    """The generator session ended without answering, and this is why.
+
+    Raised rather than returned so the planner records a *failed* wave — which
+    the acceptance gate refuses to accept on — instead of an empty one, which
+    reads as "there was nothing to add".
+    """
+
+
+def _describe_session_error(subtype: str, max_turns: int) -> str:
+    """Turn an SDK result subtype into something an operator can act on."""
+    if subtype == "error_max_turns":
+        return (
+            f"the generator used all {max_turns} of its turns exploring the repository "
+            "and never produced a scenario plan. Raise scenario_generation.generator_max_turns "
+            "if this task genuinely needs more exploration; nothing was generated for it."
+        )
+    if subtype == "error_during_execution":
+        return "the generator session failed during execution and produced no plan"
+    return f"the generator session ended in error ({subtype or 'no subtype reported'})"
+
+
 class ScenarioReasoner(Protocol):
     """Proposes situations worth exercising. The source of judgement.
 
@@ -311,8 +333,54 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "unless an approved command genuinely needs to run first.",
                     },
                     "service_refs": {"type": "array", "items": {"type": "string"}},
-                    "actions": {"type": "array", "items": {"type": "object"}},
-                    "persisted_state_checks": {"type": "array", "items": {"type": "object"}},
+                    "actions": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "The ordered operations to perform. Every entry "
+                        "needs a `kind`, and the shape for each kind is given in the "
+                        "system instructions. An entry whose kind is not one of those, "
+                        "or whose payload is missing, is discarded.",
+                    },
+                    "persisted_state_checks": {
+                        "type": "array",
+                        "description": "Read-only probes of PERSISTED state, run after "
+                        "the actions. This is the oracle for any claim that an effect "
+                        "durably happened, and the EFFECT_FAMILY rule in the system "
+                        "instructions requires at least one. Each entry is an object; "
+                        "`command` is REQUIRED and must be one of the approved commands "
+                        "(extra arguments are fine). There is no `description` or "
+                        "`expect` field, and an entry carrying one is discarded whole.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "A label for the probe, for evidence.",
+                                },
+                                "command": {
+                                    "type": "string",
+                                    "description": "REQUIRED. An approved command that "
+                                    "reads persisted state, e.g. "
+                                    "'sqlite3 data/app.sqlite3 \"SELECT count(*) FROM "
+                                    "payments WHERE invoice=1\"'.",
+                                },
+                                "contains": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "LITERAL substrings that must appear "
+                                    "in the probe's output.",
+                                },
+                                "not_contains": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "LITERAL substrings that must not "
+                                    "appear in the probe's output.",
+                                },
+                                "timeout_s": {"type": "integer"},
+                            },
+                            "required": ["command"],
+                        },
+                    },
                     "expected_observations": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -408,6 +476,15 @@ risk: what did the diff actually touch, what does this feature promise, what
 would a careful engineer be worried about at 3am. A handful of load-bearing
 situations beats twenty shallow ones.
 
+EXERCISE THE PRODUCT YOURSELF. A scenario puts the product into a situation and
+observes what it does. Running somebody else's existing test suite is not that:
+"run pytest and check it says passed" tells you the suite is green, which was
+already known, and tells you nothing about the situation you were asked to
+think about. If an approved command happens to be a test runner, that does not
+make invoking it a scenario. Drive the product — issue the requests, repeat the
+call, race two calls, restart the service, then read the persisted state and say
+what it must show.
+
 Categories available: happy_path, boundary, missing_data, malformed_input,
 conflicting_evidence, idempotency, repeated_request, concurrency, authorization,
 approval_required, cross_tenant, partial_failure, service_unavailable,
@@ -450,10 +527,22 @@ HARD CONSTRAINTS — a scenario violating any of these is discarded by the harne
   - Every scenario needs an observable outcome. If nothing it does could pass or
     fail, it is worthless.
   - An HTTP 200 is NOT evidence that an effect happened. Any scenario about
-    idempotency, retries, timeouts-after-effect, ambiguous outcomes, partial
-    failure, persistence, restart or crash MUST inspect persisted state via a
-    `state_check` or `persisted_state_checks`. A local write is not evidence of
-    an external effect either.
+    idempotency, repeated requests, retries, timeouts-after-effect, ambiguous
+    outcomes, partial failure, persistence, stale state, restart, crash or an
+    unexpected state transition MUST inspect persisted state via a `state_check`
+    action or a `persisted_state_checks` entry. A local write is not evidence of
+    an external effect either. A passing test suite is not such an oracle: it
+    reports on tests, not on the state your actions just produced. Concretely:
+
+        "persisted_state_checks": [
+          {"name": "exactly one payment",
+           "command": "sqlite3 data/app.sqlite3 \\"SELECT count(*) FROM payments\\"",
+           "contains": ["1"], "not_contains": ["2"]}
+        ]
+
+    `command` is required and must come from the approved list. Do not write a
+    `description` or `expect` field here — those do not exist, and an entry
+    carrying one is discarded, taking the whole scenario's only oracle with it.
   - A scenario that mutates local state must declare `cleanup` commands or an
     `isolation_note` explaining why it cannot contaminate the next scenario.
   - Do not duplicate a situation already covered. Adding a different label to the
@@ -639,10 +728,27 @@ class LLMScenarioReasoner:
     with a scripted reasoner so that no test consumes Claude usage.
     """
 
-    def __init__(self, repo: Path, model: str = "opus", timeout_s: int = 600) -> None:
+    #: Turns the generator may spend before it must answer. It reads the
+    #: repository to ground its proposals, and against a real product that is
+    #: tens of Read/Grep calls before it writes anything at all. The previous
+    #: value of 16 was measured cutting a session off mid-exploration: the
+    #: session ended `error_max_turns` having emitted no structured output, and
+    #: the wave was recorded as having produced nothing. A budget that stops the
+    #: work before it starts is not a budget, it is a silent failure. The
+    #: wall-clock timeout still bounds the session.
+    DEFAULT_MAX_TURNS = 40
+
+    def __init__(
+        self,
+        repo: Path,
+        model: str = "opus",
+        timeout_s: int = 600,
+        max_turns: int = DEFAULT_MAX_TURNS,
+    ) -> None:
         self.repo = Path(repo)
         self.model = model
         self.timeout_s = timeout_s
+        self.max_turns = max(1, int(max_turns))
         self.session_id: str | None = None
 
     def propose(self, brief: GenerationBrief) -> dict[str, Any] | None:
@@ -680,7 +786,7 @@ class LLMScenarioReasoner:
             system_prompt=GENERATOR_SYSTEM,
             allowed_tools=["Read", "Grep", "Glob"],
             disallowed_tools=["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "Task"],
-            max_turns=16,
+            max_turns=self.max_turns,
             output_format={"type": "json_schema", "schema": PLAN_SCHEMA},
             resume=None,
             continue_conversation=False,
@@ -705,7 +811,18 @@ class LLMScenarioReasoner:
                     if message.structured_output is not None:
                         structured = message.structured_output
                     if message.is_error:
-                        return None
+                        # Say *why*. "The generator produced nothing" is what the
+                        # planner recorded for a session cut off at its turn
+                        # limit, a refusal, and a transport failure alike — three
+                        # different facts with three different responses, and a
+                        # reader could not tell which had happened. The planner
+                        # records this text against the wave and the gate refuses
+                        # to accept a run that has one.
+                        raise GenerationSessionError(
+                            _describe_session_error(
+                                getattr(message, "subtype", ""), self.max_turns
+                            )
+                        )
                     if not chunks and message.result:
                         chunks.append(message.result)
         finally:

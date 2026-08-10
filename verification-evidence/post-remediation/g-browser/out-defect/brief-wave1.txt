@@ -1,0 +1,41 @@
+GENERATION STAGE: initial (wave 1)
+You may propose AT MOST 6 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Add an exception detail screen an operator can act on: it must state the status, why the exception was raised, who owns it, and the next action.
+
+ACTIVE READY UNIT: UNIT-EXCEPTION-UI
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - AC-UI-001 the exception detail screen names the next action and who owns it
+  - AC-UI-002 the screen never shows a status the durable store does not hold
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - founder context
+  - product rubric
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - python3 fixture/state.py
+
+`setup` and `cleanup` are ALSO command lists, held to the same rule. They are executed, not read. A precondition written as prose — "ensure the api service is running", "two tenants exist" — is not a command, and it causes the entire scenario to be refused. Express preconditions by choosing an approved command, or leave setup and cleanup empty and state the assumption in `purpose`.
+
+`expected_observations` and `forbidden_observations` are matched as LITERAL substrings against everything the run observed — command output, response bodies, visible browser text. They are not descriptions and nothing interprets them. Write the exact text the product emits:
+
+    good : "payments=1"          (the probe prints exactly this)
+    bad  : "the ledger shows one payment"   (never appears; fails against a
+                                              correct product)
+
+If you cannot name the exact text a correct product would emit, assert the property with a `persisted_state_check` and leave the observation lists empty. A scenario that fails because its expectation was phrased as prose has told you nothing about the product.
+
+Quoting is understood: an argument may contain >, <, |, ( or ) inside quotes, so a SQL oracle such as
+    sqlite3 data/app.sqlite3 "SELECT key FROM grants GROUP BY key HAVING count(*) > 1"
+is accepted. What is refused is composition *outside* quotes — a second command after ;, &&, a pipe, a redirect, or $( ).
+
+SERVICES you may reference / restart / stop / start: ui
+LOCAL APP URL for relative request paths: http://127.0.0.1:64563
+BROWSER available: yes
+
+Return the JSON object now.

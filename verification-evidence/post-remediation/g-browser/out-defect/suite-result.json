@@ -1,0 +1,96 @@
+{
+  "started_at": "2026-08-10T04:38:07+00:00",
+  "duration_s": 4.107894457996736,
+  "full_run": true,
+  "selection_reason": "browser e2e proof",
+  "expected_required_ids": [
+    "permanent:exception-detail-smoke",
+    "gen-browser-next-action",
+    "gen-browser-screen-matches-store"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "permanent:exception-detail-smoke",
+      "scenario_name": "permanent:exception-detail-smoke",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 3,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/defect/artifacts/scenarios/permanent-exception-detail-smoke",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "gen-browser-next-action",
+      "scenario_name": "generated:gen-browser-next-action",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "ui_backend_disagreement",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 5,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/defect/artifacts/scenarios/gen-browser-next-action",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "the screen may omit the owner or the next action",
+      "requirement_reference": "AC-UI-001"
+    },
+    {
+      "scenario_id": "gen-browser-screen-matches-store",
+      "scenario_name": "generated:gen-browser-screen-matches-store",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "stale_state",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: step-1-browser: browser step 6: expect_text 'status: resolved' \u2014 not present in the page text at that point"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/defect/artifacts/scenarios/gen-browser-screen-matches-store",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "the page may keep serving a status the store has moved past",
+      "requirement_reference": "AC-UI-002"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "gen-browser-screen-matches-store"
+      ],
+      "shared_observations": [
+        "expect_visible: step-<n>-browser: browser step <n>: expect_text 'status: resolved' \u2014 not present in the page text at that point"
+      ],
+      "likely_failure_domain": "generated:gen-browser-screen-matches-store: expect_visible: step-1-browser: browser step 6: expect_text 'status: resolved' \u2014 not present in the page text at that point",
+      "evidence_paths": [
+        "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/defect/artifacts/scenarios/gen-browser-screen-matches-store"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "stale_state"
+      ],
+      "singleton": true
+    }
+  ]
+}

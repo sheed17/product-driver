@@ -1,0 +1,43 @@
+GENERATED SCENARIO PLAN — run post-A
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+4 generated case(s)
+risk categories exercised: missing_data, stale_state, ui_backend_disagreement
+identified but NOT exercised: The UI change regresses existing rendering/state-machine behavior across the packet site, operator console, or callback path.
+
+IDENTIFIED RISKS:
+  [P0 stale_state] The exception detail screen is built from a ReviewPayload that snapshots WorkflowState at build time, while the packet page re-reads live state via store.get_run. If these paths ever diverge (payload rendered, then the run transitions APPROVED/DISPUTED/DONE), the operator can see a state the backend no longer holds and act on a stale next-action.  (covered by S-U-UI-11-04)
+  [P0 ui_backend_disagreement] A signed action generated from a stale screen must not apply after the run's state has moved; otherwise the screen effectively drove an action against a state the backend does not hold.  (covered by S-U-UI-11-05)
+  [P1 missing_data] The screen may name a next action without naming who owns it, or vice versa, leaving an unowned obligation.  (covered by S-U-UI-11-02, S-U-UI-11-03)
+  [P2 missing_data] Evidence the exception was raised from may be omitted or unlinked, so the operator cannot see why the exception exists.  (covered by S-U-UI-11-02, S-U-UI-11-03)
+  [P1 regression] The UI change regresses existing rendering/state-machine behavior across the packet site, operator console, or callback path.  (NOT covered)
+
+SCENARIOS:
+  [P1 missing_data] S-U-UI-11-02: Review payload names the next action and its owner
+      purpose: Verify the data the exception detail screen renders actually carries a concrete next action AND the role/owner accountable for it.
+      grounded in: U-UI-11: the exception detail screen names the next action and who owns it
+      because: The screen shows a next action with no named owner, or an owner with no action, so no human is accountable for closing the exception.
+  [P2 missing_data] S-U-UI-11-03: Packet detail page renders the evidence the exception was raised from
+      purpose: Verify the rendered exception detail page includes the evidence links / source documents the exception was raised from.
+      grounded in: U-UI-11: the screen shows the evidence the exception was raised from
+      because: The exception detail page omits (or leaves unlinked) the evidence the exception was raised from, so the operator cannot see why it exists.
+  [P0 stale_state] S-U-UI-11-04: A stale action is refused, not applied, after the backend state moves
+      purpose: Verify that an action generated from the exception detail screen cannot apply once the run's state has transitioned, and the payload is only built for the state the backend actually holds.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: After a run leaves NEEDS_REVIEW, the screen still offers its old next-action and a signed callback applies it, mutating a run whose state no longer permits it.
+  [P1 ui_backend_disagreement] S-U-UI-11-05: Status/receipt reality guards hold — displayed state matches backend truth
+      purpose: Exercise the existing status-vs-reality guards, the closest runtime check that a displayed state is one the backend currently holds.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A rendered/reported state is derived from a stale snapshot or receipt rather than the backend's current state, so the operator trusts a state that no longer exists.
+
+UNRESOLVED QUESTIONS:
+  - No browser and no live HTTP route in the approved surface reaches the rendered exception detail screen (the callback service at 127.0.0.1:8001 serves signed actions, not the packet/detail page, which is a statically generated file). Runtime verification of the exact DOM the operator sees is therefore not possible with the approved commands — coverage here is via unit/integration tests and backend-truth guards, not the live rendered page. A live-render or browser harness would be needed to verify the actual screen text.
+  - No code symbol literally named 'exception detail screen' exists; I mapped it to the packet detail page (packet_page.py) built from ReviewPayload (review.py), rendering state, reasons, evidence_links, action_options and routing/operator_role. If U-UI-11 targets a different UI surface, requirement_references and the cited tests must be revised.
+  - The three acceptance criteria are PENDING and I could not confirm the suite contains assertions that specifically bind the exception detail screen to (a) a named owner for the next action, (b) the raised-from evidence, or (c) live-vs-snapshot state equality. A green run of the pre-existing test_review.py / test_packet_page.py proves no regression but does not by itself prove the new AC behavior; if the builder added those assertions they live in these files and are exercised by scenarios 02–04. A dedicated stale-state test (build payload at state NEEDS_REVIEW, transition the run, assert the rendered page shows the new state and offers no stale action) appears to be the key missing guard for AC3.
+  - review.py defaults operator_role to 'owner/operator' and evidence_base_url to localhost:8000 — I could not confirm whether the exception detail screen names a real accountable owner per exception or a static default role; if it is a static default, AC1's 'who owns it' may be satisfied only nominally.
+
+REJECTED PROPOSALS:
+  S-U-UI-11-01: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

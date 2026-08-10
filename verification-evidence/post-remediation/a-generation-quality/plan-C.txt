@@ -1,0 +1,53 @@
+GENERATED SCENARIO PLAN — run post-C
+task: Add a read-only search/filter view over shipments. It performs no writes.
+active unit: U-RO-3
+
+5 generated case(s)
+risk categories exercised: happy_path, idempotency, malformed_input, missing_data, safety_invariant
+identified but NOT exercised: Adding the view regresses existing write-fence / tenant-first invariants that the canonical suite guards.; The view leaks another tenant's shipments, since every canonical table is tenant-first but the AC set is silent on scoping for this new read surface.
+
+IDENTIFIED RISKS:
+  [P0 safety_invariant] A view billed as read-only silently performs a write (creates an effect grant, a claim row, or POSTs to the TMS) — the single most consequential failure for a write-fencing freight teammate.  (covered by S1)
+  [P1 malformed_input] Malformed or hostile search input (SQL metacharacters, over-long strings) crashes the endpoint (500) or, worse, injects into the read query and mutates state.  (covered by S4)
+  [P1 regression] Adding the view regresses existing write-fence / tenant-first invariants that the canonical suite guards.  (NOT covered)
+  [P1 cross_tenant] The view leaks another tenant's shipments, since every canonical table is tenant-first but the AC set is silent on scoping for this new read surface.  (NOT covered)
+
+SCENARIOS:
+  [P0 safety_invariant] S1: No write of any kind after a reference search
+      purpose: Prove the read-only view records no effect and claims no action after being exercised.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: A view claimed read-only silently creates an effect grant or claim row.
+  [P1 happy_path] S2: Search by an existing reference returns that shipment
+      purpose: Confirm a reference search surfaces the matching shipment and echoes its reference.
+      grounded in: U-RO-3: a search by reference returns the matching shipment
+      because: Search returns nothing or the wrong record for a reference that exists.
+  [P1 missing_data] S3: Empty-result search says so rather than showing nothing
+      purpose: Confirm a no-match search returns an explicit non-error response, not a blank/crash.
+      grounded in: U-RO-3: a filter with no matches says so rather than showing nothing
+      because: A no-match search renders blank or 500s, leaving the operator unsure if the record is missing or the view broke.
+  [P1 malformed_input] S4: Malformed search input does not crash or write
+      purpose: Confirm special-character input is handled as a query, not a 500 and not a mutation.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: SQL metacharacters or over-long input crash the endpoint or reach the query layer and mutate state.
+  [P2 idempotency] S5: Repeating the same search accumulates no state
+      purpose: Confirm re-running an identical read is naturally idempotent and writes nothing.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Each search invocation quietly appends a claim/telemetry write, so repeated reads grow state.
+
+ASSUMPTIONS:
+  - The read-only shipment view is served by the loopback app at http://127.0.0.1:8001 as an HTTP GET surface (the prompt provisions a loopback app URL specifically for request paths); its exact route is assumed to be /shipments with a `reference` query parameter.
+  - The app on 8001 is backed by data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite3 target), and that DB has the canonical schema created at startup so effect_grants / operation_action_claims / delivery_action_claims exist and start empty for the run.
+  - Shipment/load reference '560003' is seeded and resolvable (it recurs as a load/search reference across eval/tests/test_operator_agent.py); 'ZZ-NO-SUCH-REF-9999' resolves to nothing.
+  - 'No write of any kind' is verified as zero rows in the canonical write-commitment tables (effect_grants and the action-claim tables); read-only telemetry, if any, is not treated as a business write.
+
+UNRESOLVED QUESTIONS:
+  - What is the actual surface and route of the read-only view (HTTP path + param names, CLI, or Slack read)? I could not locate an implementation of U-RO-3 in src/; every request-based scenario assumes GET /shipments?reference= and will spuriously fail if the real contract differs.
+  - What exact text does the view emit for a no-match search? AC2 requires it to 'say so', but I could not find the copy string, so S3 can only assert 200-with-no-error, not the presence of the specific 'no shipments matched' message. Provide the literal string to strengthen the oracle.
+  - What are the real seeded shipment references and their fields in the run's dataset? Without them the happy-path echo assertion (S2) is a guess ('560003').
+  - Is the search meant to read the workflow DB, the mock TMS, or both? If shipments live in the mock TMS, a 'no write' check must also confirm no TMS mutation, which no approved command can currently inspect.
+  - Should this view be tenant-scoped? Every canonical table is tenant-first, but the U-RO-3 AC set is silent on cross-tenant read isolation — this looks like a real gap (R6) that should be an explicit acceptance criterion rather than left inferred.
+
+REJECTED PROPOSALS:
+  S6: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

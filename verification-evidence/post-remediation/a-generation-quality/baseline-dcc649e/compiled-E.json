@@ -1,0 +1,794 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Supervisor releases an operation in their own tenant\n\nrisk: happy_path (priority P0)\npurpose: Confirm the primary authorized path: a supervisor of the owning tenant can release an operation and the release is durably recorded.\nrequirement: U-AUTHZ-2: a supervisor can release an operation\nproduct principle: outcome_verification\nrationale: The whole feature is worthless if the legitimate actor is blocked; this establishes the positive control against which every refusal is measured.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: The new gate over-restricts and refuses even a valid supervisor, or reports success without persisting the release.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a1/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "supervisor",
+            "tenant": "A",
+            "actor": "sup-a"
+          },
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a1'\"",
+          "contains": [
+            "released"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a1'\"",
+          "contains": [
+            "released"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-a1'\""
+    ],
+    "env": {}
+  },
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Non-supervisor is refused and no release occurs\n\nrisk: authorization (priority P0)\npurpose: Confirm an operator-role caller is refused AND that the operation's state is unchanged (fail closed, not just a cosmetic error).\nrequirement: U-AUTHZ-2: a non-supervisor is refused and no release occurs\nproduct principle: authority_clarity\nrationale: A 4xx alone does not prove the effect was blocked; the persisted state must show no release happened.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: The gate returns an error to the client but the release effect still lands, or the gate fails open for unknown roles.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a2/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "operator",
+            "tenant": "A",
+            "actor": "op-a"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a2'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a2'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-a2'\""
+    ],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Supervisor of tenant A cannot release tenant B's operation\n\nrisk: cross_tenant (priority P0)\npurpose: Confirm the check enforces tenant ownership, not just role: a valid supervisor for the wrong tenant is refused and tenant B's operation is unchanged.\nrequirement: U-AUTHZ-2: a supervisor of one tenant cannot release another tenant's operation\nproduct principle: tms_centrality\nrationale: A role-only gate that ignores tenant scoping is the most likely silent hole; it passes S1/S2 while still leaking across tenants.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: Authorization checks role='supervisor' but never compares the actor's tenant to the operation's tenant, allowing cross-tenant release.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-b1/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "supervisor",
+            "tenant": "A",
+            "actor": "sup-a"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-b1'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-b1'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-b1'\""
+    ],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Every refusal is written to the audit log\n\nrisk: persistence_failure (priority P1)\npurpose: Confirm that a refused release attempt produces a durable audit record naming the operation and refused actor, not just an in-memory 4xx.\nrequirement: U-AUTHZ-2: every refusal is recorded in the audit log\nproduct principle: accountable_owner\nrationale: Audit persistence is a distinct AC from the refusal itself; a refusal that leaves no trail defeats accountability.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: The refusal path returns before writing to the audit log, or logs only successes.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a2/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "operator",
+            "tenant": "A",
+            "actor": "op-audit-probe"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_log WHERE actor='op-audit-probe'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_log WHERE actor='op-audit-probe'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"DELETE FROM audit_log WHERE actor='op-audit-probe'\""
+    ],
+    "env": {}
+  },
+  "S6": {
+    "name": "generated:S6",
+    "phase": "P3",
+    "description": "Malformed role value is refused cleanly, not a 500\n\nrisk: malformed_input (priority P2)\npurpose: Confirm an unknown/garbage role produces a controlled refusal rather than an unhandled crash or a fall-through allow.\nrequirement: U-AUTHZ-2: a non-supervisor is refused and no release occurs\nproduct principle: dead_end_error\nrationale: New parsing code should reject unrecognized roles gracefully; a 500 hides whether the release effect ran.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: Unrecognized role string throws before the gate decision, or is compared loosely and matched as supervisor.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a2/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "Supervisor;DROP",
+            "tenant": "A",
+            "actor": "garbage"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a2'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT status FROM operations WHERE id='op-a2'\"",
+          "contains": [],
+          "not_contains": [
+            "released"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error"
+    ],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-a2'\""
+    ],
+    "env": {}
+  },
+  "S7": {
+    "name": "generated:S7",
+    "phase": "P3",
+    "description": "Repeated supervisor release does not double-apply\n\nrisk: repeated_request (priority P2)\npurpose: Confirm a duplicate/retried release of the same operation leaves exactly one release effect and does not error on the second call.\nrequirement: U-AUTHZ-2: a supervisor can release an operation\nproduct principle: outcome_verification\nrationale: Release is a privileged state transition; retries under network uncertainty must be safe and observably single-effect.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: The second release re-applies the effect, transitions an already-released op, or writes a conflicting audit trail.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a3/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "supervisor",
+            "tenant": "A",
+            "actor": "sup-a"
+          },
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/api/operations/op-a3/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "role": "supervisor",
+            "tenant": "A",
+            "actor": "sup-a"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operations WHERE id='op-a3' AND status='released'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operations WHERE id='op-a3' AND status='released'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-a3'\""
+    ],
+    "env": {}
+  },
+  "S8": {
+    "name": "generated:S8",
+    "phase": "P3",
+    "description": "Concurrent authorized+unauthorized release race\n\nrisk: concurrency (priority P1)\npurpose: Confirm that when a supervisor and a non-supervisor hit the same operation simultaneously, the non-supervisor is still refused and the operation is released at most once.\nrequirement: U-AUTHZ-2: a non-supervisor is refused and no release occurs\nproduct principle: authority_clarity\nrationale: The gate must hold under simultaneous requests; a check-then-act race could let the unauthorized effect slip through.\n\ngenerated at 2026-08-10T04:57:00+00:00 (stage=initial, wave 1)\nbecause of risk: A non-atomic authorize-then-release lets the operator's request land during the window, or produces two releases.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/api/operations/op-a4/release",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "role": "operator",
+              "tenant": "A",
+              "actor": "op-a"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/api/operations/op-a4/release",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "role": "supervisor",
+              "tenant": "A",
+              "actor": "sup-a"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operations WHERE id='op-a4' AND status='released'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM operations WHERE id='op-a4' AND status='released'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_log WHERE actor='op-a'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"UPDATE operations SET status='pending' WHERE id='op-a4'\"",
+      "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"DELETE FROM audit_log WHERE actor='op-a'\""
+    ],
+    "env": {}
+  }
+}

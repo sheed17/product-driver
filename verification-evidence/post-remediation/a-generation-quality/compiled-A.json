@@ -1,0 +1,190 @@
+{
+  "S-U-UI-11-02": {
+    "name": "generated:S-U-UI-11-02",
+    "phase": "P3",
+    "description": "Review payload names the next action and its owner\n\nrisk: missing_data (priority P1)\npurpose: Verify the data the exception detail screen renders actually carries a concrete next action AND the role/owner accountable for it.\nrequirement: U-UI-11: the exception detail screen names the next action and who owns it\nproduct principle: accountable_owner\nrationale: AC1 has two halves (next action + who owns it); a screen that names one without the other leaves an unowned obligation.\n\ngenerated at 2026-08-10T04:23:15+00:00 (stage=initial, wave 1)\nbecause of risk: The screen shows a next action with no named owner, or an owner with no action, so no human is accountable for closing the exception.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "review-payload-tests",
+        "command": {
+          "name": "review-payload-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "FAILURES",
+      "ERRORS"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S-U-UI-11-03": {
+    "name": "generated:S-U-UI-11-03",
+    "phase": "P3",
+    "description": "Packet detail page renders the evidence the exception was raised from\n\nrisk: missing_data (priority P2)\npurpose: Verify the rendered exception detail page includes the evidence links / source documents the exception was raised from.\nrequirement: U-UI-11: the screen shows the evidence the exception was raised from\nproduct principle: evidence_clarity\nrationale: AC2 requires the operator to see the evidence behind the exception; packet_page.py builds evidence links from the payload and can silently drop them for unlinked or missing-doc cases.\n\ngenerated at 2026-08-10T04:23:15+00:00 (stage=initial, wave 1)\nbecause of risk: The exception detail page omits (or leaves unlinked) the evidence the exception was raised from, so the operator cannot see why it exists.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "packet-page-tests",
+        "command": {
+          "name": "packet-page-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_packet_page.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "FAILURES",
+      "ERRORS"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S-U-UI-11-04": {
+    "name": "generated:S-U-UI-11-04",
+    "phase": "P3",
+    "description": "A stale action is refused, not applied, after the backend state moves\n\nrisk: stale_state (priority P0)\npurpose: Verify that an action generated from the exception detail screen cannot apply once the run's state has transitioned, and the payload is only built for the state the backend actually holds.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: AC3 is load-bearing (weight 3): the payload snapshots state while the page reads live state, so the highest risk is the screen surfacing/acting on a state the backend already left.\n\ngenerated at 2026-08-10T04:23:15+00:00 (stage=initial, wave 1)\nbecause of risk: After a run leaves NEEDS_REVIEW, the screen still offers its old next-action and a signed callback applies it, mutating a run whose state no longer permits it.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "callback-and-review-state-tests",
+        "command": {
+          "name": "callback-and-review-state-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_action_callback.py eval/tests/test_review.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "FAILURES",
+      "ERRORS"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S-U-UI-11-05": {
+    "name": "generated:S-U-UI-11-05",
+    "phase": "P3",
+    "description": "Status/receipt reality guards hold \u2014 displayed state matches backend truth\n\nrisk: ui_backend_disagreement (priority P1)\npurpose: Exercise the existing status-vs-reality guards, the closest runtime check that a displayed state is one the backend currently holds.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: known_vs_inferred\nrationale: AC3 forbids showing a state the backend does not hold; the status-reality and build-status-receipt-consistency guards are the standing invariants that catch surfaced state diverging from persisted truth.\n\ngenerated at 2026-08-10T04:23:15+00:00 (stage=initial, wave 1)\nbecause of risk: A rendered/reported state is derived from a stale snapshot or receipt rather than the backend's current state, so the operator trusts a state that no longer exists.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "status-reality-guards",
+        "command": {
+          "name": "status-reality-guards",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_status_reality.py eval/tests/test_build_status_receipt_consistency.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "FAILURES",
+      "ERRORS"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

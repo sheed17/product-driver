@@ -13,7 +13,9 @@ the most expensive kind of false signal there is. The isolation model is
 nonetheless explicit — every entry carries an ``isolation_key``, and
 :func:`isolation_groups` already partitions the suite into sets that provably do
 not contend — so safe parallelism can be switched on later without redesigning
-anything. Until a run can *prove* isolation, ``max_parallel`` stays at 1.
+anything. Until a run can *prove* isolation, the executor is sequential:
+:attr:`SuiteExecutor.MAX_PARALLEL` is 1, and the constructor refuses any other
+value rather than accepting a number it will not act on.
 
 Aggregation summarizes. The evaluator is given counts, coverage by risk category,
 clustered failures and evidence paths — not megabytes of raw output. Full
@@ -155,6 +157,10 @@ class SuiteResult(BaseModel):
     #: produced a result, so a required scenario that never ran is visible as a
     #: gap instead of simply being absent from the counts.
     expected_required_ids: list[str] = Field(default_factory=list)
+    #: Scenarios that never entered the suite because their id was already taken.
+    #: Carried onto the result so the acceptance gate can refuse a run whose
+    #: coverage was quietly reduced before a single scenario executed.
+    assembly_problems: list[str] = Field(default_factory=list)
     outcomes: list[ScenarioOutcome] = Field(default_factory=list)
     clusters: list[FailureCluster] = Field(default_factory=list)
 
@@ -321,6 +327,11 @@ class ScenarioSuite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     entries: list[SuiteEntry] = Field(default_factory=list)
+    #: Scenarios that were offered to this suite and refused because their id was
+    #: already taken. Recorded rather than discarded: a scenario that is not in
+    #: the suite is not run, not evidenced and not counted, and a run that cannot
+    #: say so is claiming coverage it does not have.
+    assembly_conflicts: list[str] = Field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -337,9 +348,20 @@ class ScenarioSuite(BaseModel):
     def generated(self) -> list[SuiteEntry]:
         return [e for e in self.entries if e.origin is Origin.GENERATED]
 
-    def add(self, entry: SuiteEntry) -> None:
-        if self.by_id(entry.scenario_id) is None:
-            self.entries.append(entry)
+    def add(self, entry: SuiteEntry) -> bool:
+        """Admit ``entry``. Returns False when an entry with that id already exists.
+
+        The return value is not decoration. Dropping a scenario because its id
+        was already taken is a decision with consequences — that scenario is not
+        run, not evidenced, and not counted by the gate — and a caller that
+        cannot see the decision cannot report it. Silence here is what let a
+        required scenario disappear between the plan and the acceptance
+        decision.
+        """
+        if self.by_id(entry.scenario_id) is not None:
+            return False
+        self.entries.append(entry)
+        return True
 
     def execution_order(self, only: Sequence[str] | None = None) -> list[SuiteEntry]:
         """Deterministic order: dependencies first, then priority, then origin.
@@ -464,7 +486,16 @@ class SuiteExecutor:
     ``make_executor`` is the same factory the single-scenario loop already uses,
     called once per scenario with that scenario's own artifact directory, so
     every scenario's evidence lands somewhere distinct and traceable.
+
+    **Execution is sequential, and that is a property of this class rather than a
+    setting.** :attr:`MAX_PARALLEL` states the only degree of concurrency ``run``
+    implements, and the constructor refuses any other value instead of accepting
+    it and ignoring it.
     """
+
+    #: The only concurrency ``run`` implements. Not a default — a fact about the
+    #: code below, which awaits each scenario before starting the next.
+    MAX_PARALLEL = 1
 
     def __init__(
         self,
@@ -486,9 +517,22 @@ class SuiteExecutor:
         #: evidence belongs to this run and this iteration rather than a leftover.
         self.run_id = run_id
         self.iteration = iteration
-        # Kept as configuration rather than a constant so the intent is visible;
-        # anything above 1 is refused until isolation can actually be proven.
-        self.max_parallel = max(1, int(max_parallel))
+        # Mechanically wired to the only value this executor implements. It used
+        # to be coerced with max(1, …), stored, and then never read again: a
+        # caller that did not come through the config validator asked for eight
+        # and was told it had eight, while `run` executed one at a time. A
+        # parameter that reports a capability the code does not have is worse
+        # than no parameter, because it is believed.
+        if int(max_parallel) != self.MAX_PARALLEL:
+            raise ValueError(
+                f"max_parallel must be {self.MAX_PARALLEL}: this executor runs scenarios "
+                "sequentially. Scenarios share services, ports, databases and a filesystem "
+                "workspace, and nothing yet proves a given pair isolated. The isolation "
+                "partition is computed (see ScenarioSuite.isolation_groups) so parallel "
+                "execution can be added once it can be proven safe rather than assumed; "
+                "until then this refuses rather than silently ignoring the request."
+            )
+        self.max_parallel = self.MAX_PARALLEL
         self.emit = emit
         self.service_logs: dict[str, str] = {}
         self.results: dict[str, ScenarioResult] = {}
@@ -507,6 +551,7 @@ class SuiteExecutor:
             # Recorded from the suite, not from the selection: a narrowed rerun
             # still owes evidence for every required scenario before acceptance.
             expected_required_ids=[e.scenario_id for e in suite.entries if e.required],
+            assembly_problems=list(suite.assembly_conflicts),
         )
 
         budget_exhausted = False
@@ -898,8 +943,17 @@ def build_suite(
 ) -> ScenarioSuite:
     """Assemble a suite from permanent scenarios and compiled generated ones."""
     suite = ScenarioSuite()
+
+    def admit(entry: SuiteEntry, what: str) -> None:
+        if not suite.add(entry):
+            suite.assembly_conflicts.append(
+                f"{what} {entry.scenario_id!r} was not admitted to the suite: that id is "
+                "already in use, so this scenario was never executed and nothing about it "
+                "has been verified"
+            )
+
     for scenario_id, scenario in permanent:
-        suite.add(
+        admit(
             SuiteEntry(
                 scenario_id=scenario_id,
                 scenario=scenario,
@@ -908,10 +962,11 @@ def build_suite(
                 priority=Priority.P0,
                 isolation_key="default",
                 required=True,
-            )
+            ),
+            "the permanent scenario",
         )
     for model, compiled in generated:
-        suite.add(
+        admit(
             SuiteEntry(
                 scenario_id=model.id,
                 scenario=compiled,
@@ -927,7 +982,8 @@ def build_suite(
                 # meant. The judgement still lives in the priority the generator
                 # assigned; it is simply recorded honestly here.
                 required=model.priority.blocks_acceptance,
-            )
+            ),
+            "the generated scenario",
         )
     return suite
 

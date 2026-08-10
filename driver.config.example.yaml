@@ -116,8 +116,10 @@ scenario_generation:
   # action (`scenarios promote`). This cannot be set to false.
   promotion_requires_approval: true
 
-  # Sequential. Scenarios share services, ports, databases and a workspace, and
-  # nothing yet proves a given pair isolated. Values other than 1 are rejected.
+  # Must be 1. The suite executor is sequential by construction — it refuses any
+  # other value rather than accepting one it will not act on. Scenarios share
+  # services, ports, databases and a workspace, and nothing yet proves a given
+  # pair isolated. This key states the execution model; it is not a choice.
   max_parallel: 1
 
   model: opus

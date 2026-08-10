@@ -1,0 +1,992 @@
+{
+  "run_id": "post-C",
+  "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+  "active_unit_id": "U-RO-3",
+  "generation_basis": {
+    "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+    "task_hash": "3e71fde5555029a8",
+    "active_unit_id": "U-RO-3",
+    "acceptance_criteria": [
+      "a search by reference returns the matching shipment (weight 3): PENDING",
+      "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+      "the view performs no write of any kind (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A view advertised as read-only performs a write (creates/updates a shipment, appends to an audit/events table, or writes a search-log row) as a side effect of searching. This is the highest-weight acceptance criterion and the easiest to violate accidentally via lazy caching, hit-counters, or 'record this query' logging.",
+      "risk_category": "safety_invariant",
+      "severity": "P0",
+      "basis": "AC 'the view performs no write of any kind' (weight 3)",
+      "covered_by": [
+        "S-RO-3-nowrite-single"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "A filter that matches nothing renders a blank page / empty list instead of an explicit 'no matches' message, leaving the operator unsure whether the search ran, failed, or the fleet is genuinely empty.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'a filter with no matches says so rather than showing nothing' (weight 2)",
+      "covered_by": [
+        "S-RO-3-nomatch-message"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "Search by an exact reference fails to return the matching shipment (over-narrow matching, case sensitivity, trimming) so operators cannot find a known load.",
+      "risk_category": "happy_path",
+      "severity": "P1",
+      "basis": "AC 'a search by reference returns the matching shipment' (weight 3)",
+      "covered_by": [
+        "S-RO-3-happy-reference"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "Malformed or injection-shaped filter input (SQL metacharacters, empty/oversized params) crashes the view with a 500 or, worse, mutates/drops persisted tables \u2014 breaking both the read-only guarantee and the store.",
+      "risk_category": "malformed_input",
+      "severity": "P1",
+      "basis": "AC 'the view performs no write of any kind' + task 'It performs no writes'",
+      "covered_by": [
+        "S-RO-3-injection-safety"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "Concurrent or repeated identical searches trigger a lazy-write / cache-materialization path that persists rows, so the no-write guarantee holds for a single request but breaks under load or repetition.",
+      "risk_category": "concurrency",
+      "severity": "P2",
+      "basis": "AC 'the view performs no write of any kind' (weight 3)",
+      "covered_by": [
+        "S-RO-3-concurrent-no-write"
+      ]
+    },
+    {
+      "id": "R6",
+      "description": "After a service restart the search view re-initializes state or replays a request in a way that writes to the store, so read-only-ness is not preserved across the process lifecycle.",
+      "risk_category": "restart_recovery",
+      "severity": "P2",
+      "basis": "AC 'the view performs no write of any kind' (weight 3)",
+      "covered_by": [
+        "S-RO-3-restart-still-readonly"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S-RO-3-nowrite-single",
+      "proposed_id": "",
+      "title": "Searching for a shipment persists nothing to the store",
+      "purpose": "Exercise the core promise: a single search request must leave the shipment store byte-for-byte unaffected. Uses a unique sentinel reference guaranteed absent so that any accidental 'record this search / create-on-miss' write is caught as a concrete stored row.",
+      "risk_category": "safety_invariant",
+      "priority": "P0",
+      "rationale": "The highest-weight acceptance criterion is 'no write of any kind'; the cheapest way to violate it is a search-logging or create-on-miss side effect, which a sentinel-absence check detects directly.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-NOWRITE-SENTINEL-73319",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "sentinel reference was not persisted as a shipment",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='QA-NOWRITE-SENTINEL-73319'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "shipments table still exists (schema untouched)",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='shipments'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only by design; the sentinel reference QA-NOWRITE-SENTINEL-73319 is unique to this scenario and matches no seeded data, so it cannot collide with or contaminate any other scenario. If the product is correct nothing is written and there is nothing to clean up.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A read-only search endpoint silently writes a search-log or create-on-miss shipment row.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-nomatch-message",
+      "proposed_id": "",
+      "title": "A filter with zero matches states so rather than rendering blank",
+      "purpose": "Drive a filter that matches nothing and confirm the response is an explicit, non-empty, non-error 'no matches' state \u2014 not a blank body and not a 500.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "AC2 specifically requires a no-match filter to 'say so rather than showing nothing'; the failure mode is an empty render or an error page, both observable at the response layer.",
+      "requirement_reference": "U-RO-3: a filter with no matches says so rather than showing nothing",
+      "product_principle_reference": "dead_end_error",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-NOSUCH-REF-000000",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no-match search created no shipment row",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='QA-NOSUCH-REF-000000'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "500"
+      ],
+      "cleanup": [],
+      "isolation_note": "Pure read against a sentinel value that matches nothing; writes nothing on a correct product, so no cleanup is required.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A no-match filter returns an empty/blank response instead of an explicit message.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-happy-reference",
+      "proposed_id": "",
+      "title": "Search by an exact existing reference returns that shipment",
+      "purpose": "Confirm AC1: given a reference that exists in the store, the search returns the matching shipment and echoes its reference. The exact reference must be substituted from seeded data (see unresolved_questions) \u2014 <SEEDED_REFERENCE> is a placeholder that a real seeded value must replace before execution.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "AC1 (weight 3) is the primary read path; over-narrow or case-sensitive matching would silently drop a known shipment.",
+      "requirement_reference": "U-RO-3: a search by reference returns the matching shipment",
+      "product_principle_reference": "operational_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "confirm at least one seeded shipment reference exists",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT reference FROM shipments LIMIT 1\"",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=<SEEDED_REFERENCE>",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "<SEEDED_REFERENCE>"
+            ],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "searching an existing reference created no new shipment",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='<SEEDED_REFERENCE>'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [
+            "2"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Read-only lookup of pre-existing seeded data; performs no writes on a correct product, so no cleanup is required.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Exact-reference search fails to return a shipment that exists in the store.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-injection-safety",
+      "proposed_id": "",
+      "title": "SQL-metacharacter filter input neither crashes nor mutates the store",
+      "purpose": "Feed a destructive injection-shaped reference and confirm the view neither 500s nor alters persisted state \u2014 specifically that the shipments table still exists afterward. sqlite_master is always present, making this oracle fully sound regardless of seeded data.",
+      "risk_category": "malformed_input",
+      "priority": "P1",
+      "rationale": "A read-only view built on raw string interpolation could be coerced into a write/DROP; the safety invariant and the no-write AC both fail if injection is possible.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=%27%3B%20DROP%20TABLE%20shipments%3B--",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "shipments table survived the injection payload",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='shipments'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "no such table"
+      ],
+      "cleanup": [],
+      "isolation_note": "The payload is designed to detect (not cause) a write; on a correct product it is inert and nothing is persisted, so no cleanup is possible or needed. The schema-integrity check is the oracle for the destructive case.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Injection-shaped filter input triggers a write/DROP or an unhandled 500.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-repeat-no-accumulation",
+      "proposed_id": "",
+      "title": "Repeating the same search does not accumulate persisted rows",
+      "purpose": "Issue the identical sentinel search several times in sequence and confirm the store never accrues a row for it \u2014 catching a create-on-miss or per-request logging path that only becomes visible under repetition.",
+      "risk_category": "repeated_request",
+      "priority": "P2",
+      "rationale": "A no-write guarantee that holds for one request can still leak via a 'materialize on repeated query' cache; repetition plus a sentinel-count oracle exposes it.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-REPEAT-SENTINEL-51002",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-REPEAT-SENTINEL-51002",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-REPEAT-SENTINEL-51002",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-REPEAT-SENTINEL-51002",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no rows accumulated for the repeated sentinel search",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='QA-REPEAT-SENTINEL-51002'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Uses a distinct sentinel (QA-REPEAT-SENTINEL-51002) unique to this scenario; correct product writes nothing across all repetitions, so no cleanup is required.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Repeated identical searches accumulate persisted search-log or create-on-miss rows.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-concurrent-no-write",
+      "proposed_id": "",
+      "title": "Concurrent searches do not race into a persisted write",
+      "purpose": "Fire several searches simultaneously (mixed sentinel and empty filter) to exercise any lazy-write/cache path under contention, then confirm no sentinel row was persisted.",
+      "risk_category": "concurrency",
+      "priority": "P2",
+      "rationale": "Race conditions in a 'record-on-first-hit' cache can persist rows only under simultaneity; parallel requests plus a sentinel-count oracle is the way to surface it.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments/search?reference=QA-CONC-SENTINEL-88771",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments/search?reference=QA-CONC-SENTINEL-88771",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments/search?reference=QA-CONC-SENTINEL-88771",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments/search?reference=QA-CONC-SENTINEL-88771",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no sentinel row persisted under concurrency",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='QA-CONC-SENTINEL-88771'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Uses a distinct sentinel (QA-CONC-SENTINEL-88771); on a correct product nothing is written under any interleaving, so no cleanup is required.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Concurrent searches trigger a lazy-write path that persists a row.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S-RO-3-restart-still-readonly",
+      "proposed_id": "",
+      "title": "Search remains read-only across a service restart",
+      "purpose": "Restart the callback service, then run a search, and confirm the view still writes nothing \u2014 ensuring no re-initialization or request-replay path writes on startup.",
+      "risk_category": "restart_recovery",
+      "priority": "P2",
+      "rationale": "The no-write guarantee must hold across the process lifecycle, not just steady state; a restart can expose init-time or replay writes.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments/search?reference=QA-RESTART-SENTINEL-40915",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no sentinel row persisted after restart+search",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference='QA-RESTART-SENTINEL-40915'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "shipments table intact after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='shipments'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Restarts only the 'callback' service listed in service_refs and searches a unique sentinel (QA-RESTART-SENTINEL-40915); correct product writes nothing, so no cleanup is required. Restart returns the service to its normal running state.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:19:06+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Post-restart search re-initializes or replays in a way that writes to the store.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "391b9aa3-9253-4404-93c6-ad13392b1320",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 7,
+    "by_risk_category": {
+      "safety_invariant": 1,
+      "missing_data": 1,
+      "happy_path": 1,
+      "malformed_input": 1,
+      "repeated_request": 1,
+      "concurrency": 1,
+      "restart_recovery": 1
+    },
+    "by_priority": {
+      "P0": 1,
+      "P1": 3,
+      "P2": 3
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [
+    "The canonical schema (freight_recon.schema.create_canonical_schema) exposes a table named 'shipments' with a text 'reference' column; the sentinel-count and schema-integrity oracles depend on these exact names. If the canonical names differ, the SQL in persisted_state_checks must be adjusted to the real table/column.",
+    "The read-only search view is served by the local app at http://127.0.0.1:8001 under the path '/shipments/search' with a 'reference' query parameter. The exact route and parameter name are inferred, not confirmed from the diff.",
+    "The 'callback' service is the process that serves the search view, so restarting it exercises the search endpoint's startup path.",
+    "Sentinel references (QA-*-SENTINEL-*) are guaranteed absent from seeded data, so a nonzero count for them is unambiguous evidence of an unexpected write."
+  ],
+  "unresolved_questions": [
+    "What is the exact route and query-parameter contract for the search/filter view (e.g. '/shipments/search?reference=', '/api/shipments?ref=', GET vs POST)? All request-based scenarios assume '/shipments/search?reference=' and must be corrected to the real contract.",
+    "What literal text does the view emit for the zero-match case? AC2 requires it to 'say so', but the exact 'no matches' string is unknown, so S-RO-3-nomatch-message can only assert non-error status and no-write rather than match the intended message. Provide the literal to strengthen the oracle.",
+    "What is a real seeded shipment reference? S-RO-3-happy-reference uses the placeholder <SEEDED_REFERENCE>, which must be replaced with an actual seeded value before execution or the happy-path assertion is not meaningful.",
+    "Confirm the exact 'shipments' table and 'reference' column names in the canonical schema so the SQLite oracles bind to real objects.",
+    "The task and acceptance criteria mention no tenancy or authorization requirements for this view, so no cross_tenant or authorization scenarios were proposed. If the search view is expected to scope results per tenant/owner, that requirement is currently unstated and should be added before it can be verified."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T06:15:15+00:00",
+      "basis": {
+        "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+        "task_hash": "3e71fde5555029a8",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 7,
+      "accepted_ids": [
+        "S-RO-3-nowrite-single",
+        "S-RO-3-nomatch-message",
+        "S-RO-3-happy-reference",
+        "S-RO-3-injection-safety",
+        "S-RO-3-repeat-no-accumulation",
+        "S-RO-3-concurrent-no-write",
+        "S-RO-3-restart-still-readonly"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

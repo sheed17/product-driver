@@ -402,6 +402,7 @@ def evaluator_prompt(
     founder_feedback: str = "",
     previous_corrections: list[str] | None = None,
     suite: Any = None,
+    coverage_gaps: list[str] | None = None,
 ) -> str:
     """Assemble the three context layers into one evaluator prompt.
 
@@ -477,6 +478,24 @@ def evaluator_prompt(
             "     mis-stated expectation? Say which.",
             "  3. was the coverage sufficient for the risk surface of what changed?",
             "  4. is further targeted verification warranted?",
+            "",
+        ]
+        if coverage_gaps:
+            parts += [
+                "",
+                "--- KNOWN COVERAGE GAPS (computed by the harness, not by you) ---",
+                "These are risks this run itself identified as able to block acceptance, "
+                "for which no scenario passed with resolvable evidence. They are stated "
+                "here because question 3 above cannot be answered honestly without them: "
+                "the passing scenarios do not speak for these risks.",
+                *(f"  - {gap}" for gap in coverage_gaps),
+                "",
+                "This list is deterministic. You cannot add to it or remove from it, and "
+                "the harness already refuses to accept a run that has one, so do not "
+                "treat a gap as something to argue about. Say what the gap means for the "
+                "work and what verification would close it.",
+            ]
+        parts += [
             "",
             "Set additional_verification_needed and list scenario_requests when the "
             "coverage does not yet reach the risk surface. Those are advisory: they "

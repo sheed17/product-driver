@@ -1,0 +1,38 @@
+{
+  "probe1_evaluator": {
+    "asks_whether_coverage_was_sufficient": true,
+    "states_the_cross_tenant_gap": true,
+    "has_a_coverage_gap_section": true,
+    "accepts_a_coverage_gaps_argument": true,
+    "control_loop_supplies_the_gaps": true,
+    "gap_briefs_computed": [
+      "[P0] cross_tenant \u2014 an operator of another tenant could approve this invoice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ]
+  },
+  "probe2_gate": {
+    "gate_accepts_a_risk_register": true,
+    "status": "NOT_VERIFIED",
+    "blocks_acceptance": true,
+    "required_total": 1,
+    "required_passed": 1,
+    "uncovered_risks": [
+      "[P0] cross_tenant \u2014 an operator of another tenant could approve this invoice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ]
+  },
+  "probe3_deterministic_detector": {
+    "exists": true,
+    "gaps": [
+      {
+        "risk_id": "R2",
+        "description": "an operator of another tenant could approve this invoice",
+        "risk_category": "cross_tenant",
+        "severity": "P0",
+        "required": true,
+        "reason": "no scenario exercising this risk was executed, so nothing about it has been verified"
+      }
+    ],
+    "stable_across_calls": true
+  },
+  "REPRODUCED": false,
+  "SUMMARY": "the gap is stated to the evaluator and the gate refuses to call the run verified"
+}

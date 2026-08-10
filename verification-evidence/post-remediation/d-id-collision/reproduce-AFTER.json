@@ -1,0 +1,58 @@
+{
+  "fixture": {
+    "id_a": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the-outbox-flush",
+    "id_b": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the-payment-call",
+    "shared_prefix_chars": 64
+  },
+  "probe1_model_identity": {
+    "stored_id_a": "gen-approval-survives-restart-and-is-not-double-app-7e6564315aa9",
+    "stored_id_b": "gen-approval-survives-restart-and-is-not-double-app-a63bde7befc0",
+    "collide": false
+  },
+  "probe2_compiled_map": {
+    "entries": 2,
+    "lost": 0
+  },
+  "probe3_suite": {
+    "entries": 2,
+    "ids": [
+      "gen-approval-survives-restart-and-is-not-double-app-7e6564315aa9",
+      "gen-approval-survives-restart-and-is-not-double-app-a63bde7befc0"
+    ],
+    "dropped_silently": false
+  },
+  "probe4_filesystem": {
+    "dir_a": "gen-approval-survives-restart-and-is-not-double-applied-after-a-cra-7e6564315aa9",
+    "dir_b": "gen-approval-survives-restart-and-is-not-double-applied-after-a-cra-a63bde7befc0",
+    "same_directory": false
+  },
+  "probe5_execution": {
+    "executed": 2,
+    "outcome_ids": [
+      "gen-approval-survives-restart-and-is-not-double-app-7e6564315aa9",
+      "gen-approval-survives-restart-and-is-not-double-app-a63bde7befc0"
+    ],
+    "expected_required_ids": [
+      "gen-approval-survives-restart-and-is-not-double-app-7e6564315aa9",
+      "gen-approval-survives-restart-and-is-not-double-app-a63bde7befc0"
+    ],
+    "evidence_paths": [
+      "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmp352mg0my/scenarios/gen-approval-survives-restart-and-is-not-double-app-7e6564315aa9",
+      "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmp352mg0my/scenarios/gen-approval-survives-restart-and-is-not-double-app-a63bde7befc0"
+    ],
+    "distinct_evidence_dirs": 2
+  },
+  "probe6_gate": {
+    "status": "VERIFIED",
+    "required_total": 2,
+    "required_passed": 2,
+    "unverified": [],
+    "gate_sees_the_lost_scenario": false
+  },
+  "probe7_rerun_selection": {
+    "selected": [],
+    "reason": "failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (0 of 2)"
+  },
+  "REPRODUCED": false,
+  "SUMMARY": "both scenarios keep distinct identity, evidence and gate accounting"
+}

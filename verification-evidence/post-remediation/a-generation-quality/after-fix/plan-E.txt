@@ -1,0 +1,66 @@
+GENERATED SCENARIO PLAN — run post-E
+task: Add role-based authorization to the operator console so only a supervisor can release an operation.
+active unit: U-AUTHZ-2
+
+8 generated case(s)
+risk categories exercised: authorization, concurrency, cross_tenant, happy_path, idempotency, malformed_input, missing_data, restart_recovery
+
+IDENTIFIED RISKS:
+  [P0 authorization] A non-supervisor (operator role) is able to release an operation because the role check is missing, mis-spelled, or evaluated after the effect. This is the central authorization bypass the unit exists to prevent.  (covered by S2)
+  [P0 cross_tenant] A supervisor of tenant A releases tenant B's operation because the release path scopes by role but not by tenant, or trusts a caller-supplied tenant field instead of the operation's owning tenant.  (covered by S3)
+  [P1 missing_data] A refusal returns an error to the caller but writes nothing to audit_events/security_events, so denied attempts leave no evidence (silent denial).  (covered by S8)
+  [P0 malformed_input] A request with no role, an unknown role, or a missing actor is treated as authorized (fail-open) instead of refused, because absence is coerced to a permissive default.  (covered by S4)
+  [P1 idempotency] Re-issuing an identical release for an already-released operation performs or records the release twice, so a retried/duplicated tap double-releases.  (covered by S5)
+  [P2 restart_recovery] The refusal record is held only in memory or in a per-request kernel and is lost on restart, so the audit trail cannot answer 'who was denied' after a crash.  (covered by S7)
+  [P1 concurrency] A supervisor request and a non-supervisor request race on the same operation; the loser's effect still lands or both succeed, breaking the single-releaser invariant.  (covered by S6)
+
+SCENARIOS:
+  [P1 happy_path] S1: Supervisor releases an operation — the authorized happy path is recorded to audit
+      purpose: Confirm a supervisor can release an operation and that the release is attributed in the durable audit log.
+      grounded in: a supervisor can release an operation
+      because: Role check is too strict and refuses even the supervisor, or succeeds without leaving attributable evidence.
+  [P0 authorization] S2: Operator (non-supervisor) is refused a release and the refusal is recorded
+      purpose: Put a non-supervisor actor at the release endpoint and confirm it is refused, no release lands, and the denial is written to the audit log.
+      grounded in: a non-supervisor is refused and no release occurs
+      because: Missing/late role check lets an operator release, or the refusal leaves no audit trail.
+  [P0 cross_tenant] S3: Supervisor of tenant A cannot release tenant B's operation
+      purpose: A supervisor authenticated for tenant A targets an operation owned by tenant B; confirm it is refused, no release occurs, and the cross-tenant denial is recorded.
+      grounded in: a supervisor of one tenant cannot release another tenant's operation
+      because: Release scopes by role but reads the operation using the caller-supplied tenant, so A's supervisor reaches B's operation.
+  [P0 malformed_input] S4: Missing/unknown role fails closed (no fail-open default)
+      purpose: Send a release with no role field and, separately, with an unknown role value; confirm each is refused and recorded rather than defaulting to authorized.
+      grounded in: a non-supervisor is refused and no release occurs
+      because: The endpoint coerces a missing/unknown role to a permissive default and allows the release.
+  [P1 idempotency] S5: Repeated supervisor release does not double-release
+      purpose: Issue the same authorized supervisor release twice for one operation and confirm the release effect is recorded at most once (idempotent), not duplicated.
+      grounded in: a supervisor can release an operation
+      because: The second identical request performs/records a second release for an already-released operation.
+  [P1 concurrency] S6: Concurrent supervisor and operator releases on one operation — single releaser wins
+      purpose: Fire a supervisor release and a non-supervisor release simultaneously at the same operation; confirm at most one release lands and the operator's attempt is refused and recorded.
+      grounded in: a non-supervisor is refused and no release occurs
+      because: Under concurrency the operator's release is not refused, or both requests produce a release effect.
+  [P2 restart_recovery] S7: Refusal survives a callback restart (durable audit)
+      purpose: Record a non-supervisor refusal, restart the callback service, then read the audit store to confirm the refusal persisted rather than living only in memory.
+      grounded in: every refusal is recorded in the audit log
+      because: The refusal is written only to an in-memory/per-kernel structure and vanishes on restart.
+  [P2 missing_data] S8: Release of an unknown operation id is refused, not fabricated
+      purpose: A supervisor targets an operation id that does not exist; confirm the request is refused rather than silently succeeding or creating a release record for a non-existent operation.
+      grounded in: a supervisor can release an operation
+      because: An unknown operation id returns success or writes a release row for an operation the store never had.
+
+ASSUMPTIONS:
+  - The built feature exposes an HTTP release endpoint on the local callback service at http://127.0.0.1:8001; I assumed a RESTful shape POST /operations/{id}/release with a JSON body carrying actor, role, and tenant. The exact path, verb, and body field names are a guess because the builder's diff was not provided.
+  - The service I restart/reference as 'callback' is the process serving :8001 and it writes to data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite target).
+  - Refusals and releases are written to audit_events and/or security_events with the caller's actor stored in the 'actor' column and the operation id somewhere in payload_json — this is how the existing store records decisions, so I keyed every oracle on a unique per-scenario actor marker and an operation-id substring rather than on an event_type string I cannot know.
+  - Releasable seed operations (OP-PROBE-S1, -S2, tenant-B OP-PROBE-B-S3, etc.) exist in the driver_probe workspace for a supervisor to act on; no approved command creates them, so scenarios that need a pre-existing releasable operation depend on that seed state.
+  - A refused release returns an HTTP 4xx (I used 403); if the builder chose a different status the request-level expect_status may need adjustment, but the persisted-state oracles remain valid.
+
+UNRESOLVED QUESTIONS:
+  - What is the actual release endpoint (path, method, and request body / auth transport)? The repo has no existing release route, so every request action's path and json_body are assumed and must be reconciled with the builder's diff before these scenarios can bind.
+  - How is a 'supervisor' identity established on a request — a role field in the body, a signed token, a session, or the existing Slack actor allowlist? If role is derived from a signed credential rather than a plaintext field, S2/S4 need to be re-expressed against that mechanism.
+  - Which table and columns represent an operation's released state? I could not find an operations/state table for release, so the 'no release occurred' negative oracles proxy through audit_events (to_state='RELEASED' / event_type LIKE '%releas%'); the real released-state table and its exact state string must be confirmed to make those oracles exact.
+  - Is a refusal recorded in audit_events, security_events, or both? The AC says 'audit log'; I hedged by summing both, but the canonical location and event_type string should be pinned so an exact-count oracle can replace the presence check.
+  - Does the release endpoint write to data/active_workspace/driver_probe/workflow.sqlite3, or to a different workspace DB the state_check cannot reach? Only that one sqlite path is approved; if the live server writes elsewhere, none of the persisted-state oracles observe the real effect.
+  - There is no approved command to create seed operations or to reset/delete rows between runs; scenarios assume seeded releasable operations and rely on append-only isolation via unique markers. A seed/reset command would make the happy-path and idempotency scenarios deterministic.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

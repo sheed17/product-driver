@@ -1,0 +1,137 @@
+{
+  "defect": "stale_read",
+  "real_model": false,
+  "brief_states_browser_available": true,
+  "generation": {
+    "proposed": 2,
+    "accepted": 2,
+    "accepted_browser": 2,
+    "refused": []
+  },
+  "compile": {
+    "compiled": 2,
+    "browser_mode_preserved": [
+      "gen-browser-next-action",
+      "gen-browser-screen-matches-store"
+    ]
+  },
+  "execution": {
+    "outcomes": [
+      {
+        "id": "permanent:exception-detail-smoke",
+        "outcome": "PASSED",
+        "mode": "browser"
+      },
+      {
+        "id": "gen-browser-next-action",
+        "outcome": "PASSED",
+        "mode": "browser"
+      },
+      {
+        "id": "gen-browser-screen-matches-store",
+        "outcome": "FAILED",
+        "mode": "browser"
+      }
+    ],
+    "skipped": [],
+    "evidence": [
+      {
+        "scenario_id": "permanent:exception-detail-smoke",
+        "outcome": "PASSED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "01-initial.png",
+          "99-final.png",
+          "result.json",
+          "service-ui.log",
+          "trace.zip"
+        ],
+        "screenshots": [
+          "01-initial.png",
+          "99-final.png"
+        ]
+      },
+      {
+        "scenario_id": "gen-browser-next-action",
+        "outcome": "PASSED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log",
+          "step-1-browser-01-detail.png",
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png",
+          "step-1-browser-trace.zip"
+        ],
+        "screenshots": [
+          "step-1-browser-01-detail.png",
+          "step-1-browser-01-initial.png",
+          "step-1-browser-99-final.png"
+        ]
+      },
+      {
+        "scenario_id": "gen-browser-screen-matches-store",
+        "outcome": "FAILED",
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "files": [
+          "result.json",
+          "service-ui.log",
+          "step-1-browser-01-initial.png",
+          "step-1-browser-05-after-resolve.png",
+          "step-1-browser-99-final.png",
+          "step-1-browser-trace.zip"
+        ],
+        "screenshots": [
+          "step-1-browser-01-initial.png",
+          "step-1-browser-05-after-resolve.png",
+          "step-1-browser-99-final.png"
+        ]
+      }
+    ],
+    "screenshots_captured": 8,
+    "visible_text_sample": {
+      "gen-browser-next-action": "Exception EX-1\n\nstatus: open\n\nwhy: proof of delivery missing\n\nowner: Neyma\n\nnext action: chase the carrier for proof of delivery\n\nResolve",
+      "gen-browser-screen-matches-store": "Exception EX-1\n\nstatus: open\n\nwhy: proof of delivery missing\n\nowner: Neyma\n\nnext action: chase the carrier for proof of delivery\n\nResolve"
+    }
+  },
+  "aggregation": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "blocked": 0,
+    "skipped": 0,
+    "coverage_by_risk_category": {
+      "ui_backend_disagreement": {
+        "passed": 1,
+        "failed": 0,
+        "blocked": 0,
+        "skipped": 0
+      },
+      "stale_state": {
+        "passed": 0,
+        "failed": 1,
+        "blocked": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "gate": {
+    "status": "NOT_VERIFIED",
+    "blocks_acceptance": true,
+    "required_total": 3,
+    "required_passed": 2,
+    "unverified": [
+      "[FAILED] gen-browser-screen-matches-store \u2014 the scenario failed: expect_visible: step-1-browser: browser step 6: expect_text 'status: resolved' \u2014 not present in the page text at that point"
+    ],
+    "uncovered_risks": [],
+    "summary": "scenario gate: NOT VERIFIED \u2014 1 of 3 required scenario(s) did not establish a pass (3 executed)\n  [FAILED] gen-browser-screen-matches-store \u2014 the scenario failed: expect_visible: step-1-browser: browser step 6: expect_text 'status: resolved' \u2014 not present in the page text at that point\n      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/g-out/defect/artifacts/scenarios/gen-browser-screen-matches-store"
+  },
+  "browser_actually_driven": [
+    "gen-browser-next-action",
+    "gen-browser-screen-matches-store"
+  ],
+  "RESULT": "BROWSER PATH PROVEN END TO END"
+}

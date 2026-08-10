@@ -32,7 +32,7 @@ import re
 from enum import Enum
 from typing import Any, Literal, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import utcnow
 from .scenarios import (
@@ -214,7 +214,10 @@ class GeneratedRequest(BaseModel):
     body: str = ""
     expect_status: int | None = None
     expect_contains: list[str] = Field(default_factory=list)
-    timeout_s: int | None = None
+    #: Seconds, fractional allowed. A scenario probing "timed out before the
+    #: effect landed" needs a sub-second deadline; the runtime takes a float, so
+    #: refusing one only stopped the model expressing what it meant.
+    timeout_s: float | None = None
 
     @field_validator("method")
     @classmethod
@@ -250,7 +253,8 @@ class GeneratedStateCheck(BaseModel):
     command: str
     contains: list[str] = Field(default_factory=list)
     not_contains: list[str] = Field(default_factory=list)
-    timeout_s: int | None = None
+    #: Seconds, fractional allowed. See GeneratedRequest.timeout_s.
+    timeout_s: float | None = None
 
 
 class GeneratedAction(BaseModel):
@@ -270,7 +274,8 @@ class GeneratedAction(BaseModel):
     command: str = ""
     expect_exit_code: int | None = 0
     expect_contains: list[str] = Field(default_factory=list)
-    timeout_s: int | None = None
+    #: Seconds, fractional allowed. See GeneratedRequest.timeout_s.
+    timeout_s: float | None = None
     request: GeneratedRequest | None = None
     requests: list[GeneratedRequest] = Field(default_factory=list)
     browser_steps: list[GeneratedBrowserStep] = Field(default_factory=list)
@@ -386,12 +391,25 @@ class ScenarioProvenance(BaseModel):
 # --------------------------------------------------------------------------
 
 
+#: Longest execution id a generated scenario may carry. Bounded because the id
+#: becomes a filesystem component; shortened rather than truncated because two
+#: proposals must never collapse into one.
+SCENARIO_ID_LIMIT = 64
+
+
 class GeneratedScenario(BaseModel):
     """One situation the driver decided is worth exercising."""
 
     model_config = ConfigDict(extra="forbid")
 
+    #: The execution identity: filesystem-safe, bounded, and unique to this
+    #: proposal. Derived from whatever the model wrote; see :meth:`_identity`.
     id: str
+    #: What the model actually wrote, kept verbatim whenever ``id`` had to be
+    #: shortened. Without it the shortening would be lossy in the one direction
+    #: that matters — a reader could no longer tell which proposal an evidence
+    #: directory belongs to.
+    proposed_id: str = ""
     title: str
     purpose: str = ""
     risk_category: RiskCategory
@@ -430,13 +448,41 @@ class GeneratedScenario(BaseModel):
     def _clamp(cls, v: float) -> float:
         return max(0.0, min(1.0, float(v)))
 
-    @field_validator("id")
+    @model_validator(mode="before")
     @classmethod
-    def _safe_id(cls, v: str) -> str:
-        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(v)).strip("-")
+    def _identity(cls, data: Any) -> Any:
+        """Derive a bounded, unique execution id, and remember what was proposed.
+
+        The id is used as a dict key, a filesystem component, an evidence
+        reference, a rerun selector and a gate row. Truncating it to a fixed
+        width made all five agree that two proposals were one: the second
+        scenario's evidence overwrote the first's, the suite held one entry, and
+        the gate reported every required scenario verified while a required
+        scenario it had never heard of went unrun.
+
+        So the id is *shortened*, not truncated — a readable prefix plus a
+        digest of the full sanitised id (see
+        :func:`~neyma_product_driver.evidence.shorten_preserving_identity`).
+        Deterministic, so resume and aggregation still agree across processes;
+        distinct, so two proposals never merge; and ``proposed_id`` keeps the
+        original so the shortening stays auditable.
+        """
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("id")
+        if not isinstance(raw, str):
+            return data
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-")
         if not cleaned:
             raise ValueError("scenario id is empty after sanitisation")
-        return cleaned[:64]
+        from .evidence import shorten_preserving_identity
+
+        identity = shorten_preserving_identity(cleaned, SCENARIO_ID_LIMIT)
+        data = dict(data)
+        data["id"] = identity
+        if not data.get("proposed_id") and identity != raw:
+            data["proposed_id"] = raw
+        return data
 
     # -- derived properties ------------------------------------------------
 
@@ -446,6 +492,18 @@ class GeneratedScenario(BaseModel):
 
     def mutates_local_state(self) -> bool:
         return bool(self.setup) or any(a.mutates_local_state() for a in self.actions)
+
+    def addresses_local_app(self) -> bool:
+        """Does this scenario need the product running to mean anything?
+
+        True when it issues an HTTP request or drives a browser. Such a scenario
+        is only meaningful with the local service up, so the compiler starts what
+        serves it rather than leaving it to fail against a closed port.
+        """
+        for action in self.actions:
+            if action.kind in {"request", "parallel_requests", "browser"}:
+                return True
+        return self.mode == "browser"
 
     def has_observable_outcome(self) -> bool:
         """True when *something* about this scenario could actually be judged."""
@@ -738,6 +796,19 @@ def compile_to_scenario(
                 f"refusing to compile {generated.id}: it references service(s) "
                 f"{', '.join(missing)} that the base scenario does not declare"
             )
+        if not wanted and generated.addresses_local_app():
+            # `service_refs` says which services this scenario may *operate on*
+            # — restart, stop, start — which is how the generator is told to read
+            # it. It was also, silently, the list of services that get started at
+            # all, so a scenario that merely issued requests against `app_url`
+            # and named no service ran against nothing: no service, a vacuously
+            # satisfied readiness check, and then Connection refused on every
+            # request. Those look exactly like product failures and are not.
+            #
+            # A scenario that addresses the local product gets whatever serves
+            # it. It still may not operate on a service it did not declare, and
+            # it still cannot introduce a service of its own.
+            wanted = set(declared)
         services = [declared[name] for name in base_order(base, wanted)]
         readiness = list(base.readiness) if services else []
         app_url = base.app_url

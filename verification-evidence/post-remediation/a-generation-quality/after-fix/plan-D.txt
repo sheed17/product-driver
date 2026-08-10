@@ -1,0 +1,50 @@
+GENERATED SCENARIO PLAN — run post-D
+task: Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.
+active unit: U-P5-1
+
+4 generated case(s)
+risk categories exercised: crash_mid_workflow, restart_recovery, retry_safety, safety_invariant
+identified but NOT exercised: A write that fails or is interrupted mid-transaction could leave a partially-applied workflow: a checkpoint witness without its grant, or a run advanced without its audit/ledger row.; A read after a write could return stale in-process cached state instead of the durable row if any read path still consults the moved-away cache.
+
+IDENTIFIED RISKS:
+  [P0 restart_recovery] After a process restart the durable workflow store must re-open and re-derive state; a lost, un-checkpointed WAL or a corrupted DB would silently drop approved workflow state (AC: state survives restart).  (covered by S2)
+  [P0 partial_failure] A write that fails or is interrupted mid-transaction could leave a partially-applied workflow: a checkpoint witness without its grant, or a run advanced without its audit/ledger row.  (NOT covered)
+  [P0 retry_safety] Rebuilding workflow state from history at startup could re-execute an already-committed effect, producing a second live/CLAIMED grant for the same logical effect (double invoice/write).  (covered by S4)
+  [P1 stale_state] A read after a write could return stale in-process cached state instead of the durable row if any read path still consults the moved-away cache.  (NOT covered)
+
+SCENARIOS:
+  [P0 restart_recovery] S2: Durable store re-opens intact and consistent after a clean process restart
+      purpose: Exercise 'state survives a process restart': restart the callback process and confirm the durable DB re-opens, the workflow tables are still present, integrity is intact, and no foreign-key (orphan) violations were introduced.
+      grounded in: U-P5-1: workflow state survives a process restart
+      because: A restart could drop un-flushed state or leave the store corrupted/unreadable.
+  [P0 crash_mid_workflow] S3: Ungraceful stop mid-flight leaves no partially applied workflow
+      purpose: Exercise 'a failed write leaves no partially applied workflow': stop the callback process abruptly and restart it, then confirm WAL recovery yields a consistent store with no orphaned checkpoint witness (a witness with no grant is a half-applied authorization).
+      grounded in: U-P5-1: a failed write leaves no partially applied workflow
+      because: An interrupted/failed write could persist a witness without its grant, or otherwise a half-applied workflow.
+  [P0 retry_safety] S4: Rebuild after restart does not create a second commitment for one effect
+      purpose: Exercise 'rebuilding state from history never re-executes an effect': after a restart (state re-derived from durable history), confirm the ledger still holds at most one live-or-committed grant per (tenant, commit_key) and at most one CLAIMED grant per effect.
+      grounded in: U-P5-1: rebuilding state from history never re-executes an effect
+      because: Startup rebuild could re-run an already-committed effect, minting a duplicate reservation/commitment.
+  [P1 safety_invariant] S5: Witness-to-grant stays 1:1 across a restart-driven rebuild
+      purpose: Exercise 'rebuilding state from history never re-executes an effect' from the witness side: after restart, every checkpoint-minted grant has exactly one witness and no grant has two witnesses, so a replay cannot fabricate a second authorized effect.
+      grounded in: U-P5-1: rebuilding state from history never re-executes an effect
+      because: Rebuild could duplicate a witness (re-authorize) or leave a checkpoint-minted grant unwitnessed.
+
+ASSUMPTIONS:
+  - At run time the callback service is up and bound to data/active_workspace/driver_probe/workflow.sqlite3 (the exact DB named in the approved sqlite3 command); the repo does not contain this file, so its existence and contents are provided by the harness, not by me.
+  - The driver_probe workspace holds REPRESENTATIVE seeded workflow state (at least some workflow_runs, and ideally minted grants + witnesses). If it is empty, S2-S5 pass vacuously and prove far less; a seeded store is required for these invariants to be load-bearing.
+  - The installed sqlite3 supports table-valued pragma access (pragma_foreign_key_check) and CASE-wrapped subqueries; used so the oracle emits a fixed sentinel string ('FK_CLEAN', 'CLEAN', etc.) rather than a count I cannot predict.
+  - restart_service / stop_service+start_service on 'callback' restart the process bound to the durable DB without deleting or reinitializing it (an on-disk SQLite file survives the process); this is what makes them a genuine restart/crash test rather than a reset.
+  - GRANT live-hold states are 'GRANTED' and 'CLAIMED' and the canonical effect_grants schema exposes tenant, commit_key, state, checkpoint_id, grant_id columns (read from src/freight_recon/workflow.py and checkpoint.py).
+
+UNRESOLVED QUESTIONS:
+  - I was not given the builder's actual diff for U-P5-1, so I cannot target the specific 'in-process cache' that was moved. The current tree already persists workflow_runs/effect_grants/checkpoint_witnesses in SQLite; which cache the unit replaces (e.g. a per-process handle key, an operation/pending-write cache, or a run-state memo) is unknown and would sharpen every scenario.
+  - AC 'a read after a write never returns stale state' is NOT covered by an executable scenario. Verifying it requires performing a write and then a read and comparing — but every write path (/actions/signed, /email/action, /slack/*) requires an HMAC/Slack signing secret, and there is no approved command to mint a signed token or seed a run. Please expose either a seed/fixture command that creates a workflow run and mutates it, or a loopback write endpoint that does not need the signing secret, so read-after-write and a concurrent write/read race can be exercised.
+  - There is no approved way for me to establish a known 'before' state and assert the identical value 'after' a restart; my restart scenarios therefore assert integrity + structural invariants rather than value-level survival of a specific run. A seed command plus a read command that echoes a run's state would let me author a true write->restart->read-equals-before scenario for AC1.
+  - Should driver_probe be seeded before this wave runs? If the harness can guarantee at least one run in each of RECEIVED/EXTRACTED/RECONCILED/NEEDS_REVIEW and at least one CLAIMED grant with its witness, S2-S5 become non-vacuous; without that guarantee they mostly confirm 'empty store stays consistent'.
+  - Confirm the exact set of GRANT_STATES and whether any legacy (checkpoint_id IS NULL) grants may legitimately lack a witness; S5 already restricts to checkpoint_id IS NOT NULL to avoid flagging legacy legacy-owned rows, but the canonical state list should be verified against migrations/phase2_tenant_first.GRANT_STATES.
+
+REJECTED PROPOSALS:
+  S1: unknown risk_category 'correctness'
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

@@ -1,0 +1,775 @@
+{
+  "run_id": "post-B-diff",
+  "task": "Add supervised carrier invoice approval.",
+  "active_unit_id": "U-042",
+  "generation_basis": {
+    "task": "Add supervised carrier invoice approval.",
+    "task_hash": "b614b9b809fbe9f5",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "no payment effect occurs without a recorded approval (weight 3): PENDING",
+      "an operator without approval authority is refused (weight 2): PENDING",
+      "approval survives a restart (weight 2): PENDING",
+      "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R2",
+      "description": "Every governed tap passes through verify_slack_signature BEFORE any approval/authorization/binding/single-use/tenant logic. Without the Slack signing secret (which I may not use) no authorized approval, no operator-authority refusal, no payload/tenant binding, and no single-use replay path can be reached from the product boundary. ACs 'operator without approval authority is refused' and 'no payment without recorded approval' are only reachable at the signature-refused layer over HTTP.",
+      "risk_category": "authorization",
+      "severity": "P1",
+      "basis": "action_callback._maybe_handle_governed_write_approval verifies slack signature first and 401s; _handle_slack tries the governed route before anything else.",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "The callback service is single-tenant (CallbackAppConfig.tenant is one required value); cross-tenant visibility/approvability is enforced only inside WorkflowStore (WHERE tenant=?). The AC 'an invoice belonging to another tenant is never visible or approvable' cannot be exercised against a single running server instance; it needs two tenant-bound stores at module/integration level.",
+      "risk_category": "cross_tenant",
+      "severity": "P1",
+      "basis": "action_callback.CallbackAppConfig.tenant; workflow.security_events() 'SELECT * FROM security_events WHERE tenant = ?'.",
+      "covered_by": []
+    },
+    {
+      "id": "R4",
+      "description": "The checkpoint kernel handle key is per-kernel and in-memory; a restart deliberately drops unclaimed grants (fail-closed). A recorded decision (security_events) is durable, but an in-flight grant minted-but-unclaimed does not survive. 'approval survives a restart' can be shown only for the durable decision record, not for an in-flight write, and the in-flight-restart timing cannot be exercised while the route is dark.",
+      "risk_category": "restart_recovery",
+      "severity": "P1",
+      "basis": "run_action_callback_server _build_governed_write_route: 'The handle key is per-kernel and in memory: a restart loses it, unclaimed grants expire, nothing happened.'",
+      "covered_by": [
+        "S4"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "All persisted-state oracles assume the running callback service uses workspace data/active_workspace/driver_probe with db workflow.sqlite3 (the only approved sqlite3 handle). If the service was launched with a different --db/--workspace, or the DB schema is not yet initialized, the oracles read the wrong or a nonexistent DB and pass/fail spuriously.",
+      "risk_category": "stale_state",
+      "severity": "P2",
+      "basis": "run_action_callback_server db_path default = workspace/workflow.sqlite3; approved command targets data/active_workspace/driver_probe/workflow.sqlite3; that file was not present in the repo tree at design time.",
+      "covered_by": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "proposed_id": "",
+      "title": "Forged/unsigned governed tap performs no payment and queues no write intent",
+      "purpose": "Prove an unauthenticated caller cannot cause a governed carrier-invoice effect: a Slack /slack/actions POST carrying a governed-approval-shaped token but no valid HMAC signature must be refused before any governed handling, leaving zero payment effect and zero queued write intent in the durable store.",
+      "risk_category": "safety_invariant",
+      "priority": "P0",
+      "rationale": "The whole feature's safety hinge is that only an authenticated, recorded approval can advance the pipeline; a forged tap is the single most likely real-world attack and must land nothing.",
+      "requirement_reference": "no payment effect occurs without a recorded approval",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtYXBwci0xIn0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no governed write completed",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "no governed write escalated",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteEscalated'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "no write intent queued",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Recorded. The approved write is governed",
+        "Neyma action applied",
+        "GovernedWriteCompleted",
+        "VERIFIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "The tap is rejected at the Slack signature boundary before any governed handling, so it creates no governed-write state; at most a rejected-signature audit row is appended, which does not change the governed-effect counts the oracle reads.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:16:43+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "An unsigned or forged Slack tap could slip past the signature wall and queue or complete a governed write, paying a carrier with no recorded human approval.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "250445ce-2304-440b-9175-ee879488f1bc",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S2",
+      "proposed_id": "",
+      "title": "Two simultaneous forged governed taps do not race into a double effect",
+      "purpose": "Issue two identical forged governed taps at the same instant and confirm the persisted store still shows zero completed governed writes and zero queued intents \u2014 no race turns two refusals into one (or two) effects.",
+      "risk_category": "concurrency",
+      "priority": "P0",
+      "rationale": "'Paid exactly once' is a concurrency property; the classic failure is two near-simultaneous approvals both landing, so the race must be exercised, not assumed.",
+      "requirement_reference": "an approved invoice is paid exactly once",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/slack/actions",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/slack/actions",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no governed write completed after race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "no write intent queued after race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Recorded. The approved write is governed",
+        "Neyma action applied",
+        "GovernedWriteCompleted",
+        "VERIFIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "Both taps are refused at the signature boundary and create no governed-write state; only rejected-signature audit rows may be appended, which do not affect the asserted governed-effect counts.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:16:43+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Two concurrent taps for the same invoice could both slip through and pay a carrier twice, or one could land despite being unauthenticated.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "250445ce-2304-440b-9175-ee879488f1bc",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S3",
+      "proposed_id": "",
+      "title": "Replayed forged governed tap never accumulates an effect",
+      "purpose": "Replay the same forged governed tap five times in sequence and confirm the governed-effect counts stay exactly zero \u2014 repeated delivery of an unauthenticated approval accumulates nothing.",
+      "risk_category": "repeated_request",
+      "priority": "P1",
+      "rationale": "Slack retries and manual re-clicks make repeated delivery routine; the store must not drift toward an effect under repetition.",
+      "requirement_reference": "no payment effect occurs without a recorded approval",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no governed write completed after replays",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "no write intent queued after replays",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Recorded. The approved write is governed",
+        "Neyma action applied",
+        "GovernedWriteCompleted",
+        "VERIFIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "Every replay is refused at the signature boundary; no governed-write state is created, only harmless rejected-signature audit rows.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:16:43+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Repeated delivery of the same tap could, on some Nth attempt, be mishandled into a queued intent or a completed write.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "250445ce-2304-440b-9175-ee879488f1bc",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S4",
+      "proposed_id": "",
+      "title": "Restart of the callback service fabricates no governed effect and leaves the audit store intact",
+      "purpose": "Restart the callback service, then send one forged governed tap, and confirm: the security_events store is still queryable (durable), zero governed writes were completed (restart did not fabricate an effect or auto-resume anything), and the service is still fail-closed after restart.",
+      "risk_category": "restart_recovery",
+      "priority": "P1",
+      "rationale": "A restart is where in-memory grant handles are deliberately dropped; the durable decision store must survive and the process must not resurrect or invent an effect on the way back up.",
+      "requirement_reference": "approval survives a restart",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1000
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVzdGFydCJ9.deadbeef\"}]}"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "security_events store durable and readable after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)>=0 FROM security_events\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "restart fabricated no completed governed write",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "restart auto-resumed no queued intent",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Recorded. The approved write is governed",
+        "Neyma action applied",
+        "GovernedWriteCompleted",
+        "VERIFIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "Only the callback service is restarted and one signature-refused tap is sent; no governed-write state is created, so the run leaves the DB in the same governed-effect state it found it.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:16:43+00:00",
+        "task_hash": "b614b9b809fbe9f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A restart could replay a durable queue into an executed write, or drop the audit store, so a governed effect appears (or an approval record vanishes) with no human in the loop.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "250445ce-2304-440b-9175-ee879488f1bc",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 4,
+    "by_risk_category": {
+      "safety_invariant": 1,
+      "concurrency": 1,
+      "repeated_request": 1,
+      "restart_recovery": 1
+    },
+    "by_priority": {
+      "P0": 2,
+      "P1": 2
+    },
+    "uncovered_risks": [
+      "Every governed tap passes through verify_slack_signature BEFORE any approval/authorization/binding/single-use/tenant logic. Without the Slack signing secret (which I may not use) no authorized approval, no operator-authority refusal, no payload/tenant binding, and no single-use replay path can be reached from the product boundary. ACs 'operator without approval authority is refused' and 'no payment without recorded approval' are only reachable at the signature-refused layer over HTTP.",
+      "The callback service is single-tenant (CallbackAppConfig.tenant is one required value); cross-tenant visibility/approvability is enforced only inside WorkflowStore (WHERE tenant=?). The AC 'an invoice belonging to another tenant is never visible or approvable' cannot be exercised against a single running server instance; it needs two tenant-bound stores at module/integration level.",
+      "All persisted-state oracles assume the running callback service uses workspace data/active_workspace/driver_probe with db workflow.sqlite3 (the only approved sqlite3 handle). If the service was launched with a different --db/--workspace, or the DB schema is not yet initialized, the oracles read the wrong or a nonexistent DB and pass/fail spuriously."
+    ]
+  },
+  "assumptions": [],
+  "unresolved_questions": [
+    "Success-half unverifiable through the product: on the deployed callback service _build_governed_write_route returns kernel_factory=None, so a valid governed tap is refused with ROUTE_NOT_CONFIGURED and the effect boundary is dark. How should AC 'an approved invoice is paid exactly once' be verified for U-042 \u2014 is module/integration-level proof (test_p4_governed_write_route / effect_boundary) the intended oracle, and should the running-product acceptance for U-042 be explicitly scoped to the fail-closed envelope until P12 wires the kernel?",
+    "No product-boundary path to an authorized approval: verify_governed_approval sits behind the Slack HMAC wall and I am forbidden from using the signing secret, so authorization refusal ('operator without approval authority is refused'), payload/tenant/revision binding, and single-use replay cannot be driven over HTTP. Is there an approved, secret-free way to mint a signed governed tap against the loopback server, or must these ACs be verified only at unit level?",
+    "Cross-tenant AC needs two tenants: the callback service binds exactly one tenant (CallbackAppConfig.tenant). 'An invoice belonging to another tenant is never visible or approvable' cannot be exercised against one running instance. Is a second tenant-bound service instance/DB available, or is this AC intended to be proven only via WorkflowStore-level tests (e.g. test_u26bc_tenant_scope)?",
+    "DB/oracle binding: the only approved sqlite3 handle is data/active_workspace/driver_probe/workflow.sqlite3, but that file was not present at design time and I could not confirm the running callback service on :8001 uses that exact --db/--workspace and has its canonical schema initialized. Can this be confirmed, so the persisted-state oracles read the service's real store?",
+    "'Approval survives a restart' scope: the kernel handle is in-memory and unclaimed grants are dropped on restart by design. Is the AC satisfied by durability of the recorded decision (security_events) plus expiry of in-flight grants (fail-closed), or does it require demonstrating that a recorded-but-unconsumed approval is re-consumable after restart \u2014 which is not reachable while the route is dark?"
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T05:11:06+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 4,
+      "accepted_ids": [
+        "S1",
+        "S2",
+        "S3",
+        "S4"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    },
+    {
+      "wave": 2,
+      "stage": "diff_refinement",
+      "requested_at": "2026-08-10T05:16:43+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [
+          "src/freight_recon/governed_approval.py",
+          "src/freight_recon/carrier_invoice_write.py",
+          "src/freight_recon/action_callback.py"
+        ],
+        "diff_stat": " src/freight_recon/governed_approval.py     | 210 ++++++++++++++++--\n src/freight_recon/carrier_invoice_write.py | 118 ++++++++--\n src/freight_recon/action_callback.py       |  36 +++-\n 3 files changed, 330 insertions(+), 34 deletions(-)",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "the scenario generator returned no usable structured output; this wave produced nothing and the run continues with existing coverage"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

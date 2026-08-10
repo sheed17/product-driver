@@ -1,0 +1,63 @@
+200 generated case(s) + 1 permanent regression scenario(s): 193 passed, 8 failed, 0 blocked, 0 skipped
+risk categories exercised: cross_tenant, idempotency, persistence_failure
+
+FAILURES:
+  [FAIL] P0 generated case-150-http  (cross_tenant)  — expect_visible: GET http://127.0.0.1:8763/item/150: contains '"owner": "tenant-a"' — not found in response body
+      generated because: item 150 is representative of the cross_tenant surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_visible: GET http://127.0.0.1:8763/item/150: contains '"owner": "tenant-a"' — not found in response body
+      failed: forbidden: tenant-b — present in observed output
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-150-http
+  [FAIL] P1 generated case-011-idem  (idempotency)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad
+      generated because: item 11 is representative of the idempotency surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-target/probe.py 11: contains 'item=11 approval_rows=1' — not found in command output
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-011-idem
+  [FAIL] P1 generated case-012-http  (cross_tenant)  — expect_visible: GET http://127.0.0.1:8763/item/12: contains '"owner": "tenant-a"' — not found in response body
+      generated because: item 12 is representative of the cross_tenant surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_visible: GET http://127.0.0.1:8763/item/12: contains '"owner": "tenant-a"' — not found in response body
+      failed: forbidden: tenant-b — present in observed output
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-012-http
+  [FAIL] P1 generated case-066-http  (cross_tenant)  — expect_visible: GET http://127.0.0.1:8763/item/66: contains '"owner": "tenant-a"' — not found in response body
+      generated because: item 66 is representative of the cross_tenant surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_visible: GET http://127.0.0.1:8763/item/66: contains '"owner": "tenant-a"' — not found in response body
+      failed: forbidden: tenant-b — present in observed output
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-066-http
+  [FAIL] P1 generated case-074-idem  (idempotency)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad
+      generated because: item 74 is representative of the idempotency surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-target/probe.py 74: contains 'item=74 approval_rows=1' — not found in command output
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-074-idem
+  [FAIL] P1 generated case-087-http  (cross_tenant)  — expect_state: GET http://127.0.0.1:8763/item/87: status == 200 — got 500
+      generated because: item 87 is representative of the cross_tenant surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_state: GET http://127.0.0.1:8763/item/87: status == 200 — got 500
+      failed: expect_visible: GET http://127.0.0.1:8763/item/87: contains '"owner": "tenant-a"' — not found in response body
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-087-http
+  [FAIL] P1 generated case-176-idem  (idempotency)  — expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad
+      generated because: item 176 is representative of the idempotency surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-target/probe.py 176: contains 'item=176 approval_rows=1' — not found in command output
+      failed: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-target/probe.py 176: must not contain 'approval_rows=2' — unexpectedly present
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-176-idem
+  [FAIL] P1 generated case-183-http  (cross_tenant)  — expect_state: GET http://127.0.0.1:8763/item/183: status == 200 — got 500
+      generated because: item 183 is representative of the cross_tenant surface
+      verifies: POST-SCALE-AUDIT
+      failed: expect_state: GET http://127.0.0.1:8763/item/183: status == 200 — got 500
+      failed: expect_visible: GET http://127.0.0.1:8763/item/183: contains '"owner": "tenant-a"' — not found in response body
+      evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-183-http
+
+FAILURE CLUSTERS — these appear to share one underlying cause, so correct the cause once rather than each symptom:
+  [C01] authorization and approval boundaries (3 scenarios) — shared observation: expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '"owner": "tenant-a"' — not found in response body  (3 scenarios)
+    affected: case-150-http, case-012-http, case-066-http
+    shared: expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '"owner": "tenant-a"' — not found in response body; forbidden: tenant-b — present in observed output
+    evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-150-http, /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-012-http, /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-066-http
+  [C04] authorization and approval boundaries (2 scenarios) — shared observation: expect_state: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: status == <n> — got <n>  (2 scenarios)
+    affected: case-087-http, case-183-http
+    shared: expect_state: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: status == <n> — got <n>; expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '"owner": "tenant-a"' — not found in response body
+    evidence: /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-087-http, /private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/e607b46c-abe9-441e-ae3f-25fee4569865/scratchpad/h-out/run-200/scenarios/case-183-http
+
+8 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.

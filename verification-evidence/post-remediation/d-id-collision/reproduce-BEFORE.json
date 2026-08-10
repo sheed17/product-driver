@@ -1,0 +1,54 @@
+{
+  "fixture": {
+    "id_a": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the-outbox-flush",
+    "id_b": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the-payment-call",
+    "shared_prefix_chars": 64
+  },
+  "probe1_model_identity": {
+    "stored_id_a": "gen-approval-survives-restart-and-is-not-double-applied-after-a-",
+    "stored_id_b": "gen-approval-survives-restart-and-is-not-double-applied-after-a-",
+    "collide": true
+  },
+  "probe2_compiled_map": {
+    "entries": 1,
+    "lost": 1
+  },
+  "probe3_suite": {
+    "entries": 1,
+    "ids": [
+      "gen-approval-survives-restart-and-is-not-double-applied-after-a-"
+    ],
+    "dropped_silently": true
+  },
+  "probe4_filesystem": {
+    "dir_a": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the",
+    "dir_b": "gen-approval-survives-restart-and-is-not-double-applied-after-a-crash-during-the",
+    "same_directory": true
+  },
+  "probe5_execution": {
+    "executed": 1,
+    "outcome_ids": [
+      "gen-approval-survives-restart-and-is-not-double-applied-after-a-"
+    ],
+    "expected_required_ids": [
+      "gen-approval-survives-restart-and-is-not-double-applied-after-a-"
+    ],
+    "evidence_paths": [
+      "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmpedwbehdl/scenarios/gen-approval-survives-restart-and-is-not-double-applied-after-a"
+    ],
+    "distinct_evidence_dirs": 1
+  },
+  "probe6_gate": {
+    "status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "unverified": [],
+    "gate_sees_the_lost_scenario": false
+  },
+  "probe7_rerun_selection": {
+    "selected": [],
+    "reason": "failed scenarios, their risk neighbours, newly generated cases, and the full permanent regression set (0 of 1)"
+  },
+  "REPRODUCED": true,
+  "SUMMARY": "two distinct proposed scenarios collapse into one execution identity; suite holds 1 of 2, gate accounts for 1 of 2"
+}

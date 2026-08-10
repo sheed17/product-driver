@@ -1,0 +1,61 @@
+# Driver configuration for the live-builder fixture proof.
+#
+# `neyma_repo` is set at run time by run_live_builder.py, because the fixture
+# lives in a disposable directory. Everything else is here so a reader can see
+# exactly what the run was allowed to do.
+#
+# Nothing here weakens a guard. Dynamic generation is switched on because that
+# is the thing under test; every safety boundary is left at its default.
+
+task: |
+  Make carrier invoice approval exactly-once.
+
+  Approving an invoice must record the approval durably and produce exactly one
+  payment, however many times the approval is submitted. Approving an invoice
+  that does not exist must be refused and must leave the durable store unchanged.
+
+  Work only inside this repository, keep the service loopback-only, add no
+  dependencies, and do not weaken or delete a test.
+
+scenario: fixture_backend
+max_iterations: 4
+
+builder:
+  model: opus
+  permission_mode: acceptEdits
+  max_turns: 60
+  turn_timeout_s: 900
+
+evaluator:
+  model: opus
+  max_turns: 20
+  turn_timeout_s: 600
+
+run:
+  command_timeout_s: 60
+  service_start_timeout_s: 60
+  readiness_timeout_s: 30
+  readiness_poll_interval_s: 0.5
+  http_timeout_s: 15
+  browser_enabled: false
+
+# The fixture is created fresh for the run and has no remote, so a local commit
+# is safe and nothing can be published.
+allow_dirty_tree: true
+require_branch: null
+
+scenario_generation:
+  enabled: true
+  model: opus
+  max_initial_scenarios: 5
+  max_adaptive_scenarios_per_wave: 4
+  max_waves: 3
+  max_total_scenarios: 20
+  max_scenarios_per_risk_category: 3
+  max_parallel: 1
+  approved_commands:
+    - "python3 scripts/state.py"
+    - "python3 -m unittest discover -s tests"
+  local_http_hosts:
+    - "127.0.0.1"
+    - "localhost"

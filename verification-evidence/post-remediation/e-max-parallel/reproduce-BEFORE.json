@@ -1,0 +1,13 @@
+{
+  "config_refuses_above_one": true,
+  "config_refusal": "    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+  "executor_reads_max_parallel_after_init": false,
+  "executor_accepts_max_parallel_8": true,
+  "executor_stored_value": 8,
+  "executor_construction_error": "",
+  "observed_max_concurrent": 1,
+  "elapsed_s": 0.213,
+  "sequential_in_fact": true,
+  "REPRODUCED": true,
+  "SUMMARY": "the executor accepts and stores a parallelism it never implements: max_parallel=8, observed concurrency 1"
+}

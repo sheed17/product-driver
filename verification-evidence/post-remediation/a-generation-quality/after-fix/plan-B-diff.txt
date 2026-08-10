@@ -1,0 +1,40 @@
+GENERATED SCENARIO PLAN — run post-B-diff
+task: Add supervised carrier invoice approval.
+active unit: U-042
+
+4 generated case(s)
+risk categories exercised: concurrency, repeated_request, restart_recovery, safety_invariant
+identified but NOT exercised: Every governed tap passes through verify_slack_signature BEFORE any approval/authorization/binding/single-use/tenant logic. Without the Slack signing secret (which I may not use) no authorized approval, no operator-authority refusal, no payload/tenant binding, and no single-use replay path can be reached from the product boundary. ACs 'operator without approval authority is refused' and 'no payment without recorded approval' are only reachable at the signature-refused layer over HTTP.; The callback service is single-tenant (CallbackAppConfig.tenant is one required value); cross-tenant visibility/approvability is enforced only inside WorkflowStore (WHERE tenant=?). The AC 'an invoice belonging to another tenant is never visible or approvable' cannot be exercised against a single running server instance; it needs two tenant-bound stores at module/integration level.; All persisted-state oracles assume the running callback service uses workspace data/active_workspace/driver_probe with db workflow.sqlite3 (the only approved sqlite3 handle). If the service was launched with a different --db/--workspace, or the DB schema is not yet initialized, the oracles read the wrong or a nonexistent DB and pass/fail spuriously.
+
+IDENTIFIED RISKS:
+  [P1 authorization] Every governed tap passes through verify_slack_signature BEFORE any approval/authorization/binding/single-use/tenant logic. Without the Slack signing secret (which I may not use) no authorized approval, no operator-authority refusal, no payload/tenant binding, and no single-use replay path can be reached from the product boundary. ACs 'operator without approval authority is refused' and 'no payment without recorded approval' are only reachable at the signature-refused layer over HTTP.  (NOT covered)
+  [P1 cross_tenant] The callback service is single-tenant (CallbackAppConfig.tenant is one required value); cross-tenant visibility/approvability is enforced only inside WorkflowStore (WHERE tenant=?). The AC 'an invoice belonging to another tenant is never visible or approvable' cannot be exercised against a single running server instance; it needs two tenant-bound stores at module/integration level.  (NOT covered)
+  [P1 restart_recovery] The checkpoint kernel handle key is per-kernel and in-memory; a restart deliberately drops unclaimed grants (fail-closed). A recorded decision (security_events) is durable, but an in-flight grant minted-but-unclaimed does not survive. 'approval survives a restart' can be shown only for the durable decision record, not for an in-flight write, and the in-flight-restart timing cannot be exercised while the route is dark.  (covered by S4)
+  [P2 stale_state] All persisted-state oracles assume the running callback service uses workspace data/active_workspace/driver_probe with db workflow.sqlite3 (the only approved sqlite3 handle). If the service was launched with a different --db/--workspace, or the DB schema is not yet initialized, the oracles read the wrong or a nonexistent DB and pass/fail spuriously.  (NOT covered)
+
+SCENARIOS:
+  [P0 safety_invariant] S1: Forged/unsigned governed tap performs no payment and queues no write intent
+      purpose: Prove an unauthenticated caller cannot cause a governed carrier-invoice effect: a Slack /slack/actions POST carrying a governed-approval-shaped token but no valid HMAC signature must be refused before any governed handling, leaving zero payment effect and zero queued write intent in the durable store.
+      grounded in: no payment effect occurs without a recorded approval
+      because: An unsigned or forged Slack tap could slip past the signature wall and queue or complete a governed write, paying a carrier with no recorded human approval.
+  [P0 concurrency] S2: Two simultaneous forged governed taps do not race into a double effect
+      purpose: Issue two identical forged governed taps at the same instant and confirm the persisted store still shows zero completed governed writes and zero queued intents — no race turns two refusals into one (or two) effects.
+      grounded in: an approved invoice is paid exactly once
+      because: Two concurrent taps for the same invoice could both slip through and pay a carrier twice, or one could land despite being unauthenticated.
+  [P1 repeated_request] S3: Replayed forged governed tap never accumulates an effect
+      purpose: Replay the same forged governed tap five times in sequence and confirm the governed-effect counts stay exactly zero — repeated delivery of an unauthenticated approval accumulates nothing.
+      grounded in: no payment effect occurs without a recorded approval
+      because: Repeated delivery of the same tap could, on some Nth attempt, be mishandled into a queued intent or a completed write.
+  [P1 restart_recovery] S4: Restart of the callback service fabricates no governed effect and leaves the audit store intact
+      purpose: Restart the callback service, then send one forged governed tap, and confirm: the security_events store is still queryable (durable), zero governed writes were completed (restart did not fabricate an effect or auto-resume anything), and the service is still fail-closed after restart.
+      grounded in: approval survives a restart
+      because: A restart could replay a durable queue into an executed write, or drop the audit store, so a governed effect appears (or an approval record vanishes) with no human in the loop.
+
+UNRESOLVED QUESTIONS:
+  - Success-half unverifiable through the product: on the deployed callback service _build_governed_write_route returns kernel_factory=None, so a valid governed tap is refused with ROUTE_NOT_CONFIGURED and the effect boundary is dark. How should AC 'an approved invoice is paid exactly once' be verified for U-042 — is module/integration-level proof (test_p4_governed_write_route / effect_boundary) the intended oracle, and should the running-product acceptance for U-042 be explicitly scoped to the fail-closed envelope until P12 wires the kernel?
+  - No product-boundary path to an authorized approval: verify_governed_approval sits behind the Slack HMAC wall and I am forbidden from using the signing secret, so authorization refusal ('operator without approval authority is refused'), payload/tenant/revision binding, and single-use replay cannot be driven over HTTP. Is there an approved, secret-free way to mint a signed governed tap against the loopback server, or must these ACs be verified only at unit level?
+  - Cross-tenant AC needs two tenants: the callback service binds exactly one tenant (CallbackAppConfig.tenant). 'An invoice belonging to another tenant is never visible or approvable' cannot be exercised against one running instance. Is a second tenant-bound service instance/DB available, or is this AC intended to be proven only via WorkflowStore-level tests (e.g. test_u26bc_tenant_scope)?
+  - DB/oracle binding: the only approved sqlite3 handle is data/active_workspace/driver_probe/workflow.sqlite3, but that file was not present at design time and I could not confirm the running callback service on :8001 uses that exact --db/--workspace and has its canonical schema initialized. Can this be confirmed, so the persisted-state oracles read the service's real store?
+  - 'Approval survives a restart' scope: the kernel handle is in-memory and unclaimed grants are dropped on restart by design. Is the AC satisfied by durability of the recorded decision (security_events) plus expiry of in-flight grants (fail-closed), or does it require demonstrating that a recorded-but-unconsumed approval is re-consumable after restart — which is not reachable while the route is dark?
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

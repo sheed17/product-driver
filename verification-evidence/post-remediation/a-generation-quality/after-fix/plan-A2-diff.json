@@ -1,0 +1,748 @@
+{
+  "run_id": "post-A2-diff",
+  "task": "Improve the exception detail screen so operators can understand the next action.",
+  "active_unit_id": "U-UI-11",
+  "generation_basis": {
+    "task": "Improve the exception detail screen so operators can understand the next action.",
+    "task_hash": "ecfcc59ed1f920c7",
+    "active_unit_id": "U-UI-11",
+    "acceptance_criteria": [
+      "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+      "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+      "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "AC3 (highest weight): the detail screen may read a cached/snapshotted next-action or state rather than the live backend, so after an exception is resolved or transitions, the screen keeps naming a next action the backend no longer holds. workflow_store.py grew +163 lines of new read paths \u2014 exactly where a stale snapshot or a read that bypasses the current-state query would hide.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3); diff touches workflow_store.py and exception_detail_view.py",
+      "covered_by": [
+        "S1"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "AC1: an exception in a state that has no defined next action (or no owner recorded) may render a blank/None/dead-end owner or action instead of naming a concrete accountable human, violating next_action_clarity and accountable_owner and producing a dead-end screen.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'the exception detail screen names the next action and who owns it' (weight 3)",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "AC2: an exception with no evidence rows, or with evidence the reader cannot join, may render fabricated/placeholder evidence or crash, rather than honestly showing 'no evidence recorded'.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'the screen shows the evidence the exception was raised from' (weight 2); new authorization.py + workflow_store.py joins",
+      "covered_by": []
+    },
+    {
+      "id": "R4",
+      "description": "authorization.py is brand new (+88, previously absent). A detail read for an exception id that does not belong to the server's tenant, or a nonexistent id, may leak another tenant's load/carrier/reason or 500 instead of returning a clean not-found/denied.",
+      "risk_category": "cross_tenant",
+      "severity": "P1",
+      "basis": "new file src/freight_recon/authorization.py in the diff; tenant-first invariant in schema.py",
+      "covered_by": [
+        "S3"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "A malformed exception identifier (non-numeric, oversized) may raise an unhandled exception and render a stacktrace/500 rather than a clean operator-facing error, contradicting the 'no dead-end error' expectation the whole unit is about.",
+      "risk_category": "malformed_input",
+      "severity": "P2",
+      "basis": "exception_detail_view.py request parsing; dead_end_error principle",
+      "covered_by": [
+        "S4"
+      ]
+    },
+    {
+      "id": "R6",
+      "description": "schema.py changed (+31). If the new columns/tables the screen depends on are not part of the canonical fresh-DB builder, a freshly provisioned backend cannot hold the state the screen shows, so the screen renders defaults \u2014 a state the backend does not actually hold.",
+      "risk_category": "regression",
+      "severity": "P2",
+      "basis": "diff touches src/freight_recon/schema.py; create_canonical_schema is the single fresh-DB contract",
+      "covered_by": [
+        "S5"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "proposed_id": "",
+      "title": "Detail screen reflects a backend state change even across a service restart (no stale next action)",
+      "purpose": "Prove the exception detail screen renders from live backend state, not a cached snapshot, so it can never name a next action the backend no longer holds.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "AC3 is the heaviest-weighted criterion and workflow_store.py's +163 lines of new reads are where a stale snapshot would hide; a restart is the cleanest way to force any in-process cache to be discarded and to observe whether the rendered screen equals durable state.",
+      "requirement_reference": "the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "channel_consistency",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id LIMIT 5\"",
+            "contains": [],
+            "not_contains": [
+              "no such table",
+              "no such column",
+              "Error"
+            ],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/exceptions",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 800
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/exceptions",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "backend still holds the runs the screen must mirror",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs\"",
+          "contains": [],
+          "not_contains": [
+            "no such table",
+            "Error"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "no such column",
+        "no such table"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only against the DB; restarts the shared callback service, so it must not run concurrently with any other :8001 scenario. Does not mutate persisted rows.",
+      "isolation_key": "driver_probe:workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:11:06+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "A resolved/transitioned exception could still show its old next action if the screen reads a cached projection instead of the live row.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "ca80f5c9-cae0-466f-a637-f46e8acee29a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S2",
+      "proposed_id": "",
+      "title": "Exception detail renders evidence and a named owner without leaking placeholders",
+      "purpose": "Exercise the detail screen for a live exception and confirm it comes up populated (owner + evidence) rather than rendering empty/placeholder tokens or crashing.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "AC1 and AC2 both live on this screen; the cheapest high-value observation is that the screen renders for a real exception and does not leak the None/undefined/stacktrace markers that a failed owner- or evidence-join produces.",
+      "requirement_reference": "the screen shows the evidence the exception was raised from",
+      "product_principle_reference": "evidence_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/exceptions",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "backend has exceptions with evidence to show",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events\"",
+          "contains": [],
+          "not_contains": [
+            "no such table",
+            "Error"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "undefined",
+        "KeyError"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only GET plus read-only sqlite; safe to interleave with other read scenarios but not with the restart scenario S1.",
+      "isolation_key": "driver_probe:workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:11:06+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "The owner or evidence join could fail silently and render a blank or placeholder where a name/evidence must appear.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "ca80f5c9-cae0-466f-a637-f46e8acee29a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S3",
+      "proposed_id": "",
+      "title": "Unknown / cross-tenant exception id returns a clean not-found, not a leak or a 500",
+      "purpose": "Request a detail page for an id the server's tenant does not own (using an implausible id) and confirm no other tenant's data is disclosed and no stacktrace is emitted.",
+      "risk_category": "cross_tenant",
+      "priority": "P1",
+      "rationale": "authorization.py is a brand-new file in this diff; the classic failure of a new read-authorization layer is that an unrecognized/foreign id either 500s or falls through to an unscoped read that leaks load/carrier/reason.",
+      "requirement_reference": "U-UI-11",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/exceptions/999999999",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 404,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no such run exists in this tenant's DB",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE id=999999999\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "load_id",
+        "carrier"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only; issues a GET for a non-existent id and asserts on status only.",
+      "isolation_key": "driver_probe:workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:11:06+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "A detail read for a foreign or nonexistent exception id could leak another tenant's fields or crash instead of denying cleanly.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "ca80f5c9-cae0-466f-a637-f46e8acee29a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S4",
+      "proposed_id": "",
+      "title": "Malformed exception identifier is rejected cleanly, not with a stacktrace",
+      "purpose": "Send a non-numeric exception id and confirm the screen returns a clean client error instead of an unhandled 500/stacktrace.",
+      "risk_category": "malformed_input",
+      "priority": "P2",
+      "rationale": "The whole unit exists to remove dead-ends on this screen; a screen that 500s on a garbage id is itself a dead-end, and exception_detail_view.py's new request parsing is the surface that would do it.",
+      "requirement_reference": "U-UI-11",
+      "product_principle_reference": "dead_end_error",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/exceptions/not-an-id",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 404,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "ValueError",
+        "invalid literal for int"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only; single malformed GET, asserts status only, no state mutation.",
+      "isolation_key": "driver_probe:workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:11:06+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "A non-numeric id could reach a DB query or int() cast unguarded and surface a stacktrace.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "ca80f5c9-cae0-466f-a637-f46e8acee29a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S5",
+      "proposed_id": "",
+      "title": "Canonical fresh DB still builds all tables the screen depends on after the schema change",
+      "purpose": "Directly exercise create_canonical_schema (touched by this diff) on a fresh database and confirm it produces the backing tables, so a freshly provisioned backend can actually hold the state the screen shows rather than defaulting.",
+      "risk_category": "regression",
+      "priority": "P2",
+      "rationale": "schema.py changed (+31); if the columns/tables the exception screen reads are not in the single canonical builder, a fresh backend cannot hold those states and the screen would render defaults \u2014 a direct AC3 violation rooted in the backend, and this probe is a deterministic, self-contained check of exactly that.",
+      "requirement_reference": "the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "operational_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "build fresh canonical schema and list tables",
+          "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "workflow_runs",
+            "audit_events"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "workflow_runs",
+        "audit_events"
+      ],
+      "forbidden_observations": [
+        "Traceback",
+        "SchemaNotReady",
+        "OperationalError"
+      ],
+      "cleanup": [],
+      "isolation_note": "Builds a canonical schema in a fresh tempdir created by the probe itself; touches no shared workspace or service.",
+      "isolation_key": "schema-probe:tempdir",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T05:11:06+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "prior_failures_consulted": [],
+        "generating_risk": "A schema change that misses the fresh-DB builder leaves new backends unable to hold exception state, so the screen shows a state the backend never wrote.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "diff_refinement",
+        "wave": 2,
+        "model": "opus",
+        "session_id": "ca80f5c9-cae0-466f-a637-f46e8acee29a",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 5,
+    "by_risk_category": {
+      "ui_backend_disagreement": 1,
+      "happy_path": 1,
+      "cross_tenant": 1,
+      "malformed_input": 1,
+      "regression": 1
+    },
+    "by_priority": {
+      "P0": 1,
+      "P1": 2,
+      "P2": 2
+    },
+    "uncovered_risks": [
+      "AC1: an exception in a state that has no defined next action (or no owner recorded) may render a blank/None/dead-end owner or action instead of naming a concrete accountable human, violating next_action_clarity and accountable_owner and producing a dead-end screen.",
+      "AC2: an exception with no evidence rows, or with evidence the reader cannot join, may render fabricated/placeholder evidence or crash, rather than honestly showing 'no evidence recorded'."
+    ]
+  },
+  "assumptions": [
+    "The exception detail screen is served by the 'callback' service on http://127.0.0.1:8001 (the only local app URL and service I was given), and its list/detail routes are '/exceptions' and '/exceptions/{id}'. These paths are a convention guess \u2014 the builder's exception_detail_view.py and its route wiring are not present in this working tree, so I could not confirm them.",
+    "The running app on :8001 is bound to the driver_probe workspace and reads/writes data/active_workspace/driver_probe/workflow.sqlite3 (the exact DB handed to me as the approved sqlite oracle).",
+    "The harness provisions data/active_workspace/driver_probe/ with the app running before scenarios execute; that directory and DB do not exist in my checkout.",
+    "'Exception' maps onto a workflow_runs row in a review/exception state, with evidence in audit_events \u2014 the model that is present in this tree (migrations/phase2_tenant_first.py)."
+  ],
+  "unresolved_questions": [
+    "BLOCKER: the builder's changed files (exception_detail_view.py, templates/exception_detail.html, workflow_store.py, authorization.py) and the modified schema.py are not in this working tree, so I could not read the screen's actual route, its rendered literal text, or the new schema columns for owner/next-action/evidence. I therefore avoided asserting screen text as expected_observations (which would false-fail a correct product) and leaned on sqlite oracles plus universal error-marker forbidden_observations.",
+    "What is the exact URL for the exception detail screen and its list page, and is it served on :8001 (callback) or on the site server (:8000, out of scope for me)? All request-based scenarios above depend on this and will false-fail if the path differs.",
+    "What is the tenant the driver_probe callback server is bound to? Without it I cannot provision a controlled exception row via sqlite INSERT that the screen would find, which blocks a precise before/after ui_backend_disagreement scenario (drive backend state -> observe screen must follow) \u2014 the strongest possible AC3 test.",
+    "What column/table did schema.py (+31) add to persist 'next action' and 'owner', and what literal strings does the template emit for state, owner, and 'no evidence recorded'? With these I could assert the screen text verbatim and directly verify AC1/AC2/AC3 instead of only asserting the screen renders without crashing.",
+    "Is there an approved way to drive an exception through a real state transition (e.g., a resolving action) without minting a signed token from the secret? If so, an idempotency/repeated-request scenario on that transition plus a screen re-read would be high value; I could not author it with the approved command set."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T05:01:21+00:00",
+      "basis": {
+        "task": "Improve the exception detail screen so operators can understand the next action.",
+        "task_hash": "ecfcc59ed1f920c7",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "the scenario generator returned no usable structured output; this wave produced nothing and the run continues with existing coverage"
+    },
+    {
+      "wave": 2,
+      "stage": "diff_refinement",
+      "requested_at": "2026-08-10T05:03:39+00:00",
+      "basis": {
+        "task": "Improve the exception detail screen so operators can understand the next action.",
+        "task_hash": "ecfcc59ed1f920c7",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [
+          "src/freight_recon/exception_detail_view.py",
+          "src/freight_recon/templates/exception_detail.html",
+          "src/freight_recon/workflow_store.py",
+          "src/freight_recon/authorization.py",
+          "src/freight_recon/schema.py"
+        ],
+        "diff_stat": " src/freight_recon/exception_detail_view.py        |  74 ++++++--\n src/freight_recon/templates/exception_detail.html |  41 ++++-\n src/freight_recon/workflow_store.py               | 163 +++++++++++++--\n src/freight_recon/authorization.py                |  88 +++++++++\n src/freight_recon/schema.py                       |  31 +++-\n 5 files changed, 355 insertions(+), 42 deletions(-)",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 5,
+      "accepted_ids": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

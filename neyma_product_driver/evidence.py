@@ -312,7 +312,45 @@ def check_writable(path: Path) -> tuple[bool, str]:
         return False, f"{path}: {exc}"
 
 
+#: Longest filename component this produces. Well inside every filesystem limit
+#: the driver runs on, and long enough that the readable prefix stays readable.
+FILENAME_LIMIT = 80
+#: Hex characters of the digest appended when a name has to be shortened.
+_DIGEST_CHARS = 12
+
+
+def shorten_preserving_identity(value: str, limit: int) -> str:
+    """Shorten ``value`` to ``limit`` characters without merging distinct inputs.
+
+    Plain truncation is not a shortening, it is a collision: two labels sharing a
+    long prefix become one label, and whatever the second one referred to stops
+    existing. That is exactly how a generated scenario disappeared — the suite,
+    the evidence directory and the acceptance gate all agreed there had only ever
+    been one.
+
+    The result is a readable prefix plus a digest of the *whole* input, so it is
+    still recognisable to a human, still deterministic for resume and
+    aggregation, and distinct whenever the inputs are distinct. It is auditable
+    rather than reversible: callers that need the original keep it (see
+    ``GeneratedScenario.proposed_id``).
+    """
+    if len(value) <= limit:
+        return value
+    from hashlib import sha256
+
+    digest = sha256(value.encode("utf-8")).hexdigest()[:_DIGEST_CHARS]
+    keep = max(1, limit - _DIGEST_CHARS - 1)
+    return f"{value[:keep]}-{digest}"
+
+
 def sanitize_filename(name: str) -> str:
-    """Make an arbitrary label safe for use as a filename component."""
+    """Make an arbitrary label safe for use as a filename component.
+
+    Distinct labels always produce distinct filenames: two scenarios sharing an
+    80-character prefix must not share one evidence directory, or each would
+    overwrite the other's record and only one of them could ever be proven.
+    """
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
-    return cleaned[:80] or "unnamed"
+    if not cleaned:
+        return "unnamed"
+    return shorten_preserving_identity(cleaned, FILENAME_LIMIT)

@@ -1,0 +1,445 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Exception detail render names the next action and its owner\n\nrisk: happy_path (priority P1)\npurpose: Confirm the exception detail render surface states the next action and the human who owns it, not just a status.\nrequirement: U-UI-11: the exception detail screen names the next action and who owns it\nproduct principle: next_action_clarity\nrationale: AC1 is the headline promise of U-UI-11; the render code currently shows action labels without an owner, so this is the first thing to exercise.\n\ngenerated at 2026-08-10T04:28:36+00:00 (stage=initial, wave 1)\nbecause of risk: R1: the screen may name the action but not who owns it.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "render-tests",
+        "command": {
+          "name": "render-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "failed"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Exception with no linked load still shows its received evidence without fabricating a state\n\nrisk: missing_data (priority P2)\npurpose: Confirm the unlinked-packet render path shows the received evidence and an honest workflow state instead of crashing or inventing linked-load data.\nrequirement: U-UI-11: the screen shows the evidence the exception was raised from\nproduct principle: evidence_clarity\nrationale: Unlinked exceptions take a separate template; evidence completeness and no-crash behavior there is a distinct situation from the linked happy path.\n\ngenerated at 2026-08-10T04:28:36+00:00 (stage=initial, wave 1)\nbecause of risk: R3: the unlinked template may omit evidence or fail on missing load data.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "unlinked-packet-tests",
+        "command": {
+          "name": "unlinked-packet-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "failed"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Review card reflects current backend state, not the payload snapshot\n\nrisk: stale_state (priority P0)\npurpose: Confirm the exception detail render shows the live backend state (from workflow_runs via run_states) and suppresses NEEDS_REVIEW actions once the run has moved on.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: AC3 is the highest-weight, most dangerous promise: a screen that shows a stale NEEDS_REVIEW while the backend holds DONE misleads the operator into a duplicate action.\n\ngenerated at 2026-08-10T04:28:36+00:00 (stage=initial, wave 1)\nbecause of risk: R2: the screen can show a state the backend no longer holds.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "state-consistency-render-tests",
+        "command": {
+          "name": "state-consistency-render-tests",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_dogfood_pilot.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id\"",
+          "contains": [],
+          "not_contains": [
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "persisted state",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id\"",
+          "contains": [],
+          "not_contains": [
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "failed"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S5": {
+    "name": "generated:S5",
+    "phase": "P3",
+    "description": "Canonical suite stays green after schema/store/authorization changes\n\nrisk: regression (priority P0)\npurpose: Guard AC3's invariant substrate: the diff rewrote schema.py, workflow_store.py and authorization.py, all of which the exception detail screen reads state and ownership from. A regression here lets the screen render states the backend cannot hold.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: The three files the screen depends on for state and owner were all touched; the canonical suite is the load-bearing invariant net for those modules.\n\ngenerated at 2026-08-10T04:33:51+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A schema/store change breaks a state or ownership invariant so the screen can show a state the backend does not hold.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "canonical-suite",
+        "command": {
+          "name": "canonical-suite",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "failed",
+      "error"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S6": {
+    "name": "generated:S6",
+    "phase": "P3",
+    "description": "Canonical schema still constructs with the new columns\n\nrisk: regression (priority P1)\npurpose: schema.py changed by +31 lines. If create_canonical_schema no longer builds the canonical tables the exception detail view queries, the screen cannot faithfully reflect backend state (AC3).\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: The screen's state and evidence come from canonical tables; a schema-construction break is a direct AC3 hazard introduced by the diff.\n\ngenerated at 2026-08-10T04:33:51+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A schema.py edit drops or renames a canonical table the detail view relies on, so it reads from a table that is not there.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "schema-probe",
+        "command": {
+          "name": "schema-probe",
+          "run": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "workflow_runs",
+            "effect_grants"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "workflow_runs",
+      "effect_grants"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S7": {
+    "name": "generated:S7",
+    "phase": "P3",
+    "description": "State-transition matrix invariants hold (AC3 backbone)\n\nrisk: regression (priority P0)\npurpose: AC3 depends on the workflow state machine only ever holding reachable states. The checkpoint matrix exercises the transition invariants that the detail screen must faithfully mirror; a regression here is exactly how a screen ends up showing an unreachable/stale state.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: workflow_store.py changed and AC3 is a state-consistency claim; the checkpoint matrix is the closest invariant test to that claim.\n\ngenerated at 2026-08-10T04:33:51+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A state-machine regression permits a transition the backend should reject, so the screen can display a state the backend does not actually hold.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "checkpoint-matrix",
+        "command": {
+          "name": "checkpoint-matrix",
+          "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "passed"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "passed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "failed"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S8": {
+    "name": "generated:S8",
+    "phase": "P3",
+    "description": "Detail request for a nonexistent exception refuses instead of inventing a state\n\nrisk: missing_data (priority P0)\npurpose: AC3 says the screen must never show a state the backend does not hold. The strongest version of that is an exception id the backend holds NOTHING for: the view must refuse cleanly, not fabricate a WorkflowState or a next action.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: known_vs_inferred\nrationale: The new exception_detail_view read path must degrade to an honest refusal for unknown ids rather than render a placeholder state.\n\ngenerated at 2026-08-10T04:33:51+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A request for an unknown exception id renders a screen carrying an invented state or next action the backend never held.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions/nonexistent-run-zzzzzzzz",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 404,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "NEEDS_REVIEW",
+      "RECEIVED",
+      "READY_FOR_ENTRY",
+      "DONE",
+      "Traceback"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S9": {
+    "name": "generated:S9",
+    "phase": "P3",
+    "description": "Detail request with a malformed id fails safe, no 500, no state leak\n\nrisk: malformed_input (priority P1)\npurpose: A malformed exception id (SQL-ish/garbage) must produce a bounded refusal, not a stack trace or a rendered WorkflowState. A 500 or a leaked state on bad input is an AC3 violation and a dead-end error.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: repository_silent\nrationale: The new read/query path in exception_detail_view.py + workflow_store.py must reject malformed identifiers without surfacing an internal state or crashing.\n\ngenerated at 2026-08-10T04:33:51+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A malformed id reaches the store query and returns a 500 or a partially rendered screen exposing a WorkflowState the backend does not hold for it.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions/%27%20OR%201%3D1%20--",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 404,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "NEEDS_REVIEW",
+      "RECEIVED",
+      "DONE"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

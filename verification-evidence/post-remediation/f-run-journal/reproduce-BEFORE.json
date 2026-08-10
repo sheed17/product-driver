@@ -1,0 +1,11 @@
+{
+  "iteration_record_has_commands_field": false,
+  "direct_attribute_read": "AttributeError: 'IterationRecord' object has no attribute 'commands'",
+  "journal_written": false,
+  "founder_summary_written": false,
+  "warnings": [
+    "could not write the run journal: AttributeError: 'IterationRecord' object has no attribute 'commands'"
+  ],
+  "REPRODUCED": true,
+  "SUMMARY": "a run with one ordinary iteration writes no run journal and no founder summary; the AttributeError is swallowed into a warning"
+}

@@ -38,6 +38,7 @@ from .config import ScenarioRunConfig
 from .models import (
     AssertionResult,
     BrowserObservation,
+    BrowserTextExpectation,
     HttpObservation,
     ScenarioResult,
     redact,
@@ -70,9 +71,10 @@ class RequestSpec(BaseModel):
     body: str | None = None
     expect_status: int | None = None
     expect_contains: list[str] = Field(default_factory=list)
-    #: Per-request override. A scenario that exercises "timed out before the
-    #: effect landed" needs a deadline shorter than the run-wide one.
-    timeout_s: int | None = None
+    #: Per-request override, in seconds; fractional allowed. A scenario that
+    #: exercises "timed out before the effect landed" needs a deadline shorter
+    #: than the run-wide one, and often shorter than a second.
+    timeout_s: float | None = None
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -89,7 +91,8 @@ class CommandSpec(BaseModel):
     run: str
     expect_exit_code: int | None = 0
     expect_contains: list[str] = Field(default_factory=list)
-    timeout_s: int | None = None
+    #: Seconds; fractional allowed.
+    timeout_s: float | None = None
 
     @field_validator("expect_contains", mode="before")
     @classmethod
@@ -106,7 +109,8 @@ class StateCheckSpec(BaseModel):
     command: str
     contains: list[str] = Field(default_factory=list)
     not_contains: list[str] = Field(default_factory=list)
-    timeout_s: int | None = None
+    #: Seconds; fractional allowed.
+    timeout_s: float | None = None
 
     @field_validator("contains", "not_contains", mode="before")
     @classmethod
@@ -407,7 +411,9 @@ class ScenarioExecutor:
                             "(set run.browser_enabled: true or pass --browser)"
                         )
                         return await self._finish(result, scenario, runner, services)
-                    result.browser = await self._run_browser(scenario, scenario.browser)
+                    observation = await self._run_browser(scenario, scenario.browser)
+                    result.browser = observation
+                    self._assert_browser_text(result, observation)
 
                 # 8. persisted-state checks
                 for check in scenario.expect_state:
@@ -493,6 +499,7 @@ class ScenarioExecutor:
                     )
                     continue
                 obs = await self._run_browser(scenario, step.browser, label=label)
+                self._assert_browser_text(result, obs)
                 self._merge_browser(result, obs)
 
             elif step.kind == "fixture":
@@ -610,6 +617,47 @@ class ScenarioExecutor:
             text,
         )
 
+    @staticmethod
+    def _assert_browser_text(result: ScenarioResult, obs: BrowserObservation) -> None:
+        """Score what the browser sequence asked for, and whether it happened.
+
+        Without this a browser scenario whose only oracle is ``expect_text``
+        cannot fail: the check ran, the page disagreed, and the result was a
+        line of narration nothing compared against anything. The generator is
+        told ``expect_text`` is a valid browser oracle, and
+        ``GeneratedScenario.has_observable_outcome`` counts it as one, so a
+        proposal built entirely on it validated and then passed unconditionally.
+
+        A step that *raised* is scored for the same reason. Clicking a selector
+        that is not on the page is not a passing interaction, and a scenario
+        whose every step blew up would otherwise finish with no assertions at
+        all — which ``ScenarioResult.passed`` reads as success.
+        """
+        for failure in obs.step_failures:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=failure,
+                    passed=False,
+                    detail="the browser step did not complete, so nothing after it was observed",
+                )
+            )
+        for expectation in obs.text_expectations:
+            where = f"{expectation.label}: " if expectation.label else ""
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_visible",
+                    target=(
+                        f"{where}browser step {expectation.step}: "
+                        f"expect_text {expectation.text!r}"
+                    ),
+                    passed=expectation.present,
+                    detail=""
+                    if expectation.present
+                    else "not present in the page text at that point",
+                )
+            )
+
     def _merge_browser(self, result: ScenarioResult, obs: BrowserObservation) -> None:
         if result.browser is None:
             result.browser = obs
@@ -622,6 +670,8 @@ class ScenarioExecutor:
         merged.console_errors.extend(obs.console_errors)
         merged.network_failures.extend(obs.network_failures)
         merged.steps.extend(obs.steps)
+        merged.text_expectations.extend(obs.text_expectations)
+        merged.step_failures.extend(obs.step_failures)
         merged.trace_path = obs.trace_path or merged.trace_path
 
     # -- shared observation recording -------------------------------------
@@ -884,12 +934,21 @@ class ScenarioExecutor:
                 obs.steps.append(
                     f"expect_text {step.expect_text!r}: {'FOUND' if present else 'NOT FOUND'}"
                 )
+                # Recorded structurally as well, because the caller turns these
+                # into assertions. Narration alone is not an oracle.
+                obs.text_expectations.append(
+                    BrowserTextExpectation(
+                        text=step.expect_text, present=present, step=idx, label=prefix.strip("-")
+                    )
+                )
             if step.screenshot is not None:
                 obs.screenshots.append(
                     await self._shot(page, shots_dir, f"{prefix}{idx:02d}-{step.screenshot}")
                 )
         except Exception as exc:
-            obs.steps.append(f"step {idx} FAILED: {type(exc).__name__}: {redact(str(exc))}")
+            detail = f"step {idx} FAILED: {type(exc).__name__}: {redact(str(exc))}"
+            obs.steps.append(detail)
+            obs.step_failures.append(detail)
             with contextlib.suppress(Exception):
                 obs.screenshots.append(
                     await self._shot(page, shots_dir, f"{prefix}{idx:02d}-failed")

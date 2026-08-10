@@ -1,0 +1,52 @@
+GENERATED SCENARIO PLAN — run post-A2-diff
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+5 generated case(s)
+risk categories exercised: cross_tenant, happy_path, malformed_input, regression, ui_backend_disagreement
+identified but NOT exercised: AC1: an exception in a state that has no defined next action (or no owner recorded) may render a blank/None/dead-end owner or action instead of naming a concrete accountable human, violating next_action_clarity and accountable_owner and producing a dead-end screen.; AC2: an exception with no evidence rows, or with evidence the reader cannot join, may render fabricated/placeholder evidence or crash, rather than honestly showing 'no evidence recorded'.
+
+IDENTIFIED RISKS:
+  [P0 ui_backend_disagreement] AC3 (highest weight): the detail screen may read a cached/snapshotted next-action or state rather than the live backend, so after an exception is resolved or transitions, the screen keeps naming a next action the backend no longer holds. workflow_store.py grew +163 lines of new read paths — exactly where a stale snapshot or a read that bypasses the current-state query would hide.  (covered by S1)
+  [P1 missing_data] AC1: an exception in a state that has no defined next action (or no owner recorded) may render a blank/None/dead-end owner or action instead of naming a concrete accountable human, violating next_action_clarity and accountable_owner and producing a dead-end screen.  (NOT covered)
+  [P1 missing_data] AC2: an exception with no evidence rows, or with evidence the reader cannot join, may render fabricated/placeholder evidence or crash, rather than honestly showing 'no evidence recorded'.  (NOT covered)
+  [P1 cross_tenant] authorization.py is brand new (+88, previously absent). A detail read for an exception id that does not belong to the server's tenant, or a nonexistent id, may leak another tenant's load/carrier/reason or 500 instead of returning a clean not-found/denied.  (covered by S3)
+  [P2 malformed_input] A malformed exception identifier (non-numeric, oversized) may raise an unhandled exception and render a stacktrace/500 rather than a clean operator-facing error, contradicting the 'no dead-end error' expectation the whole unit is about.  (covered by S4)
+  [P2 regression] schema.py changed (+31). If the new columns/tables the screen depends on are not part of the canonical fresh-DB builder, a freshly provisioned backend cannot hold the state the screen shows, so the screen renders defaults — a state the backend does not actually hold.  (covered by S5)
+
+SCENARIOS:
+  [P0 ui_backend_disagreement] S1: Detail screen reflects a backend state change even across a service restart (no stale next action)
+      purpose: Prove the exception detail screen renders from live backend state, not a cached snapshot, so it can never name a next action the backend no longer holds.
+      grounded in: the screen never shows a state the backend does not currently hold
+      because: A resolved/transitioned exception could still show its old next action if the screen reads a cached projection instead of the live row.
+  [P1 happy_path] S2: Exception detail renders evidence and a named owner without leaking placeholders
+      purpose: Exercise the detail screen for a live exception and confirm it comes up populated (owner + evidence) rather than rendering empty/placeholder tokens or crashing.
+      grounded in: the screen shows the evidence the exception was raised from
+      because: The owner or evidence join could fail silently and render a blank or placeholder where a name/evidence must appear.
+  [P1 cross_tenant] S3: Unknown / cross-tenant exception id returns a clean not-found, not a leak or a 500
+      purpose: Request a detail page for an id the server's tenant does not own (using an implausible id) and confirm no other tenant's data is disclosed and no stacktrace is emitted.
+      grounded in: U-UI-11
+      because: A detail read for a foreign or nonexistent exception id could leak another tenant's fields or crash instead of denying cleanly.
+  [P2 malformed_input] S4: Malformed exception identifier is rejected cleanly, not with a stacktrace
+      purpose: Send a non-numeric exception id and confirm the screen returns a clean client error instead of an unhandled 500/stacktrace.
+      grounded in: U-UI-11
+      because: A non-numeric id could reach a DB query or int() cast unguarded and surface a stacktrace.
+  [P2 regression] S5: Canonical fresh DB still builds all tables the screen depends on after the schema change
+      purpose: Directly exercise create_canonical_schema (touched by this diff) on a fresh database and confirm it produces the backing tables, so a freshly provisioned backend can actually hold the state the screen shows rather than defaulting.
+      grounded in: the screen never shows a state the backend does not currently hold
+      because: A schema change that misses the fresh-DB builder leaves new backends unable to hold exception state, so the screen shows a state the backend never wrote.
+
+ASSUMPTIONS:
+  - The exception detail screen is served by the 'callback' service on http://127.0.0.1:8001 (the only local app URL and service I was given), and its list/detail routes are '/exceptions' and '/exceptions/{id}'. These paths are a convention guess — the builder's exception_detail_view.py and its route wiring are not present in this working tree, so I could not confirm them.
+  - The running app on :8001 is bound to the driver_probe workspace and reads/writes data/active_workspace/driver_probe/workflow.sqlite3 (the exact DB handed to me as the approved sqlite oracle).
+  - The harness provisions data/active_workspace/driver_probe/ with the app running before scenarios execute; that directory and DB do not exist in my checkout.
+  - 'Exception' maps onto a workflow_runs row in a review/exception state, with evidence in audit_events — the model that is present in this tree (migrations/phase2_tenant_first.py).
+
+UNRESOLVED QUESTIONS:
+  - BLOCKER: the builder's changed files (exception_detail_view.py, templates/exception_detail.html, workflow_store.py, authorization.py) and the modified schema.py are not in this working tree, so I could not read the screen's actual route, its rendered literal text, or the new schema columns for owner/next-action/evidence. I therefore avoided asserting screen text as expected_observations (which would false-fail a correct product) and leaned on sqlite oracles plus universal error-marker forbidden_observations.
+  - What is the exact URL for the exception detail screen and its list page, and is it served on :8001 (callback) or on the site server (:8000, out of scope for me)? All request-based scenarios above depend on this and will false-fail if the path differs.
+  - What is the tenant the driver_probe callback server is bound to? Without it I cannot provision a controlled exception row via sqlite INSERT that the screen would find, which blocks a precise before/after ui_backend_disagreement scenario (drive backend state -> observe screen must follow) — the strongest possible AC3 test.
+  - What column/table did schema.py (+31) add to persist 'next action' and 'owner', and what literal strings does the template emit for state, owner, and 'no evidence recorded'? With these I could assert the screen text verbatim and directly verify AC1/AC2/AC3 instead of only asserting the screen renders without crashing.
+  - Is there an approved way to drive an exception through a real state transition (e.g., a resolving action) without minting a signed token from the secret? If so, an idempotency/repeated-request scenario on that transition plus a screen re-read would be high value; I could not author it with the approved command set.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

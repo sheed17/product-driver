@@ -1,0 +1,10 @@
+{
+  "config_refuses_above_one": true,
+  "config_refusal": "    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+  "executor_reads_max_parallel_after_init": false,
+  "executor_accepts_max_parallel_8": false,
+  "executor_stored_value": null,
+  "executor_construction_error": "ValueError: max_parallel must be 1: this executor runs scenarios sequentially. Scenarios share services, ports, databases and a filesystem workspace, and nothing yet proves a given pair isolated. The isolation partition is computed (see ScenarioSuite.isolation_groups) so parallel execution can be added once it can be proven safe rather than assumed; until then this refuses rather than silently ignoring the request.",
+  "REPRODUCED": false,
+  "SUMMARY": "the executor no longer claims a parallelism it does not implement"
+}

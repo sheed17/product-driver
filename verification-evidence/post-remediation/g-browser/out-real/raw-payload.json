@@ -1,0 +1,356 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The screen serves a stale status (e.g. still 'open') after the exception has been resolved in the durable store, so the operator acts on a status the store no longer holds.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-UI-002 'the screen never shows a status the durable store does not hold'; fixture/app.py DEFECT=stale_read caches the first render."
+    },
+    {
+      "id": "R2",
+      "description": "The exception detail screen fails to name the next action and/or who owns it, leaving the operator with nothing actionable.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC-UI-001 'the exception detail screen names the next action and who owns it'."
+    },
+    {
+      "id": "R3",
+      "description": "A request for an unknown exception id fabricates or defaults a status instead of returning not-found, showing a status the store does not hold.",
+      "risk_category": "boundary",
+      "severity": "P2",
+      "basis": "AC-UI-002; fixture/app.py serves only EX-1 and returns 404 otherwise."
+    },
+    {
+      "id": "R4",
+      "description": "Resolving the same exception more than once corrupts the durable status or owner, so a repeated operator action leaves the store inconsistent with what the screen shows.",
+      "risk_category": "idempotency",
+      "severity": "P2",
+      "basis": "AC-UI-002; the resolve endpoint mutates the durable store on each POST."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "title": "Open exception screen names status, owner, and next action",
+      "purpose": "Confirm the exception detail screen an operator lands on states the status, why it was raised, who owns it, and the next action, matching the durable store.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "AC-UI-001 promises the screen names the next action and owner; this is the primary thing the unit adds.",
+      "generating_risk": "R2 \u2014 the screen could render without naming owner or next action, leaving the operator nothing to act on.",
+      "requirement_reference": "AC-UI-001",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "ui",
+      "isolation_note": "Read-only: navigates and asserts text only, performs no mutation, so it cannot contaminate the next scenario.",
+      "setup": [],
+      "cleanup": [],
+      "expected_observations": [
+        "status: open",
+        "why: proof of delivery missing",
+        "owner: Neyma",
+        "next action: chase the carrier for proof of delivery",
+        "EX-1 status=open owner=Neyma"
+      ],
+      "forbidden_observations": [],
+      "actions": [
+        {
+          "kind": "browser",
+          "browser_steps": [
+            {
+              "goto": "/exceptions/EX-1"
+            },
+            {
+              "expect_text": "status: open"
+            },
+            {
+              "expect_text": "why: proof of delivery missing"
+            },
+            {
+              "expect_text": "owner: Neyma"
+            },
+            {
+              "expect_text": "next action: chase the carrier for proof of delivery"
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 fixture/state.py EX-1",
+            "contains": [
+              "EX-1 status=open owner=Neyma"
+            ],
+            "not_contains": [
+              "status=resolved"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "Screen reflects resolved status after operator resolves (stale-render guard)",
+      "purpose": "After the operator clicks Resolve, the re-rendered screen must show the resolved status and closed next-action that the durable store now holds, never the pre-resolution status.",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "This is the load-bearing AC-UI-002 check: a cached/stale render would keep showing 'open' while the store says 'resolved'.",
+      "generating_risk": "R1 \u2014 a stale render keeps serving the first status after resolution, so the screen and the durable store disagree.",
+      "requirement_reference": "AC-UI-002",
+      "product_principle_reference": "founder context",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "ui",
+      "isolation_note": "Mutates the durable store (resolves EX-1); final action restarts the ui service, which reseeds the store to the open EX-1, so the next scenario starts clean. isolation_key 'ui' prevents concurrent runs against the same store.",
+      "setup": [],
+      "cleanup": [],
+      "expected_observations": [
+        "status: resolved",
+        "next action: none; the exception is closed",
+        "EX-1 status=resolved owner=Neyma"
+      ],
+      "forbidden_observations": [],
+      "persisted_state_checks": [
+        {
+          "command": "python3 fixture/state.py EX-1",
+          "contains": [
+            "EX-1 status=resolved owner=Neyma"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "kind": "browser",
+          "browser_steps": [
+            {
+              "goto": "/exceptions/EX-1"
+            },
+            {
+              "click": "#resolve"
+            },
+            {
+              "expect_text": "status: resolved"
+            },
+            {
+              "expect_text": "next action: none; the exception is closed"
+            }
+          ]
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 fixture/state.py EX-1",
+            "contains": [
+              "EX-1 status=resolved owner=Neyma"
+            ],
+            "not_contains": [
+              "status=open"
+            ]
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "ui"
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "GET after resolve serves store status, not a cached one",
+      "purpose": "At the HTTP layer, GET / after a resolve POST must serve the resolved status the store holds, catching a stale render independent of browser rendering.",
+      "risk_category": "stale_state",
+      "priority": "P0",
+      "rationale": "AC-UI-002 must hold on the raw endpoint too; a browser-only check could miss a cache that only the rendered HTTP path exposes.",
+      "generating_risk": "R1 \u2014 the GET endpoint could keep returning the first-rendered status after the store moves to resolved.",
+      "requirement_reference": "AC-UI-002",
+      "product_principle_reference": "founder context",
+      "mode": "backend",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "ui",
+      "isolation_note": "Mutates the durable store (resolves EX-1); final action restarts the ui service, which reseeds the store to the open EX-1. isolation_key 'ui' prevents concurrent runs.",
+      "setup": [],
+      "cleanup": [],
+      "expected_observations": [
+        "status: resolved",
+        "EX-1 status=resolved owner=Neyma"
+      ],
+      "forbidden_observations": [],
+      "persisted_state_checks": [
+        {
+          "command": "python3 fixture/state.py EX-1",
+          "contains": [
+            "EX-1 status=resolved owner=Neyma"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/exceptions/EX-1/resolve",
+            "expect_status": 303,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 fixture/state.py EX-1",
+            "contains": [
+              "EX-1 status=resolved owner=Neyma"
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "GET",
+            "path": "/exceptions/EX-1",
+            "expect_status": 200,
+            "expect_contains": [
+              "status: resolved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "ui"
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "Resolving twice leaves the store consistent",
+      "purpose": "A repeated Resolve action must leave the durable status resolved and the owner unchanged, and the screen must reflect that single consistent status.",
+      "risk_category": "idempotency",
+      "priority": "P2",
+      "rationale": "Operators double-submit; AC-UI-002 requires the screen to always match the one status the store holds, even after a repeated resolve.",
+      "generating_risk": "R4 \u2014 a repeated resolve could corrupt the durable status or owner, desyncing screen and store.",
+      "requirement_reference": "AC-UI-002",
+      "product_principle_reference": "founder context",
+      "mode": "backend",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "ui",
+      "isolation_note": "Mutates the durable store; final action restarts the ui service, which reseeds the store to the open EX-1. isolation_key 'ui' prevents concurrent runs.",
+      "setup": [],
+      "cleanup": [],
+      "expected_observations": [
+        "status: resolved",
+        "EX-1 status=resolved owner=Neyma"
+      ],
+      "forbidden_observations": [],
+      "persisted_state_checks": [
+        {
+          "command": "python3 fixture/state.py EX-1",
+          "contains": [
+            "EX-1 status=resolved owner=Neyma"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/exceptions/EX-1/resolve",
+            "expect_status": 303,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "POST",
+            "path": "/api/exceptions/EX-1/resolve",
+            "expect_status": 303,
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "state_check",
+          "state_check": {
+            "command": "python3 fixture/state.py EX-1",
+            "contains": [
+              "EX-1 status=resolved owner=Neyma"
+            ],
+            "not_contains": [
+              "status=open"
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "request": {
+            "method": "GET",
+            "path": "/exceptions/EX-1",
+            "expect_status": 200,
+            "expect_contains": [
+              "status: resolved"
+            ],
+            "timeout_s": 5
+          }
+        },
+        {
+          "kind": "restart_service",
+          "service": "ui"
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "title": "Unknown exception id returns not-found, no fabricated status",
+      "purpose": "Requesting an exception the store does not hold must return not-found rather than rendering a defaulted or fabricated status.",
+      "risk_category": "boundary",
+      "priority": "P2",
+      "rationale": "AC-UI-002 forbids showing a status the store does not hold; a nonexistent id is the clearest way that invariant can be broken by falling back to a seed.",
+      "generating_risk": "R3 \u2014 an unknown id could fabricate/default a status instead of 404.",
+      "requirement_reference": "AC-UI-002",
+      "product_principle_reference": "founder context",
+      "mode": "backend",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "ui",
+      "isolation_note": "Read-only GET of a nonexistent path; performs no mutation.",
+      "setup": [],
+      "cleanup": [],
+      "expected_observations": [
+        "not found"
+      ],
+      "forbidden_observations": [
+        "status: open",
+        "status: resolved"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "request": {
+            "method": "GET",
+            "path": "/exceptions/EX-999",
+            "expect_status": 404,
+            "expect_contains": [
+              "not found"
+            ],
+            "timeout_s": 5
+          }
+        }
+      ]
+    }
+  ],
+  "unresolved_questions": [
+    "The fixture reseeds the durable store on every ui service start (main() unlinks and rewrites store.json), so persistence of a resolution across a restart cannot be verified \u2014 no acceptance criterion promises restart durability, so this was not scoped as a scenario. Confirm whether AC-UI-002 is intended to hold across service restarts.",
+    "AC-UI-001 requires the screen to state 'why the exception was raised' (reason), but no acceptance criterion explicitly names the reason field as mandatory beyond next-action/owner; the reason is asserted in S1 as part of the happy path but is not independently required. Confirm whether an absent/blank reason should fail the unit.",
+    "No requirement or approved command exists to simulate a missing/corrupt durable store from the operator's view; the app silently falls back to a seed. If AC-UI-002 should cover the store-unavailable case (screen must not show a status when the store cannot be read), a requirement and a way to induce that state are needed."
+  ]
+}

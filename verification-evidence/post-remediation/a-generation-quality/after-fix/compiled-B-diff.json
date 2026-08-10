@@ -1,0 +1,606 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Forged/unsigned governed tap performs no payment and queues no write intent\n\nrisk: safety_invariant (priority P0)\npurpose: Prove an unauthenticated caller cannot cause a governed carrier-invoice effect: a Slack /slack/actions POST carrying a governed-approval-shaped token but no valid HMAC signature must be refused before any governed handling, leaving zero payment effect and zero queued write intent in the durable store.\nrequirement: no payment effect occurs without a recorded approval\nproduct principle: outcome_verification\nrationale: The whole feature's safety hinge is that only an authenticated, recorded approval can advance the pipeline; a forged tap is the single most likely real-world attack and must land nothing.\n\ngenerated at 2026-08-10T05:16:43+00:00 (stage=initial, wave 1)\nbecause of risk: An unsigned or forged Slack tap could slip past the signature wall and queue or complete a governed write, paying a carrier with no recorded human approval.\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtYXBwci0xIn0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no governed write completed",
+        "command": null,
+        "state_check": {
+          "name": "no governed write completed",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no governed write escalated",
+        "command": null,
+        "state_check": {
+          "name": "no governed write escalated",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteEscalated'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no write intent queued",
+        "command": null,
+        "state_check": {
+          "name": "no write intent queued",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Recorded. The approved write is governed",
+      "Neyma action applied",
+      "GovernedWriteCompleted",
+      "VERIFIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Two simultaneous forged governed taps do not race into a double effect\n\nrisk: concurrency (priority P0)\npurpose: Issue two identical forged governed taps at the same instant and confirm the persisted store still shows zero completed governed writes and zero queued intents \u2014 no race turns two refusals into one (or two) effects.\nrequirement: an approved invoice is paid exactly once\nproduct principle: outcome_verification\nrationale: 'Paid exactly once' is a concurrency property; the classic failure is two near-simultaneous approvals both landing, so the race must be exercised, not assumed.\n\ngenerated at 2026-08-10T05:16:43+00:00 (stage=initial, wave 1)\nbecause of risk: Two concurrent taps for the same invoice could both slip through and pay a carrier twice, or one could land despite being unauthenticated.\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmFjZSJ9.deadbeef\"}]}"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no governed write completed after race",
+        "command": null,
+        "state_check": {
+          "name": "no governed write completed after race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no write intent queued after race",
+        "command": null,
+        "state_check": {
+          "name": "no write intent queued after race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Recorded. The approved write is governed",
+      "Neyma action applied",
+      "GovernedWriteCompleted",
+      "VERIFIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Replayed forged governed tap never accumulates an effect\n\nrisk: repeated_request (priority P1)\npurpose: Replay the same forged governed tap five times in sequence and confirm the governed-effect counts stay exactly zero \u2014 repeated delivery of an unauthenticated approval accumulates nothing.\nrequirement: no payment effect occurs without a recorded approval\nproduct principle: outcome_verification\nrationale: Slack retries and manual re-clicks make repeated delivery routine; the store must not drift toward an effect under repetition.\n\ngenerated at 2026-08-10T05:16:43+00:00 (stage=initial, wave 1)\nbecause of risk: Repeated delivery of the same tap could, on some Nth attempt, be mishandled into a queued intent or a completed write.\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVwbGF5In0.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no governed write completed after replays",
+        "command": null,
+        "state_check": {
+          "name": "no governed write completed after replays",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no write intent queued after replays",
+        "command": null,
+        "state_check": {
+          "name": "no write intent queued after replays",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Recorded. The approved write is governed",
+      "Neyma action applied",
+      "GovernedWriteCompleted",
+      "VERIFIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Restart of the callback service fabricates no governed effect and leaves the audit store intact\n\nrisk: restart_recovery (priority P1)\npurpose: Restart the callback service, then send one forged governed tap, and confirm: the security_events store is still queryable (durable), zero governed writes were completed (restart did not fabricate an effect or auto-resume anything), and the service is still fail-closed after restart.\nrequirement: approval survives a restart\nproduct principle: failure_recovery\nrationale: A restart is where in-memory grant handles are deliberately dropped; the durable decision store must survive and the process must not resurrect or invent an effect on the way back up.\n\ngenerated at 2026-08-10T05:16:43+00:00 (stage=initial, wave 1)\nbecause of risk: A restart could replay a durable queue into an executed write, or drop the audit store, so a governed effect appears (or an approval record vanishes) with no human in the loop.\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1000
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"eyJ0eXBlIjoiZ292ZXJuZWRfaW52b2ljZV93cml0ZV9hcHByb3ZhbCIsImFwcHJvdmFsX2lkIjoicHJvYmUtcmVzdGFydCJ9.deadbeef\"}]}"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "security_events store durable and readable after restart",
+        "command": null,
+        "state_check": {
+          "name": "security_events store durable and readable after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)>=0 FROM security_events\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "restart fabricated no completed governed write",
+        "command": null,
+        "state_check": {
+          "name": "restart fabricated no completed governed write",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteCompleted'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "restart auto-resumed no queued intent",
+        "command": null,
+        "state_check": {
+          "name": "restart auto-resumed no queued intent",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*)=0 FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Recorded. The approved write is governed",
+      "Neyma action applied",
+      "GovernedWriteCompleted",
+      "VERIFIED"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

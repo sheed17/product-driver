@@ -1,0 +1,216 @@
+{
+  "caught": 30,
+  "total": 30,
+  "results": [
+    {
+      "id": "M1",
+      "description": "disable adaptive generation (expand_after_failures becomes a no-op)",
+      "file": "neyma_product_driver/scenario_planner.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts]         \"\"\"Not \"an expectation failed\" \u2014 the value that was actually wrong.\"\"\"\n                    failed_assertions=[\"expect_state: exactly one payment \u2014 not found\"],\nFAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_the_observed_value_reaches_the_generator\n1 failed, 140 passed in 2.12s"
+    },
+    {
+      "id": "M2",
+      "description": "duplicate detection always reports 'not a duplicate'",
+      "file": "neyma_product_driver/scenario_plan.py",
+      "status": "CAUGHT",
+      "detail": "[317s, caught by the full suite] FAILED tests/test_scenario_generation.py::TestDuplicateDetection::test_a_repeat_of_an_accepted_scenario_is_rejected\n1 failed, 1028 passed in 313.51s (0:05:13)"
+    },
+    {
+      "id": "M3",
+      "description": "failed scenarios report PASSED",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_8_a_builder_completion_claim_cannot_override_a_failed_scenario\n1 failed, 93 passed in 1.32s"
+    },
+    {
+      "id": "M4",
+      "description": "remove safety validation of generated scenarios",
+      "file": "neyma_product_driver/scenario_validation.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_11_an_unsafe_generated_operation_is_refused\n1 failed, 96 passed in 1.66s"
+    },
+    {
+      "id": "M5",
+      "description": "ignore generated scenario failure during acceptance",
+      "file": "neyma_product_driver/cli.py",
+      "status": "CAUGHT",
+      "detail": "[4s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_an_accept_is_overridden_when_only_a_coverage_gap_remains\n1 failed, 34 passed in 3.40s"
+    },
+    {
+      "id": "M6",
+      "description": "remove provenance derivation from generated scenarios",
+      "file": "neyma_product_driver/scenario_generator.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_a_generated_wave_really_reaches_the_plan_through_the_async_path\n1 failed, 105 passed in 1.71s"
+    },
+    {
+      "id": "M7",
+      "description": "no failure ever blocks acceptance (blocking_failures always empty)",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[267s, caught by the full suite] FAILED tests/test_scenario_e2e.py::test_generate_execute_learn_expand_rerun_then_accept\n1 failed, 980 passed in 264.25s (0:04:24)"
+    },
+    {
+      "id": "M8",
+      "description": "everything_required_passed forced True",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestConvenienceFlagsCannotOverrideTheGate::test_everything_required_passed_is_false_when_a_required_scenario_failed\n1 failed, 101 passed in 1.95s"
+    },
+    {
+      "id": "N1",
+      "description": "real reasoner never invoked (propose returns nothing)",
+      "file": "neyma_product_driver/scenario_generator.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_the_real_reasoner_runs_inside_an_already_running_event_loop\n1 failed, 104 passed in 2.00s"
+    },
+    {
+      "id": "N2",
+      "description": "reasoner exception silently converted to an empty generation",
+      "file": "neyma_product_driver/scenario_generator.py",
+      "status": "CAUGHT",
+      "detail": "[5s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_a_reasoner_failure_is_recorded_not_silently_an_empty_wave\n1 failed, 106 passed in 5.03s"
+    },
+    {
+      "id": "N3",
+      "description": "control characters accepted (newline shell composition)",
+      "file": "neyma_product_driver/scenario_validation.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestCommandBoundary::test_composition_outside_quotes_is_refused[echo payments\\necho INJECTED]\n1 failed, 108 passed in 2.06s"
+    },
+    {
+      "id": "N4",
+      "description": "absolute URL in a generated request path accepted",
+      "file": "neyma_product_driver/scenario_validation.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_12_an_external_url_attempt_is_refused\n1 failed, 97 passed in 1.59s"
+    },
+    {
+      "id": "N5",
+      "description": "shell scanner made quote-blind (legitimate SQL probes rejected)",
+      "file": "neyma_product_driver/scenario_validation.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestCommandBoundary::test_quoted_payloads_are_accepted[sqlite3 db \"SELECT key FROM grants GROUP BY key HAVING count(*) > 1\"]\n1 failed, 122 passed in 2.02s"
+    },
+    {
+      "id": "N6",
+      "description": "adaptive generation receives no failure evidence",
+      "file": "neyma_product_driver/scenario_planner.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts]         \"\"\"Not \"an expectation failed\" \u2014 the value that was actually wrong.\"\"\"\n                    failed_assertions=[\"expect_state: exactly one payment \u2014 not found\"],\nFAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_the_observed_value_reaches_the_generator\n1 failed, 140 passed in 2.00s"
+    },
+    {
+      "id": "N7",
+      "description": "adaptive provenance no longer linked to a source failure",
+      "file": "neyma_product_driver/scenario_validation.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_an_adaptive_scenario_must_name_the_failure_that_caused_it\n1 failed, 141 passed in 2.06s"
+    },
+    {
+      "id": "N8",
+      "description": "required SKIPPED treated as success by the gate",
+      "file": "neyma_product_driver/scenario_gate.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_3_a_skipped_required_scenario_blocks\n1 failed, 88 passed in 1.24s"
+    },
+    {
+      "id": "N9",
+      "description": "evidence reference accepted without any artifact",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_7_fabricated_evidence_does_not_satisfy_the_gate\n1 failed, 92 passed in 1.03s"
+    },
+    {
+      "id": "N10",
+      "description": "resume regenerates from wave zero",
+      "file": "neyma_product_driver/scenario_planner.py",
+      "status": "CAUGHT",
+      "detail": "[2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestResumePreservesAdaptiveState::test_a_resumed_planner_continues_from_the_persisted_plan\n1 failed, 152 passed in 2.20s"
+    },
+    {
+      "id": "P1",
+      "description": "scenario ids truncated again, so two long proposals become one",
+      "file": "neyma_product_driver/scenario_plan.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_two_long_ids_sharing_64_characters_stay_distinct\n1 failed in 0.38s"
+    },
+    {
+      "id": "P2",
+      "description": "evidence directory names truncated again, so two scenarios share one",
+      "file": "neyma_product_driver/evidence.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_sanitize_filename_never_merges_two_long_names\n1 failed, 7 passed in 0.39s"
+    },
+    {
+      "id": "P3",
+      "description": "a duplicate suite id is dropped silently again",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_a_duplicate_id_is_recorded_rather_than_dropped\n1 failed, 15 passed in 0.46s"
+    },
+    {
+      "id": "P4",
+      "description": "assembly conflicts never reach the acceptance gate",
+      "file": "neyma_product_driver/scenario_gate.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_a_dropped_scenario_blocks_acceptance\n1 failed, 17 passed in 0.42s"
+    },
+    {
+      "id": "P5",
+      "description": "uncovered required risks never computed (the detector returns nothing)",
+      "file": "neyma_product_driver/scenario_gate.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_a_required_risk_with_no_scenario_is_a_gap\n1 failed, 19 passed in 0.47s"
+    },
+    {
+      "id": "P6",
+      "description": "a coverage gap no longer blocks acceptance",
+      "file": "neyma_product_driver/scenario_gate.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_every_executed_scenario_passing_does_not_close_the_gap\n1 failed, 20 passed in 0.40s"
+    },
+    {
+      "id": "P7",
+      "description": "the control loop stops handing the risk register to the gate",
+      "file": "neyma_product_driver/cli.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_dropping_the_risk_register_at_the_call_site_is_caught\n1 failed, 33 passed in 0.46s"
+    },
+    {
+      "id": "P8",
+      "description": "the evaluator is no longer shown the coverage gaps",
+      "file": "neyma_product_driver/cli.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_the_control_loop_supplies_the_gaps_it_computed\n1 failed, 30 passed in 0.40s"
+    },
+    {
+      "id": "P9",
+      "description": "the executor silently coerces max_parallel again instead of refusing",
+      "file": "neyma_product_driver/scenario_suite.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestParallelismIsNotClaimedFalsely::test_the_executor_refuses_any_other_value[0]\n1 failed, 37 passed in 0.42s"
+    },
+    {
+      "id": "P10",
+      "description": "the run journal reads a field IterationRecord does not have",
+      "file": "neyma_product_driver/cli.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestRunJournalIsWritten::test_a_run_with_one_iteration_writes_a_journal\n1 failed, 44 passed in 0.61s"
+    },
+    {
+      "id": "P11",
+      "description": "browser expect_text goes back to narration nobody scores",
+      "file": "neyma_product_driver/scenarios.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestBrowserTextExpectationsAreScored::test_narration_alone_is_not_accepted_as_an_oracle\n1 failed, 53 passed in 1.00s"
+    },
+    {
+      "id": "P12",
+      "description": "browser expect_text results are no longer recorded structurally",
+      "file": "neyma_product_driver/scenarios.py",
+      "status": "CAUGHT",
+      "detail": "[1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestBrowserTextExpectationsAreScored::test_the_observation_records_expectations_structurally\n1 failed, 54 passed in 1.09s"
+    }
+  ]
+}

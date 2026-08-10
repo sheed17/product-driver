@@ -1,0 +1,23 @@
+{
+  "probe1_evaluator": {
+    "asks_whether_coverage_was_sufficient": true,
+    "states_the_cross_tenant_gap": false,
+    "has_a_coverage_gap_section": false,
+    "accepts_a_coverage_gaps_argument": false,
+    "control_loop_supplies_the_gaps": false,
+    "gap_briefs_computed": []
+  },
+  "probe2_gate": {
+    "gate_accepts_a_risk_register": false,
+    "status": "VERIFIED",
+    "blocks_acceptance": false,
+    "required_total": 1,
+    "required_passed": 1,
+    "uncovered_risks": []
+  },
+  "probe3_deterministic_detector": {
+    "exists": false
+  },
+  "REPRODUCED": true,
+  "SUMMARY": "the evaluator is asked whether coverage was sufficient without being shown the known gap, and the gate reports the run verified"
+}

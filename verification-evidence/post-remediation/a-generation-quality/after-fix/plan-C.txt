@@ -1,0 +1,59 @@
+GENERATED SCENARIO PLAN — run post-C
+task: Add a read-only search/filter view over shipments. It performs no writes.
+active unit: U-RO-3
+
+7 generated case(s)
+risk categories exercised: concurrency, happy_path, malformed_input, missing_data, repeated_request, restart_recovery, safety_invariant
+
+IDENTIFIED RISKS:
+  [P0 safety_invariant] A view advertised as read-only performs a write (creates/updates a shipment, appends to an audit/events table, or writes a search-log row) as a side effect of searching. This is the highest-weight acceptance criterion and the easiest to violate accidentally via lazy caching, hit-counters, or 'record this query' logging.  (covered by S-RO-3-nowrite-single)
+  [P1 missing_data] A filter that matches nothing renders a blank page / empty list instead of an explicit 'no matches' message, leaving the operator unsure whether the search ran, failed, or the fleet is genuinely empty.  (covered by S-RO-3-nomatch-message)
+  [P1 happy_path] Search by an exact reference fails to return the matching shipment (over-narrow matching, case sensitivity, trimming) so operators cannot find a known load.  (covered by S-RO-3-happy-reference)
+  [P1 malformed_input] Malformed or injection-shaped filter input (SQL metacharacters, empty/oversized params) crashes the view with a 500 or, worse, mutates/drops persisted tables — breaking both the read-only guarantee and the store.  (covered by S-RO-3-injection-safety)
+  [P2 concurrency] Concurrent or repeated identical searches trigger a lazy-write / cache-materialization path that persists rows, so the no-write guarantee holds for a single request but breaks under load or repetition.  (covered by S-RO-3-concurrent-no-write)
+  [P2 restart_recovery] After a service restart the search view re-initializes state or replays a request in a way that writes to the store, so read-only-ness is not preserved across the process lifecycle.  (covered by S-RO-3-restart-still-readonly)
+
+SCENARIOS:
+  [P0 safety_invariant] S-RO-3-nowrite-single: Searching for a shipment persists nothing to the store
+      purpose: Exercise the core promise: a single search request must leave the shipment store byte-for-byte unaffected. Uses a unique sentinel reference guaranteed absent so that any accidental 'record this search / create-on-miss' write is caught as a concrete stored row.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: A read-only search endpoint silently writes a search-log or create-on-miss shipment row.
+  [P1 missing_data] S-RO-3-nomatch-message: A filter with zero matches states so rather than rendering blank
+      purpose: Drive a filter that matches nothing and confirm the response is an explicit, non-empty, non-error 'no matches' state — not a blank body and not a 500.
+      grounded in: U-RO-3: a filter with no matches says so rather than showing nothing
+      because: A no-match filter returns an empty/blank response instead of an explicit message.
+  [P1 happy_path] S-RO-3-happy-reference: Search by an exact existing reference returns that shipment
+      purpose: Confirm AC1: given a reference that exists in the store, the search returns the matching shipment and echoes its reference. The exact reference must be substituted from seeded data (see unresolved_questions) — <SEEDED_REFERENCE> is a placeholder that a real seeded value must replace before execution.
+      grounded in: U-RO-3: a search by reference returns the matching shipment
+      because: Exact-reference search fails to return a shipment that exists in the store.
+  [P1 malformed_input] S-RO-3-injection-safety: SQL-metacharacter filter input neither crashes nor mutates the store
+      purpose: Feed a destructive injection-shaped reference and confirm the view neither 500s nor alters persisted state — specifically that the shipments table still exists afterward. sqlite_master is always present, making this oracle fully sound regardless of seeded data.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Injection-shaped filter input triggers a write/DROP or an unhandled 500.
+  [P2 repeated_request] S-RO-3-repeat-no-accumulation: Repeating the same search does not accumulate persisted rows
+      purpose: Issue the identical sentinel search several times in sequence and confirm the store never accrues a row for it — catching a create-on-miss or per-request logging path that only becomes visible under repetition.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Repeated identical searches accumulate persisted search-log or create-on-miss rows.
+  [P2 concurrency] S-RO-3-concurrent-no-write: Concurrent searches do not race into a persisted write
+      purpose: Fire several searches simultaneously (mixed sentinel and empty filter) to exercise any lazy-write/cache path under contention, then confirm no sentinel row was persisted.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Concurrent searches trigger a lazy-write path that persists a row.
+  [P2 restart_recovery] S-RO-3-restart-still-readonly: Search remains read-only across a service restart
+      purpose: Restart the callback service, then run a search, and confirm the view still writes nothing — ensuring no re-initialization or request-replay path writes on startup.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Post-restart search re-initializes or replays in a way that writes to the store.
+
+ASSUMPTIONS:
+  - The canonical schema (freight_recon.schema.create_canonical_schema) exposes a table named 'shipments' with a text 'reference' column; the sentinel-count and schema-integrity oracles depend on these exact names. If the canonical names differ, the SQL in persisted_state_checks must be adjusted to the real table/column.
+  - The read-only search view is served by the local app at http://127.0.0.1:8001 under the path '/shipments/search' with a 'reference' query parameter. The exact route and parameter name are inferred, not confirmed from the diff.
+  - The 'callback' service is the process that serves the search view, so restarting it exercises the search endpoint's startup path.
+  - Sentinel references (QA-*-SENTINEL-*) are guaranteed absent from seeded data, so a nonzero count for them is unambiguous evidence of an unexpected write.
+
+UNRESOLVED QUESTIONS:
+  - What is the exact route and query-parameter contract for the search/filter view (e.g. '/shipments/search?reference=', '/api/shipments?ref=', GET vs POST)? All request-based scenarios assume '/shipments/search?reference=' and must be corrected to the real contract.
+  - What literal text does the view emit for the zero-match case? AC2 requires it to 'say so', but the exact 'no matches' string is unknown, so S-RO-3-nomatch-message can only assert non-error status and no-write rather than match the intended message. Provide the literal to strengthen the oracle.
+  - What is a real seeded shipment reference? S-RO-3-happy-reference uses the placeholder <SEEDED_REFERENCE>, which must be replaced with an actual seeded value before execution or the happy-path assertion is not meaningful.
+  - Confirm the exact 'shipments' table and 'reference' column names in the canonical schema so the SQLite oracles bind to real objects.
+  - The task and acceptance criteria mention no tenancy or authorization requirements for this view, so no cross_tenant or authorization scenarios were proposed. If the search view is expected to scope results per tenant/owner, that requirement is currently unstated and should be added before it can be verified.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

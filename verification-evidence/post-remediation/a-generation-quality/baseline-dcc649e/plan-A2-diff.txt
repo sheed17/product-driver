@@ -1,0 +1,76 @@
+GENERATED SCENARIO PLAN — run post-A2-diff
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+8 generated case(s)
+risk categories exercised: happy_path, malformed_input, missing_data, regression, stale_state
+identified but NOT exercised: authorization.py (+88) governs 'who owns it'; owner-resolution and cross-tenant ownership could not be exercised with available fixtures/commands, so AC1 ownership correctness is unverified.
+
+IDENTIFIED RISKS:
+  [P0 regression] schema.py added columns/constraints; a broken canonical schema or violated invariant would let the exception detail screen surface a state the backend cannot actually hold (AC3).  (covered by S5, S6, S7)
+  [P0 stale_state] State-machine transition integrity underpins AC3; if checkpoint/state transitions regress, the detail screen can render a stale or impossible state.  (covered by S4)
+  [P0 missing_data] A request for a missing or malformed exception id could fabricate a state, 500, or leak a WorkflowState instead of a clean refusal, violating AC3 and dead_end_error/repository_silent.  (covered by S3, S8)
+  [P1 authorization] authorization.py (+88) governs 'who owns it'; owner-resolution and cross-tenant ownership could not be exercised with available fixtures/commands, so AC1 ownership correctness is unverified.  (NOT covered)
+  [P2 missing_data] Evidence rendering (AC2) content could not be asserted against exact emitted text with available commands, leaving the 'shows the evidence' criterion under-verified.  (covered by S3, S8)
+
+SCENARIOS:
+  [P1 happy_path] S1: Exception detail render names the next action and its owner
+      purpose: Confirm the exception detail render surface states the next action and the human who owns it, not just a status.
+      grounded in: U-UI-11: the exception detail screen names the next action and who owns it
+      because: R1: the screen may name the action but not who owns it.
+  [P2 missing_data] S3: Exception with no linked load still shows its received evidence without fabricating a state
+      purpose: Confirm the unlinked-packet render path shows the received evidence and an honest workflow state instead of crashing or inventing linked-load data.
+      grounded in: U-UI-11: the screen shows the evidence the exception was raised from
+      because: R3: the unlinked template may omit evidence or fail on missing load data.
+  [P0 stale_state] S4: Review card reflects current backend state, not the payload snapshot
+      purpose: Confirm the exception detail render shows the live backend state (from workflow_runs via run_states) and suppresses NEEDS_REVIEW actions once the run has moved on.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: R2: the screen can show a state the backend no longer holds.
+  [P0 regression] S5: Canonical suite stays green after schema/store/authorization changes
+      purpose: Guard AC3's invariant substrate: the diff rewrote schema.py, workflow_store.py and authorization.py, all of which the exception detail screen reads state and ownership from. A regression here lets the screen render states the backend cannot hold.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A schema/store change breaks a state or ownership invariant so the screen can show a state the backend does not hold.
+  [P1 regression] S6: Canonical schema still constructs with the new columns
+      purpose: schema.py changed by +31 lines. If create_canonical_schema no longer builds the canonical tables the exception detail view queries, the screen cannot faithfully reflect backend state (AC3).
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A schema.py edit drops or renames a canonical table the detail view relies on, so it reads from a table that is not there.
+  [P0 regression] S7: State-transition matrix invariants hold (AC3 backbone)
+      purpose: AC3 depends on the workflow state machine only ever holding reachable states. The checkpoint matrix exercises the transition invariants that the detail screen must faithfully mirror; a regression here is exactly how a screen ends up showing an unreachable/stale state.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A state-machine regression permits a transition the backend should reject, so the screen can display a state the backend does not actually hold.
+  [P0 missing_data] S8: Detail request for a nonexistent exception refuses instead of inventing a state
+      purpose: AC3 says the screen must never show a state the backend does not hold. The strongest version of that is an exception id the backend holds NOTHING for: the view must refuse cleanly, not fabricate a WorkflowState or a next action.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A request for an unknown exception id renders a screen carrying an invented state or next action the backend never held.
+  [P1 malformed_input] S9: Detail request with a malformed id fails safe, no 500, no state leak
+      purpose: A malformed exception id (SQL-ish/garbage) must produce a bounded refusal, not a stack trace or a rendered WorkflowState. A 500 or a leaked state on bad input is an AC3 violation and a dead-end error.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A malformed id reaches the store query and returns a 500 or a partially rendered screen exposing a WorkflowState the backend does not hold for it.
+
+ASSUMPTIONS:
+  - The 'exception detail screen' maps to the operator-console review cards (operator_console.py) and the packet detail page (packet_page.py) built by scripts/run_dogfood_pilot.py; no file literally named 'exception detail' exists.
+  - The authoritative backend state for AC3 is workflow_runs.state in the workflow SQLite DB, read live via WorkflowStore.get_run.
+  - test_review.py and test_dogfood_pilot.py are the existing homes for render/console coverage; the builder's new tests (if any) most plausibly live there.
+  - The driver_probe workflow.sqlite3 is a valid workflow DB with a workflow_runs table and is safe to query read-only.
+  - The described diff (exception_detail_view.py, exception_detail.html, workflow_store.py, authorization.py, schema.py) is present in the harness run environment; it is NOT in this checkout, so route paths and exact rendered strings could not be read from source.
+  - Scenarios S8/S9 assume the exception detail screen is served over HTTP at http://127.0.0.1:8001 under a path like /exceptions/<id>. If it is served under a different path (or rendered as a static file rather than an HTTP route), the run harness should substitute the real route; a 404 for an unknown/bad id is the expected refusal either way.
+  - WorkflowState literals used in forbidden_observations (NEEDS_REVIEW, RECEIVED, READY_FOR_ENTRY, DONE) are the canonical enum values from workflow.py and are what a fabricated-state leak would most plausibly emit.
+  - No approved command can create exceptions, other-tenant rows, or unresolvable-owner fixtures, and callback POSTs require valid signatures, so scenarios needing bespoke seeded state or a known existing run_id could not be authored reliably.
+
+UNRESOLVED QUESTIONS:
+  - No builder diff was provided; scenarios were inferred from the current render surfaces (operator_console.py, packet_page.py, review.py) and the pilot build wiring — the actual change set for U-UI-11 is unknown.
+  - The exception detail screen is a static HTML artifact (build_operator_console / build_packet_site), not served by the app at 127.0.0.1:8001 (the callback server) and not readable via any approved command; with no browser available, screen text cannot be observed directly, so all scenarios fall back to render unit tests. Is a live/served version of this screen in scope?
+  - AC1 'who owns it': the current render surfaces show action labels and consequences but no accountable-owner name. Was an owner field added? If not, AC1 is unmet and cannot be satisfied by the existing render code.
+  - Which test module (if any) the builder added to cover U-UI-11 is unknown; if a dedicated operator-console/packet-page test was added, its path should be substituted into the pytest scenarios to make the observations AC-specific rather than suite-level pass/fail.
+  - AC3 can only be indirectly verified here: I can confirm the backend authority (workflow_runs.state) and that the render sources it live in code, but without reading the generated HTML I cannot prove the rendered artifact matches after a post-build state transition.
+  - What is the actual HTTP route (and method) for the exception detail screen, and is it served by the `callback` service on 8001 or produced as a static artifact? Exact route is needed to make screen-content scenarios reliably executable.
+  - AC1 ('names the next action and who owns it'): authorization.py added ~88 lines of ownership logic, but with no fixture-creation command and no readable source I could not verify (a) an owner is always named, (b) an unresolvable owner is flagged rather than silently omitted (unowned_obligation/accountable_owner), or (c) cross-tenant ownership is not leaked. These need a seeded exception with a known id and tenant.
+  - AC2 ('shows the evidence the exception was raised from'): the exact emitted evidence text/URL on the exception detail screen is unknown. review.py builds evidence links as http://localhost:8000/evidence/<load_id>/<doc_type>, but whether the exception screen reuses that format is unconfirmed, so a literal evidence assertion could not be grounded.
+  - Does the exception detail screen offer/suppress a 'next action' for runs in TERMINAL_STATES (DONE/FAILED)? Verifying that a resolved exception is not presented as actionable requires a known terminal-state run_id, which is not obtainable with the approved commands.
+
+REJECTED PROPOSALS:
+  S2: duplicate: this exercises the same situation with the same expectations as coverage that already exists, and adds nothing
+  S5: a unexpected_state_transition scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S6: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

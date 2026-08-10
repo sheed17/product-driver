@@ -1,0 +1,430 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Detail screen reflects a backend state change even across a service restart (no stale next action)\n\nrisk: ui_backend_disagreement (priority P0)\npurpose: Prove the exception detail screen renders from live backend state, not a cached snapshot, so it can never name a next action the backend no longer holds.\nrequirement: the screen never shows a state the backend does not currently hold\nproduct principle: channel_consistency\nrationale: AC3 is the heaviest-weighted criterion and workflow_store.py's +163 lines of new reads are where a stale snapshot would hide; a restart is the cleanest way to force any in-process cache to be discarded and to observe whether the rendered screen equals durable state.\n\ngenerated at 2026-08-10T05:11:06+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A resolved/transitioned exception could still show its old next action if the screen reads a cached projection instead of the live row.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id LIMIT 5\"",
+          "contains": [],
+          "not_contains": [
+            "no such table",
+            "no such column",
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 800
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "backend still holds the runs the screen must mirror",
+        "command": null,
+        "state_check": {
+          "name": "backend still holds the runs the screen must mirror",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs\"",
+          "contains": [],
+          "not_contains": [
+            "no such table",
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "no such column",
+      "no such table"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Exception detail renders evidence and a named owner without leaking placeholders\n\nrisk: happy_path (priority P1)\npurpose: Exercise the detail screen for a live exception and confirm it comes up populated (owner + evidence) rather than rendering empty/placeholder tokens or crashing.\nrequirement: the screen shows the evidence the exception was raised from\nproduct principle: evidence_clarity\nrationale: AC1 and AC2 both live on this screen; the cheapest high-value observation is that the screen renders for a real exception and does not leak the None/undefined/stacktrace markers that a failed owner- or evidence-join produces.\n\ngenerated at 2026-08-10T05:11:06+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: The owner or evidence join could fail silently and render a blank or placeholder where a name/evidence must appear.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "backend has exceptions with evidence to show",
+        "command": null,
+        "state_check": {
+          "name": "backend has exceptions with evidence to show",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events\"",
+          "contains": [],
+          "not_contains": [
+            "no such table",
+            "Error"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "undefined",
+      "KeyError"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Unknown / cross-tenant exception id returns a clean not-found, not a leak or a 500\n\nrisk: cross_tenant (priority P1)\npurpose: Request a detail page for an id the server's tenant does not own (using an implausible id) and confirm no other tenant's data is disclosed and no stacktrace is emitted.\nrequirement: U-UI-11\nproduct principle: authority_clarity\nrationale: authorization.py is a brand-new file in this diff; the classic failure of a new read-authorization layer is that an unrecognized/foreign id either 500s or falls through to an unscoped read that leaks load/carrier/reason.\n\ngenerated at 2026-08-10T05:11:06+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A detail read for a foreign or nonexistent exception id could leak another tenant's fields or crash instead of denying cleanly.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions/999999999",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 404,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no such run exists in this tenant's DB",
+        "command": null,
+        "state_check": {
+          "name": "no such run exists in this tenant's DB",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs WHERE id=999999999\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "load_id",
+      "carrier"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Malformed exception identifier is rejected cleanly, not with a stacktrace\n\nrisk: malformed_input (priority P2)\npurpose: Send a non-numeric exception id and confirm the screen returns a clean client error instead of an unhandled 500/stacktrace.\nrequirement: U-UI-11\nproduct principle: dead_end_error\nrationale: The whole unit exists to remove dead-ends on this screen; a screen that 500s on a garbage id is itself a dead-end, and exception_detail_view.py's new request parsing is the surface that would do it.\n\ngenerated at 2026-08-10T05:11:06+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A non-numeric id could reach a DB query or int() cast unguarded and surface a stacktrace.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/exceptions/not-an-id",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 404,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "ValueError",
+      "invalid literal for int"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S5": {
+    "name": "generated:S5",
+    "phase": "P3",
+    "description": "Canonical fresh DB still builds all tables the screen depends on after the schema change\n\nrisk: regression (priority P2)\npurpose: Directly exercise create_canonical_schema (touched by this diff) on a fresh database and confirm it produces the backing tables, so a freshly provisioned backend can actually hold the state the screen shows rather than defaulting.\nrequirement: the screen never shows a state the backend does not currently hold\nproduct principle: operational_clarity\nrationale: schema.py changed (+31); if the columns/tables the exception screen reads are not in the single canonical builder, a fresh backend cannot hold those states and the screen would render defaults \u2014 a direct AC3 violation rooted in the backend, and this probe is a deterministic, self-contained check of exactly that.\n\ngenerated at 2026-08-10T05:11:06+00:00 (stage=diff_refinement, wave 2)\nbecause of risk: A schema change that misses the fresh-DB builder leaves new backends unable to hold exception state, so the screen shows a state the backend never wrote.\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING\ndiff files consulted: src/freight_recon/exception_detail_view.py, src/freight_recon/templates/exception_detail.html, src/freight_recon/workflow_store.py, src/freight_recon/authorization.py, src/freight_recon/schema.py",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "command",
+        "name": "build fresh canonical schema and list tables",
+        "command": {
+          "name": "build fresh canonical schema and list tables",
+          "run": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "workflow_runs",
+            "audit_events"
+          ],
+          "timeout_s": null
+        },
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "workflow_runs",
+      "audit_events"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "SchemaNotReady",
+      "OperationalError"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

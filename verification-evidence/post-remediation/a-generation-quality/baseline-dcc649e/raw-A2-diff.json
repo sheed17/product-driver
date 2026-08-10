@@ -1,0 +1,510 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "AC1 requires the screen to name the next action AND who owns it, but the render surfaces (operator_console._review_card, packet_page._action_buttons) show action labels and consequences with no accountable-owner name. The 'who owns it' half of AC1 may be unmet.",
+        "risk_category": "accountability",
+        "severity": "P1",
+        "basis": "Acceptance criterion 'names the next action and who owns it' vs. src/freight_recon/operator_console.py:145-161 and packet_page.py:462-466 which render actions without an owner field."
+      },
+      {
+        "id": "R2",
+        "description": "The exception detail screen is a static HTML artifact built once by run_dogfood_pilot. Backend state advances independently (e.g. a signed action applied through the callback server transitions NEEDS_REVIEW -> APPROVED/DONE), so the on-disk screen can show a state the backend no longer holds unless it is rebuilt from live state.",
+        "risk_category": "stale-state",
+        "severity": "P0",
+        "basis": "AC 'the screen never shows a state the backend does not currently hold' vs. static build in scripts/run_dogfood_pilot.py:351-361 and live-state plumbing operator_console.py:44."
+      },
+      {
+        "id": "R3",
+        "description": "Exceptions with no linked load render a different template (_render_unlinked_packet_page) that omits reconciliation math and canonical evidence; the evidence the exception was raised from may be incompletely shown, or the branch may crash on missing data.",
+        "risk_category": "missing-data",
+        "severity": "P2",
+        "basis": "AC 'the screen shows the evidence the exception was raised from' vs. packet_page.py:232-280 unlinked template."
+      },
+      {
+        "id": "R4",
+        "description": "Verification-capability gap: the screen is a static artifact not served at 127.0.0.1:8001 and not readable via any approved command, and no browser is available. Screen-text cannot be asserted directly; coverage depends entirely on render unit tests, which may not exist for the new behavior.",
+        "risk_category": "observability",
+        "severity": "P1",
+        "basis": "Approved command list (pytest/sqlite3/schema-probe only) + BROWSER available: no + local app is the callback server, not the screen."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1",
+        "title": "Exception detail render names the next action and its owner",
+        "purpose": "Confirm the exception detail render surface states the next action and the human who owns it, not just a status.",
+        "risk_category": "happy_path",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "AC1 is the headline promise of U-UI-11; the render code currently shows action labels without an owner, so this is the first thing to exercise.",
+        "generating_risk": "R1: the screen may name the action but not who owns it.",
+        "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+        "product_principle_reference": "next_action_clarity",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest runs use per-test tmp workspaces; no shared mutable state is touched.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "render-tests",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      },
+      {
+        "id": "S2",
+        "title": "Exception detail screen shows the evidence the exception was raised from",
+        "purpose": "Confirm the render surfaces the source documents/evidence links the exception was raised from and that they resolve.",
+        "risk_category": "happy_path",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "AC2 requires the operator to see the evidence behind the exception; the dogfood pilot test already asserts console links resolve, and review builds evidence_links.",
+        "generating_risk": "R4: evidence rendering can only be checked through the render unit tests.",
+        "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+        "product_principle_reference": "evidence_clarity",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest runs use per-test tmp workspaces; no shared mutable state is touched.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "evidence-render-tests",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_review.py eval/tests/test_dogfood_pilot.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      },
+      {
+        "id": "S3",
+        "title": "Exception with no linked load still shows its received evidence without fabricating a state",
+        "purpose": "Confirm the unlinked-packet render path shows the received evidence and an honest workflow state instead of crashing or inventing linked-load data.",
+        "risk_category": "missing_data",
+        "priority": "P2",
+        "mode": "backend",
+        "rationale": "Unlinked exceptions take a separate template; evidence completeness and no-crash behavior there is a distinct situation from the linked happy path.",
+        "generating_risk": "R3: the unlinked template may omit evidence or fail on missing load data.",
+        "requirement_reference": "U-UI-11: the screen shows the evidence the exception was raised from",
+        "product_principle_reference": "evidence_clarity",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest runs use per-test tmp workspaces; no shared mutable state is touched.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "unlinked-packet-tests",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_dogfood_pilot.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      },
+      {
+        "id": "S4",
+        "title": "Review card reflects current backend state, not the payload snapshot",
+        "purpose": "Confirm the exception detail render shows the live backend state (from workflow_runs via run_states) and suppresses NEEDS_REVIEW actions once the run has moved on.",
+        "risk_category": "stale_state",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "AC3 is the highest-weight, most dangerous promise: a screen that shows a stale NEEDS_REVIEW while the backend holds DONE misleads the operator into a duplicate action.",
+        "generating_risk": "R2: the screen can show a state the backend no longer holds.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "service_refs": [],
+        "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+        "isolation_note": "pytest uses tmp workspaces; the sqlite3 check is read-only against the workflow DB and mutates nothing.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "state-consistency-render-tests",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_dogfood_pilot.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id\"",
+              "contains": [],
+              "not_contains": [
+                "Error"
+              ]
+            }
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT id, state FROM workflow_runs ORDER BY id\"",
+            "not_contains": [
+              "Error"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      },
+      {
+        "id": "S5",
+        "title": "Resolved/terminal exception shows an honest 'no active actions' instead of a misleading next action",
+        "purpose": "Confirm that when the backend state is not NEEDS_REVIEW, the render names the current state honestly and does not present a stale next action as still available.",
+        "risk_category": "unexpected_state_transition",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "The boundary between 'action available' and 'already resolved' is where a stale next action does the most damage; _review_card has an explicit else branch for this that must be exercised.",
+        "generating_risk": "R2: a moved-on run could still be rendered with active NEEDS_REVIEW actions.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "next_action_clarity",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest runs use per-test tmp workspaces; no shared mutable state is touched.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "terminal-state-render-tests",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_dogfood_pilot.py eval/tests/test_review.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      },
+      {
+        "id": "S6",
+        "title": "Full suite regression guard for the exception detail change",
+        "purpose": "Confirm the U-UI-11 render/state changes did not break state-machine, review, or pilot invariants across the canonical suite.",
+        "risk_category": "regression",
+        "priority": "P2",
+        "mode": "backend",
+        "rationale": "A screen change that reads live backend state touches shared render and workflow paths; a broad regression guard catches collateral breakage the targeted tests miss.",
+        "generating_risk": "R2/R4: state-sourcing changes can regress unrelated render or workflow invariants.",
+        "requirement_reference": "U-UI-11",
+        "product_principle_reference": "operational_clarity",
+        "service_refs": [],
+        "isolation_key": "pytest-canonical",
+        "isolation_note": "pytest runs use per-test tmp workspaces; no shared mutable state is touched.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "full-suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ]
+      }
+    ],
+    "assumptions": [
+      "The 'exception detail screen' maps to the operator-console review cards (operator_console.py) and the packet detail page (packet_page.py) built by scripts/run_dogfood_pilot.py; no file literally named 'exception detail' exists.",
+      "The authoritative backend state for AC3 is workflow_runs.state in the workflow SQLite DB, read live via WorkflowStore.get_run.",
+      "test_review.py and test_dogfood_pilot.py are the existing homes for render/console coverage; the builder's new tests (if any) most plausibly live there.",
+      "The driver_probe workflow.sqlite3 is a valid workflow DB with a workflow_runs table and is safe to query read-only."
+    ],
+    "unresolved_questions": [
+      "No builder diff was provided; scenarios were inferred from the current render surfaces (operator_console.py, packet_page.py, review.py) and the pilot build wiring \u2014 the actual change set for U-UI-11 is unknown.",
+      "The exception detail screen is a static HTML artifact (build_operator_console / build_packet_site), not served by the app at 127.0.0.1:8001 (the callback server) and not readable via any approved command; with no browser available, screen text cannot be observed directly, so all scenarios fall back to render unit tests. Is a live/served version of this screen in scope?",
+      "AC1 'who owns it': the current render surfaces show action labels and consequences but no accountable-owner name. Was an owner field added? If not, AC1 is unmet and cannot be satisfied by the existing render code.",
+      "Which test module (if any) the builder added to cover U-UI-11 is unknown; if a dedicated operator-console/packet-page test was added, its path should be substituted into the pytest scenarios to make the observations AC-specific rather than suite-level pass/fail.",
+      "AC3 can only be indirectly verified here: I can confirm the backend authority (workflow_runs.state) and that the render sources it live in code, but without reading the generated HTML I cannot prove the rendered artifact matches after a post-build state transition."
+    ]
+  },
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "schema.py added columns/constraints; a broken canonical schema or violated invariant would let the exception detail screen surface a state the backend cannot actually hold (AC3).",
+        "risk_category": "regression",
+        "severity": "P0",
+        "basis": "Diff touches schema.py (+31) and workflow_store.py (+163); AC 'the screen never shows a state the backend does not currently hold' (weight 3)."
+      },
+      {
+        "id": "R2",
+        "description": "State-machine transition integrity underpins AC3; if checkpoint/state transitions regress, the detail screen can render a stale or impossible state.",
+        "risk_category": "stale_state",
+        "severity": "P0",
+        "basis": "WorkflowState transition table in workflow.py + AC3; workflow_store.py changed."
+      },
+      {
+        "id": "R3",
+        "description": "A request for a missing or malformed exception id could fabricate a state, 500, or leak a WorkflowState instead of a clean refusal, violating AC3 and dead_end_error/repository_silent.",
+        "risk_category": "missing_data",
+        "severity": "P0",
+        "basis": "exception_detail_view.py new read path; AC3."
+      },
+      {
+        "id": "R4",
+        "description": "authorization.py (+88) governs 'who owns it'; owner-resolution and cross-tenant ownership could not be exercised with available fixtures/commands, so AC1 ownership correctness is unverified.",
+        "risk_category": "authorization",
+        "severity": "P1",
+        "basis": "Diff touches authorization.py; AC 'names the next action and who owns it' (weight 3)."
+      },
+      {
+        "id": "R5",
+        "description": "Evidence rendering (AC2) content could not be asserted against exact emitted text with available commands, leaving the 'shows the evidence' criterion under-verified.",
+        "risk_category": "missing_data",
+        "severity": "P2",
+        "basis": "AC 'the screen shows the evidence the exception was raised from' (weight 2); evidence_links in review.py."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S5",
+        "title": "Canonical suite stays green after schema/store/authorization changes",
+        "purpose": "Guard AC3's invariant substrate: the diff rewrote schema.py, workflow_store.py and authorization.py, all of which the exception detail screen reads state and ownership from. A regression here lets the screen render states the backend cannot hold.",
+        "risk_category": "regression",
+        "priority": "P0",
+        "rationale": "The three files the screen depends on for state and owner were all touched; the canonical suite is the load-bearing invariant net for those modules.",
+        "generating_risk": "A schema/store change breaks a state or ownership invariant so the screen can show a state the backend does not hold.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "canonical-test-suite",
+        "isolation_note": "Read-only test run; pytest-canonical.ini uses ephemeral/temp databases and mutates no shared workspace state.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "canonical-suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "error"
+        ],
+        "persisted_state_checks": []
+      },
+      {
+        "id": "S6",
+        "title": "Canonical schema still constructs with the new columns",
+        "purpose": "schema.py changed by +31 lines. If create_canonical_schema no longer builds the canonical tables the exception detail view queries, the screen cannot faithfully reflect backend state (AC3).",
+        "risk_category": "regression",
+        "priority": "P1",
+        "rationale": "The screen's state and evidence come from canonical tables; a schema-construction break is a direct AC3 hazard introduced by the diff.",
+        "generating_risk": "A schema.py edit drops or renames a canonical table the detail view relies on, so it reads from a table that is not there.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "schema-probe-tempdir",
+        "isolation_note": "Builds the schema in a fresh tempfile directory; touches no shared workspace database.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "schema-probe",
+            "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "workflow_runs",
+              "effect_grants"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "workflow_runs",
+          "effect_grants"
+        ],
+        "forbidden_observations": [
+          "Traceback"
+        ],
+        "persisted_state_checks": []
+      },
+      {
+        "id": "S7",
+        "title": "State-transition matrix invariants hold (AC3 backbone)",
+        "purpose": "AC3 depends on the workflow state machine only ever holding reachable states. The checkpoint matrix exercises the transition invariants that the detail screen must faithfully mirror; a regression here is exactly how a screen ends up showing an unreachable/stale state.",
+        "risk_category": "regression",
+        "priority": "P0",
+        "rationale": "workflow_store.py changed and AC3 is a state-consistency claim; the checkpoint matrix is the closest invariant test to that claim.",
+        "generating_risk": "A state-machine regression permits a transition the backend should reject, so the screen can display a state the backend does not actually hold.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "operational_clarity",
+        "mode": "backend",
+        "service_refs": [],
+        "isolation_key": "canonical-test-suite",
+        "isolation_note": "Read-only checkpoint-matrix test; uses ephemeral databases, no shared workspace mutation.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "checkpoint-matrix",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed"
+        ],
+        "persisted_state_checks": []
+      },
+      {
+        "id": "S8",
+        "title": "Detail request for a nonexistent exception refuses instead of inventing a state",
+        "purpose": "AC3 says the screen must never show a state the backend does not hold. The strongest version of that is an exception id the backend holds NOTHING for: the view must refuse cleanly, not fabricate a WorkflowState or a next action.",
+        "risk_category": "missing_data",
+        "priority": "P0",
+        "rationale": "The new exception_detail_view read path must degrade to an honest refusal for unknown ids rather than render a placeholder state.",
+        "generating_risk": "A request for an unknown exception id renders a screen carrying an invented state or next action the backend never held.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "known_vs_inferred",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "exception-detail-screen",
+        "isolation_note": "Read-only GET for a nonexistent id; creates and mutates nothing.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/exceptions/nonexistent-run-zzzzzzzz",
+              "expect_status": 404,
+              "timeout_s": 5
+            }
+          }
+        ],
+        "expected_observations": [],
+        "forbidden_observations": [
+          "NEEDS_REVIEW",
+          "RECEIVED",
+          "READY_FOR_ENTRY",
+          "DONE",
+          "Traceback"
+        ],
+        "persisted_state_checks": []
+      },
+      {
+        "id": "S9",
+        "title": "Detail request with a malformed id fails safe, no 500, no state leak",
+        "purpose": "A malformed exception id (SQL-ish/garbage) must produce a bounded refusal, not a stack trace or a rendered WorkflowState. A 500 or a leaked state on bad input is an AC3 violation and a dead-end error.",
+        "risk_category": "malformed_input",
+        "priority": "P1",
+        "rationale": "The new read/query path in exception_detail_view.py + workflow_store.py must reject malformed identifiers without surfacing an internal state or crashing.",
+        "generating_risk": "A malformed id reaches the store query and returns a 500 or a partially rendered screen exposing a WorkflowState the backend does not hold for it.",
+        "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+        "product_principle_reference": "repository_silent",
+        "mode": "backend",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "exception-detail-screen",
+        "isolation_note": "Read-only GET with a malformed id; no writes, no shared-state mutation.",
+        "setup": [],
+        "cleanup": [],
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/exceptions/%27%20OR%201%3D1%20--",
+              "expect_status": 404,
+              "timeout_s": 5
+            }
+          }
+        ],
+        "expected_observations": [],
+        "forbidden_observations": [
+          "Traceback",
+          "Internal Server Error",
+          "NEEDS_REVIEW",
+          "RECEIVED",
+          "DONE"
+        ],
+        "persisted_state_checks": []
+      }
+    ],
+    "assumptions": [
+      "The described diff (exception_detail_view.py, exception_detail.html, workflow_store.py, authorization.py, schema.py) is present in the harness run environment; it is NOT in this checkout, so route paths and exact rendered strings could not be read from source.",
+      "Scenarios S8/S9 assume the exception detail screen is served over HTTP at http://127.0.0.1:8001 under a path like /exceptions/<id>. If it is served under a different path (or rendered as a static file rather than an HTTP route), the run harness should substitute the real route; a 404 for an unknown/bad id is the expected refusal either way.",
+      "WorkflowState literals used in forbidden_observations (NEEDS_REVIEW, RECEIVED, READY_FOR_ENTRY, DONE) are the canonical enum values from workflow.py and are what a fabricated-state leak would most plausibly emit.",
+      "No approved command can create exceptions, other-tenant rows, or unresolvable-owner fixtures, and callback POSTs require valid signatures, so scenarios needing bespoke seeded state or a known existing run_id could not be authored reliably."
+    ],
+    "unresolved_questions": [
+      "What is the actual HTTP route (and method) for the exception detail screen, and is it served by the `callback` service on 8001 or produced as a static artifact? Exact route is needed to make screen-content scenarios reliably executable.",
+      "AC1 ('names the next action and who owns it'): authorization.py added ~88 lines of ownership logic, but with no fixture-creation command and no readable source I could not verify (a) an owner is always named, (b) an unresolvable owner is flagged rather than silently omitted (unowned_obligation/accountable_owner), or (c) cross-tenant ownership is not leaked. These need a seeded exception with a known id and tenant.",
+      "AC2 ('shows the evidence the exception was raised from'): the exact emitted evidence text/URL on the exception detail screen is unknown. review.py builds evidence links as http://localhost:8000/evidence/<load_id>/<doc_type>, but whether the exception screen reuses that format is unconfirmed, so a literal evidence assertion could not be grounded.",
+      "Does the exception detail screen offer/suppress a 'next action' for runs in TERMINAL_STATES (DONE/FAILED)? Verifying that a resolved exception is not presented as actionable requires a known terminal-state run_id, which is not obtainable with the approved commands."
+    ]
+  }
+]

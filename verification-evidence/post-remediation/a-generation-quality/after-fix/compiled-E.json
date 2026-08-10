@@ -1,0 +1,839 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Supervisor releases an operation \u2014 the authorized happy path is recorded to audit\n\nrisk: happy_path (priority P1)\npurpose: Confirm a supervisor can release an operation and that the release is attributed in the durable audit log.\nrequirement: a supervisor can release an operation\nproduct principle: accountable_owner\nrationale: The unit's first promise is that the authorized actor can act; if this fails the feature is a lockout, not an authorization control.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: Role check is too strict and refuses even the supervisor, or succeeds without leaving attributable evidence.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S1/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S1",
+            "actor": "sup-probe-s1",
+            "role": "supervisor",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "release attributed to the supervisor in the audit log",
+        "command": null,
+        "state_check": {
+          "name": "release attributed to the supervisor in the audit log",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE actor='sup-probe-s1'\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Operator (non-supervisor) is refused a release and the refusal is recorded\n\nrisk: authorization (priority P0)\npurpose: Put a non-supervisor actor at the release endpoint and confirm it is refused, no release lands, and the denial is written to the audit log.\nrequirement: a non-supervisor is refused and no release occurs\nproduct principle: authority_clarity\nrationale: This is the core control: a non-supervisor must never release, and the denial must be evidence, not a silent 403.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: Missing/late role check lets an operator release, or the refusal leaves no audit trail.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S2/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S2",
+            "actor": "op-probe-s2",
+            "role": "operator",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "the refusal for this operator is recorded in audit or security events",
+        "command": null,
+        "state_check": {
+          "name": "the refusal for this operator is recorded in audit or security events",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s2') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s2')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no successful release landed for this operation",
+        "command": null,
+        "state_check": {
+          "name": "no successful release landed for this operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S2%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Supervisor of tenant A cannot release tenant B's operation\n\nrisk: cross_tenant (priority P0)\npurpose: A supervisor authenticated for tenant A targets an operation owned by tenant B; confirm it is refused, no release occurs, and the cross-tenant denial is recorded.\nrequirement: a supervisor of one tenant cannot release another tenant's operation\nproduct principle: authority_clarity\nrationale: Role alone is not authority: a supervisor's power is scoped to their tenant, and the store is tenant-first precisely so B's row cannot be spelled by A.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: Release scopes by role but reads the operation using the caller-supplied tenant, so A's supervisor reaches B's operation.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-B-S3/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-B-S3",
+            "actor": "sup-a-probe-s3",
+            "role": "supervisor",
+            "tenant": "tenant-a"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "cross-tenant refusal is recorded",
+        "command": null,
+        "state_check": {
+          "name": "cross-tenant refusal is recorded",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='sup-a-probe-s3') + (SELECT count(*) FROM security_events WHERE actor='sup-a-probe-s3')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "tenant-B operation was not released",
+        "command": null,
+        "state_check": {
+          "name": "tenant-B operation was not released",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-B-S3%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Missing/unknown role fails closed (no fail-open default)\n\nrisk: malformed_input (priority P0)\npurpose: Send a release with no role field and, separately, with an unknown role value; confirm each is refused and recorded rather than defaulting to authorized.\nrequirement: a non-supervisor is refused and no release occurs\nproduct principle: known_vs_inferred\nrationale: Absence of an authorization fact must read as 'not authorized', never as a permissive default \u2014 the repo's own rule that naming nobody has named nobody.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: The endpoint coerces a missing/unknown role to a permissive default and allows the release.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S4/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S4",
+            "actor": "norole-probe-s4",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S4/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S4",
+            "actor": "badrole-probe-s4",
+            "role": "admin",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "both no-role and unknown-role attempts recorded as refusals",
+        "command": null,
+        "state_check": {
+          "name": "both no-role and unknown-role attempts recorded as refusals",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor IN ('norole-probe-s4','badrole-probe-s4')) + (SELECT count(*) FROM security_events WHERE actor IN ('norole-probe-s4','badrole-probe-s4'))\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "operation was not released by either malformed attempt",
+        "command": null,
+        "state_check": {
+          "name": "operation was not released by either malformed attempt",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S4%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S5": {
+    "name": "generated:S5",
+    "phase": "P3",
+    "description": "Repeated supervisor release does not double-release\n\nrisk: idempotency (priority P1)\npurpose: Issue the same authorized supervisor release twice for one operation and confirm the release effect is recorded at most once (idempotent), not duplicated.\nrequirement: a supervisor can release an operation\nproduct principle: outcome_verification\nrationale: A retried tap or double-submit must not release twice; effect boundaries in this repo are single-claim and the new endpoint must match.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: The second identical request performs/records a second release for an already-released operation.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S5/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S5",
+            "actor": "sup-probe-s5",
+            "role": "supervisor",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 200,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S5/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S5",
+            "actor": "sup-probe-s5",
+            "role": "supervisor",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "exactly one release-effect row for this operation",
+        "command": null,
+        "state_check": {
+          "name": "exactly one release-effect row for this operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S5%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [
+            "2"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S6": {
+    "name": "generated:S6",
+    "phase": "P3",
+    "description": "Concurrent supervisor and operator releases on one operation \u2014 single releaser wins\n\nrisk: concurrency (priority P1)\npurpose: Fire a supervisor release and a non-supervisor release simultaneously at the same operation; confirm at most one release lands and the operator's attempt is refused and recorded.\nrequirement: a non-supervisor is refused and no release occurs\nproduct principle: authority_clarity\nrationale: The refusal invariant must survive a race with a legitimate release; a threaded server can otherwise let the loser's effect slip through or double-release.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: Under concurrency the operator's release is not refused, or both requests produce a release effect.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S6/release",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S6",
+              "actor": "sup-probe-s6",
+              "role": "supervisor",
+              "tenant": "neyma"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S6/release",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S6",
+              "actor": "op-probe-s6",
+              "role": "operator",
+              "tenant": "neyma"
+            },
+            "body": null,
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "at most one release-effect row for the contested operation",
+        "command": null,
+        "state_check": {
+          "name": "at most one release-effect row for the contested operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S6%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [],
+          "not_contains": [
+            "2",
+            "3"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "the operator's concurrent attempt was refused and recorded",
+        "command": null,
+        "state_check": {
+          "name": "the operator's concurrent attempt was refused and recorded",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s6') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s6')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S7": {
+    "name": "generated:S7",
+    "phase": "P3",
+    "description": "Refusal survives a callback restart (durable audit)\n\nrisk: restart_recovery (priority P2)\npurpose: Record a non-supervisor refusal, restart the callback service, then read the audit store to confirm the refusal persisted rather than living only in memory.\nrequirement: every refusal is recorded in the audit log\nproduct principle: evidence_clarity\nrationale: 'Every refusal is recorded' is only true if the record is durable; the server documents in-memory per-request state that a restart discards.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: The refusal is written only to an in-memory/per-kernel structure and vanishes on restart.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-S7/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-S7",
+            "actor": "op-probe-s7",
+            "role": "operator",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": 403,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1000
+      },
+      {
+        "kind": "state_check",
+        "name": "refusal still present after restart",
+        "command": null,
+        "state_check": {
+          "name": "refusal still present after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s7') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s7')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "S8": {
+    "name": "generated:S8",
+    "phase": "P3",
+    "description": "Release of an unknown operation id is refused, not fabricated\n\nrisk: missing_data (priority P2)\npurpose: A supervisor targets an operation id that does not exist; confirm the request is refused rather than silently succeeding or creating a release record for a non-existent operation.\nrequirement: a supervisor can release an operation\nproduct principle: success_without_verification\nrationale: A correct control must fail on an unknown target instead of manufacturing a success, which would let a typo or probe read as an authorized release.\n\ngenerated at 2026-08-10T06:30:25+00:00 (stage=initial, wave 1)\nbecause of risk: An unknown operation id returns success or writes a release row for an operation the store never had.\nrepository HEAD 6e8127d, active unit U-AUTHZ-2, founder context 0cb51e5158467505\nacceptance criteria consulted: a supervisor can release an operation (weight 3): PENDING; a non-supervisor is refused and no release occurs (weight 3): PENDING; a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING; every refusal is recorded in the audit log (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/operations/OP-PROBE-DOES-NOT-EXIST-S8/release",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "operation_id": "OP-PROBE-DOES-NOT-EXIST-S8",
+            "actor": "sup-probe-s8",
+            "role": "supervisor",
+            "tenant": "neyma"
+          },
+          "body": null,
+          "expect_status": null,
+          "expect_contains": [],
+          "timeout_s": 5
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no release-effect row fabricated for the unknown operation",
+        "command": null,
+        "state_check": {
+          "name": "no release-effect row fabricated for the unknown operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-DOES-NOT-EXIST-S8%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  }
+}

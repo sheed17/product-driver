@@ -1,0 +1,273 @@
+{
+  "run_id": "post-D",
+  "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+  "active_unit_id": "U-P5-1",
+  "generation_basis": {
+    "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+    "task_hash": "9f26b6d9cc85e0f0",
+    "active_unit_id": "U-P5-1",
+    "acceptance_criteria": [
+      "workflow state survives a process restart (weight 3): PENDING",
+      "a failed write leaves no partially applied workflow (weight 3): PENDING",
+      "a read after a write never returns stale state (weight 2): PENDING",
+      "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "In-flight workflow state held in the durable store is lost or corrupted when the process/callback service restarts, so the workflow cannot resume.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "AC 'workflow state survives a process restart' (weight 3), still PENDING; diff moves state out of in-process cache.",
+      "covered_by": [
+        "S1-restart-durability"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "A write that fails partway leaves a partially applied workflow row (dangling reference / half-updated state) instead of atomically rolling back.",
+      "risk_category": "partial_failure",
+      "severity": "P0",
+      "basis": "AC 'a failed write leaves no partially applied workflow' (weight 3), PENDING.",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "Rebuilding workflow state from history re-executes an already-performed external effect, causing a duplicate business action.",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "AC 'rebuilding state from history never re-executes an effect' (weight 3), PENDING.",
+      "covered_by": []
+    },
+    {
+      "id": "R4",
+      "description": "A read issued after a committed write returns stale state (e.g. from a residual in-process cache), so callers act on an outdated view.",
+      "risk_category": "stale_state",
+      "severity": "P1",
+      "basis": "AC 'a read after a write never returns stale state' (weight 2), PENDING.",
+      "covered_by": []
+    },
+    {
+      "id": "R5",
+      "description": "The durable workflow store table is never actually created in the canonical schema, so state silently remains process-local and cannot survive restart.",
+      "risk_category": "persistence_failure",
+      "severity": "P1",
+      "basis": "Unit U-P5-1 requires state moved to the durable workflow store; if the schema lacks the table the move is incomplete.",
+      "covered_by": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1-restart-durability",
+      "title": "Workflow store survives a live callback restart intact",
+      "purpose": "Restart the callback service and confirm the durable workflow SQLite store is still structurally intact (not corrupted/truncated) afterward, exercising the real restart path rather than a simulated one.",
+      "risk_category": "restart_recovery",
+      "priority": "P0",
+      "rationale": "The whole unit exists so state outlives a process restart; a live restart of the only restartable service is the most direct probe of that promise.",
+      "requirement_reference": "workflow state survives a process restart",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+            "contains": [
+              "ok"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"PRAGMA integrity_check\"",
+          "contains": [
+            "ok"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "ok"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Only restarts the callback service and runs a read-only PRAGMA integrity_check; it does not insert, update, or delete any workflow rows, so it cannot contaminate later scenarios.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.6,
+      "provenance": {
+        "generated_at": "2026-08-10T04:54:42+00:00",
+        "task_hash": "9f26b6d9cc85e0f0",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-P5-1",
+        "acceptance_criteria_consulted": [
+          "workflow state survives a process restart (weight 3): PENDING",
+          "a failed write leaves no partially applied workflow (weight 3): PENDING",
+          "a read after a write never returns stale state (weight 2): PENDING",
+          "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A restart loses or corrupts the durable workflow state so the workflow cannot resume (R1).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "88c55e9a-25d7-4397-8073-cc56a62b89df",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 1,
+    "by_risk_category": {
+      "restart_recovery": 1
+    },
+    "by_priority": {
+      "P0": 1
+    },
+    "uncovered_risks": [
+      "A write that fails partway leaves a partially applied workflow row (dangling reference / half-updated state) instead of atomically rolling back.",
+      "Rebuilding workflow state from history re-executes an already-performed external effect, causing a duplicate business action.",
+      "A read issued after a committed write returns stale state (e.g. from a residual in-process cache), so callers act on an outdated view.",
+      "The durable workflow store table is never actually created in the canonical schema, so state silently remains process-local and cannot survive restart."
+    ]
+  },
+  "assumptions": [
+    "The phase3 suites (checkpoint_matrix, witness, claim_cas) are the components encoding the durable-store invariants \u2014 restart/checkpoint atomicity, effect-replay avoidance, and compare-and-swap read freshness \u2014 because those are the only approved fault-injection levers available.",
+    "'callback' is the service whose restart meaningfully exercises the process-restart recovery path for workflow state.",
+    "The targeted pytest invocations run against pytest-managed temporary databases rather than data/active_workspace/driver_probe/workflow.sqlite3, so they do not contaminate the live store checked in S1.",
+    "The durable workflow store table is part of create_canonical_schema and its name contains the substring 'workflow'."
+  ],
+  "unresolved_questions": [
+    "The exact table and column names of data/active_workspace/driver_probe/workflow.sqlite3 were not provided, so I could not author precise SQL invariant queries (e.g. duplicate-effect detection via GROUP BY ... HAVING count(*)>1, or dangling-reference detection for partial writes) directly against the live store; those invariants are exercised only through the pytest matrices.",
+    "No approved command seeds a workflow, commits a write, or forces a mid-write crash against the running app at http://127.0.0.1:8001, so live read-after-write staleness (weight 2) and live atomicity/idempotency cannot be observed end-to-end and are covered only via the test suites \u2014 the stale-read AC in particular has no dedicated live probe.",
+    "Whether the driver_probe workflow.sqlite3 contains seeded workflow rows is unknown, so S1 can only assert the store is structurally intact after restart (PRAGMA integrity_check ok), not that specific pre-restart data survived.",
+    "If the durable workflow table name does not contain the substring 'workflow', S4's expectation is wrong against a correct product \u2014 the actual table name should be confirmed."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T04:51:47+00:00",
+      "basis": {
+        "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+        "task_hash": "9f26b6d9cc85e0f0",
+        "active_unit_id": "U-P5-1",
+        "acceptance_criteria": [
+          "workflow state survives a process restart (weight 3): PENDING",
+          "a failed write leaves no partially applied workflow (weight 3): PENDING",
+          "a read after a write never returns stale state (weight 2): PENDING",
+          "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 5,
+      "accepted_ids": [
+        "S1-restart-durability"
+      ],
+      "rejected": [
+        {
+          "id": "S2-checkpoint-atomicity",
+          "title": "Fault-injection checkpoint matrix leaves no partial workflow",
+          "reasons": [
+            "a partial_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S3-witness-cas-no-reexecute",
+          "title": "Rebuild from history does not re-execute effects and reads are not stale",
+          "reasons": [
+            "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S4-durable-schema-present",
+          "title": "Durable workflow store table exists in the canonical schema",
+          "reasons": [
+            "a persistence_failure scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred."
+          ],
+          "raw": {}
+        },
+        {
+          "id": "S5-full-suite-regression",
+          "title": "Full canonical suite passes after the store migration",
+          "reasons": [
+            "a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope"
+          ],
+          "raw": {}
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

@@ -1,0 +1,895 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "An approved governed write could be consumed more than once (double-clicked, retried, or replayed across a restart), producing two invoice effects for one approval.",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "basis": "AC 'an approved invoice is paid exactly once' (weight 3); single-use rests on operation_action_claims PK(tenant,action_id) and the CONSUMER_CLAIM_PREFIX claim in consume_governed_write_intent + effect_grants ix_effect_grants_commit_once."
+      },
+      {
+        "id": "R2",
+        "description": "An effect could be driven without a valid, recorded, bound approval \u2014 via a forged/expired token, an unconfigured route, a missing queued intent, or a non-sandbox target slipping past darkness.",
+        "risk_category": "safety_invariant",
+        "severity": "P0",
+        "basis": "AC 'no payment effect occurs without a recorded approval' (weight 3); verify_governed_approval + handle_governed_write_callback + effect_boundary non-sandbox refusal before any claim."
+      },
+      {
+        "id": "R3",
+        "description": "An invoice or approval bound to tenant A could be verified, queued, or consumed under tenant B, or be visible to B's consumer.",
+        "risk_category": "cross_tenant",
+        "severity": "P0",
+        "basis": "AC 'an invoice belonging to another tenant is never visible or approvable' (weight 3); tenant binding in verify_governed_approval and tenant-scoped security_events/queued_write_intents/claims."
+      },
+      {
+        "id": "R4",
+        "description": "A previously-signed approval could authorize a CHANGED effect (different amount, load, target, revision, or work item) because binding drift is not refused.",
+        "risk_category": "conflicting_evidence",
+        "severity": "P0",
+        "basis": "AC 'paid exactly once' + 'no effect without a recorded approval'; payload_hash/revision/work-item binding in verify_governed_approval and approval_operation_mismatch."
+      },
+      {
+        "id": "R5",
+        "description": "An operator not on the operation's allowlist (or tapping from a foreign channel) could get an effect executed.",
+        "risk_category": "authorization",
+        "severity": "P1",
+        "basis": "AC 'an operator without approval authority is refused' (weight 2); UnauthorizedActor + authorize_command + channel-receipt checks."
+      },
+      {
+        "id": "R6",
+        "description": "A recorded approval / single-use claim could be lost or re-consumable after a callback-service restart, or an ambiguous (UNKNOWN_OUTCOME) write could be auto-retried and land twice.",
+        "risk_category": "restart_recovery",
+        "severity": "P1",
+        "basis": "AC 'approval survives a restart' (weight 2); durability of operation_action_claims + no-auto-retry of UNKNOWN_OUTCOME in consume_governed_write_intent."
+      },
+      {
+        "id": "R7",
+        "description": "The callback surface could apply an action from an unauthenticated / tokenless / malformed request, or fail silently instead of refusing explicitly.",
+        "risk_category": "dead_end_error",
+        "severity": "P0",
+        "basis": "AC 'no payment effect occurs without a recorded approval'; transport fail-closed paths in action_callback (_handle: 400 missing token, 404 unknown path, 405 method)."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1",
+        "title": "A correctly-bound approval drives the full governed order to the dark adapter under one identity",
+        "purpose": "Confirm the happy path: a valid, bound GovernedApproval verifies and drives verify->record->queue->consume->checkpoint->witness->grant->claim->dark-adapter with a single approval_id lineage.",
+        "risk_category": "safety_invariant",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "If the intended approval-to-effect chain does not run end-to-end with one identity, the whole supervised-approval feature is non-functional or authorizes under a substituted identity (the F-01 defect).",
+        "generating_risk": "A supervised approval must actually reach and bound the (dark) write under the same identity the human signed.",
+        "requirement_reference": "U-042: no payment effect occurs without a recorded approval",
+        "product_principle_reference": "approval_quality",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run against tmp_path fixtures; touches no shared app state or the driver_probe DB.",
+        "confidence": 0.82,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "governed happy-path chain",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py eval/tests/test_p4_deployed_governed_route.py -q -k \"correctly_bound_approval_verifies or full_deployed_order_carries_one_identity or deployed_default_capability_is_dark\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S2",
+        "title": "Duplicate and concurrent approval taps consume exactly once",
+        "purpose": "Prove that a double-clicked or concurrently-delivered governed approval produces at most one adapter attempt, and the decision is single-use across duplicate callbacks.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "The core exactly-once promise fails if two taps for the same approval each drive an effect.",
+        "generating_risk": "A duplicate or concurrent approval could double-pay an invoice.",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once",
+        "product_principle_reference": "outcome_verification",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run against tmp_path fixtures; no shared state mutated.",
+        "confidence": 0.82,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "route-level single consumption",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_deployed_governed_route.py eval/tests/test_governed_approval_binding.py -q -k \"duplicate_deployed_callbacks or concurrent_deployed_callbacks or single_use_across_duplicate\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S3",
+        "title": "Ledger commit-once and witness-before-effect hold at the storage layer",
+        "purpose": "Exercise the claim CAS (one grant per commit key) and the checkpoint witness so an effect can only occur under a recorded checkpoint and only once.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "Even if route-level dedup were bypassed, the ledger's commit-once index and witness are the last barrier to a second effect; this is the exactly-once/no-effect-without-approval floor.",
+        "generating_risk": "A second grant for the same effect, or an effect with no witnessing checkpoint, would double-pay or pay without approval.",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once",
+        "product_principle_reference": "outcome_verification",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Pre-approved hermetic pytest command; tmp_path only.",
+        "confidence": 0.85,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "witness + claim CAS",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S4",
+        "title": "An actor without approval authority is refused before any effect",
+        "purpose": "Confirm an actor not on the operation's allowlist is rejected (UnauthorizedActor) and a correctly-signed approval replayed into a foreign channel is refused.",
+        "risk_category": "authorization",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "Supervised approval means only an authorized human's tap authorizes; an unauthorized actor producing an effect defeats supervision.",
+        "generating_risk": "An operator lacking approval authority could still get a write executed.",
+        "requirement_reference": "U-042: an operator without approval authority is refused",
+        "product_principle_reference": "authority_clarity",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.82,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "actor + channel authorization",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py eval/tests/test_p4_deployed_governed_route.py -q -k \"unauthorized_actor or replayed_into_another_channel\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S5",
+        "title": "A cross-tenant approval/invoice is never verifiable, visible, or approvable",
+        "purpose": "Confirm a cross-tenant envelope and a server bound to a different tenant are refused, and that tenant-scoped reads never surface another tenant's rows.",
+        "risk_category": "cross_tenant",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "Tenant isolation is a weight-3 promise; a leak makes another shipper's invoice approvable.",
+        "generating_risk": "An approval or queued intent bound to tenant A could be consumed or seen under tenant B.",
+        "requirement_reference": "U-042: an invoice belonging to another tenant is never visible or approvable",
+        "product_principle_reference": "authority_clarity",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.8,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "tenant binding + scope",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py eval/tests/test_u26bc_tenant_scope.py -q -k \"cross_tenant or server_bound_to_a_different_tenant or tenant\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S6",
+        "title": "A prior approval cannot authorize a changed effect (amount/load/target/revision drift)",
+        "purpose": "Confirm any change to amount, load, target system, work-item, operation class, or revision breaks the payload-hash/binding so a stale approval is refused, and a tampered stored intent is rejected.",
+        "risk_category": "conflicting_evidence",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "Reusing an approval against changed facts would pay a different invoice than the human approved \u2014 both an exactly-once and a no-unapproved-effect failure.",
+        "generating_risk": "A previous approval could silently authorize a mutated invoice/amount/target.",
+        "requirement_reference": "U-042: no payment effect occurs without a recorded approval",
+        "product_principle_reference": "approval_quality",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.82,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "binding drift refusals",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py eval/tests/test_p4_deployed_governed_route.py -q -k \"changed_amount or changed_load or changed_target_system or later_work_item_revision or changed_work_item or changed_operation_class or tampered_amount or mismatched_stored_intent\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S7",
+        "title": "Forged, wrong-secret, modified, or expired approvals are refused",
+        "purpose": "Confirm a forged signature, a token signed with the wrong secret, a modified envelope field, and an expired approval all fail closed with no effect.",
+        "risk_category": "malformed_input",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "A forged or stale token that verified would let an effect run with no genuine human approval.",
+        "generating_risk": "An unauthenticated or stale token could be accepted as an approval.",
+        "requirement_reference": "U-042: no payment effect occurs without a recorded approval",
+        "product_principle_reference": "approval_quality",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.85,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "authentication refusals",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_governed_approval_binding.py -q -k \"forged_signature or wrong_secret or modified_envelope or expired_approval\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S8",
+        "title": "No effect without a queued, in-scope, sandbox-bound approval (darkness holds)",
+        "purpose": "Confirm the route fails closed with no queued intent, a missing money row, or an expired proposal, and that a non-sandbox target is refused before any claim.",
+        "risk_category": "safety_invariant",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "The capability ships dark; any path that reaches a claim/effect without the full recorded approval or against a live target is a no-effect-without-approval violation.",
+        "generating_risk": "An effect could be claimed without a genuine queued+bound approval, or against a real (non-sandbox) target.",
+        "requirement_reference": "U-042: no payment effect occurs without a recorded approval",
+        "product_principle_reference": "success_without_verification",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.82,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "fail-closed + darkness",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_deployed_governed_route.py -q -k \"non_sandbox_proposal_is_refused or no_queued_intent_fails_closed or missing_money_row_fails_closed or expired_proposal_fails_closed\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S9",
+        "title": "An ambiguous outcome is escalated and never auto-retried",
+        "purpose": "Confirm an UNKNOWN_OUTCOME write is escalated to a named human and not automatically retried through the deployed route, so a write that may have landed is not paid a second time.",
+        "risk_category": "timeout_after_effect",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "Auto-retrying an ambiguous write is the classic double-pay; exactly-once requires the ambiguity be owned by a human, not a timer.",
+        "generating_risk": "A write whose outcome is unknown could be retried and land twice.",
+        "requirement_reference": "U-042: an approved invoice is paid exactly once",
+        "product_principle_reference": "outcome_verification",
+        "isolation_key": "canonical-pytest-suite",
+        "isolation_note": "Hermetic pytest run; tmp_path only.",
+        "confidence": 0.8,
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "no tests ran"
+        ],
+        "actions": [
+          {
+            "kind": "command",
+            "name": "no auto-retry on UNKNOWN",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_deployed_governed_route.py -q -k \"unknown_outcome_does_not_retry\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S10",
+        "title": "Callback service recovers after restart and the single-use claim store persists durably",
+        "purpose": "Restart the callback service and confirm it comes back serving, and that the durable single-use claim table (PK tenant,action_id) and the commit-once ledger index still exist so a post-restart replay cannot re-consume or double-pay.",
+        "risk_category": "restart_recovery",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "Approval-survives-restart depends on the claim being a committed, uniquely-constrained row; if the service or that constraint did not survive restart, a replayed approval could be consumed again.",
+        "generating_risk": "A restart could lose the recorded approval/claim or let a prior approval be re-consumed.",
+        "requirement_reference": "U-042: approval survives a restart",
+        "product_principle_reference": "failure_recovery",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "callback-service-8001",
+        "isolation_note": "Restarts the shared callback service and issues only a read-only 404 probe plus read-only sqlite SELECTs against the driver_probe DB; leaves the service running and mutates no rows.",
+        "confidence": 0.58,
+        "expected_observations": [
+          "Unknown Neyma callback path.",
+          "PRIMARY KEY (tenant, action_id)",
+          "ix_effect_grants_commit_once"
+        ],
+        "forbidden_observations": [],
+        "actions": [
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1000
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/this-path-does-not-exist",
+              "expect_status": 404,
+              "expect_contains": [
+                "Unknown Neyma callback path."
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+              "contains": [
+                "PRIMARY KEY (tenant, action_id)"
+              ]
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT name FROM sqlite_master WHERE type='index' AND name='ix_effect_grants_commit_once'\"",
+              "contains": [
+                "ix_effect_grants_commit_once"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "id": "S11",
+        "title": "The callback surface refuses tokenless / wrong-method / unknown requests explicitly (no silent apply)",
+        "purpose": "Confirm the running callback service fails closed at the transport boundary: a missing token, a wrong HTTP method, and an unknown path each return an explicit refusal, never a silent success.",
+        "risk_category": "dead_end_error",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "If an unauthenticated or malformed request could apply an action or return a silent 200, an effect could occur with no recorded approval.",
+        "generating_risk": "An action could be applied from a request carrying no verified approval.",
+        "requirement_reference": "U-042: no payment effect occurs without a recorded approval",
+        "product_principle_reference": "dead_end_error",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "callback-service-8001",
+        "isolation_note": "Read-only HTTP probes that are refused before any effect or store write; nothing is mutated.",
+        "confidence": 0.72,
+        "expected_observations": [
+          "missing its signed token",
+          "Use GET for email action links.",
+          "Unknown Neyma callback path."
+        ],
+        "forbidden_observations": [
+          "Neyma action applied"
+        ],
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/email/action",
+              "expect_status": 400,
+              "expect_contains": [
+                "missing its signed token"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/email/action",
+              "json_body": {},
+              "expect_status": 405,
+              "expect_contains": [
+                "Use GET for email action links."
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/actions/signed",
+              "expect_status": 405,
+              "expect_contains": [
+                "Use POST for signed action callbacks."
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "GET",
+              "path": "/no-such-neyma-path",
+              "expect_status": 404,
+              "expect_contains": [
+                "Unknown Neyma callback path."
+              ],
+              "timeout_s": 5
+            }
+          }
+        ]
+      }
+    ],
+    "assumptions": [
+      "The `callback` service is the running local app on http://127.0.0.1:8001 exposing the action_callback routes (/email/action, /actions/signed, /slack/*), and the harness can restart it.",
+      "The approved pytest base command `.venv/bin/python -m pytest -c pytest-canonical.ini` accepts additional file paths and -k selectors as 'extra arguments'; the -k tokens used correspond to real test names verified in eval/tests/test_governed_approval_binding.py and test_p4_deployed_governed_route.py.",
+      "The driver_probe workflow DB at data/active_workspace/driver_probe/workflow.sqlite3 carries the canonical schema (operation_action_claims, effect_grants) so its DDL is queryable read-only.",
+      "Because the governed write ships DARK (SandboxInvoiceWriteAdapter, no live writer), 'paid exactly once' / 'no payment effect' are exercised as the single governed-write effect being claimed exactly once against the dark adapter and its ledger, not as a real bank/AP payment."
+    ],
+    "unresolved_questions": [
+      "The acceptance criteria say an invoice is 'paid', but the shipped code performs RAISE_INVOICE against a dark sandbox adapter (live supervised write is deferred to P12). Is 'paid exactly once' meant to be verified against a real payment effect, or is proving the governed-write effect is claimed exactly once against the dark adapter the intended scope for U-042?",
+      "The live governed-approval callback path (/slack/actions -> handle_governed_write_callback) requires a valid Slack signing secret and a signed governed token, which cannot be produced without secrets. As a result the deepest AC behaviours are verified via the hermetic pytest suites rather than over HTTP against the running service; is an end-to-end HTTP exercise of a genuine approval in scope, and if so what signed-fixture affordance is available?",
+      "No dedicated test was found that restarts the callback process, re-delivers a previously-consumed approval, and asserts it is refused as already-consumed. AC 'approval survives a restart' is currently only inferable from the durable PK(tenant,action_id) claim; should a true process-restart-then-replay scenario be added once a signed-approval fixture is available?",
+      "'What is already covered' and the builder's actual diff were not provided, so scenarios are grounded on the acceptance criteria and the current implementation rather than on the specific lines changed; some may duplicate existing coverage."
+    ]
+  },
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "description": "An approved carrier invoice could be paid more than once if a duplicated Slack delivery, a retried callback, or a re-tapped button records a second decision, queues a second write intent, or reaches the adapter twice. The diff's exactly-once guarantee rests on record_governed_decision's single-use claim and the consumer's CONSUMER_CLAIM_PREFIX claim.",
+        "basis": "AC 'an approved invoice is paid exactly once' (weight 3); governed_write_route.consume_governed_write_intent single-consumption claim + handle_governed_write_callback DUPLICATE_CALLBACK path."
+      },
+      {
+        "id": "R2",
+        "risk_category": "concurrency",
+        "severity": "P0",
+        "description": "Two simultaneous consumers (or two callback threads) of the same queued intent could both mint a grant and both drive the adapter, double-paying. Protection is the atomic tenant-scoped claim_operation_action plus the ledger's unique commit-key index.",
+        "basis": "governed_write_route.py lines 280-296 single consumption; test_two_simultaneous_consumers_produce_exactly_one_external_attempt; AC paid-exactly-once."
+      },
+      {
+        "id": "R3",
+        "risk_category": "timeout_after_effect",
+        "severity": "P0",
+        "description": "A write whose acknowledgement is lost, whose outcome is reported UNKNOWN, or whose readback conflicts could be silently retried (double-pay) or falsely closed as paid. The route must mark UNKNOWN_OUTCOME, escalate to a named human, never FAILED, and never auto-retry.",
+        "basis": "governed_write_route.py steps 5-6 (GovernedWriteEscalated, requires_reconciliation); FakeInvoiceWriter lost_ack/unknown/conflict modes; AC paid-exactly-once."
+      },
+      {
+        "id": "R4",
+        "risk_category": "restart_recovery",
+        "severity": "P1",
+        "description": "A process restart between queueing and claiming, or after claiming, could either lose the approval (never paid) or blind-duplicate the effect (paid twice). The consumer claim must persist across a fresh store so a resume writes exactly once and a post-claim restart refuses.",
+        "basis": "AC 'approval survives a restart' (weight 2); test_a_restart_before/after_the_claim_*."
+      },
+      {
+        "id": "R5",
+        "risk_category": "safety_invariant",
+        "severity": "P0",
+        "description": "The pre-diff defect (F-01) was that the recorded approval and the executed effect shared no authority: build_checkpoint_approval had zero callers and GovernedWriteIntentQueued had no consumer, so a payment could occur authorized by an unrelated fixture approval rather than the human's recorded approval. The diff must make the join real and reachable from the authenticated callback.",
+        "basis": "AC 'no payment effect occurs without a recorded approval' (weight 3); governed_write_route module docstring; false-green defence tests."
+      },
+      {
+        "id": "R6",
+        "risk_category": "authorization",
+        "severity": "P0",
+        "description": "Because the consumer is separately reachable, a caller could pair a foreign approval identity/binding with a different operation and pay under an approval the human never granted. The consumption boundary must re-prove every binding independently of the signed envelope.",
+        "basis": "governed_write_route.approval_operation_mismatch; test_identity_substitution_is_refused_at_the_consumption_boundary; AC no-payment-without-recorded-approval."
+      },
+      {
+        "id": "R7",
+        "risk_category": "regression",
+        "severity": "P1",
+        "description": "The diff modifies three shared modules (governed_approval, carrier_invoice_write, action_callback) touched by the wider canonical pipeline; an unintended regression elsewhere could break checkpoint/witness/claim invariants the invoice write depends on.",
+        "basis": "Diff spans governed_approval.py, carrier_invoice_write.py, action_callback.py; active unit U-042."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S-D1",
+        "title": "A duplicated/re-tapped approval delivery produces exactly one payment attempt",
+        "purpose": "Prove that five identical deliveries of one approved governed invoice-write, and a second delivery of an already-recorded approval, produce exactly ONE external attempt and ONE GovernedWriteCompleted \u2014 the single-use decision claim holds. Assumes .venv is present and the canonical suite is runnable.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "Duplicate Slack deliveries and double-taps are the most likely real-world cause of a double payment, and the diff's exactly-once guarantee is exactly what must be exercised.",
+        "generating_risk": "A duplicated callback could record a second decision and pay the carrier twice.",
+        "requirement_reference": "an approved invoice is paid exactly once",
+        "product_principle_reference": "business_loop_closure",
+        "generated_from": [
+          "R1"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Runs committed pytest tests that use per-test tmp_path SQLite DBs; no shared workspace state is written, so no cleanup is required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "duplicate_delivery_exactly_once",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_a_duplicate_callback_produces_exactly_one_external_attempt eval/tests/test_p4_governed_write_route.py::test_a_reused_approval_produces_no_second_effect -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_a_duplicate_callback_produces_exactly_one_external_attempt PASSED",
+              "test_a_reused_approval_produces_no_second_effect PASSED",
+              "2 passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "effect: exactly one GovernedWriteCompleted event and one queued intent persist for the approval after repeated deliveries",
+            "oracle": "embedded test asserts len(GovernedWriteCompleted)==1 and len(GovernedWriteIntentQueued)==1 and total writes==1"
+          }
+        ],
+        "expected_observations": [
+          "test_a_duplicate_callback_produces_exactly_one_external_attempt PASSED",
+          "test_a_reused_approval_produces_no_second_effect PASSED",
+          "2 passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-C2",
+        "title": "Two simultaneous consumers of one queued intent mint one grant and attempt once",
+        "purpose": "Prove that when two consumers race for the same queued governed write intent, exactly one grant is minted for the logical effect and exactly one external attempt occurs \u2014 the atomic tenant-scoped claim and the ledger's unique commit-key index both hold under concurrency.",
+        "risk_category": "concurrency",
+        "priority": "P0",
+        "rationale": "Concurrency is the second independent way a single approval could double-pay, and it cannot be proven by the happy-path scenario S1.",
+        "generating_risk": "Two racing consumers could each mint a grant and pay the carrier twice.",
+        "requirement_reference": "an approved invoice is paid exactly once",
+        "product_principle_reference": "outcome_verification",
+        "generated_from": [
+          "R2"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Committed pytest test using tmp_path SQLite DBs; no shared workspace state touched; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "two_consumers_one_attempt",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_two_simultaneous_consumers_produce_exactly_one_external_attempt -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_two_simultaneous_consumers_produce_exactly_one_external_attempt PASSED",
+              "1 passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "exactly one row in effect_grants for the commit_key after the race",
+            "oracle": "embedded test: SELECT COUNT(*) FROM effect_grants WHERE tenant=? AND commit_key=? == 1 and total writes==1"
+          }
+        ],
+        "expected_observations": [
+          "test_two_simultaneous_consumers_produce_exactly_one_external_attempt PASSED",
+          "1 passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-A3",
+        "title": "An ambiguous external outcome is escalated, never falsely closed, and never auto-retried",
+        "purpose": "Prove that a lost acknowledgement, an UNKNOWN adapter outcome, and a conflicting readback each resolve to UNKNOWN_OUTCOME (never FAILED, never VERIFIED), escalate to the named accountable owner with requires_reconciliation, and that a subsequent re-delivery drives no second write \u2014 so an ambiguous state can neither become a silent second payment nor a false 'paid' record.",
+        "risk_category": "timeout_after_effect",
+        "priority": "P0",
+        "rationale": "A write that may already have landed is the highest-consequence ambiguity for money movement; it must be preserved and owned by a human, not retried or laundered into success.",
+        "generating_risk": "A lost-ack or conflicting readback could be auto-retried into a double payment or recorded as a completed payment that never verified.",
+        "requirement_reference": "an approved invoice is paid exactly once",
+        "product_principle_reference": "success_without_verification",
+        "generated_from": [
+          "R3"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Committed pytest tests using tmp_path SQLite DBs; no shared state written; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "ambiguous_outcome_preserved",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_external_success_with_a_lost_acknowledgement_becomes_unknown_never_failed eval/tests/test_p4_governed_write_route.py::test_unknown_outcome_requires_reconciliation_and_never_auto_retries eval/tests/test_p4_governed_write_route.py::test_a_conflicting_readback_blocks_closure -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_external_success_with_a_lost_acknowledgement_becomes_unknown_never_failed PASSED",
+              "test_unknown_outcome_requires_reconciliation_and_never_auto_retries PASSED",
+              "test_a_conflicting_readback_blocks_closure PASSED",
+              "3 passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "grant row state persists as UNKNOWN_OUTCOME and a GovernedWriteEscalated event with requires_reconciliation=true and the accountable_owner persists; a re-delivery adds no second write",
+            "oracle": "embedded test: effect_grants.state=='UNKNOWN_OUTCOME'; GovernedWriteEscalated payload requires_reconciliation is True; retry writes==0"
+          }
+        ],
+        "expected_observations": [
+          "test_external_success_with_a_lost_acknowledgement_becomes_unknown_never_failed PASSED",
+          "test_unknown_outcome_requires_reconciliation_and_never_auto_retries PASSED",
+          "test_a_conflicting_readback_blocks_closure PASSED",
+          "3 passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-R4",
+        "title": "Approval survives a restart: resume writes once, post-claim restart never blind-duplicates",
+        "purpose": "Prove that a restart (a fresh store on the same durable DB) after the intent was queued but before the claim resumes and writes exactly once, and that a restart AFTER the claim refuses (ALREADY_CONSUMED) and writes nothing \u2014 the consumer claim is durable so an approval neither evaporates nor double-pays across a crash.",
+        "risk_category": "restart_recovery",
+        "priority": "P1",
+        "rationale": "AC-U-042 explicitly requires an approval to survive a restart, and the crash-before vs crash-after-claim split is the exact boundary where recovery either loses or duplicates a payment.",
+        "generating_risk": "A restart mid-workflow could drop the approval entirely or re-run a claimed effect and pay twice.",
+        "requirement_reference": "approval survives a restart",
+        "product_principle_reference": "failure_recovery",
+        "generated_from": [
+          "R4"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Committed pytest tests instantiate a second store on the same tmp_path DB to model restart; ephemeral, no shared state; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "restart_before_and_after_claim",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_a_restart_before_the_claim_does_not_double_write eval/tests/test_p4_governed_write_route.py::test_a_restart_after_the_claim_cannot_blind_duplicate -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_a_restart_before_the_claim_does_not_double_write PASSED",
+              "test_a_restart_after_the_claim_cannot_blind_duplicate PASSED",
+              "2 passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "the consumer claim (governed-write-consume:<approval_id>) persists so the post-restart consumer returns ALREADY_CONSUMED and writes==0; the before-claim resume writes==1",
+            "oracle": "embedded test asserts resumed.state=='VERIFIED' writes==1 (before) and resumed.cause=='ALREADY_CONSUMED' writes==0 (after)"
+          }
+        ],
+        "expected_observations": [
+          "test_a_restart_before_the_claim_does_not_double_write PASSED",
+          "test_a_restart_after_the_claim_cannot_blind_duplicate PASSED",
+          "2 passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-J5",
+        "title": "The recorded approval actually drives the effect (F-01 join is real and reachable)",
+        "purpose": "Prove the decision half and execution half share one authority lineage: build_checkpoint_approval has a real production caller in governed_write_route, GovernedWriteIntentQueued has a real production consumer wired to the queue's read side, and the authenticated callback path reaches handle_governed_write_callback. This guards against a payment authorized by a disconnected fixture approval rather than the human's recorded approval.",
+        "risk_category": "safety_invariant",
+        "priority": "P0",
+        "rationale": "This is precisely the defect (F-01) the diff exists to remediate; if the join is decorative, a payment could occur with no recorded approval actually authorizing it, and the happy-path S1 would still appear green.",
+        "generating_risk": "A payment could be executed under an approval that was recorded but never actually joined to the effect (two disconnected halves).",
+        "requirement_reference": "no payment effect occurs without a recorded approval",
+        "product_principle_reference": "authority_clarity",
+        "generated_from": [
+          "R5"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Committed AST/source-population tests plus tmp_path DB tests; no shared state written; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "join_is_real",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_build_checkpoint_approval_has_a_real_production_caller eval/tests/test_p4_governed_write_route.py::test_the_queued_write_intent_has_a_real_production_consumer eval/tests/test_p4_governed_write_route.py::test_the_authenticated_callback_path_reaches_the_governed_route -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_build_checkpoint_approval_has_a_real_production_caller PASSED",
+              "test_the_queued_write_intent_has_a_real_production_consumer PASSED",
+              "test_the_authenticated_callback_path_reaches_the_governed_route PASSED",
+              "3 passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "AST population proves governed_write_route.py is a caller of build_checkpoint_approval and a consumer of GovernedWriteIntentQueued, and action_callback.py calls handle_governed_write_callback",
+            "oracle": "embedded tests assert 'governed_write_route.py' in callers/consumers and 'handle_governed_write_callback' in action_callback source"
+          }
+        ],
+        "expected_observations": [
+          "test_build_checkpoint_approval_has_a_real_production_caller PASSED",
+          "test_the_queued_write_intent_has_a_real_production_consumer PASSED",
+          "test_the_authenticated_callback_path_reaches_the_governed_route PASSED",
+          "3 passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-B6",
+        "title": "The consumption boundary re-proves the approval->operation lineage independently",
+        "purpose": "Prove that even a caller bypassing the signed envelope cannot pair a foreign approval identity with a different operation: a substituted approval_id is refused with GovernedWriteIntentRefused and no write, and every binding (approval_id, work_item, pipeline, capability, idempotency_key, revision) is independently load-bearing in approval_operation_mismatch.",
+        "risk_category": "authorization",
+        "priority": "P0",
+        "rationale": "The consumer is separately reachable, so its own re-proof of the lineage is the last barrier against paying under an approval the human never granted for this exact operation.",
+        "generating_risk": "A foreign approval could be paired with a different operation at the separately-reachable consumer and pay under an approval the human never granted.",
+        "requirement_reference": "no payment effect occurs without a recorded approval",
+        "product_principle_reference": "known_vs_inferred",
+        "generated_from": [
+          "R6"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:eval/tests/test_p4_governed_write_route.py",
+        "isolation_note": "Committed pytest tests (tmp_path DB + pure-predicate parametrization); no shared state; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "consumption_boundary_bindings",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_p4_governed_write_route.py::test_identity_substitution_is_refused_at_the_consumption_boundary eval/tests/test_p4_governed_write_route.py::test_every_binding_is_load_bearing_at_the_consumption_boundary -v",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "test_identity_substitution_is_refused_at_the_consumption_boundary PASSED",
+              "test_every_binding_is_load_bearing_at_the_consumption_boundary",
+              "passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "description": "a GovernedWriteIntentRefused event persists and writes==0 when a foreign approval is paired with the operation; each substituted binding yields a non-empty mismatch",
+            "oracle": "embedded test asserts GovernedWriteIntentRefused recorded, writes==0, and approval_operation_mismatch != '' for every substituted field"
+          }
+        ],
+        "expected_observations": [
+          "test_identity_substitution_is_refused_at_the_consumption_boundary PASSED",
+          "test_every_binding_is_load_bearing_at_the_consumption_boundary",
+          "passed"
+        ],
+        "forbidden_observations": [
+          "FAILED",
+          "ERROR"
+        ],
+        "setup": [],
+        "cleanup": []
+      },
+      {
+        "id": "S-REG7",
+        "title": "Full canonical suite stays green after the three-file diff",
+        "purpose": "Prove the diff to governed_approval.py, carrier_invoice_write.py and action_callback.py introduces no regression in the wider checkpoint/witness/claim/effect-boundary pipeline the invoice write depends on. Assumes the canonical suite passes on a clean tree.",
+        "risk_category": "regression",
+        "priority": "P1",
+        "rationale": "The diff edits modules shared by the broader pipeline; a silent regression in a dependency (checkpoint, claim CAS, witness) would undermine every acceptance criterion of U-042.",
+        "generating_risk": "A change to a shared module could break a checkpoint/claim invariant the invoice write silently relies on.",
+        "requirement_reference": "U-042",
+        "product_principle_reference": "operational_clarity",
+        "generated_from": [
+          "R7"
+        ],
+        "mode": "backend",
+        "isolation_key": "pytest:canonical-suite",
+        "isolation_note": "Runs the full committed canonical suite over ephemeral fixtures; no persistent workspace state is mutated; no cleanup required.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "canonical_suite",
+            "command": ".venv/bin/python -m pytest -c pytest-canonical.ini",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "passed"
+            ]
+          }
+        ],
+        "persisted_state_checks": [],
+        "expected_observations": [
+          "passed"
+        ],
+        "forbidden_observations": [
+          "failed",
+          "error"
+        ],
+        "setup": [],
+        "cleanup": []
+      }
+    ],
+    "assumptions": [
+      "The three edited files map to the committed governed invoice-write suites eval/tests/test_p4_governed_write_route.py (production entry point) and eval/tests/test_p4_governed_invoice_write.py (execution boundary); these embed the persisted-state oracles (effect_grants counts, security_events, witness rows).",
+      "The approved pytest command accepts extra positional node-id arguments, which override the ini testpaths and run exactly the named tests; -v causes each node id + PASSED to appear as literal output.",
+      "Verification is via in-process pytest against ephemeral tmp_path SQLite DBs; the shared sqlite oracle at data/active_workspace/driver_probe/workflow.sqlite3 is NOT populated by these runs, so persisted-state assertions are carried inside the tests rather than via a separate state_check action.",
+      "The .venv and pytest-canonical.ini are present and the canonical suite passes on the base tree."
+    ],
+    "unresolved_questions": [
+      "The builder-changed file src/freight_recon/carrier_invoice_write.py named in the diff does not exist at that path in the working tree (only eval/tests/test_p4_governed_invoice_write.py matches *invoice_write*); the invoice-write operation typing appears to live in freight_operations.py / effect_boundary.py. The mapping of that changed filename to the current module layout should be confirmed before trusting file-scoped coverage.",
+      "action_callback._maybe_handle_governed_write_approval adds explicit fail-closed refusals (ROUTE_NOT_CONFIGURED, NO_STORED_CHANNEL_RECEIPT, CHANNEL_RECEIPT_MISMATCH) that are HTTP-transport-level and have no clearly citeable U-042 acceptance criterion and no approved command to drive the live callback server with a validly-signed governed token; these fail-closed paths are currently unverifiable with the given toolset and no AC promises the channel-receipt binding \u2014 flagging rather than inventing a requirement.",
+      "No acceptance criterion among the five given covers the 'operator without approval authority is refused' path at the governed-write route specifically beyond S4; if a distinct authority-tier (approval_required vs actor-allowlist) is intended, it is not expressed in the ACs shown."
+    ]
+  }
+]

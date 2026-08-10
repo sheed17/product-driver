@@ -1,0 +1,89 @@
+GENERATED SCENARIO PLAN — run post-B-diff
+task: Add supervised carrier invoice approval.
+active unit: U-042
+
+8 generated case(s)
+risk categories exercised: authorization, conflicting_evidence, cross_tenant, malformed_input, regression, restart_recovery, safety_invariant
+identified but NOT exercised: An approved governed write could be consumed more than once (double-clicked, retried, or replayed across a restart), producing two invoice effects for one approval.; An approved carrier invoice could be paid more than once if a duplicated Slack delivery, a retried callback, or a re-tapped button records a second decision, queues a second write intent, or reaches the adapter twice. The diff's exactly-once guarantee rests on record_governed_decision's single-use claim and the consumer's CONSUMER_CLAIM_PREFIX claim.; Two simultaneous consumers (or two callback threads) of the same queued intent could both mint a grant and both drive the adapter, double-paying. Protection is the atomic tenant-scoped claim_operation_action plus the ledger's unique commit-key index.; A write whose acknowledgement is lost, whose outcome is reported UNKNOWN, or whose readback conflicts could be silently retried (double-pay) or falsely closed as paid. The route must mark UNKNOWN_OUTCOME, escalate to a named human, never FAILED, and never auto-retry.
+
+IDENTIFIED RISKS:
+  [P0 idempotency] An approved governed write could be consumed more than once (double-clicked, retried, or replayed across a restart), producing two invoice effects for one approval.  (NOT covered)
+  [P0 safety_invariant] An effect could be driven without a valid, recorded, bound approval — via a forged/expired token, an unconfigured route, a missing queued intent, or a non-sandbox target slipping past darkness.  (covered by S1, S8)
+  [P0 cross_tenant] An invoice or approval bound to tenant A could be verified, queued, or consumed under tenant B, or be visible to B's consumer.  (covered by S5)
+  [P0 conflicting_evidence] A previously-signed approval could authorize a CHANGED effect (different amount, load, target, revision, or work item) because binding drift is not refused.  (covered by S6)
+  [P1 authorization] An operator not on the operation's allowlist (or tapping from a foreign channel) could get an effect executed.  (covered by S4)
+  [P1 restart_recovery] A recorded approval / single-use claim could be lost or re-consumable after a callback-service restart, or an ambiguous (UNKNOWN_OUTCOME) write could be auto-retried and land twice.  (covered by S10)
+  [P0 idempotency] An approved carrier invoice could be paid more than once if a duplicated Slack delivery, a retried callback, or a re-tapped button records a second decision, queues a second write intent, or reaches the adapter twice. The diff's exactly-once guarantee rests on record_governed_decision's single-use claim and the consumer's CONSUMER_CLAIM_PREFIX claim.  (NOT covered)
+  [P0 concurrency] Two simultaneous consumers (or two callback threads) of the same queued intent could both mint a grant and both drive the adapter, double-paying. Protection is the atomic tenant-scoped claim_operation_action plus the ledger's unique commit-key index.  (NOT covered)
+  [P0 timeout_after_effect] A write whose acknowledgement is lost, whose outcome is reported UNKNOWN, or whose readback conflicts could be silently retried (double-pay) or falsely closed as paid. The route must mark UNKNOWN_OUTCOME, escalate to a named human, never FAILED, and never auto-retry.  (NOT covered)
+  [P1 restart_recovery] A process restart between queueing and claiming, or after claiming, could either lose the approval (never paid) or blind-duplicate the effect (paid twice). The consumer claim must persist across a fresh store so a resume writes exactly once and a post-claim restart refuses.  (covered by S10)
+  [P0 safety_invariant] The pre-diff defect (F-01) was that the recorded approval and the executed effect shared no authority: build_checkpoint_approval had zero callers and GovernedWriteIntentQueued had no consumer, so a payment could occur authorized by an unrelated fixture approval rather than the human's recorded approval. The diff must make the join real and reachable from the authenticated callback.  (covered by S1, S8)
+  [P0 authorization] Because the consumer is separately reachable, a caller could pair a foreign approval identity/binding with a different operation and pay under an approval the human never granted. The consumption boundary must re-prove every binding independently of the signed envelope.  (covered by S4)
+  [P1 regression] The diff modifies three shared modules (governed_approval, carrier_invoice_write, action_callback) touched by the wider canonical pipeline; an unintended regression elsewhere could break checkpoint/witness/claim invariants the invoice write depends on.  (covered by S-REG7)
+
+SCENARIOS:
+  [P0 safety_invariant] S1: A correctly-bound approval drives the full governed order to the dark adapter under one identity
+      purpose: Confirm the happy path: a valid, bound GovernedApproval verifies and drives verify->record->queue->consume->checkpoint->witness->grant->claim->dark-adapter with a single approval_id lineage.
+      grounded in: U-042: no payment effect occurs without a recorded approval
+      because: A supervised approval must actually reach and bound the (dark) write under the same identity the human signed.
+  [P1 authorization] S4: An actor without approval authority is refused before any effect
+      purpose: Confirm an actor not on the operation's allowlist is rejected (UnauthorizedActor) and a correctly-signed approval replayed into a foreign channel is refused.
+      grounded in: U-042: an operator without approval authority is refused
+      because: An operator lacking approval authority could still get a write executed.
+  [P0 cross_tenant] S5: A cross-tenant approval/invoice is never verifiable, visible, or approvable
+      purpose: Confirm a cross-tenant envelope and a server bound to a different tenant are refused, and that tenant-scoped reads never surface another tenant's rows.
+      grounded in: U-042: an invoice belonging to another tenant is never visible or approvable
+      because: An approval or queued intent bound to tenant A could be consumed or seen under tenant B.
+  [P0 conflicting_evidence] S6: A prior approval cannot authorize a changed effect (amount/load/target/revision drift)
+      purpose: Confirm any change to amount, load, target system, work-item, operation class, or revision breaks the payload-hash/binding so a stale approval is refused, and a tampered stored intent is rejected.
+      grounded in: U-042: no payment effect occurs without a recorded approval
+      because: A previous approval could silently authorize a mutated invoice/amount/target.
+  [P0 malformed_input] S7: Forged, wrong-secret, modified, or expired approvals are refused
+      purpose: Confirm a forged signature, a token signed with the wrong secret, a modified envelope field, and an expired approval all fail closed with no effect.
+      grounded in: U-042: no payment effect occurs without a recorded approval
+      because: An unauthenticated or stale token could be accepted as an approval.
+  [P0 safety_invariant] S8: No effect without a queued, in-scope, sandbox-bound approval (darkness holds)
+      purpose: Confirm the route fails closed with no queued intent, a missing money row, or an expired proposal, and that a non-sandbox target is refused before any claim.
+      grounded in: U-042: no payment effect occurs without a recorded approval
+      because: An effect could be claimed without a genuine queued+bound approval, or against a real (non-sandbox) target.
+  [P1 restart_recovery] S10: Callback service recovers after restart and the single-use claim store persists durably
+      purpose: Restart the callback service and confirm it comes back serving, and that the durable single-use claim table (PK tenant,action_id) and the commit-once ledger index still exist so a post-restart replay cannot re-consume or double-pay.
+      grounded in: U-042: approval survives a restart
+      because: A restart could lose the recorded approval/claim or let a prior approval be re-consumed.
+  [P1 regression] S-REG7: Full canonical suite stays green after the three-file diff
+      purpose: Prove the diff to governed_approval.py, carrier_invoice_write.py and action_callback.py introduces no regression in the wider checkpoint/witness/claim/effect-boundary pipeline the invoice write depends on. Assumes the canonical suite passes on a clean tree.
+      grounded in: U-042
+      because: A change to a shared module could break a checkpoint/claim invariant the invoice write silently relies on.
+
+ASSUMPTIONS:
+  - The `callback` service is the running local app on http://127.0.0.1:8001 exposing the action_callback routes (/email/action, /actions/signed, /slack/*), and the harness can restart it.
+  - The approved pytest base command `.venv/bin/python -m pytest -c pytest-canonical.ini` accepts additional file paths and -k selectors as 'extra arguments'; the -k tokens used correspond to real test names verified in eval/tests/test_governed_approval_binding.py and test_p4_deployed_governed_route.py.
+  - The driver_probe workflow DB at data/active_workspace/driver_probe/workflow.sqlite3 carries the canonical schema (operation_action_claims, effect_grants) so its DDL is queryable read-only.
+  - Because the governed write ships DARK (SandboxInvoiceWriteAdapter, no live writer), 'paid exactly once' / 'no payment effect' are exercised as the single governed-write effect being claimed exactly once against the dark adapter and its ledger, not as a real bank/AP payment.
+  - The three edited files map to the committed governed invoice-write suites eval/tests/test_p4_governed_write_route.py (production entry point) and eval/tests/test_p4_governed_invoice_write.py (execution boundary); these embed the persisted-state oracles (effect_grants counts, security_events, witness rows).
+  - The approved pytest command accepts extra positional node-id arguments, which override the ini testpaths and run exactly the named tests; -v causes each node id + PASSED to appear as literal output.
+  - Verification is via in-process pytest against ephemeral tmp_path SQLite DBs; the shared sqlite oracle at data/active_workspace/driver_probe/workflow.sqlite3 is NOT populated by these runs, so persisted-state assertions are carried inside the tests rather than via a separate state_check action.
+  - The .venv and pytest-canonical.ini are present and the canonical suite passes on the base tree.
+
+UNRESOLVED QUESTIONS:
+  - The acceptance criteria say an invoice is 'paid', but the shipped code performs RAISE_INVOICE against a dark sandbox adapter (live supervised write is deferred to P12). Is 'paid exactly once' meant to be verified against a real payment effect, or is proving the governed-write effect is claimed exactly once against the dark adapter the intended scope for U-042?
+  - The live governed-approval callback path (/slack/actions -> handle_governed_write_callback) requires a valid Slack signing secret and a signed governed token, which cannot be produced without secrets. As a result the deepest AC behaviours are verified via the hermetic pytest suites rather than over HTTP against the running service; is an end-to-end HTTP exercise of a genuine approval in scope, and if so what signed-fixture affordance is available?
+  - No dedicated test was found that restarts the callback process, re-delivers a previously-consumed approval, and asserts it is refused as already-consumed. AC 'approval survives a restart' is currently only inferable from the durable PK(tenant,action_id) claim; should a true process-restart-then-replay scenario be added once a signed-approval fixture is available?
+  - 'What is already covered' and the builder's actual diff were not provided, so scenarios are grounded on the acceptance criteria and the current implementation rather than on the specific lines changed; some may duplicate existing coverage.
+  - The builder-changed file src/freight_recon/carrier_invoice_write.py named in the diff does not exist at that path in the working tree (only eval/tests/test_p4_governed_invoice_write.py matches *invoice_write*); the invoice-write operation typing appears to live in freight_operations.py / effect_boundary.py. The mapping of that changed filename to the current module layout should be confirmed before trusting file-scoped coverage.
+  - action_callback._maybe_handle_governed_write_approval adds explicit fail-closed refusals (ROUTE_NOT_CONFIGURED, NO_STORED_CHANNEL_RECEIPT, CHANNEL_RECEIPT_MISMATCH) that are HTTP-transport-level and have no clearly citeable U-042 acceptance criterion and no approved command to drive the live callback server with a validly-signed governed token; these fail-closed paths are currently unverifiable with the given toolset and no AC promises the channel-receipt binding — flagging rather than inventing a requirement.
+  - No acceptance criterion among the five given covers the 'operator without approval authority is refused' path at the governed-write route specifically beyond S4; if a distinct authority-tier (approval_required vs actor-allowlist) is intended, it is not expressed in the ACs shown.
+
+REJECTED PROPOSALS:
+  S11: unknown risk_category 'dead_end_error'
+  S2: a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S3: a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S9: a timeout_after_effect scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.
+  S-D1: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+  S-C2: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+  S-A3: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+  S-R4: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+  S-J5: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+  S-B6: persisted_state_checks.0.command: Field required; persisted_state_checks.0.description: Extra inputs are not permitted; persisted_state_checks.0.oracle: Extra inputs are not permitted
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

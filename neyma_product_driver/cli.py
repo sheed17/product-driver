@@ -42,6 +42,7 @@ from .context import (
 from .evidence import EvidenceStore, check_writable, new_run_id
 from .run_journal import RunJournal
 from .models import (
+    CommandResult,
     Decision,
     EvaluatorDecision,
     GitSnapshot,
@@ -518,6 +519,7 @@ async def run_control_loop(
             founder_feedback=feedback_text,
             previous_corrections=sent_corrections,
             suite=suite_result,
+            coverage_gaps=_coverage_gap_briefs(planner, suite_result),
         )
 
         provenance = _build_provenance(
@@ -623,6 +625,7 @@ async def run_control_loop(
                 generation_problems=(
                     planner.generation_problems() if planner is not None else ()
                 ),
+                risks=_identified_risks(planner),
             )
 
         record.decision = decision
@@ -702,6 +705,33 @@ async def run_control_loop(
 # --------------------------------------------------------------------------
 # Scenario suites inside the loop
 # --------------------------------------------------------------------------
+
+
+def _identified_risks(planner: Any) -> Sequence[Any]:
+    """This run's own risk register, or nothing when generation is not in use.
+
+    Read through ``getattr`` rather than by type so a run without a planner —
+    the default, since generation is opt-in — simply contributes no risks and
+    the gate behaves exactly as it did before.
+    """
+    plan = getattr(planner, "plan", None)
+    return list(getattr(plan, "risks", None) or [])
+
+
+def _coverage_gap_briefs(planner: Any, suite_result: Any) -> list[str]:
+    """The deterministic coverage gaps, rendered for the evaluator.
+
+    The evaluator is asked whether the coverage was sufficient. Asking that
+    while withholding the gaps the driver has already computed invites a
+    confident answer built on a partial view; this hands over the same facts the
+    acceptance gate is about to enforce.
+    """
+    from .scenario_gate import uncovered_required_risks
+
+    return [
+        risk.brief()
+        for risk in uncovered_required_risks(_identified_risks(planner), suite_result)
+    ]
 
 
 def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:
@@ -815,6 +845,7 @@ def _apply_suite_precedence(
     scenario_name: str,
     emit: Callable[[str], None],
     generation_problems: Sequence[str] = (),
+    risks: Sequence[Any] = (),
 ) -> EvaluatorDecision:
     """A required scenario that failed cannot be accepted away.
 
@@ -834,7 +865,9 @@ def _apply_suite_precedence(
     # The authoritative gate. It recomputes from the outcome records, so a
     # required scenario that failed, was skipped, never ran, or cannot show its
     # evidence all reach here the same way: not verified.
-    verdict = evaluate_gate(suite_result, generation_problems=generation_problems)
+    verdict = evaluate_gate(
+        suite_result, generation_problems=generation_problems, risks=risks
+    )
 
     if not verdict.blocks_acceptance and suite_result.full_run:
         return decision
@@ -853,6 +886,31 @@ def _apply_suite_precedence(
         )
 
     blocking = suite_result.blocking_failures()
+    if not blocking and not verdict.unverified and verdict.uncovered_risks:
+        # Every scenario that ran passed, and the run still identified risks it
+        # never verified. Accepting here would be claiming the passing scenarios
+        # speak for coverage that was never attempted. There is no defect to
+        # correct, so this is a blocked run rather than a failing product.
+        emit(
+            f"  product evaluation ACCEPTed, but {len(verdict.uncovered_risks)} identified "
+            "acceptance-blocking risk(s) have no passing scenario."
+        )
+        for line in verdict.summary_block().splitlines():
+            emit(f"  {line}")
+        return EvaluatorDecision(
+            decision=Decision.BLOCKED,
+            summary=(
+                "The product evaluation accepted and every executed scenario passed, but "
+                f"{len(verdict.uncovered_risks)} risk(s) this run identified as blocking "
+                "were never verified, so the coverage does not support an acceptance."
+            ),
+            problems=[risk.brief() for risk in verdict.uncovered_risks],
+            observed_behavior=decision.observed_behavior,
+            evidence_paths=[
+                o.evidence_path for o in suite_result.outcomes if o.evidence_path
+            ][:12],
+        )
+
     if not blocking:
         # Nothing the product did is wrong as far as anyone knows — the
         # verification simply did not happen. There is no grounded correction to
@@ -1395,7 +1453,9 @@ def _make_planner(
         repo=config.neyma_repo,
         config=config.scenario_generation,
         reasoner=LLMScenarioReasoner(
-            config.neyma_repo, model=config.scenario_generation.model
+            config.neyma_repo,
+            model=config.scenario_generation.model,
+            max_turns=config.scenario_generation.generator_max_turns,
         ),
         store=store,
         base_scenario=scenario,
@@ -1453,7 +1513,11 @@ async def cmd_scenarios_plan(args: argparse.Namespace) -> int:
     planner = ScenarioPlanner(
         repo=config.neyma_repo,
         config=config.scenario_generation,
-        reasoner=LLMScenarioReasoner(config.neyma_repo, model=config.scenario_generation.model),
+        reasoner=LLMScenarioReasoner(
+            config.neyma_repo,
+            model=config.scenario_generation.model,
+            max_turns=config.scenario_generation.generator_max_turns,
+        ),
         store=None,
         base_scenario=base,
         permanent_scenarios=_permanent_scenarios(config),
@@ -1571,7 +1635,9 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
 
     out("")
     out(result.summary_block())
-    verdict = evaluate_gate(result)
+    # The replayed plan carries its own risk register, so the replay is held to
+    # the same coverage standard as the run that produced it.
+    verdict = evaluate_gate(result, risks=plan.risks)
     out("")
     out(verdict.summary_block())
     out(f"\nevidence: {artifact_root}")
@@ -1736,6 +1802,30 @@ async def cmd_scenarios_promote(args: argparse.Namespace) -> int:
     return 0
 
 
+def _journalled_commands(record: IterationRecord) -> list[tuple[CommandResult, str]]:
+    """Every command this iteration actually recorded, with where it came from.
+
+    The journal used to read ``record.commands``, a field ``IterationRecord`` has
+    never had, so every run that did any work raised ``AttributeError`` on its
+    first iteration and — because writing the journal is deliberately
+    best-effort — produced no journal and no founder summary at all. A run with
+    zero iterations never entered the loop, which is why the suite did not see it.
+
+    The commands that genuinely exist in the run state are the ones the scenario
+    executor ran: setup, the scenario body, and teardown. They are labelled as
+    such. Calling them "builder" commands would replace a missing journal with a
+    journal that misattributes its own evidence, which is worse.
+    """
+    scenario = getattr(record, "scenario", None)
+    if scenario is None:
+        return []
+    out: list[tuple[CommandResult, str]] = []
+    for source in ("setup", "commands", "teardown"):
+        for command in getattr(scenario, source, None) or []:
+            out.append((command, f"scenario:{source}"))
+    return out
+
+
 def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConfig) -> None:
     """Persist journal.json and FOUNDER-SUMMARY.md for the run.
 
@@ -1758,13 +1848,13 @@ def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConf
         )
         journal.record_start(config.neyma_repo)
         for record in state.iterations:
-            for command in record.commands or []:
+            for command, source in _journalled_commands(record):
                 journal.record_command(
                     command.command,
                     exit_code=command.exit_code,
                     timed_out=command.timed_out,
                     duration_s=command.duration_s,
-                    source="builder",
+                    source=source,
                 )
             if record.git and record.git.head_commit:
                 journal.record_commit(

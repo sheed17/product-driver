@@ -1,0 +1,1084 @@
+{
+  "run_id": "post-E",
+  "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+  "active_unit_id": "U-AUTHZ-2",
+  "generation_basis": {
+    "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+    "task_hash": "2d1dafa8b0f077f5",
+    "active_unit_id": "U-AUTHZ-2",
+    "acceptance_criteria": [
+      "a supervisor can release an operation (weight 3): PENDING",
+      "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+      "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+      "every refusal is recorded in the audit log (weight 2): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A non-supervisor (operator role) is able to release an operation because the role check is missing, mis-spelled, or evaluated after the effect. This is the central authorization bypass the unit exists to prevent.",
+      "risk_category": "authorization",
+      "severity": "P0",
+      "basis": "AC 'a non-supervisor is refused and no release occurs' (weight 3); no role check exists anywhere in src today, so the builder added it from scratch.",
+      "covered_by": [
+        "S2"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "A supervisor of tenant A releases tenant B's operation because the release path scopes by role but not by tenant, or trusts a caller-supplied tenant field instead of the operation's owning tenant.",
+      "risk_category": "cross_tenant",
+      "severity": "P0",
+      "basis": "AC 'a supervisor of one tenant cannot release another tenant's operation' (weight 3); the store is tenant-first but a new release endpoint could read the operation with the caller's tenant rather than the operation's.",
+      "covered_by": [
+        "S3"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "A refusal returns an error to the caller but writes nothing to audit_events/security_events, so denied attempts leave no evidence (silent denial).",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'every refusal is recorded in the audit log' (weight 2); refusals often short-circuit before the audit write.",
+      "covered_by": [
+        "S8"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "A request with no role, an unknown role, or a missing actor is treated as authorized (fail-open) instead of refused, because absence is coerced to a permissive default.",
+      "risk_category": "malformed_input",
+      "severity": "P0",
+      "basis": "phase2 FORBIDDEN_ACTORS logic shows the codebase's rule that 'a machine that names nobody has named nobody'; a new endpoint may not honor it.",
+      "covered_by": [
+        "S4"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "Re-issuing an identical release for an already-released operation performs or records the release twice, so a retried/duplicated tap double-releases.",
+      "risk_category": "idempotency",
+      "severity": "P1",
+      "basis": "AC 'a supervisor can release an operation' says nothing about repeats; effect boundaries in this repo are explicitly single-claim, a new endpoint may not be.",
+      "covered_by": [
+        "S5"
+      ]
+    },
+    {
+      "id": "R6",
+      "description": "The refusal record is held only in memory or in a per-request kernel and is lost on restart, so the audit trail cannot answer 'who was denied' after a crash.",
+      "risk_category": "restart_recovery",
+      "severity": "P2",
+      "basis": "AC 'every refusal is recorded in the audit log' implies durability; run_action_callback_server notes the handle key is in-memory and lost on restart.",
+      "covered_by": [
+        "S7"
+      ]
+    },
+    {
+      "id": "R7",
+      "description": "A supervisor request and a non-supervisor request race on the same operation; the loser's effect still lands or both succeed, breaking the single-releaser invariant.",
+      "risk_category": "concurrency",
+      "severity": "P1",
+      "basis": "AC 'a non-supervisor is refused and no release occurs' must hold even under a concurrent authorized release; the callback server is threaded.",
+      "covered_by": [
+        "S6"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "proposed_id": "",
+      "title": "Supervisor releases an operation \u2014 the authorized happy path is recorded to audit",
+      "purpose": "Confirm a supervisor can release an operation and that the release is attributed in the durable audit log.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "The unit's first promise is that the authorized actor can act; if this fails the feature is a lockout, not an authorization control.",
+      "requirement_reference": "a supervisor can release an operation",
+      "product_principle_reference": "accountable_owner",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S1/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S1",
+              "actor": "sup-probe-s1",
+              "role": "supervisor",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "release attributed to the supervisor in the audit log",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE actor='sup-probe-s1'\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Uses a unique actor marker 'sup-probe-s1' so its audit rows never collide with other scenarios; audit_events is append-only evidence and there is no approved delete command, so rows are left in place by design.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Role check is too strict and refuses even the supervisor, or succeeds without leaving attributable evidence.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S2",
+      "proposed_id": "",
+      "title": "Operator (non-supervisor) is refused a release and the refusal is recorded",
+      "purpose": "Put a non-supervisor actor at the release endpoint and confirm it is refused, no release lands, and the denial is written to the audit log.",
+      "risk_category": "authorization",
+      "priority": "P0",
+      "rationale": "This is the core control: a non-supervisor must never release, and the denial must be evidence, not a silent 403.",
+      "requirement_reference": "a non-supervisor is refused and no release occurs",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S2/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S2",
+              "actor": "op-probe-s2",
+              "role": "operator",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 403,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "the refusal for this operator is recorded in audit or security events",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s2') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s2')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "no successful release landed for this operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S2%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique actor marker 'op-probe-s2' and operation 'OP-PROBE-S2' isolate this scenario's rows; append-only audit, no approved cleanup command exists.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Missing/late role check lets an operator release, or the refusal leaves no audit trail.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S3",
+      "proposed_id": "",
+      "title": "Supervisor of tenant A cannot release tenant B's operation",
+      "purpose": "A supervisor authenticated for tenant A targets an operation owned by tenant B; confirm it is refused, no release occurs, and the cross-tenant denial is recorded.",
+      "risk_category": "cross_tenant",
+      "priority": "P0",
+      "rationale": "Role alone is not authority: a supervisor's power is scoped to their tenant, and the store is tenant-first precisely so B's row cannot be spelled by A.",
+      "requirement_reference": "a supervisor of one tenant cannot release another tenant's operation",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-B-S3/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-B-S3",
+              "actor": "sup-a-probe-s3",
+              "role": "supervisor",
+              "tenant": "tenant-a"
+            },
+            "body": "",
+            "expect_status": 403,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "cross-tenant refusal is recorded",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='sup-a-probe-s3') + (SELECT count(*) FROM security_events WHERE actor='sup-a-probe-s3')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "tenant-B operation was not released",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-B-S3%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique actor marker 'sup-a-probe-s3' targeting tenant-B operation 'OP-PROBE-B-S3'; append-only audit, no approved delete command.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Release scopes by role but reads the operation using the caller-supplied tenant, so A's supervisor reaches B's operation.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S4",
+      "proposed_id": "",
+      "title": "Missing/unknown role fails closed (no fail-open default)",
+      "purpose": "Send a release with no role field and, separately, with an unknown role value; confirm each is refused and recorded rather than defaulting to authorized.",
+      "risk_category": "malformed_input",
+      "priority": "P0",
+      "rationale": "Absence of an authorization fact must read as 'not authorized', never as a permissive default \u2014 the repo's own rule that naming nobody has named nobody.",
+      "requirement_reference": "a non-supervisor is refused and no release occurs",
+      "product_principle_reference": "known_vs_inferred",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S4/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S4",
+              "actor": "norole-probe-s4",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 403,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S4/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S4",
+              "actor": "badrole-probe-s4",
+              "role": "admin",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 403,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "both no-role and unknown-role attempts recorded as refusals",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor IN ('norole-probe-s4','badrole-probe-s4')) + (SELECT count(*) FROM security_events WHERE actor IN ('norole-probe-s4','badrole-probe-s4'))\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "operation was not released by either malformed attempt",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S4%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique actor markers 'norole-probe-s4' and 'badrole-probe-s4'; append-only audit, no approved cleanup.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The endpoint coerces a missing/unknown role to a permissive default and allows the release.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S5",
+      "proposed_id": "",
+      "title": "Repeated supervisor release does not double-release",
+      "purpose": "Issue the same authorized supervisor release twice for one operation and confirm the release effect is recorded at most once (idempotent), not duplicated.",
+      "risk_category": "idempotency",
+      "priority": "P1",
+      "rationale": "A retried tap or double-submit must not release twice; effect boundaries in this repo are single-claim and the new endpoint must match.",
+      "requirement_reference": "a supervisor can release an operation",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S5/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S5",
+              "actor": "sup-probe-s5",
+              "role": "supervisor",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S5/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S5",
+              "actor": "sup-probe-s5",
+              "role": "supervisor",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "exactly one release-effect row for this operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S5%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [
+            "2"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique operation 'OP-PROBE-S5' and actor 'sup-probe-s5'; append-only audit, no approved delete command.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The second identical request performs/records a second release for an already-released operation.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S6",
+      "proposed_id": "",
+      "title": "Concurrent supervisor and operator releases on one operation \u2014 single releaser wins",
+      "purpose": "Fire a supervisor release and a non-supervisor release simultaneously at the same operation; confirm at most one release lands and the operator's attempt is refused and recorded.",
+      "risk_category": "concurrency",
+      "priority": "P1",
+      "rationale": "The refusal invariant must survive a race with a legitimate release; a threaded server can otherwise let the loser's effect slip through or double-release.",
+      "requirement_reference": "a non-supervisor is refused and no release occurs",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/operations/OP-PROBE-S6/release",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "operation_id": "OP-PROBE-S6",
+                "actor": "sup-probe-s6",
+                "role": "supervisor",
+                "tenant": "neyma"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": 5
+            },
+            {
+              "name": "",
+              "method": "POST",
+              "path": "/operations/OP-PROBE-S6/release",
+              "url": "",
+              "headers": {},
+              "json_body": {
+                "operation_id": "OP-PROBE-S6",
+                "actor": "op-probe-s6",
+                "role": "operator",
+                "tenant": "neyma"
+              },
+              "body": "",
+              "expect_status": null,
+              "expect_contains": [],
+              "timeout_s": 5
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "at most one release-effect row for the contested operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-S6%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [],
+          "not_contains": [
+            "2",
+            "3"
+          ],
+          "timeout_s": null
+        },
+        {
+          "name": "the operator's concurrent attempt was refused and recorded",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s6') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s6')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique operation 'OP-PROBE-S6' with actors 'sup-probe-s6' and 'op-probe-s6'; append-only audit, no approved cleanup.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Under concurrency the operator's release is not refused, or both requests produce a release effect.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S7",
+      "proposed_id": "",
+      "title": "Refusal survives a callback restart (durable audit)",
+      "purpose": "Record a non-supervisor refusal, restart the callback service, then read the audit store to confirm the refusal persisted rather than living only in memory.",
+      "risk_category": "restart_recovery",
+      "priority": "P2",
+      "rationale": "'Every refusal is recorded' is only true if the record is durable; the server documents in-memory per-request state that a restart discards.",
+      "requirement_reference": "every refusal is recorded in the audit log",
+      "product_principle_reference": "evidence_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-S7/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-S7",
+              "actor": "op-probe-s7",
+              "role": "operator",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": 403,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1000
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "refusal still present after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT (SELECT count(*) FROM audit_events WHERE actor='op-probe-s7') + (SELECT count(*) FROM security_events WHERE actor='op-probe-s7')\"",
+          "contains": [],
+          "not_contains": [
+            "0"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique actor 'op-probe-s7'; append-only audit, no approved cleanup. Restarting 'callback' is safe as it only re-reads the same DB.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The refusal is written only to an in-memory/per-kernel structure and vanishes on restart.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S8",
+      "proposed_id": "",
+      "title": "Release of an unknown operation id is refused, not fabricated",
+      "purpose": "A supervisor targets an operation id that does not exist; confirm the request is refused rather than silently succeeding or creating a release record for a non-existent operation.",
+      "risk_category": "missing_data",
+      "priority": "P2",
+      "rationale": "A correct control must fail on an unknown target instead of manufacturing a success, which would let a typo or probe read as an authorized release.",
+      "requirement_reference": "a supervisor can release an operation",
+      "product_principle_reference": "success_without_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/operations/OP-PROBE-DOES-NOT-EXIST-S8/release",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "operation_id": "OP-PROBE-DOES-NOT-EXIST-S8",
+              "actor": "sup-probe-s8",
+              "role": "supervisor",
+              "tenant": "neyma"
+            },
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": 5
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no release-effect row fabricated for the unknown operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM audit_events WHERE payload_json LIKE '%OP-PROBE-DOES-NOT-EXIST-S8%' AND (to_state='RELEASED' OR event_type LIKE '%releas%')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Unique actor 'sup-probe-s8' and non-existent operation 'OP-PROBE-DOES-NOT-EXIST-S8'; append-only audit, no approved cleanup.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T06:30:25+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "An unknown operation id returns success or writes a release row for an operation the store never had.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "8f85929c-f277-4dde-8afe-a3f741d42d3a",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 8,
+    "by_risk_category": {
+      "happy_path": 1,
+      "authorization": 1,
+      "cross_tenant": 1,
+      "malformed_input": 1,
+      "idempotency": 1,
+      "concurrency": 1,
+      "restart_recovery": 1,
+      "missing_data": 1
+    },
+    "by_priority": {
+      "P1": 3,
+      "P0": 3,
+      "P2": 2
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [
+    "The built feature exposes an HTTP release endpoint on the local callback service at http://127.0.0.1:8001; I assumed a RESTful shape POST /operations/{id}/release with a JSON body carrying actor, role, and tenant. The exact path, verb, and body field names are a guess because the builder's diff was not provided.",
+    "The service I restart/reference as 'callback' is the process serving :8001 and it writes to data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite target).",
+    "Refusals and releases are written to audit_events and/or security_events with the caller's actor stored in the 'actor' column and the operation id somewhere in payload_json \u2014 this is how the existing store records decisions, so I keyed every oracle on a unique per-scenario actor marker and an operation-id substring rather than on an event_type string I cannot know.",
+    "Releasable seed operations (OP-PROBE-S1, -S2, tenant-B OP-PROBE-B-S3, etc.) exist in the driver_probe workspace for a supervisor to act on; no approved command creates them, so scenarios that need a pre-existing releasable operation depend on that seed state.",
+    "A refused release returns an HTTP 4xx (I used 403); if the builder chose a different status the request-level expect_status may need adjustment, but the persisted-state oracles remain valid."
+  ],
+  "unresolved_questions": [
+    "What is the actual release endpoint (path, method, and request body / auth transport)? The repo has no existing release route, so every request action's path and json_body are assumed and must be reconciled with the builder's diff before these scenarios can bind.",
+    "How is a 'supervisor' identity established on a request \u2014 a role field in the body, a signed token, a session, or the existing Slack actor allowlist? If role is derived from a signed credential rather than a plaintext field, S2/S4 need to be re-expressed against that mechanism.",
+    "Which table and columns represent an operation's released state? I could not find an operations/state table for release, so the 'no release occurred' negative oracles proxy through audit_events (to_state='RELEASED' / event_type LIKE '%releas%'); the real released-state table and its exact state string must be confirmed to make those oracles exact.",
+    "Is a refusal recorded in audit_events, security_events, or both? The AC says 'audit log'; I hedged by summing both, but the canonical location and event_type string should be pinned so an exact-count oracle can replace the presence check.",
+    "Does the release endpoint write to data/active_workspace/driver_probe/workflow.sqlite3, or to a different workspace DB the state_check cannot reach? Only that one sqlite path is approved; if the live server writes elsewhere, none of the persisted-state oracles observe the real effect.",
+    "There is no approved command to create seed operations or to reset/delete rows between runs; scenarios assume seeded releasable operations and rely on append-only isolation via unique markers. A seed/reset command would make the happy-path and idempotency scenarios deterministic."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T06:25:58+00:00",
+      "basis": {
+        "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+        "task_hash": "2d1dafa8b0f077f5",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 8,
+      "accepted_ids": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7",
+        "S8"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

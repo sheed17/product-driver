@@ -1,0 +1,3253 @@
+{
+  "runs": [
+    {
+      "name": "control",
+      "defect": "none",
+      "no_evidence": true,
+      "wave1_failures": [],
+      "wave2_accepted": 0,
+      "wave2_proposed": 3,
+      "wave2_titles": [
+        "Approve must return a definitive answer before the client deadline, and exactly one payment must have landed",
+        "Two simultaneous approvals of one invoice must produce exactly one payment",
+        "The API's live approved claim must be backed by a re-read of persisted state"
+      ]
+    },
+    {
+      "name": "nonidempotent-a",
+      "defect": "nonidempotent",
+      "no_evidence": false,
+      "wave1_failures": [
+        "gen-idempotent-approve"
+      ],
+      "wave2_accepted": 4,
+      "wave2_proposed": 4,
+      "wave2_titles": [
+        "Two approvals of one invoice race \u2014 exactly one payment must persist",
+        "Approving one invoice under two different actors pays once",
+        "Four repeated approvals do not accumulate a growing ledger",
+        "Repeated approvals of one invoice leave an untouched invoice pending"
+      ]
+    },
+    {
+      "name": "nonidempotent-b",
+      "defect": "nonidempotent",
+      "no_evidence": false,
+      "wave1_failures": [
+        "gen-idempotent-approve"
+      ],
+      "wave2_accepted": 4,
+      "wave2_proposed": 4,
+      "wave2_titles": [
+        "Two simultaneous approvals of one invoice pay exactly once",
+        "Approval survives an api restart without duplicating the payment",
+        "Re-approving after a restart still pays once",
+        "Approving one invoice does not create a payment on another"
+      ]
+    },
+    {
+      "name": "nonidempotent-c",
+      "defect": "nonidempotent",
+      "no_evidence": false,
+      "wave1_failures": [
+        "gen-idempotent-approve"
+      ],
+      "wave2_accepted": 4,
+      "wave2_proposed": 4,
+      "wave2_titles": [
+        "Two simultaneous approvals of one invoice pay exactly once",
+        "A single approval records exactly one approval, durably",
+        "A single approval survives an api restart as exactly one",
+        "Duplicate approvals do not become durable across a restart"
+      ]
+    },
+    {
+      "name": "ui_lies-a",
+      "defect": "ui_lies",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve"
+      ],
+      "wave2_accepted": 4,
+      "wave2_proposed": 4,
+      "wave2_titles": [
+        "Approval survives an api service restart",
+        "Two simultaneous approvals of one invoice record at most one",
+        "Re-approving after a restart does not double-pay",
+        "Approvals of distinct invoices persist independently"
+      ]
+    },
+    {
+      "name": "ui_lies-b",
+      "defect": "ui_lies",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve"
+      ],
+      "wave2_accepted": 6,
+      "wave2_proposed": 6,
+      "wave2_titles": [
+        "Approval survives an api restart",
+        "Approval status is stable across a re-read",
+        "Approving increments the durable approvals counter",
+        "Approving twice records exactly one approval",
+        "Two simultaneous approvals record one durable approval",
+        "SMOKE invoice approval reaches the durable store"
+      ]
+    },
+    {
+      "name": "ui_lies-c",
+      "defect": "ui_lies",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve"
+      ],
+      "wave2_accepted": 5,
+      "wave2_proposed": 5,
+      "wave2_titles": [
+        "Approve success response must match durable store",
+        "Approval survives an api restart",
+        "Approval stable across independent re-reads",
+        "Concurrent approvals record exactly one",
+        "Persisted flag not emitted for a target never recorded"
+      ]
+    },
+    {
+      "name": "uncertain-a",
+      "defect": "uncertain",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve",
+        "gen-happy-approve"
+      ],
+      "wave2_accepted": 5,
+      "wave2_proposed": 5,
+      "wave2_titles": [
+        "Approve hangs but the effect must land exactly once",
+        "Two simultaneous approvals of one invoice pay exactly once",
+        "Approval survives an api restart (re-read of persisted state)",
+        "Restart while an approve is mid-hang leaves no duplicate or half-write",
+        "Retry after restart stays idempotent (approve, restart, approve again)"
+      ]
+    },
+    {
+      "name": "uncertain-b",
+      "defect": "uncertain",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve",
+        "gen-happy-approve"
+      ],
+      "wave2_accepted": 5,
+      "wave2_proposed": 5,
+      "wave2_titles": [
+        "Client retries an approve that timed out \u2014 still pays once",
+        "Two simultaneous approves of one invoice pay once",
+        "Approval survives an api restart (durable re-read)",
+        "One hung approve must not block a different invoice",
+        "Approving an unknown invoice fabricates nothing"
+      ]
+    },
+    {
+      "name": "uncertain-c",
+      "defect": "uncertain",
+      "no_evidence": false,
+      "wave1_failures": [
+        "permanent:approval-smoke",
+        "gen-idempotent-approve",
+        "gen-persist-approve",
+        "gen-happy-approve"
+      ],
+      "wave2_accepted": 5,
+      "wave2_proposed": 5,
+      "wave2_titles": [
+        "Approve hangs but the approval is nonetheless durably recorded",
+        "Client retries the hung approve; approval stays exactly-once",
+        "Two simultaneous approvals of one invoice pay once",
+        "Approval that hung mid-request survives an api restart",
+        "Repeated re-read of an approved invoice stays approved"
+      ]
+    }
+  ],
+  "accepted": {
+    "population": "ACCEPTED wave-2 coverage",
+    "runs_contributing": 9,
+    "measures": {
+      "risk_categories": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.402
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.316
+        },
+        "CONTROL": {
+          "pairs": 0,
+          "mean": null
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.143
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.143
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.111
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.6
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.429
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.571
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.375
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.429
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.667
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          }
+        ]
+      },
+      "title_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.242
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.197
+        },
+        "CONTROL": {
+          "pairs": 0,
+          "mean": null
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.228
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.194
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.124
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.163
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.189
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.207
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.19
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.192
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.212
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.174
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.193
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.228
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.217
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.223
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.241
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.217
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.205
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.187
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.192
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.263
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.174
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.197
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.206
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.194
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.22
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.265
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.297
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.279
+          }
+        ]
+      },
+      "purpose_rationale_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.231
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.191
+        },
+        "CONTROL": {
+          "pairs": 0,
+          "mean": null
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.144
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.168
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.169
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.163
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.118
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.147
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.166
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.127
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.231
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.218
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.214
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.169
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.181
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.188
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.23
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.226
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.187
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.205
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.199
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.189
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.257
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.206
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.234
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.238
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.196
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.196
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.211
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.198
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.248
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.323
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.222
+          }
+        ]
+      },
+      "generating_risk_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.147
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.131
+        },
+        "CONTROL": {
+          "pairs": 0,
+          "mean": null
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.106
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.104
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.103
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.122
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.108
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.117
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.104
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.114
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.133
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.118
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.121
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.137
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.129
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.13
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.158
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.132
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.173
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.096
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.098
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.114
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.155
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.149
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.096
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.21
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.12
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.099
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.158
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.188
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.13
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.157
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.25
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.11
+          }
+        ]
+      },
+      "actions_and_oracles": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.492
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.416
+        },
+        "CONTROL": {
+          "pairs": 0,
+          "mean": null
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.344
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.257
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.243
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.175
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.209
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.212
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.237
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.444
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.464
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.4
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.382
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.346
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.4
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.68
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.464
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.536
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.548
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.44
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.654
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.483
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.552
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.562
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.407
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.607
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.571
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.441
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.321
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.419
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.594
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.444
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.586
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.517
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.7
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.56
+          }
+        ]
+      }
+    }
+  },
+  "raw": {
+    "population": "RAW model proposals (pre-validation)",
+    "runs_contributing": 10,
+    "measures": {
+      "risk_categories": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.402
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.316
+        },
+        "CONTROL": {
+          "pairs": 9,
+          "mean": 0.233
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "control",
+            "b": "nonidempotent-a",
+            "class": "CONTROL",
+            "jaccard": 0.167
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-b",
+            "class": "CONTROL",
+            "jaccard": 0.167
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-c",
+            "class": "CONTROL",
+            "jaccard": 0.167
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-a",
+            "class": "CONTROL",
+            "jaccard": 0.167
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-b",
+            "class": "CONTROL",
+            "jaccard": 0.286
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-c",
+            "class": "CONTROL",
+            "jaccard": 0.333
+          },
+          {
+            "a": "control",
+            "b": "uncertain-a",
+            "class": "CONTROL",
+            "jaccard": 0.333
+          },
+          {
+            "a": "control",
+            "b": "uncertain-b",
+            "class": "CONTROL",
+            "jaccard": 0.143
+          },
+          {
+            "a": "control",
+            "b": "uncertain-c",
+            "class": "CONTROL",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.143
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.143
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.111
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.6
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.429
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.5
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.571
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.375
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.429
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.667
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.429
+          }
+        ]
+      },
+      "title_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.242
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.197
+        },
+        "CONTROL": {
+          "pairs": 9,
+          "mean": 0.183
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "control",
+            "b": "nonidempotent-a",
+            "class": "CONTROL",
+            "jaccard": 0.185
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-b",
+            "class": "CONTROL",
+            "jaccard": 0.138
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-c",
+            "class": "CONTROL",
+            "jaccard": 0.193
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-a",
+            "class": "CONTROL",
+            "jaccard": 0.204
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-b",
+            "class": "CONTROL",
+            "jaccard": 0.163
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-c",
+            "class": "CONTROL",
+            "jaccard": 0.168
+          },
+          {
+            "a": "control",
+            "b": "uncertain-a",
+            "class": "CONTROL",
+            "jaccard": 0.211
+          },
+          {
+            "a": "control",
+            "b": "uncertain-b",
+            "class": "CONTROL",
+            "jaccard": 0.194
+          },
+          {
+            "a": "control",
+            "b": "uncertain-c",
+            "class": "CONTROL",
+            "jaccard": 0.191
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.228
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.194
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.124
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.163
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.189
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.207
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.19
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.192
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.212
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.174
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.25
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.193
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.228
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.217
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.223
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.241
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.217
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.205
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.187
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.192
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.263
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.174
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.197
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.222
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.206
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.194
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.22
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.265
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.297
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.279
+          }
+        ]
+      },
+      "purpose_rationale_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.231
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.191
+        },
+        "CONTROL": {
+          "pairs": 9,
+          "mean": 0.19
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "control",
+            "b": "nonidempotent-a",
+            "class": "CONTROL",
+            "jaccard": 0.186
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-b",
+            "class": "CONTROL",
+            "jaccard": 0.167
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-c",
+            "class": "CONTROL",
+            "jaccard": 0.207
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-a",
+            "class": "CONTROL",
+            "jaccard": 0.222
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-b",
+            "class": "CONTROL",
+            "jaccard": 0.178
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-c",
+            "class": "CONTROL",
+            "jaccard": 0.15
+          },
+          {
+            "a": "control",
+            "b": "uncertain-a",
+            "class": "CONTROL",
+            "jaccard": 0.187
+          },
+          {
+            "a": "control",
+            "b": "uncertain-b",
+            "class": "CONTROL",
+            "jaccard": 0.204
+          },
+          {
+            "a": "control",
+            "b": "uncertain-c",
+            "class": "CONTROL",
+            "jaccard": 0.212
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.144
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.168
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.169
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.163
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.118
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.147
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.166
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.127
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.231
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.218
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.214
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.169
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.181
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.188
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.23
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.226
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.187
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.205
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.199
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.189
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.257
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.25
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.286
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.206
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.234
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.238
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.196
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.196
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.211
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.198
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.179
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.248
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.323
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.222
+          }
+        ]
+      },
+      "generating_risk_tokens": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.147
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.131
+        },
+        "CONTROL": {
+          "pairs": 9,
+          "mean": 0.148
+        },
+        "verdict": "RESPONSIVE but weak \u2014 different evidence diverges, yet a wave with no evidence is not the most different of all",
+        "pair_detail": [
+          {
+            "a": "control",
+            "b": "nonidempotent-a",
+            "class": "CONTROL",
+            "jaccard": 0.148
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-b",
+            "class": "CONTROL",
+            "jaccard": 0.122
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-c",
+            "class": "CONTROL",
+            "jaccard": 0.117
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-a",
+            "class": "CONTROL",
+            "jaccard": 0.118
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-b",
+            "class": "CONTROL",
+            "jaccard": 0.161
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-c",
+            "class": "CONTROL",
+            "jaccard": 0.174
+          },
+          {
+            "a": "control",
+            "b": "uncertain-a",
+            "class": "CONTROL",
+            "jaccard": 0.2
+          },
+          {
+            "a": "control",
+            "b": "uncertain-b",
+            "class": "CONTROL",
+            "jaccard": 0.097
+          },
+          {
+            "a": "control",
+            "b": "uncertain-c",
+            "class": "CONTROL",
+            "jaccard": 0.196
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.106
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.104
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.103
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.122
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.108
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.117
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.104
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.114
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.133
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.118
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.121
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.137
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.129
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.13
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.176
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.158
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.132
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.173
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.096
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.098
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.114
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.155
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.149
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.096
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.21
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.12
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.099
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.158
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.188
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.13
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.185
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.157
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.25
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.11
+          }
+        ]
+      },
+      "actions_and_oracles": {
+        "REPLICATE": {
+          "pairs": 9,
+          "mean": 0.492
+        },
+        "BETWEEN": {
+          "pairs": 27,
+          "mean": 0.416
+        },
+        "CONTROL": {
+          "pairs": 9,
+          "mean": 0.265
+        },
+        "verdict": "RESPONSIVE \u2014 different evidence produces more different coverage than a replicate",
+        "pair_detail": [
+          {
+            "a": "control",
+            "b": "nonidempotent-a",
+            "class": "CONTROL",
+            "jaccard": 0.22
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-b",
+            "class": "CONTROL",
+            "jaccard": 0.25
+          },
+          {
+            "a": "control",
+            "b": "nonidempotent-c",
+            "class": "CONTROL",
+            "jaccard": 0.314
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-a",
+            "class": "CONTROL",
+            "jaccard": 0.333
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-b",
+            "class": "CONTROL",
+            "jaccard": 0.205
+          },
+          {
+            "a": "control",
+            "b": "ui_lies-c",
+            "class": "CONTROL",
+            "jaccard": 0.256
+          },
+          {
+            "a": "control",
+            "b": "uncertain-a",
+            "class": "CONTROL",
+            "jaccard": 0.286
+          },
+          {
+            "a": "control",
+            "b": "uncertain-b",
+            "class": "CONTROL",
+            "jaccard": 0.235
+          },
+          {
+            "a": "control",
+            "b": "uncertain-c",
+            "class": "CONTROL",
+            "jaccard": 0.289
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-b",
+            "class": "REPLICATE",
+            "jaccard": 0.344
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.257
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.243
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.125
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.175
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.209
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.212
+          },
+          {
+            "a": "nonidempotent-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.237
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "nonidempotent-c",
+            "class": "REPLICATE",
+            "jaccard": 0.444
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.464
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.333
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.4
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.382
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.346
+          },
+          {
+            "a": "nonidempotent-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.4
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-a",
+            "class": "BETWEEN",
+            "jaccard": 0.68
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-b",
+            "class": "BETWEEN",
+            "jaccard": 0.464
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "ui_lies-c",
+            "class": "BETWEEN",
+            "jaccard": 0.536
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.548
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.44
+          },
+          {
+            "a": "nonidempotent-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.654
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-b",
+            "class": "REPLICATE",
+            "jaccard": 0.483
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.552
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.562
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.407
+          },
+          {
+            "a": "ui_lies-a",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.607
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "ui_lies-c",
+            "class": "REPLICATE",
+            "jaccard": 0.571
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.441
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.321
+          },
+          {
+            "a": "ui_lies-b",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.419
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-a",
+            "class": "BETWEEN",
+            "jaccard": 0.594
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-b",
+            "class": "BETWEEN",
+            "jaccard": 0.444
+          },
+          {
+            "a": "ui_lies-c",
+            "b": "uncertain-c",
+            "class": "BETWEEN",
+            "jaccard": 0.586
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-b",
+            "class": "REPLICATE",
+            "jaccard": 0.517
+          },
+          {
+            "a": "uncertain-a",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.7
+          },
+          {
+            "a": "uncertain-b",
+            "b": "uncertain-c",
+            "class": "REPLICATE",
+            "jaccard": 0.56
+          }
+        ]
+      }
+    }
+  },
+  "targeting_accepted": {
+    "per_run": [
+      {
+        "run": "control",
+        "defect": "CONTROL",
+        "wave2_categories": [],
+        "own_neighbourhood_hits": [],
+        "own_neighbourhood_hit_rate": null,
+        "other_defect_neighbourhood_hits": {}
+      },
+      {
+        "run": "nonidempotent-a",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "boundary",
+          "concurrency",
+          "repeated_request",
+          "safety_invariant"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "repeated_request"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {}
+      },
+      {
+        "run": "nonidempotent-b",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "concurrency",
+          "restart_recovery",
+          "retry_safety",
+          "safety_invariant"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "ui_lies": [
+            "restart_recovery"
+          ],
+          "uncertain": [
+            "retry_safety"
+          ]
+        }
+      },
+      {
+        "run": "nonidempotent-c",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "concurrency",
+          "happy_path",
+          "idempotency",
+          "restart_recovery"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "idempotency"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "ui_lies": [
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-a",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "persistence_failure",
+          "restart_recovery",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hits": [
+          "persistence_failure",
+          "restart_recovery"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "uncertain": [
+            "retry_safety"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-b",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "idempotency",
+          "persistence_failure",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hits": [
+          "persistence_failure",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hit_rate": 0.667,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "idempotency"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-c",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "malformed_input",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hits": [
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hit_rate": 0.6,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-a",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "crash_mid_workflow",
+          "restart_recovery",
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hits": [
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "crash_mid_workflow",
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-b",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "missing_data",
+          "partial_failure",
+          "restart_recovery",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hits": [
+          "partial_failure",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-c",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "restart_recovery",
+          "retry_safety",
+          "stale_state",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hits": [
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "restart_recovery",
+            "stale_state"
+          ]
+        }
+      }
+    ],
+    "mean_own_neighbourhood_hit_rate": 0.496,
+    "runs_reaching_their_own_neighbourhood": 9,
+    "runs_scored": 9
+  },
+  "targeting_raw": {
+    "per_run": [
+      {
+        "run": "control",
+        "defect": "CONTROL",
+        "wave2_categories": [
+          "concurrency",
+          "timeout_after_effect",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hits": [],
+        "own_neighbourhood_hit_rate": 0.0,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency"
+          ],
+          "ui_lies": [
+            "ui_backend_disagreement"
+          ],
+          "uncertain": [
+            "timeout_after_effect"
+          ]
+        }
+      },
+      {
+        "run": "nonidempotent-a",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "boundary",
+          "concurrency",
+          "repeated_request",
+          "safety_invariant"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "repeated_request"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {}
+      },
+      {
+        "run": "nonidempotent-b",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "concurrency",
+          "restart_recovery",
+          "retry_safety",
+          "safety_invariant"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "ui_lies": [
+            "restart_recovery"
+          ],
+          "uncertain": [
+            "retry_safety"
+          ]
+        }
+      },
+      {
+        "run": "nonidempotent-c",
+        "defect": "nonidempotent",
+        "wave2_categories": [
+          "concurrency",
+          "happy_path",
+          "idempotency",
+          "restart_recovery"
+        ],
+        "own_neighbourhood_hits": [
+          "concurrency",
+          "idempotency"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "ui_lies": [
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-a",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "persistence_failure",
+          "restart_recovery",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hits": [
+          "persistence_failure",
+          "restart_recovery"
+        ],
+        "own_neighbourhood_hit_rate": 0.5,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "uncertain": [
+            "retry_safety"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-b",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "idempotency",
+          "persistence_failure",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hits": [
+          "persistence_failure",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hit_rate": 0.667,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "idempotency"
+          ]
+        }
+      },
+      {
+        "run": "ui_lies-c",
+        "defect": "ui_lies",
+        "wave2_categories": [
+          "concurrency",
+          "malformed_input",
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hits": [
+          "restart_recovery",
+          "stale_state",
+          "ui_backend_disagreement"
+        ],
+        "own_neighbourhood_hit_rate": 0.6,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-a",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "crash_mid_workflow",
+          "restart_recovery",
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hits": [
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "crash_mid_workflow",
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-b",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "missing_data",
+          "partial_failure",
+          "restart_recovery",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hits": [
+          "partial_failure",
+          "retry_safety"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "restart_recovery"
+          ]
+        }
+      },
+      {
+        "run": "uncertain-c",
+        "defect": "uncertain",
+        "wave2_categories": [
+          "concurrency",
+          "restart_recovery",
+          "retry_safety",
+          "stale_state",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hits": [
+          "retry_safety",
+          "timeout_after_effect"
+        ],
+        "own_neighbourhood_hit_rate": 0.4,
+        "other_defect_neighbourhood_hits": {
+          "nonidempotent": [
+            "concurrency",
+            "retry_safety"
+          ],
+          "ui_lies": [
+            "restart_recovery",
+            "stale_state"
+          ]
+        }
+      }
+    ],
+    "mean_own_neighbourhood_hit_rate": 0.496,
+    "runs_reaching_their_own_neighbourhood": 9,
+    "runs_scored": 9
+  },
+  "rule": "Responsiveness requires BETWEEN < REPLICATE, with CONTROL lowest. Provenance links alone are not evidence: the content must move."
+}

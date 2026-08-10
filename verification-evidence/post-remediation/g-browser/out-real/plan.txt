@@ -1,0 +1,42 @@
+GENERATED SCENARIO PLAN — run g-browser
+task: Add an exception detail screen an operator can act on: it must state the status, why the exception was raised, who owns it, and the next action.
+active unit: UNIT-EXCEPTION-UI
+
+5 generated case(s)
+risk categories exercised: boundary, happy_path, idempotency, stale_state, ui_backend_disagreement
+identified but NOT exercised: The exception detail screen fails to name the next action and/or who owns it, leaving the operator with nothing actionable.
+
+IDENTIFIED RISKS:
+  [P0 ui_backend_disagreement] The screen serves a stale status (e.g. still 'open') after the exception has been resolved in the durable store, so the operator acts on a status the store no longer holds.  (covered by S2)
+  [P1 missing_data] The exception detail screen fails to name the next action and/or who owns it, leaving the operator with nothing actionable.  (NOT covered)
+  [P2 boundary] A request for an unknown exception id fabricates or defaults a status instead of returning not-found, showing a status the store does not hold.  (covered by S5)
+  [P2 idempotency] Resolving the same exception more than once corrupts the durable status or owner, so a repeated operator action leaves the store inconsistent with what the screen shows.  (covered by S4)
+
+SCENARIOS:
+  [P1 happy_path] S1: Open exception screen names status, owner, and next action
+      purpose: Confirm the exception detail screen an operator lands on states the status, why it was raised, who owns it, and the next action, matching the durable store.
+      grounded in: AC-UI-001
+      because: R2 — the screen could render without naming owner or next action, leaving the operator nothing to act on.
+  [P0 ui_backend_disagreement] S2: Screen reflects resolved status after operator resolves (stale-render guard)
+      purpose: After the operator clicks Resolve, the re-rendered screen must show the resolved status and closed next-action that the durable store now holds, never the pre-resolution status.
+      grounded in: AC-UI-002
+      because: R1 — a stale render keeps serving the first status after resolution, so the screen and the durable store disagree.
+  [P0 stale_state] S3: GET after resolve serves store status, not a cached one
+      purpose: At the HTTP layer, GET / after a resolve POST must serve the resolved status the store holds, catching a stale render independent of browser rendering.
+      grounded in: AC-UI-002
+      because: R1 — the GET endpoint could keep returning the first-rendered status after the store moves to resolved.
+  [P2 idempotency] S4: Resolving twice leaves the store consistent
+      purpose: A repeated Resolve action must leave the durable status resolved and the owner unchanged, and the screen must reflect that single consistent status.
+      grounded in: AC-UI-002
+      because: R4 — a repeated resolve could corrupt the durable status or owner, desyncing screen and store.
+  [P2 boundary] S5: Unknown exception id returns not-found, no fabricated status
+      purpose: Requesting an exception the store does not hold must return not-found rather than rendering a defaulted or fabricated status.
+      grounded in: AC-UI-002
+      because: R3 — an unknown id could fabricate/default a status instead of 404.
+
+UNRESOLVED QUESTIONS:
+  - The fixture reseeds the durable store on every ui service start (main() unlinks and rewrites store.json), so persistence of a resolution across a restart cannot be verified — no acceptance criterion promises restart durability, so this was not scoped as a scenario. Confirm whether AC-UI-002 is intended to hold across service restarts.
+  - AC-UI-001 requires the screen to state 'why the exception was raised' (reason), but no acceptance criterion explicitly names the reason field as mandatory beyond next-action/owner; the reason is asserted in S1 as part of the happy path but is not independently required. Confirm whether an absent/blank reason should fail the unit.
+  - No requirement or approved command exists to simulate a missing/corrupt durable store from the operator's view; the app silently falls back to a seed. If AC-UI-002 should cover the store-unavailable case (screen must not show a status when the store cannot be read), a requirement and a way to induce that state are needed.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

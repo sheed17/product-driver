@@ -1,0 +1,73 @@
+[
+  {
+    "scenarios_in_suite": 201,
+    "outcomes_recorded": 201,
+    "no_silent_truncation": true,
+    "assembly_problems": [],
+    "wall_s": 0.5,
+    "per_scenario_s": 0.0025,
+    "max_rss_mb_before": 45.5,
+    "max_rss_mb_after": 49.7,
+    "passed": 20,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 181,
+    "independent_recount": {
+      "PASSED": 20,
+      "FAILED": 0,
+      "BLOCKED": 0,
+      "SKIPPED": 181
+    },
+    "counts_agree": true,
+    "duplicate_result_ids": 0,
+    "evidence_problems": [
+      "case-100-cmd: the result cites no evidence directory",
+      "case-105-http: the result cites no evidence directory",
+      "case-110-idem: the result cites no evidence directory",
+      "case-115-cmd: the result cites no evidence directory",
+      "case-120-http: the result cites no evidence directory"
+    ],
+    "evidence_all_verified": false,
+    "generated_count": 200,
+    "permanent_count": 1,
+    "generated_and_permanent_distinguishable": true,
+    "expected_failures": [
+      "case-011-idem",
+      "case-012-http",
+      "case-066-http",
+      "case-074-idem",
+      "case-087-http",
+      "case-150-http",
+      "case-176-idem",
+      "case-183-http"
+    ],
+    "actual_failures": [],
+    "failures_match_injection": false,
+    "clusters": 0,
+    "grouped_clusters": 0,
+    "cluster_members_all_real": true,
+    "gate_status": "NOT_VERIFIED",
+    "gate_required_total": 201,
+    "gate_required_passed": 20,
+    "gate_unverified": 181,
+    "gate_uncovered_risks": 0,
+    "no_skipped_counted_as_verified": true,
+    "hostile_accept_becomes": "BLOCKED",
+    "summary_block_chars": 15662,
+    "evaluator_prompt_chars": 17833,
+    "evaluator_prompt_est_tokens": 4458,
+    "all_failures_named_in_summary": true,
+    "resume_reload_identical": true,
+    "rerun_selection_size": 1,
+    "rerun_selection_unique": true,
+    "budget_s": 0.5,
+    "skipped_required_ids": [
+      "case-001-cmd",
+      "case-002-idem",
+      "case-003-http",
+      "case-004-cmd",
+      "case-006-http"
+    ],
+    "uncovered_risk_briefs": []
+  }
+]

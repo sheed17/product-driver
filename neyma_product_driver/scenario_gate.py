@@ -29,6 +29,7 @@ from typing import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .scenario_plan import IdentifiedRisk
 from .scenario_suite import Origin, Outcome, ScenarioOutcome, SuiteResult
 
 
@@ -58,6 +59,90 @@ class UnverifiedCase(BaseModel):
         return f"{label} — {self.reason}"
 
 
+class UncoveredRisk(BaseModel):
+    """A risk this run identified and then did not verify.
+
+    Not a failure claim and not a prediction: a statement that something the run
+    itself named as able to go wrong has no passing scenario behind it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    risk_id: str = ""
+    description: str = ""
+    risk_category: str = ""
+    severity: str = ""
+    #: True when this risk's severity is one that blocks acceptance (P0/P1).
+    required: bool = False
+    reason: str = ""
+
+    def brief(self) -> str:
+        head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
+        return f"{head} — {self.description}  ({self.reason})"
+
+
+def uncovered_required_risks(
+    risks: Sequence[IdentifiedRisk],
+    result: SuiteResult | None,
+) -> list[UncoveredRisk]:
+    """Which acceptance-blocking risks have no passing scenario behind them.
+
+    Deterministic, and deliberately so. The run's own generator named these
+    risks; whether one was verified is then a matter of counting outcomes, not of
+    judgement. Nothing here consults a model, and no model answer can add a risk
+    to this list or remove one from it.
+
+    A risk counts as verified only when some scenario exercising its category
+    PASSED **and** could show its evidence — the same burden of proof the gate
+    applies to a required scenario. A category whose scenarios all failed, were
+    skipped, or were never generated is a gap, and the difference between those
+    three is recorded because it tells a reader what to do about it.
+    """
+    if not risks:
+        return []
+    outcomes = list(result.outcomes) if result is not None else []
+
+    gaps: list[UncoveredRisk] = []
+    for risk in risks:
+        if not risk.severity.blocks_acceptance:
+            continue
+        category = risk.risk_category.value
+        matching = [o for o in outcomes if o.risk_category == category]
+        if any(o.outcome is Outcome.PASSED and o.evidence_verified for o in matching):
+            continue
+        if not matching:
+            reason = (
+                "no scenario exercising this risk was executed, so nothing about it "
+                "has been verified"
+            )
+        else:
+            tallies = {
+                state: sum(1 for o in matching if o.outcome is state)
+                for state in Outcome
+            }
+            reason = (
+                f"{len(matching)} scenario(s) exercised this risk and none established a "
+                "pass with resolvable evidence ("
+                + ", ".join(
+                    f"{count} {state.value.lower()}"
+                    for state, count in tallies.items()
+                    if count
+                )
+                + ")"
+            )
+        gaps.append(
+            UncoveredRisk(
+                risk_id=risk.id,
+                description=risk.description,
+                risk_category=category,
+                severity=risk.severity.value,
+                required=True,
+                reason=reason,
+            )
+        )
+    return gaps
+
+
 class GateVerdict(BaseModel):
     """The gate's decision, with the evidence for it."""
 
@@ -68,6 +153,11 @@ class GateVerdict(BaseModel):
     required_passed: int = 0
     executed: int = 0
     unverified: list[UnverifiedCase] = Field(default_factory=list)
+    #: Acceptance-blocking risks this run identified and did not verify. A gap
+    #: here is not a failing scenario, which is exactly why it used to be
+    #: invisible: every executed scenario could pass while a named P0 risk had no
+    #: scenario at all.
+    uncovered_risks: list[UncoveredRisk] = Field(default_factory=list)
     #: Problems that prevented verification from being planned or produced at
     #: all — a generator that failed, a wave that errored. A run whose
     #: verification never got built has not verified anything.
@@ -87,10 +177,16 @@ class GateVerdict(BaseModel):
                 f"scenario gate: VERIFIED — {self.required_passed}/{self.required_total} "
                 "required scenario(s) passed with resolvable evidence"
             )
-        return (
+        head = (
             f"scenario gate: NOT VERIFIED — {len(self.unverified)} of {self.required_total} "
             f"required scenario(s) did not establish a pass ({self.executed} executed)"
         )
+        if self.uncovered_risks:
+            head += (
+                f"; {len(self.uncovered_risks)} identified acceptance-blocking risk(s) "
+                "have no passing scenario"
+            )
+        return head
 
     def summary_block(self) -> str:
         lines = [self.headline()]
@@ -100,6 +196,11 @@ class GateVerdict(BaseModel):
             lines.append(f"  {case.brief()}")
             if case.evidence_path:
                 lines.append(f"      evidence: {case.evidence_path}")
+        if self.uncovered_risks:
+            lines.append(
+                "  KNOWN COVERAGE GAPS — risks this run identified and did not verify:"
+            )
+            lines += [f"    {risk.brief()}" for risk in self.uncovered_risks]
         return "\n".join(lines)
 
 
@@ -128,18 +229,36 @@ def evaluate_gate(
     result: SuiteResult | None,
     *,
     generation_problems: Sequence[str] = (),
+    risks: Sequence[IdentifiedRisk] = (),
 ) -> GateVerdict:
     """Decide whether the scenario evidence can support an ACCEPT.
 
     ``result`` may be ``None`` when a suite was never executed; that is itself
     an unverified state whenever verification was expected, which is why the
     caller passes any generation problems in rather than this inferring them.
+
+    ``risks`` is the run's own identified risk register. Passing it closes the
+    hole where every executed scenario passed and the gate said VERIFIED while a
+    risk the run had named P0 had no scenario behind it at all — a question the
+    evaluator was being asked ("was the coverage sufficient?") without being
+    shown the answer the driver already had.
     """
     problems = [p for p in generation_problems if str(p).strip()]
+    if result is not None:
+        # A scenario that never entered the suite produced no outcome to be
+        # unverified, so it would otherwise be invisible here. It is exactly as
+        # unverified as one that failed.
+        problems += [p for p in result.assembly_problems if str(p).strip()]
+
+    gaps = uncovered_required_risks(risks, result)
 
     if result is None:
-        status = GateStatus.NOT_VERIFIED if problems else GateStatus.VERIFIED
-        return GateVerdict(status=status, generation_problems=problems)
+        status = (
+            GateStatus.NOT_VERIFIED if (problems or gaps) else GateStatus.VERIFIED
+        )
+        return GateVerdict(
+            status=status, generation_problems=problems, uncovered_risks=gaps
+        )
 
     by_id = {o.scenario_id: o for o in result.outcomes}
     # The authoritative required set is what the suite set out to verify, not
@@ -184,7 +303,7 @@ def evaluate_gate(
     )
     status = (
         GateStatus.VERIFIED
-        if not unverified and not problems
+        if not unverified and not problems and not gaps
         else GateStatus.NOT_VERIFIED
     )
     return GateVerdict(
@@ -193,6 +312,7 @@ def evaluate_gate(
         required_passed=passed,
         executed=executed,
         unverified=unverified,
+        uncovered_risks=gaps,
         generation_problems=problems,
     )
 
@@ -200,6 +320,8 @@ def evaluate_gate(
 __all__ = [
     "GateStatus",
     "GateVerdict",
+    "UncoveredRisk",
     "UnverifiedCase",
     "evaluate_gate",
+    "uncovered_required_risks",
 ]
