@@ -137,6 +137,12 @@ Controller decisions recorded at brief time:
 
 ### Cycle 1 — outcome
 
+**Remediation candidate: `c72756f2deae7a1ad58c5acc94e007d710de5e07`**, parent
+`537ae0b`, on `main`, 2 commits ahead of `origin/main`, **unpushed**. Working
+tree clean apart from untracked `.driver-state/` (Neyma handoff artifacts,
+unrelated to this remediation, deliberately not staged). 1180 tests collected;
+no evidence harness is collected as a test.
+
 Two sessions held the builder role in sequence. The first produced the
 implementation and was interrupted by a host process exit; the second resumed,
 re-established state from `git diff` rather than memory, reconciled the partial
