@@ -1,0 +1,72 @@
+# H-LOOP certification: driver configuration for the live end-to-end run.
+#
+# `neyma_repo` and the four writable roots are prepended at run time by
+# run_live.py, because the fixture lives in a disposable directory.
+#
+# Nothing here weakens a guard. Dynamic generation is switched on because that
+# is the thing under test; every safety boundary is left at its default.
+#
+# max_waves is 4 rather than the recorded pass's 3 on purpose. A wave is spent
+# by the initial plan, then by the diff refinement that fires after EVERY
+# builder turn. With 3, iteration 1's diff refinement and the adaptive
+# expansion together exhaust the budget the moment anything else moves, which
+# is one plausible reason the recorded pass never got an adaptive wave and a
+# completed correction cycle in the same run. 4 leaves the adaptive wave room
+# without loosening any bound that matters for safety.
+
+task: |
+  Make carrier revocation real.
+
+  Revoking a carrier must be recorded in the durable store, must still hold
+  after the service restarts, and must immediately stop that carrier from
+  changing any load's rate — including a load that carrier has already rated.
+  Revoking a carrier that does not exist must be refused and must leave the
+  durable artifacts unchanged. An authorized carrier must still be able to set
+  a rate.
+
+  Work only inside this repository, keep the service loopback-only, add no
+  dependencies, and do not weaken or delete a test.
+
+scenario: fixture_authz
+max_iterations: 4
+
+builder:
+  model: opus
+  permission_mode: acceptEdits
+  max_turns: 60
+  turn_timeout_s: 1200
+
+evaluator:
+  model: opus
+  max_turns: 20
+  turn_timeout_s: 600
+
+run:
+  command_timeout_s: 60
+  service_start_timeout_s: 60
+  readiness_timeout_s: 30
+  readiness_poll_interval_s: 0.5
+  http_timeout_s: 15
+  browser_enabled: false
+
+# The fixture is created fresh for the run and has no remote, so a local commit
+# is safe and nothing can be published.
+allow_dirty_tree: true
+require_branch: null
+
+scenario_generation:
+  enabled: true
+  model: opus
+  max_initial_scenarios: 5
+  max_adaptive_scenarios_per_wave: 4
+  max_waves: 4
+  max_total_scenarios: 20
+  max_scenarios_per_risk_category: 3
+  max_parallel: 1
+  approved_commands:
+    - "python3 scripts/state.py"
+    - "python3 scripts/reset.py"
+    - "python3 -m unittest discover -s tests"
+  local_http_hosts:
+    - "127.0.0.1"
+    - "localhost"

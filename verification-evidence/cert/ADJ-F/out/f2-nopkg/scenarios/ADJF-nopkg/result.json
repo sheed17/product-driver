@@ -1,0 +1,37 @@
+{
+  "scenario_name": "generated:ADJF-nopkg",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:28:58+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "",
+    "title": "",
+    "visible_text": "",
+    "screenshots": [],
+    "console_errors": [],
+    "network_failures": [],
+    "trace_path": null,
+    "steps": [
+      "playwright is not installed; run: pip install playwright && playwright install chromium"
+    ],
+    "text_expectations": [],
+    "step_failures": []
+  },
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: look at the screen"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-nopkg",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:28:58+00:00"
+}

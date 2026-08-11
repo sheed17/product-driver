@@ -1,0 +1,83 @@
+{
+  "workdir": "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1c-7ck3tbce",
+  "H_head_moved": {
+    "mutation": "repository HEAD moved to 0139e70",
+    "emissions": [
+      "  resumed scenario plan: 2 scenario(s), 1 wave(s) already used; repository moved from 8ade7fd to 0139e70 since the plan was made, so its coverage was chosen against different code"
+    ],
+    "scenarios_restored": [
+      "gen-alpha-idempotency",
+      "gen-beta-other"
+    ],
+    "waves_used": 1,
+    "flagged": true
+  },
+  "I_evidence_deleted": {
+    "mutation": "deleted evidence directories: ['iteration-01/scenarios/backend_generic', 'iteration-01/scenarios/gen-alpha-idempotency', 'iteration-01/scenarios/gen-beta-other']",
+    "evidence_before": [
+      "driver/runs/20260810-000000/iteration-01/scenarios/backend_generic/result.json",
+      "driver/runs/20260810-000000/iteration-01/scenarios/gen-alpha-idempotency/result.json",
+      "driver/runs/20260810-000000/iteration-01/scenarios/gen-beta-other/result.json"
+    ],
+    "evidence_after": [],
+    "emissions": [
+      "  resumed scenario plan: 2 scenario(s), 1 wave(s) already used"
+    ],
+    "executed_scenario_ids_still_claimed": [
+      "backend_generic",
+      "gen-alpha-idempotency",
+      "gen-beta-other"
+    ],
+    "resume_noticed_the_loss": false
+  },
+  "J_proposed_id_across_resume": {
+    "originals": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-alpha",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-beta"
+    ],
+    "ids_p1": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-b449f496e2a7",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-139899b28fd9"
+    ],
+    "ids_p2": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-b449f496e2a7",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-139899b28fd9"
+    ],
+    "proposed_p1": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-alpha",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-beta"
+    ],
+    "proposed_p2": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-alpha",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-beta"
+    ],
+    "in_plan_file": [
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-alpha",
+      "gen-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-beta"
+    ],
+    "survived": true
+  },
+  "K_post_sanitisation_collision": {
+    "accepted_ids": [
+      "gen-alpha"
+    ],
+    "rejected_ids": [
+      "gen-alpha"
+    ],
+    "rejection_reasons": [
+      [
+        "scenario id 'gen-alpha' is already used in this run"
+      ]
+    ],
+    "proposed_ids_kept": [
+      "gen/alpha"
+    ],
+    "second_scenario_lost_silently": false
+  },
+  "L_categories_tripping_redaction": {
+    "categories": [
+      "authorization"
+    ],
+    "of_total": 27
+  }
+}

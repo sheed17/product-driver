@@ -1,0 +1,5 @@
+200 generated case(s) + 1 permanent regression scenario(s): 201 passed, 0 failed, 0 blocked, 0 skipped
+risk categories exercised: cross_tenant, idempotency, persistence_failure
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.

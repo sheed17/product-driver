@@ -1,0 +1,284 @@
+{
+  "UEV4-W1-01": {
+    "name": "generated:UEV4-W1-01",
+    "phase": "P3",
+    "description": "Unverifiable signed action is refused with a stated reason, not a 500, and commits nothing\n\nrisk: malformed_input (priority P0)\npurpose: Exercise the deployed decision-application boundary with an unverifiable input and confirm it is refused WITH A REASON while no external effect is committed to the system of record.\nrequirement: U-EV-4 AC: an unparseable document is refused with a reason and changes no state\nproduct principle: dead_end_error\nrationale: AC-3 requires an unparseable input be refused with a reason and change no state; the callback is the only driveable path that applies a decision to workflow.sqlite3, so a crash/500 or a silent apply here is a direct AC-3/AC-1 violation.\n\ngenerated at 2026-08-10T20:22:38+00:00 (stage=initial, wave 1)\nbecause of risk: a malformed/unverifiable input is swallowed or crashes (500/traceback) instead of yielding a stated refusal that commits nothing\nrepository HEAD 6e8127d, active unit U-EV-4, founder context 0cb51e5158467505\nacceptance criteria consulted: a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING; a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING; an unparseable document is refused with a reason and changes no state (weight 3): PENDING; an inference is never presented as a known fact (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "token": "UEV4-PROBE-malformed.not-a-real-signature"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "Action link rejected",
+            "could not be verified"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no external effect verified",
+        "command": null,
+        "state_check": {
+          "name": "no external effect verified",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no external effect even attempted",
+        "command": null,
+        "state_check": {
+          "name": "no external effect even attempted",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIMED','VERIFIED')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Action link rejected",
+      "could not be verified"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "APPLIED",
+      "Neyma action applied"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "UEV4-W1-02": {
+    "name": "generated:UEV4-W1-02",
+    "phase": "P3",
+    "description": "Missing action token yields a stated missing-input refusal, not a silent success\n\nrisk: missing_data (priority P1)\npurpose: Confirm that an input missing its required credential is answered with an explicit stated-missing result rather than proceeding or guessing, and changes no state.\nrequirement: U-EV-4 AC: an unparseable document is refused with a reason and changes no state\nproduct principle: evidence_clarity\nrationale: Mirrors AC-2's shape at the driveable boundary: a missing required element must produce a stated result, never a silent proceed; the email-action route with no token is the only approved way to observe this against the system of record.\n\ngenerated at 2026-08-10T20:22:38+00:00 (stage=initial, wave 1)\nbecause of risk: a request missing its required token is treated as valid / proceeds silently instead of returning a stated 'missing' refusal\nrepository HEAD 6e8127d, active unit U-EV-4, founder context 0cb51e5158467505\nacceptance criteria consulted: a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING; a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING; an unparseable document is refused with a reason and changes no state (weight 3): PENDING; an inference is never presented as a known fact (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/email/action",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 400,
+          "expect_contains": [
+            "Missing action token",
+            "missing its signed token"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no external effect verified after missing-token request",
+        "command": null,
+        "state_check": {
+          "name": "no external effect verified after missing-token request",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Missing action token"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "APPLIED",
+      "Neyma action applied",
+      "Traceback"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "UEV4-W1-03": {
+    "name": "generated:UEV4-W1-03",
+    "phase": "P3",
+    "description": "A non-parseable request body is refused cleanly and commits no effect\n\nrisk: malformed_input (priority P1)\npurpose: Drive the boundary with a body that is neither valid JSON nor a token-bearing form and confirm a stated refusal with no state mutation \u2014 the 'unparseable input, no state change' invariant on the deployed surface.\nrequirement: U-EV-4 AC: an unparseable document is refused with a reason and changes no state\nproduct principle: success_without_verification\nrationale: AC-3 demands unparseable input be refused with a reason and change no state; a garbage body must not be coerced into an applied action, and the effect ledger must remain dark.\n\ngenerated at 2026-08-10T20:22:38+00:00 (stage=initial, wave 1)\nbecause of risk: an unparseable request body is partially interpreted and mutates state, or errors into a 500 instead of a stated refusal\nrepository HEAD 6e8127d, active unit U-EV-4, founder context 0cb51e5158467505\nacceptance criteria consulted: a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING; a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING; an unparseable document is refused with a reason and changes no state (weight 3): PENDING; an inference is never presented as a known fact (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "garbage": "UEV4-PROBE-\u0000-not-json-shaped"
+          },
+          "body": null,
+          "expect_status": 400,
+          "expect_contains": [
+            "Missing action token"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "effect ledger still shows no verified external write",
+        "command": null,
+        "state_check": {
+          "name": "effect ledger still shows no verified external write",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIMED','VERIFIED')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Missing action token"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "Internal Server Error",
+      "APPLIED",
+      "Neyma action applied"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "admitted": 0,
+  "compiled_ids": [],
+  "wave_proposed": 6,
+  "wave_accepted_ids": [],
+  "wave_rejected_count": 6,
+  "wave_rejected_first_reason": "unsafe or unapproved operation: command is not in the approved set: './probe.sh reset'. Generated scenarios may only run commands a human already approved.",
+  "risks_still_in_plan": [
+    "idempotency"
+  ],
+  "coverage_summary_uncovered": [
+    "approval may not be idempotent"
+  ],
+  "generation_problems_seen_by_gate": []
+}

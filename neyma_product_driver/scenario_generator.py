@@ -508,7 +508,15 @@ WHAT AN ACTION MAY BE. `actions` is an ordered list; each entry has a `kind`:
                      {"expect_text":"..."}]}
   fixture           {"kind":"fixture","fixture_name":"invoice.json",
                      "fixture_content":"..."}  — written into the run's evidence
-                     directory; reference it later as {{fixture:invoice.json}}
+                     directory; reference it later as {{fixture:invoice.json}}.
+                     A fixture is DATA the product reads, and its name must end
+                     in .json .jsonl .ndjson .csv .tsv .txt .yaml .yml or .xml.
+                     Anything an interpreter would execute, import or collect —
+                     .py, .sh, .js, conftest.py, a config file — is refused: the
+                     fixture's path is substituted into an approved command, and
+                     an approved command may be an interpreter, so such a file
+                     would be code you authored running with the driver's own
+                     authority. Write the situation as actions, not as a program.
   wait              {"kind":"wait","wait_ms":500}
   restart_service / stop_service / start_service  {"kind":"restart_service",
                      "service":"<a service you listed in service_refs>"}

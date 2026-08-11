@@ -1,0 +1,903 @@
+{
+  "run_id": "cert-C-r1",
+  "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+  "active_unit_id": "U-RO-3",
+  "generation_basis": {
+    "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+    "task_hash": "3e71fde5555029a8",
+    "active_unit_id": "U-RO-3",
+    "acceptance_criteria": [
+      "a search by reference returns the matching shipment (weight 3): PENDING",
+      "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+      "the view performs no write of any kind (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "Search by an existing reference returns empty or the wrong shipment, so operators cannot find a load they know exists.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "AC 'a search by reference returns the matching shipment' (weight 3), PENDING",
+      "covered_by": [
+        "S2"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "The read-only view performs a write \u2014 inserting a row on a miss, updating a last-accessed field, or logging an audit row \u2014 violating the read-only guarantee.",
+      "risk_category": "safety_invariant",
+      "severity": "P0",
+      "basis": "AC 'the view performs no write of any kind' (weight 3), PENDING",
+      "covered_by": [
+        "S3"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "A write HTTP verb against the search route is accepted instead of refused, giving the read-only view a mutation surface.",
+      "risk_category": "authorization",
+      "severity": "P1",
+      "basis": "AC 'the view performs no write of any kind' (weight 3)",
+      "covered_by": [
+        "S4"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "A crafted reference value (SQL metacharacters) either errors with a 500 dead-end or dumps every shipment, breaking both correctness and the safe read-only contract.",
+      "risk_category": "malformed_input",
+      "severity": "P1",
+      "basis": "AC 'a search by reference returns the matching shipment' + AC 'no write of any kind'",
+      "covered_by": [
+        "S5"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "proposed_id": "",
+      "title": "Search by an existing reference returns that shipment",
+      "purpose": "Exercise the core promise: a reference that exists in the store is returned by the search view.",
+      "risk_category": "happy_path",
+      "priority": "P1",
+      "rationale": "AC1 is the primary weight-3 promise of this unit and the diff exists to satisfy it.",
+      "requirement_reference": "U-RO-3: a search by reference returns the matching shipment",
+      "product_principle_reference": "operational_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'SHP-1001'\"",
+            "contains": [
+              "1"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?reference=SHP-1001",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [
+              "SHP-1001"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "target reference still exists exactly once after search",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'SHP-1001'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [
+            "2"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "SHP-1001"
+      ],
+      "forbidden_observations": [
+        "Traceback",
+        "500 Internal Server Error"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only search request; issues only a GET and reads persisted state, so it cannot contaminate other scenarios.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Search by a known-existing reference returns empty or the wrong shipment.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S2",
+      "proposed_id": "",
+      "title": "Filter with no matches returns a stated no-result, not a blank view",
+      "purpose": "Search for a reference that cannot exist and confirm the view responds successfully rather than crashing or silently returning nothing.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "AC2 explicitly requires the empty case to say so; a blank/500 response is the most likely miss.",
+      "requirement_reference": "U-RO-3: a filter with no matches says so rather than showing nothing",
+      "product_principle_reference": "dead_end_error",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'ZZZ-NONEXISTENT-9999'\"",
+            "contains": [
+              "0"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?reference=ZZZ-NONEXISTENT-9999",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no shipment row created for the missed reference",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'ZZZ-NONEXISTENT-9999'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "500 Internal Server Error"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only GET for a non-existent reference; no mutation possible.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A no-match filter renders blank or errors instead of stating there are no matches.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S3",
+      "proposed_id": "",
+      "title": "A miss does not insert a shipment (read-only on the empty path)",
+      "purpose": "Confirm that searching a reference that does not exist leaves the store unchanged \u2014 no lazy insert-on-miss.",
+      "risk_category": "safety_invariant",
+      "priority": "P0",
+      "rationale": "The most likely accidental write is a create-if-absent on the search/miss path; this is the weight-3 no-write guarantee.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?reference=RO-SENTINEL-4242",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?q=RO-SENTINEL-4242",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "sentinel reference was never persisted by the search",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'RO-SENTINEL-4242'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only by design; the scenario's purpose is to prove no write, and it deletes nothing.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The view writes (inserts) a placeholder row when a searched reference is absent.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S4",
+      "proposed_id": "",
+      "title": "Write verbs against the search route are refused and mutate nothing",
+      "purpose": "Attempt a POST carrying a probe reference against the shipments route and confirm it is rejected and no row appears.",
+      "risk_category": "authorization",
+      "priority": "P1",
+      "rationale": "A read-only view must expose no mutation verb; a permissive router is a realistic regression.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/shipments",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "reference": "WRITE-PROBE-8888"
+            },
+            "body": "",
+            "expect_status": 405,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "probe reference from the write attempt was not persisted",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'WRITE-PROBE-8888'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "201 Created"
+      ],
+      "cleanup": [],
+      "isolation_note": "If the product is correct, no write occurs; the persisted-state check is the oracle and no approved command can undo a write, so this shares the DB isolation key to avoid concurrent runs.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "POST/PUT to the search route is accepted and persists data.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S5",
+      "proposed_id": "",
+      "title": "Reference with SQL metacharacters is handled safely and writes nothing",
+      "purpose": "Submit a reference containing SQL-injection metacharacters and confirm it neither errors, nor dumps all shipments as a match, nor persists anything.",
+      "risk_category": "malformed_input",
+      "priority": "P1",
+      "rationale": "A crafted reference is the classic way a read query both breaks (500 dead-end) and violates the no-write / least-surprise contract.",
+      "requirement_reference": "U-RO-3: a search by reference returns the matching shipment",
+      "product_principle_reference": "dead_end_error",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?reference=%27%20OR%20%271%27%3D%271",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no shipment stored under the injected literal",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = ''' OR ''1''=''1'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "500 Internal Server Error",
+        "syntax error"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only GET; the persisted check confirms no side effect.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A metacharacter reference triggers a 500 or returns the full shipment set as if it matched.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S6",
+      "proposed_id": "",
+      "title": "Empty/blank reference filter does not dead-end",
+      "purpose": "Submit a search with an empty reference value and confirm the view responds without a 500 rather than crashing on the boundary.",
+      "risk_category": "boundary",
+      "priority": "P2",
+      "rationale": "An empty filter input is a common UI state; it must resolve to a defined result, not an error.",
+      "requirement_reference": "U-RO-3: a filter with no matches says so rather than showing nothing",
+      "product_principle_reference": "noise_control",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/shipments?reference=",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "blank-filter request created no sentinel row",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = ''\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback",
+        "500 Internal Server Error"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only GET; cannot mutate state.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "An empty reference parameter causes an unhandled error instead of a defined empty/all result.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "S7",
+      "proposed_id": "",
+      "title": "Concurrent identical searches stay read-only and consistent",
+      "purpose": "Fire several identical searches simultaneously and confirm the store is unchanged and still queryable, proving concurrent reads induce no write.",
+      "risk_category": "concurrency",
+      "priority": "P2",
+      "rationale": "Concurrent access is where an accidental cache-write or upsert-on-read would surface under load.",
+      "requirement_reference": "U-RO-3: the view performs no write of any kind",
+      "product_principle_reference": "tms_centrality",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?reference=RO-CONC-7777",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5.0
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?reference=RO-CONC-7777",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5.0
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?reference=RO-CONC-7777",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5.0
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/shipments?reference=RO-CONC-7777",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": 5.0
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no row persisted for the concurrent sentinel reference",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM shipments WHERE reference = 'RO-CONC-7777'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1"
+          ],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [],
+      "forbidden_observations": [
+        "Traceback"
+      ],
+      "cleanup": [],
+      "isolation_note": "All requests are GETs; scenario asserts absence of any write and shares the DB isolation key so nothing mutating runs alongside.",
+      "isolation_key": "app-8001-workflow-db",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:39:49+00:00",
+        "task_hash": "3e71fde5555029a8",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria_consulted": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "Concurrent search requests race into a write path (cache-fill upsert or access log) that mutates the store.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "a554dcf7-abdc-4ccf-b0be-db3b66756abd",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 7,
+    "by_risk_category": {
+      "happy_path": 1,
+      "missing_data": 1,
+      "safety_invariant": 1,
+      "authorization": 1,
+      "malformed_input": 1,
+      "boundary": 1,
+      "concurrency": 1
+    },
+    "by_priority": {
+      "P1": 4,
+      "P0": 1,
+      "P2": 2
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [
+    "The exact HTTP route and query-parameter names for the search/filter view are not shown in the material given; scenarios assume GET /shipments?reference=<val> and ?q=<val>. If the real endpoint differs (e.g. /api/shipments/search), the request paths must be updated.",
+    "The persisted store's table and column names are assumed to be a 'shipments' table with a 'reference' column, based on the domain. The approved schema-probe command lists canonical tables and should be used to confirm the real table/column before trusting the state-check oracles.",
+    "Whether shipment records live in data/active_workspace/driver_probe/workflow.sqlite3 (the only sqlite target on the approved list) is unconfirmed; if shipments are stored elsewhere, no approved command can read them and the no-write oracle cannot be evaluated.",
+    "The exact copy the view emits for a no-match filter (AC2) is not specified, so S2 asserts only a successful, non-crashing response and no write rather than matching a literal message. The founder/spec should provide the required empty-state text so 'says so rather than showing nothing' can be verified against a literal.",
+    "The expected HTTP status for a disallowed write verb (S4) is assumed to be 405; it could legitimately be 404 or 403. The persisted-state check is the real oracle, but the expected status should be confirmed against the routing implementation.",
+    "No seed reference value is confirmed; S1 assumes 'SHP-1001' exists. A guaranteed seed/fixture reference for the happy path should be supplied."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:36:54+00:00",
+      "basis": {
+        "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+        "task_hash": "3e71fde5555029a8",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 7,
+      "accepted_ids": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

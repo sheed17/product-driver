@@ -1,0 +1,63 @@
+{
+  "scenario_name": "case-210-http",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:56:58+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [],
+  "http": [
+    {
+      "name": "read item 210",
+      "method": "GET",
+      "url": "http://127.0.0.1:8791/item/210",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"item\": 210, \"label\": \"item-210\", \"owner\": \"tenant-a\", \"state\": \"open\"}",
+      "json_body": {
+        "item": 210,
+        "label": "item-210",
+        "owner": "tenant-a",
+        "state": "open"
+      },
+      "duration_s": 0.0007542919993284158
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "GET http://127.0.0.1:8791/item/210: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/210: contains '\"item\": 210'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/210: contains '\"owner\": \"tenant-a\"'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "forbidden",
+      "target": "tenant-b",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-210-http",
+  "origin": "generated",
+  "run_id": "gscale-500",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:56:58+00:00"
+}

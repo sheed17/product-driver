@@ -1,0 +1,209 @@
+########## partial_dep-a already present, skipping ##########
+########## nonidempotent-a (port 9511) 08:00:19 ##########
+      failed: expect_state: exactly one payment: must not contain 'payments=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-a/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 4 scenario(s) accepted — gen-concurrent-double-approve, gen-repeat-thrice-approve, gen-ledger-no-duplicate, gen-second-approver-nodup
+wave 2 produced 4 accepted scenario(s):
+  [P0 concurrency] gen-concurrent-double-approve: Two simultaneous approvals of one invoice pay exactly once
+  [P0 repeated_request] gen-repeat-thrice-approve: Approving the same invoice three times still records one approval
+  [P1 dependency_failure] gen-ledger-no-duplicate: Repeated approval does not append a duplicate ledger entry
+  [P0 conflicting_evidence] gen-second-approver-nodup: A second permitted approver on an approved invoice does not pay again
+########## ui_lies-a (port 9521) 08:03:28 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/ui_lies-a/artifacts-w1/scenarios/gen-ledger-recorded
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## authz_retry-a (port 9531) 08:03:34 ##########
+      verifies: AC-APPROVAL-003
+      failed: expect_state: POST http://127.0.0.1:9531/api/invoices/W1D/approve: status == 403 — got 200
+      failed: expect_state: no approval was recorded for the refused actor: contains 'status=pending' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: contains 'approvals=0' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: must not contain 'mallory' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-a/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## CONTROL-1 (evidence withheld) 08:03:39 ##########
+=== none: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+=== none: WAVE 2 (CONTROL — evidence withheld) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## partial_dep-b (port 9502) 08:03:42 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-b/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## nonidempotent-b (port 9512) 08:03:47 ##########
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      generated because: a repeated approval could pay twice
+      verifies: AC-APPROVAL-001
+      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      failed: expect_state: exactly one payment: must not contain 'payments=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-b/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## ui_lies-b (port 9522) 08:03:53 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/ui_lies-b/artifacts-w1/scenarios/gen-ledger-recorded
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## authz_retry-b (port 9532) 08:03:58 ##########
+      verifies: AC-APPROVAL-003
+      failed: expect_state: POST http://127.0.0.1:9532/api/invoices/W1D/approve: status == 403 — got 200
+      failed: expect_state: no approval was recorded for the refused actor: contains 'status=pending' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: contains 'approvals=0' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: must not contain 'mallory' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-b/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## partial_dep-c (port 9503) 08:04:04 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-c/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## nonidempotent-c (port 9513) 08:04:12 ##########
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      generated because: a repeated approval could pay twice
+      verifies: AC-APPROVAL-001
+      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      failed: expect_state: exactly one payment: must not contain 'payments=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-c/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## ui_lies-c (port 9523) 08:04:18 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/ui_lies-c/artifacts-w1/scenarios/gen-ledger-recorded
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## authz_retry-c (port 9533) 08:04:23 ##########
+      verifies: AC-APPROVAL-003
+      failed: expect_state: POST http://127.0.0.1:9533/api/invoices/W1D/approve: status == 403 — got 200
+      failed: expect_state: no approval was recorded for the refused actor: contains 'status=pending' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: contains 'approvals=0' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: must not contain 'mallory' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-c/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## CONTROL-2 (evidence withheld) 08:04:29 ##########
+=== none: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+=== none: WAVE 2 (CONTROL — evidence withheld) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## partial_dep-d (port 9504) 08:04:31 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-d/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## nonidempotent-d (port 9514) 08:04:38 ##########
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      generated because: a repeated approval could pay twice
+      verifies: AC-APPROVAL-001
+      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      failed: expect_state: exactly one payment: must not contain 'payments=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-d/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## ui_lies-d (port 9524) 08:04:43 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/ui_lies-d/artifacts-w1/scenarios/gen-ledger-recorded
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## authz_retry-d (port 9534) 08:04:49 ##########
+      verifies: AC-APPROVAL-003
+      failed: expect_state: POST http://127.0.0.1:9534/api/invoices/W1D/approve: status == 403 — got 200
+      failed: expect_state: no approval was recorded for the refused actor: contains 'status=pending' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: contains 'approvals=0' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: must not contain 'mallory' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-d/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## DONE 08:04:55 ##########

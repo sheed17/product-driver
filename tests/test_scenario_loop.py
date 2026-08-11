@@ -752,11 +752,20 @@ class TestInvestigatorStaysSeparate:
 class TestAuditorPrecedenceUnchanged:
     @pytest.mark.asyncio
     async def test_an_unsupported_completion_claim_still_outranks_the_suite(self, loop_bits):
-        """The audit converts ACCEPT→FIX before the suite is consulted.
+        """Both layers refuse, and neither refusal is dropped.
 
-        The suite gate is deliberately last so that the two older precedence
-        layers keep behaving exactly as they did: when the audit already has a
-        grounded correction, that is what the builder gets.
+        This used to assert that the audit's correction *replaced* the suite's,
+        because the suite gate ran last. That ordering is what let a run reach a
+        terminal state before the gate was ever consulted, so the gate now runs
+        first — and when it has already turned an ACCEPT into a FIX, the branch
+        that would have substituted the audit's correction no longer fires.
+
+        What must not happen is that the audit's findings are silently lost.
+        The builder gets the grounded correction for the thing that was actually
+        measured (a required scenario failed), and the audit's contradictions
+        travel with it in ``problems``. When the suite is green the audit's own
+        correction is still exactly what the builder gets, which is asserted
+        below and is the precedence this class exists to protect.
         """
         from neyma_product_driver.completion_auditor import (
             AuditDecision,
@@ -804,6 +813,27 @@ class TestAuditorPrecedenceUnchanged:
 
         decision = result.final_decision
         assert decision.decision is Decision.FIX
-        # The audit's correction survived; the suite did not replace it.
-        assert "registry still marks it" in decision.correction_prompt
-        assert "SCENARIO SUITE FAILURES" not in decision.correction_prompt
+        # The measurement drives the correction the builder is sent...
+        assert "SCENARIO SUITE FAILURES" in decision.correction_prompt
+        # ...and the audit's finding is carried, not dropped.
+        assert any("claimed COMPLETE, registry says READY" in p for p in decision.problems)
+
+        # And with a green suite, the audit's correction is untouched: this is
+        # the completion-audit precedence itself, which the reordering does not
+        # change.
+        state.iterations = []
+        green = await run_control_loop(
+            config=config,
+            scenario=base_scenario(),
+            store=store,
+            state=state,
+            builder=FakeBuilder(),
+            evaluator=FakeEvaluator([accept()]),
+            make_executor=lambda d: RecordingExecutor(d, {}, []),
+            emit=lambda _m: None,
+            repo_loader=FakeRepoLoader(),
+            auditor=ContradictingAuditor(),
+            planner=make_planner(config, store, [raw_payload(raw_scenario("gen-ok"))]),
+        )
+        assert green.final_decision.decision is Decision.FIX
+        assert "registry still marks it" in green.final_decision.correction_prompt

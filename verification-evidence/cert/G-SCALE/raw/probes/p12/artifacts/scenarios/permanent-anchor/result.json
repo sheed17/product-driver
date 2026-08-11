@@ -1,0 +1,22 @@
+{
+  "scenario_name": "backend_generic",
+  "mode": "backend",
+  "started_at": "2026-08-10T20:14:45+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": null,
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "permanent-anchor",
+  "origin": "permanent",
+  "run_id": "run-1",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:14:45+00:00"
+}

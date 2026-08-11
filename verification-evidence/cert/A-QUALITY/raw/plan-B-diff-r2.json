@@ -1,0 +1,110 @@
+{
+  "run_id": "cert-B-diff-r2",
+  "task": "Add supervised carrier invoice approval.",
+  "active_unit_id": "U-042",
+  "generation_basis": {
+    "task": "Add supervised carrier invoice approval.",
+    "task_hash": "b614b9b809fbe9f5",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "no payment effect occurs without a recorded approval (weight 3): PENDING",
+      "an operator without approval authority is refused (weight 2): PENDING",
+      "approval survives a restart (weight 2): PENDING",
+      "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:46:26+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    },
+    {
+      "wave": 2,
+      "stage": "diff_refinement",
+      "requested_at": "2026-08-10T20:46:28+00:00",
+      "basis": {
+        "task": "Add supervised carrier invoice approval.",
+        "task_hash": "b614b9b809fbe9f5",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "no payment effect occurs without a recorded approval (weight 3): PENDING",
+          "an operator without approval authority is refused (weight 2): PENDING",
+          "approval survives a restart (weight 2): PENDING",
+          "an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [
+          "src/freight_recon/governed_approval.py",
+          "src/freight_recon/carrier_invoice_write.py",
+          "src/freight_recon/action_callback.py"
+        ],
+        "diff_stat": " src/freight_recon/governed_approval.py     | 210 ++++++++++++++++--\n src/freight_recon/carrier_invoice_write.py | 118 ++++++++--\n src/freight_recon/action_callback.py       |  36 +++-\n 3 files changed, 330 insertions(+), 34 deletions(-)",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

@@ -1,0 +1,8 @@
+PASS  the repository's own suite is green after the module-level fix — OK
+PASS  module-level verification says the revoked carrier is REFUSED — MODULE authorize -> False | MODULE status -> False
+PASS  the durable store DOES record the revocation (A and B are closed) — carrier C-1 active=false
+PASS  DEFECT C: the RUNNING SERVER still lets the revoked carrier write — (200, {'load': 'L-1', 'rate': 4242, 'changes': 1}) / load L-1 rate=4242 set_by=C-1 changes=1
+PASS  a sub-second client deadline times out on the rate write — timed_out=True elapsed=0.50s
+PASS  timeout_after_effect: the effect landed anyway — load L-2 rate=777 set_by=C-2 changes=1
+
+6/6 checks passed

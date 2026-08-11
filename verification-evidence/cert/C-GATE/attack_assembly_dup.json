@@ -1,0 +1,61 @@
+[
+  {
+    "id": "E1",
+    "attack": "a generated scenario takes the permanent scenario's id and is dropped before execution; hostile evaluator says ACCEPT",
+    "observed": {
+      "run_status": "BLOCKED",
+      "planned_generated_ids": [
+        "backend_generic"
+      ],
+      "scenarios_executed": [
+        "backend_generic"
+      ],
+      "assembly_problems": [
+        "the generated scenario 'backend_generic' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+      ],
+      "gate": "NOT_VERIFIED"
+    },
+    "expected": "the dropped scenario is recorded as an assembly problem and blocks",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "E2a",
+    "attack": "build_suite offered the same id twice \u2014 does the second get in?",
+    "observed": {
+      "entries": [
+        "perm"
+      ],
+      "assembly_conflicts": [
+        "the permanent scenario 'perm' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+      ]
+    },
+    "expected": "the second is refused and recorded as an assembly conflict",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "E2b",
+    "attack": "duplicate entries FORCED past ScenarioSuite.add: does a later PASS mask the earlier FAIL at the gate?",
+    "observed": {
+      "outcomes": [
+        [
+          "perm",
+          "FAILED",
+          true
+        ],
+        [
+          "perm",
+          "PASSED",
+          true
+        ]
+      ],
+      "expected_required_ids": [
+        "perm",
+        "perm"
+      ],
+      "gate": "VERIFIED",
+      "blocking_failures": 0
+    },
+    "expected": "the gate must not report VERIFIED while a recorded failure exists",
+    "OUTCOME": "MASKED (last-record-wins)"
+  }
+]

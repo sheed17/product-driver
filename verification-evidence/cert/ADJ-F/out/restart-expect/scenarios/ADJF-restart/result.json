@@ -1,0 +1,75 @@
+{
+  "scenario_name": "generated:ADJF-restart",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:31:15+00:00",
+  "setup": [],
+  "services_started": [
+    "site"
+  ],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50515",
+    "title": "",
+    "visible_text": "adjudicator clean page\n\nowner: unassigned",
+    "screenshots": [
+      "out/restart-expect/scenarios/ADJF-restart/screenshots/before-the-bounce-01-initial.png",
+      "out/restart-expect/scenarios/ADJF-restart/screenshots/before-the-bounce-99-final.png",
+      "out/restart-expect/scenarios/ADJF-restart/screenshots/99-error.png"
+    ],
+    "console_errors": [],
+    "network_failures": [
+      "GET http://127.0.0.1:50515/ \u2014 net::ERR_CONNECTION_REFUSED"
+    ],
+    "trace_path": null,
+    "steps": [
+      "opened http://127.0.0.1:50515",
+      "expect_text 'adjudicator clean page': FOUND",
+      "ERROR: Error: Page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:50515/\nCall log:\n  - navigating to \"http://127.0.0.1:50515/\", waiting until \"domcontentloaded\"\n"
+    ],
+    "text_expectations": [
+      {
+        "text": "adjudicator clean page",
+        "present": true,
+        "step": 1,
+        "label": "before-the-bounce"
+      }
+    ],
+    "step_failures": []
+  },
+  "assertions": [
+    {
+      "kind": "expect_visible",
+      "target": "before-the-bounce: browser step 1: expect_text 'adjudicator clean page'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_state",
+      "target": "bounce the site: stop service 'site'",
+      "passed": true,
+      "detail": "service 'site' stoped"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "adjudicator clean page",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: before the bounce",
+    "02. stop_service: bounce the site",
+    "03. browser: after the bounce"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-restart",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:31:18+00:00"
+}

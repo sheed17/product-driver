@@ -1,0 +1,90 @@
+{
+  "scenario_name": "case-077-idem",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:54:41+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 77",
+      "exit_code": 0,
+      "stdout": "item=77 approval_rows=1\n",
+      "stderr": "",
+      "duration_s": 0.052006416000949685,
+      "timed_out": false,
+      "cwd": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work"
+    }
+  ],
+  "http": [
+    {
+      "name": "http://127.0.0.1:8791/approve",
+      "method": "POST",
+      "url": "http://127.0.0.1:8791/approve",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"approval_count\": 1, \"item\": 77, \"ok\": true}",
+      "json_body": {
+        "approval_count": 1,
+        "item": 77,
+        "ok": true
+      },
+      "duration_s": 0.001511666996520944
+    },
+    {
+      "name": "http://127.0.0.1:8791/approve",
+      "method": "POST",
+      "url": "http://127.0.0.1:8791/approve",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"approval_count\": 1, \"item\": 77, \"ok\": true}",
+      "json_body": {
+        "approval_count": 1,
+        "item": 77,
+        "ok": true
+      },
+      "duration_s": 0.0009322080004494637
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "POST http://127.0.0.1:8791/approve: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_state",
+      "target": "POST http://127.0.0.1:8791/approve: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_state",
+      "target": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 77: contains 'item=77 approval_rows=9999XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'",
+      "passed": false,
+      "detail": "not found in command output"
+    },
+    {
+      "kind": "expect_state",
+      "target": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 77: must not contain 'approval_rows=2'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. request: first approve",
+    "02. request: repeat approve, same key",
+    "03. state_check: exactly one approval row persisted"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "case-077-idem",
+  "origin": "generated",
+  "run_id": "gscale-100allfail",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:54:41+00:00"
+}

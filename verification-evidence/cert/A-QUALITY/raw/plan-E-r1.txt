@@ -1,0 +1,46 @@
+GENERATED SCENARIO PLAN — run cert-E-r1
+task: Add role-based authorization to the operator console so only a supervisor can release an operation.
+active unit: U-AUTHZ-2
+
+4 generated case(s)
+risk categories exercised: authorization, missing_data
+identified but NOT exercised: Replaying an already-used release approval releases twice (no idempotency), producing a duplicate external effect.
+
+IDENTIFIED RISKS:
+  [P0 authorization] A release requested without a valid signed credential (unauthenticated / non-supervisor stand-in) is not refused, or is refused but still advances/claims the operation, violating 'a non-supervisor is refused and no release occurs'.  (covered by AUTHZ-S2, AUTHZ-S3, AUTHZ-S5)
+  [P1 idempotency] Replaying an already-used release approval releases twice (no idempotency), producing a duplicate external effect.  (NOT covered)
+
+SCENARIOS:
+  [P1 missing_data] AUTHZ-S1: Canonical schema materializes the audit substrate refusals depend on
+      purpose: Confirm the database the product builds actually contains security_events and audit_events, the only tables where a refused release can be durably recorded. If either is absent, the 'every refusal is recorded' criterion is impossible regardless of handler logic.
+      grounded in: U-AUTHZ-2 AC 'every refusal is recorded in the audit log'
+      because: A refused release has nowhere to be recorded because the audit substrate is missing from the schema.
+  [P0 authorization] AUTHZ-S2: Unauthenticated release request is refused and releases nothing
+      purpose: A release POST carrying no signed credential (the stand-in for a caller with no supervisor authority) must be refused at the front door and must not start or claim any operation.
+      grounded in: U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'
+      because: An operation is released for a caller who presented no valid authority.
+  [P0 authorization] AUTHZ-S3: Forged release token is rejected and the operation is never started
+      purpose: A release request bearing an unverifiable (forged) signed token must be rejected as unverifiable and must not advance any operation to a started/running state.
+      grounded in: U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'
+      because: A forged credential is accepted and the operation is released.
+  [P1 authorization] AUTHZ-S5: Email release link with no token fails closed
+      purpose: The email-channel release action link must refuse an unauthenticated release identically to the JSON route, so authorization cannot be bypassed by switching channels.
+      grounded in: U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'
+      because: The email release link accepts an unauthenticated release that the JSON route would refuse.
+
+ASSUMPTIONS:
+  - The local app at 127.0.0.1:8001 is the run_action_callback_server callback service (service_refs: callback) bound to the driver_probe workspace DB at data/active_workspace/driver_probe/workflow.sqlite3.
+  - Release of an operation is realized through the signed-action / operation-approval intake in action_callback.py; there is no separate unsigned 'release' HTTP endpoint.
+  - The server is running when request-based scenarios execute; if it is not, those scenarios will fail on connection rather than on product behavior.
+  - 'security_events' is the recording table for authorization refusals at the transport boundary and 'audit_events' for run-scoped decisions, per phase2_tenant_first.py.
+  - A refused release never carries actor='system' into a 'slack_operation_started' event, making that count an invariant zero usable as a 'no release occurred' oracle.
+
+UNRESOLVED QUESTIONS:
+  - What is the concrete release contract the builder added? The task names an 'operator console' but the console in-repo (operator_console.py) is a static HTML page; the only live release path requires a Slack- or delivery-signed token. No release endpoint that takes a supervisor identity in a driveable form is visible.
+  - How is 'supervisor' represented and checked? The canonical schema (schema.py, phase2_tenant_first.py) has no roles table or role column, and code today authorizes by Slack user/channel allowlist. Without a persisted role model, the supervisor/non-supervisor distinction (AC-1, AC-2) cannot be authoritatively evaluated.
+  - AC-1 (a supervisor CAN release) is not verifiable with the approved commands: none of them can mint a valid signed release token, and run_action_callback_server hardwires operation_router=None so the approval path is inert/unreachable. A signed-token fixture or a supervisor-authenticated release endpoint is needed to exercise the happy path.
+  - AC-3 (cross-tenant supervisor cannot release another tenant's operation) is not exercisable: it requires two provisioned tenants each with a valid supervisor release token. Note workflow.py:906 documents that release_operation_commit is NOT tenant-qualified — this should be reviewed as a likely cross-tenant defect.
+  - Does a refused release on the /actions/signed and /email/action routes actually write to security_events/audit_events? Those handlers (handle_signed_action_callback) return 401/400 but appear NOT to record, unlike the Slack operation-approval route — a probable AC-4 gap that needs a token-minting fixture to confirm end to end.
+  - Is a before/after audit-log delta observable? With single approved sqlite commands and no ability to snapshot-then-compare, 'a NEW refusal row was written by THIS request' cannot be asserted precisely; only invariant properties (e.g. system actor never starts an operation) are robust.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

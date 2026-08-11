@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-C-r1
+task: Add a read-only search/filter view over shipments. It performs no writes.
+active unit: U-RO-3
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

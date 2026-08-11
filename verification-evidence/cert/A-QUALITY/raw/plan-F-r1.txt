@@ -1,0 +1,45 @@
+GENERATED SCENARIO PLAN — run cert-F-r1
+task: Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send wh
+active unit: U-DEL-7
+
+4 generated case(s)
+risk categories exercised: concurrency, malformed_input, missing_data, restart_recovery
+identified but NOT exercised: A Slack post that TIMES OUT after chat.postMessage actually landed is collapsed to FAILED (SlackApiPoster catches every urlopen exception and returns ok=False), and there is no delivery-identity/commit key on the notification, so a retry re-posts and the operator receives the same notification twice.; There is no UNKNOWN/unconfirmed dispatch outcome: DispatchStatus is {DRY_RUN,OUTBOXED,SENT,BLOCKED,FAILED}. An ambiguous transport result (timeout after post, connection reset mid-response) is forced into SENT or FAILED, so an unconfirmed send is mis-recorded as one or the other rather than as unknown.; On a full transport outage the attempt is recorded FAILED but nothing appears to re-drive or surface it to an owner, so the operator notification is effectively dropped (recorded-but-silent) with no next action.; No per-notification delivery ledger / commit key exists (commit_key.py governs external TMS writes, not operator notifications), so even a correct UNKNOWN state has nothing to converge a retry against — dedup is impossible.
+
+IDENTIFIED RISKS:
+  [P0 idempotency] A Slack post that TIMES OUT after chat.postMessage actually landed is collapsed to FAILED (SlackApiPoster catches every urlopen exception and returns ok=False), and there is no delivery-identity/commit key on the notification, so a retry re-posts and the operator receives the same notification twice.  (NOT covered)
+  [P0 ambiguous_external_effect] There is no UNKNOWN/unconfirmed dispatch outcome: DispatchStatus is {DRY_RUN,OUTBOXED,SENT,BLOCKED,FAILED}. An ambiguous transport result (timeout after post, connection reset mid-response) is forced into SENT or FAILED, so an unconfirmed send is mis-recorded as one or the other rather than as unknown.  (NOT covered)
+  [P1 dependency_failure] On a full transport outage the attempt is recorded FAILED but nothing appears to re-drive or surface it to an owner, so the operator notification is effectively dropped (recorded-but-silent) with no next action.  (NOT covered)
+  [P1 retry_safety] No per-notification delivery ledger / commit key exists (commit_key.py governs external TMS writes, not operator notifications), so even a correct UNKNOWN state has nothing to converge a retry against — dedup is impossible.  (NOT covered)
+
+SCENARIOS:
+  [P1 malformed_input] S1: Unverifiable action intake is recorded as rejected, never applied
+      purpose: Drive the reachable delivery intake with a tampered token and prove the boundary durably RECORDS the unconfirmable outcome instead of treating it as success or dropping it — the persistence invariant the 'unconfirmed => unknown, never delivered' AC depends on.
+      grounded in: a send whose outcome is unconfirmed is recorded as unknown, never as delivered
+      because: An outcome that cannot be confirmed/verified could be silently swallowed or wrongly treated as a success instead of being recorded as a non-delivery.
+  [P2 missing_data] S2: Missing token yields a recorded dead-end-free refusal, not a silent no-op
+      purpose: POST the intake with no token and confirm the server returns an explicit, actionable refusal rather than silently accepting or crashing.
+      grounded in: a transport outage leaves no notification silently dropped
+      because: An empty/identity-less delivery request could be silently accepted or dropped with no operator-visible outcome.
+  [P1 concurrency] S3: Simultaneous identical retries are each recorded; none dropped, no crash
+      purpose: Fire two identical tampered submissions in parallel and confirm the intake answers both and durably records the attempts under concurrency, rather than losing one to a race or crashing.
+      grounded in: a transport outage leaves no notification silently dropped
+      because: Concurrent identical retries could race such that an attempt is silently lost or the handler crashes, leaving the outcome unrecorded.
+  [P2 restart_recovery] S4: Recorded outcomes survive a callback restart (durability)
+      purpose: Record a rejected intake, restart the callback service, submit again, and confirm the persisted rejection record survives the restart and the store is still writable — the durability the 'nothing silently dropped' guarantee rests on.
+      grounded in: U-DEL-7
+      because: An outcome recorded before a restart could be lost (in-memory/unflushed), so post-restart the system cannot tell a notification was already attempted and re-drives or forgets it.
+
+ASSUMPTIONS:
+  - The 'callback' service on http://127.0.0.1:8001 is the NeymaActionCallbackHandler bound to db_path data/active_workspace/driver_probe/workflow.sqlite3, so security_events rows written by submit_signed_action land in that DB.
+  - submit_signed_action records a security_events row (event_type='delivery_action_rejected', failure='signature') for a token that fails signature verification, regardless of whether Slack interactivity is configured — the signer is always constructed.
+  - The driver_probe workflow DB is effectively single-tenant, so an unfiltered aggregate query over security_events reflects only this deployment's rows.
+  - A DispatchStatus.UNKNOWN member and a per-notification delivery key would be the expected shape of the U-DEL-7 change; the code visible in delivery_dispatch.py still maps outcomes only to SENT/FAILED, which is the pre-resilience shape.
+
+UNRESOLVED QUESTIONS:
+  - Which code path implements U-DEL-7's OUTBOUND operator-notification delivery, and is there any loopback endpoint or approved command that triggers dispatch_delivery_message? None of /actions/signed, /email/action, or /slack/* invoke an outbound dispatch, so the delivered/unknown/dedup ACs cannot be driven end-to-end here.
+  - Is there a new UNKNOWN DispatchStatus and a per-notification delivery ledger/commit key? The canonical schema surfaces audit_events/security_events; confirm where an 'unknown' notification outcome is persisted and what column enforces at-most-one delivery per logical notification.
+  - To exercise 'recorded delivered exactly once' and the timeout-after-post dedup, the harness needs either a loopback dispatch trigger with an injectable/faultable transport or a valid signed-token fixture; the signing secret is out of scope for this stage. Should a fault-injectable SlackPoster seam be exposed for verification?
+  - Does a FAILED/UNKNOWN outbound attempt get re-driven or escalated to an owner, or is it terminal? AC-4 ('no notification silently dropped') needs a named recovery/surfacing path, which is not visible on the current _dispatch_slack return.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

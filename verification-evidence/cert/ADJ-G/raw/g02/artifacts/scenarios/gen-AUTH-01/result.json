@@ -1,0 +1,22 @@
+{
+  "scenario_name": "generated:gen-auth-01",
+  "mode": "backend",
+  "started_at": "2026-08-10T20:30:02+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": null,
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "gen-auth-01",
+  "origin": "generated",
+  "run_id": "run-1",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:30:02+00:00"
+}

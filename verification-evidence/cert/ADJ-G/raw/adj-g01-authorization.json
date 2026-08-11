@@ -1,0 +1,41 @@
+{
+  "control_no_authorization": {
+    "planned": 2,
+    "waves_used_before": 1,
+    "by_risk_category_on_disk": {
+      "idempotency": 1,
+      "concurrency": 1
+    },
+    "plan_file_parses": "parses",
+    "restore_note": "resumed scenario plan: 2 scenario(s), 1 wave(s) already used",
+    "scenarios_after_restore": 2,
+    "waves_used_after_restore": 1,
+    "console": [
+      "  resumed scenario plan: 2 scenario(s), 1 wave(s) already used"
+    ],
+    "plan_on_disk_after_next_persist": 2,
+    "wave_files_left": [
+      "wave-01.json"
+    ]
+  },
+  "with_one_authorization_scenario": {
+    "planned": 3,
+    "waves_used_before": 1,
+    "by_risk_category_on_disk": {
+      "idempotency": 1,
+      "authorization": "[REDACTED]",
+      "concurrency": 1
+    },
+    "plan_file_parses": "ValidationError: coverage_summary.by_risk_category.authorization",
+    "restore_note": "",
+    "scenarios_after_restore": 0,
+    "waves_used_after_restore": 0,
+    "console": [
+      "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+    ],
+    "plan_on_disk_after_next_persist": 0,
+    "wave_files_left": [
+      "wave-01.json"
+    ]
+  }
+}

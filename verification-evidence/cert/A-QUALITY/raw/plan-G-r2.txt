@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-G-r2
+task: Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an infe
+active unit: U-EV-4
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

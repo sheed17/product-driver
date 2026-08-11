@@ -1,0 +1,18 @@
+{
+  "config": "shipped defaults (30 total / 6 per category / 3 waves)",
+  "trigger": "one approved command removed from a permanent scenario between processes",
+  "planned_before_resume": 30,
+  "after_resume": 0,
+  "silently_dropped": 30,
+  "p0_risks_carried": 0,
+  "generation_problems": [],
+  "assembly_problems": [],
+  "gate_status": "VERIFIED",
+  "gate_required": "1/1",
+  "gate_uncovered_risks": 0,
+  "hostile_accept_becomes": "ACCEPT",
+  "plan_on_disk_after_persist": 0,
+  "coverage_summary_uncovered_risks_on_disk": [],
+  "console_line": "  could not restore the scenario plan (ValidationError); this run will generate a new one",
+  "loss_visible_in_gate_inputs": false
+}

@@ -1,0 +1,70 @@
+{
+  "run_id": "cert-C-r2",
+  "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+  "active_unit_id": "U-RO-3",
+  "generation_basis": {
+    "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+    "task_hash": "3e71fde5555029a8",
+    "active_unit_id": "U-RO-3",
+    "acceptance_criteria": [
+      "a search by reference returns the matching shipment (weight 3): PENDING",
+      "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+      "the view performs no write of any kind (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:46:24+00:00",
+      "basis": {
+        "task": "Add a read-only search/filter view over shipments. It performs no writes.",
+        "task_hash": "3e71fde5555029a8",
+        "active_unit_id": "U-RO-3",
+        "acceptance_criteria": [
+          "a search by reference returns the matching shipment (weight 3): PENDING",
+          "a filter with no matches says so rather than showing nothing (weight 2): PENDING",
+          "the view performs no write of any kind (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

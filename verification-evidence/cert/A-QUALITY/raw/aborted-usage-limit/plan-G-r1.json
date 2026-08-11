@@ -1,0 +1,72 @@
+{
+  "run_id": "cert-G-r1",
+  "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+  "active_unit_id": "U-EV-4",
+  "generation_basis": {
+    "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+    "task_hash": "047ccc15231cfbce",
+    "active_unit_id": "U-EV-4",
+    "acceptance_criteria": [
+      "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+      "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+      "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+      "an inference is never presented as a known fact (weight 2): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T08:06:12+00:00",
+      "basis": {
+        "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+        "task_hash": "047ccc15231cfbce",
+        "active_unit_id": "U-EV-4",
+        "acceptance_criteria": [
+          "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+          "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+          "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+          "an inference is never presented as a known fact (weight 2): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

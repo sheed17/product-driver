@@ -1,0 +1,106 @@
+{
+  "approved_entries": [
+    ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+    ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q",
+    ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q",
+    ".venv/bin/python scripts/check_env.py"
+  ],
+  "browser_enabled_default": false,
+  "local_hosts_config": [
+    "127.0.0.1",
+    "::1",
+    "localhost"
+  ],
+  "A_prefix_entry_present": true,
+  "B_tailed_command_admitted": {
+    "admitted": true,
+    "why": ""
+  },
+  "C_safety_reasons": [],
+  "D_full_validate": {
+    "accepted": false,
+    "reasons": [
+      "a idempotency scenario asserts something about whether an effect durably happened, but inspects no persisted state. An HTTP status or a local response is not evidence that the underlying outcome occurred.",
+      "scenario carries no usable provenance, so nothing records why it exists: run/task identity (task_hash), generation stage, generation source (model or session_id)",
+      "scenario records generation wave 0, but waves are numbered from 1; an unnumbered wave cannot be located in the run"
+    ]
+  },
+  "E_resolve": {
+    "allowed": [
+      ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q {{fixture:probe_case.py}}"
+    ],
+    "refusals": []
+  },
+  "F_compiled": {
+    "ok": true,
+    "steps": [
+      {
+        "kind": "fixture",
+        "run": null,
+        "fixture_name": "probe_case.py",
+        "fixture_content_len": 141
+      },
+      {
+        "kind": "command",
+        "run": ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q {{fixture:probe_case.py}}",
+        "fixture_name": null,
+        "fixture_content_len": 0
+      }
+    ]
+  },
+  "G_goto": [
+    {
+      "goto": "https://example.com/admin",
+      "validator_inspected": true,
+      "executor_treats_as_absolute": true,
+      "admitted": false,
+      "reasons": [
+        "unsupported external navigation: url 'https://example.com/admin' addresses 'example.com', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ]
+    },
+    {
+      "goto": "http://example.com/admin",
+      "validator_inspected": true,
+      "executor_treats_as_absolute": true,
+      "admitted": false,
+      "reasons": [
+        "unsupported external navigation: url 'http://example.com/admin' addresses 'example.com', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ]
+    },
+    {
+      "goto": "http:/example.com/admin",
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "admitted": true,
+      "reasons": []
+    },
+    {
+      "goto": "http:example.com/admin",
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "admitted": true,
+      "reasons": []
+    },
+    {
+      "goto": "http:\\\\example.com\\admin",
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "admitted": true,
+      "reasons": []
+    },
+    {
+      "goto": "httpx://example.com/admin",
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "admitted": true,
+      "reasons": []
+    },
+    {
+      "goto": "/relative/ok",
+      "validator_inspected": false,
+      "executor_treats_as_absolute": false,
+      "admitted": true,
+      "reasons": []
+    }
+  ]
+}

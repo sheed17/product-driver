@@ -1,0 +1,72 @@
+{
+  "run_id": "cert-D-r1",
+  "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+  "active_unit_id": "U-P5-1",
+  "generation_basis": {
+    "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+    "task_hash": "9f26b6d9cc85e0f0",
+    "active_unit_id": "U-P5-1",
+    "acceptance_criteria": [
+      "workflow state survives a process restart (weight 3): PENDING",
+      "a failed write leaves no partially applied workflow (weight 3): PENDING",
+      "a read after a write never returns stale state (weight 2): PENDING",
+      "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T08:06:14+00:00",
+      "basis": {
+        "task": "Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.",
+        "task_hash": "9f26b6d9cc85e0f0",
+        "active_unit_id": "U-P5-1",
+        "acceptance_criteria": [
+          "workflow state survives a process restart (weight 3): PENDING",
+          "a failed write leaves no partially applied workflow (weight 3): PENDING",
+          "a read after a write never returns stale state (weight 2): PENDING",
+          "rebuilding state from history never re-executes an effect (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

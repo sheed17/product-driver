@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-F-r2
+task: Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send wh
+active unit: U-DEL-7
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

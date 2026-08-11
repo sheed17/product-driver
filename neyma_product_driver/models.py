@@ -185,6 +185,18 @@ class BrowserObservation(BaseModel):
     url: str = ""
     title: str = ""
     visible_text: str = ""
+    #: Page text captured at *every* point the page changed, in order — the
+    #: initial navigation, each step-level ``goto``, and the final state.
+    #: ``visible_text`` is only the last of these, so a scenario that looked at
+    #: more than one screen had every earlier screen discarded before anything
+    #: could be asserted about it. The scenario-level ``expect_visible`` /
+    #: ``forbidden`` haystack is built from this.
+    observed_texts: list[str] = Field(default_factory=list)
+    #: Whether a page was ever successfully loaded in this session. The floor
+    #: under every browser oracle: ``all([])`` is ``True``, so a session that
+    #: never reached the product at all — playwright missing, the navigation
+    #: raising — produced no assertions and was read as a pass.
+    page_loaded: bool = False
     screenshots: list[str] = Field(default_factory=list)
     console_errors: list[str] = Field(default_factory=list)
     network_failures: list[str] = Field(default_factory=list)
@@ -363,6 +375,36 @@ def redact(text: str | None) -> str:
     return out
 
 
+#: Dict keys whose *value* is treated as credential material.
+_SECRET_KEY = re.compile(
+    r"(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|authorization)"
+)
+
+
+def _mask_secret_value(value: Any) -> Any:
+    """Mask a value held under a secret-shaped key, preserving its type.
+
+    A credential is always text. A count, a flag, a timestamp offset — none of
+    them can carry one, and replacing them with the string ``"[REDACTED]"``
+    does not protect anything; it silently falsifies the record and, where the
+    field is typed, makes it unreadable. ``CoverageSummary.by_risk_category``
+    is a ``dict[str, int]`` and ``authorization`` is one of its keys, so
+    key-only masking turned a run's own scenario plan into a file that could
+    never be parsed again.
+
+    So: strings are masked, containers are masked recursively so a secret
+    nested under a secret-shaped key is still caught, and non-string scalars
+    are left exactly as they were.
+    """
+    if isinstance(value, str):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {k: _mask_secret_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_mask_secret_value(v) for v in value]
+    return value
+
+
 def redact_obj(obj: Any) -> Any:
     """Recursively redact strings inside dicts/lists, masking secret-ish keys."""
     if isinstance(obj, str):
@@ -370,11 +412,8 @@ def redact_obj(obj: Any) -> Any:
     if isinstance(obj, dict):
         result: dict[Any, Any] = {}
         for k, v in obj.items():
-            if isinstance(k, str) and re.search(
-                r"(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|authorization)",
-                k,
-            ):
-                result[k] = "[REDACTED]"
+            if isinstance(k, str) and _SECRET_KEY.search(k):
+                result[k] = _mask_secret_value(v)
             else:
                 result[k] = redact_obj(v)
         return result

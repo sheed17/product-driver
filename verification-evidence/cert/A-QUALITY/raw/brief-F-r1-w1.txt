@@ -1,0 +1,77 @@
+GENERATION STAGE: initial (wave 1)
+You may propose AT MOST 12 scenarios in this wave.
+
+TASK GIVEN TO THE BUILDER:
+Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send whose outcome cannot be confirmed must be recorded as unknown rather than delivered.
+
+ACTIVE READY UNIT: U-DEL-7
+ACCEPTANCE CRITERIA (the only requirements you may cite):
+  - a confirmed send is recorded delivered exactly once (weight 3): PENDING
+  - a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING
+  - a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING
+  - a transport outage leaves no notification silently dropped (weight 2): PENDING
+
+PRODUCT PRINCIPLE IDS (the only principles you may cite):
+  - accountable_owner
+  - agent_jargon_leak
+  - approval_quality
+  - authority_clarity
+  - business_loop_closure
+  - channel_consistency
+  - channel_promotion
+  - customer_language
+  - dead_end_error
+  - evidence_clarity
+  - failure_recovery
+  - founder context
+  - founder_taste
+  - inference_presented_as_fact
+  - known_vs_inferred
+  - low_confidence
+  - materially_different_experiences
+  - next_action_clarity
+  - noise_control
+  - obligation_visibility
+  - operational_clarity
+  - outcome_verification
+  - proactivity
+  - product rubric
+  - product_identity
+  - repository_silent
+  - success_without_verification
+  - tms_centrality
+  - unowned_obligation
+
+=== WHAT YOU MAY ACTUALLY DO ===
+
+You do NOT write shell. You choose which already-approved command runs, when, and what must be observable afterwards.
+
+APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, optionally with extra arguments; anything else is rejected):
+  - .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+  - .venv/bin/python -m pytest -c pytest-canonical.ini
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q
+  - .venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q
+  - .venv/bin/python scripts/check_env.py
+  - .venv/bin/python scripts/progress_status.py
+  - .venv/bin/python scripts/run_diagnostics.py
+  - sqlite3 data/active_workspace/driver_probe/workflow.sqlite3
+
+`setup` and `cleanup` are ALSO command lists, held to the same rule. They are executed, not read. A precondition written as prose — "ensure the api service is running", "two tenants exist" — is not a command, and it causes the entire scenario to be refused. Express preconditions by choosing an approved command, or leave setup and cleanup empty and state the assumption in `purpose`.
+
+`expected_observations` and `forbidden_observations` are matched as LITERAL substrings against everything the run observed — command output, response bodies, visible browser text. They are not descriptions and nothing interprets them. Write the exact text the product emits:
+
+    good : "payments=1"          (the probe prints exactly this)
+    bad  : "the ledger shows one payment"   (never appears; fails against a
+                                              correct product)
+
+If you cannot name the exact text a correct product would emit, assert the property with a `persisted_state_check` and leave the observation lists empty. A scenario that fails because its expectation was phrased as prose has told you nothing about the product.
+
+Quoting is understood: an argument may contain >, <, |, ( or ) inside quotes, so a SQL oracle such as
+    sqlite3 data/app.sqlite3 "SELECT key FROM grants GROUP BY key HAVING count(*) > 1"
+is accepted. What is refused is composition *outside* quotes — a second command after ;, &&, a pipe, a redirect, or $( ).
+
+SERVICES you may reference / restart / stop / start: callback
+LOCAL APP URL for relative request paths: http://127.0.0.1:8001
+BROWSER available: no
+
+Return the JSON object now.

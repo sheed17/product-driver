@@ -176,8 +176,20 @@ class ScenarioRunnerLike(Protocol):
     async def execute(self, scenario: Scenario) -> ScenarioResult: ...
 
 
-@dataclass
+@dataclass(kw_only=True)
 class LoopResult:
+    """What a terminated run carries out of the loop.
+
+    Keyword-only, deliberately. A terminal path once built this by hand with
+    four positional arguments; the three that follow — the protocol resolution,
+    the suite and the promotion ledger — silently took their defaults, and a run
+    that had executed a full scenario suite reported no coverage at all because
+    ``suite`` was ``None``. Positional construction makes that failure silent
+    and makes every future field one more thing a new terminal can drop. Every
+    terminal now goes through ``_terminate``; this makes the alternative fail
+    loudly rather than quietly.
+    """
+
     status: RunStatus
     state: RunState
     final_decision: EvaluatorDecision | None = None
@@ -189,6 +201,10 @@ class LoopResult:
     #: Generated scenarios that found a defect and later passed. Suggestions
     #: only; nothing has been written into the permanent suite.
     promotion_candidates: list[Any] = field(default_factory=list)
+    #: The deterministic acceptance gate's verdict on the final suite, when a
+    #: suite ran. Carried so the closing report states what the gate decided
+    #: instead of asserting an outcome nobody computed.
+    gate: Any = None
 
 
 # --------------------------------------------------------------------------
@@ -233,10 +249,18 @@ async def run_control_loop(
     last_audit: dict[str, Any] = {"value": None}
     last_protocol: dict[str, Any] = {"value": None}
     last_suite: dict[str, Any] = {"value": None}
+    last_gate: dict[str, Any] = {"value": None}
     ledger = PromotionLedger(store.run_dir)
     defects = DefectMemory()
 
     def _terminate(status: RunStatus, decision: EvaluatorDecision, record: IterationRecord) -> LoopResult:
+        """The only way out of this loop.
+
+        Every terminal state persists identically and carries the same record,
+        because a terminal that persists by hand carries whatever its author
+        remembered — which is how a run reached a terminal state having executed
+        a full scenario suite and reported that it had no suite at all.
+        """
         record.decision = decision
         store.save_iteration(record)
         state.iterations.append(record)
@@ -244,13 +268,14 @@ async def run_control_loop(
         state.status = status
         store.save_state(state)
         return LoopResult(
-            status,
-            state,
-            decision,
-            last_audit["value"],
-            last_protocol["value"],
-            last_suite["value"],
-            ledger.load(),
+            status=status,
+            state=state,
+            final_decision=decision,
+            audit=last_audit["value"],
+            protocol=last_protocol["value"],
+            suite=last_suite["value"],
+            promotion_candidates=ledger.load(),
+            gate=last_gate["value"],
         )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
@@ -289,7 +314,7 @@ async def run_control_loop(
             emit("\nStop requested — halting before the next iteration.")
             state.status = RunStatus.STOPPED
             store.save_state(state)
-            return LoopResult(RunStatus.STOPPED, state)
+            return LoopResult(status=RunStatus.STOPPED, state=state)
 
         state.iteration = iteration
         record = IterationRecord(iteration=iteration)
@@ -573,21 +598,55 @@ async def run_control_loop(
                 _print_decision(decision, emit)
                 return _terminate(terminal, decision, record)
 
-        # 6b. combine: a completion claim the repository does not support
+        # 6b. combine: what the suite *measured* is folded in before any layer
+        #     that judges *claims* combines with it. Measurement is not a peer
+        #     of the claim-judging layers, it is their input: a completion audit
+        #     deciding what to do about an ACCEPT must be looking at an ACCEPT
+        #     the deterministic gate has already had its say on. While this ran
+        #     last, the completion-audit branch reached a terminal state and
+        #     returned before the gate was ever consulted — a required scenario
+        #     could fail, the run could stop, and nothing anywhere said so.
+        gate_overrode = False
+        if suite_result is not None:
+            last_gate["value"] = evaluate_gate(
+                suite_result,
+                generation_problems=(
+                    planner.generation_problems() if planner is not None else ()
+                ),
+                risks=_identified_risks(planner),
+            )
+            before_gate = decision
+            decision = _apply_suite_precedence(
+                suite_result,
+                decision,
+                scenario.name,
+                emit,
+                generation_problems=(
+                    planner.generation_problems() if planner is not None else ()
+                ),
+                risks=_identified_risks(planner),
+            )
+            gate_overrode = decision is not before_gate
+
+        # 6c. combine: a completion claim the repository does not support
         #     overrides an ACCEPT from the product evaluator.
         if audit is not None and audit.blocks_acceptance:
             if audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
                 if decision.decision is Decision.ACCEPT:
                     emit("  product evaluation ACCEPTed, but independent review is required.")
-                    record.decision = decision
                     record.notes.append(audit.headline)
-                    store.save_iteration(record)
-                    state.iterations.append(record)
-                    state.final_decision = decision
-                    state.status = RunStatus.NEEDS_INDEPENDENT_REVIEW
-                    store.save_state(state)
-                    return LoopResult(RunStatus.NEEDS_INDEPENDENT_REVIEW, state, decision, audit)
+                    return _terminate(RunStatus.NEEDS_INDEPENDENT_REVIEW, decision, record)
                 # Otherwise the evaluator's own verdict still routes below.
+            elif gate_overrode:
+                # The gate has already turned this into a FIX or a BLOCKED, so
+                # the branch below that would have rewritten an ACCEPT no longer
+                # fires and the audit's own findings would simply be dropped.
+                # Both layers refuse; both refusals belong in the record.
+                merged = list(decision.problems)
+                for problem in [c.what for c in audit.contradictions] + audit.missing_evidence:
+                    if problem and problem not in merged:
+                        merged.append(problem)
+                decision = decision.model_copy(update={"problems": merged})
             elif decision.decision is Decision.ACCEPT:
                 # The product looks fine, but the claims do not hold. Correct
                 # the claims rather than accepting them.
@@ -611,22 +670,6 @@ async def run_control_loop(
                     "or REQUIRES_INDEPENDENT_REVIEW.",
                     confidence=audit.confidence,
                 )
-
-        # 6c. combine: a required scenario that failed outranks an ACCEPT from
-        #     the product evaluator. The evaluator judges what it saw; it does
-        #     not get to overrule what the suite measured. Deliberately last, so
-        #     protocol and completion-audit precedence stay exactly as they were.
-        if suite_result is not None:
-            decision = _apply_suite_precedence(
-                suite_result,
-                decision,
-                scenario.name,
-                emit,
-                generation_problems=(
-                    planner.generation_problems() if planner is not None else ()
-                ),
-                risks=_identified_risks(planner),
-            )
 
         record.decision = decision
         _print_decision(decision, emit)
@@ -699,7 +742,9 @@ async def run_control_loop(
     # Defensive: the loop above always returns, but never fall through silently.
     state.status = RunStatus.MAX_ITERATIONS
     store.save_state(state)
-    return LoopResult(RunStatus.MAX_ITERATIONS, state, state.final_decision)
+    return LoopResult(
+        status=RunStatus.MAX_ITERATIONS, state=state, final_decision=state.final_decision
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1283,8 +1328,28 @@ async def cmd_run(args: argparse.Namespace) -> int:
         error("working tree is dirty and allow_dirty_tree is false")
         return 2
 
+    # Resume or start a run. The state is opened *before* the scenario is
+    # chosen, because on a resume the run's own recorded base scenario is the
+    # right answer and the config default is not: a resume that omitted
+    # --scenario silently swapped the base scenario underneath a plan built
+    # against a different one, and every generated scenario that referenced a
+    # service the new base does not declare was then dropped.
+    assert config.runs_dir is not None
+    store: EvidenceStore
+    state: RunState | None = None
+    if args.resume_run:
+        store = EvidenceStore.open_run(config.runs_dir, args.resume_run)
+        state = store.load_state()
+        if state is None:
+            error(f"No resumable state found for run {args.resume_run}")
+            return 2
+
+    scenario_name = args.scenario
+    if not scenario_name and state is not None and state.scenario_name:
+        scenario_name = state.scenario_name
+        note(f"resuming against the run's own base scenario: {scenario_name}")
     try:
-        scenario = load_scenario(config.scenario_path(args.scenario))
+        scenario = load_scenario(config.scenario_path(scenario_name))
     except (FileNotFoundError, ValueError) as exc:
         error(str(exc))
         return 2
@@ -1298,14 +1363,18 @@ async def cmd_run(args: argparse.Namespace) -> int:
         note("scenario is a browser scenario — enabling browser support for this run")
         config.run.browser_enabled = True
 
-    # Resume or start a run.
-    assert config.runs_dir is not None
-    if args.resume_run:
-        store = EvidenceStore.open_run(config.runs_dir, args.resume_run)
-        state = store.load_state()
-        if state is None:
-            error(f"No resumable state found for run {args.resume_run}")
+    if config.run.browser_enabled:
+        # Preflight, once, at the top. A run whose browser verification cannot
+        # happen must say so here rather than producing browser scenarios that
+        # observe nothing at the bottom. `doctor` checks this, but `doctor` is a
+        # separate opt-in command and `cmd_run` checked nothing.
+        ok, detail = await _check_chromium()
+        if not ok:
+            error(f"browser support is enabled for this run but unusable: {detail}")
+            out("Install it with: pip install playwright && playwright install chromium")
             return 2
+
+    if state is not None:
         store.clear_stop()
         state.status = RunStatus.RUNNING
         note(f"resuming run {state.run_id} (builder session {state.builder_session_id})")
@@ -1348,6 +1417,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
 
     planner = _make_planner(config, args, store, scenario, founder, out)
     if planner is not None:
+        if planner.restore_failed:
+            # Fail closed. This run has a plan on disk that cannot be read, so
+            # it cannot say what it had already decided to verify. Starting over
+            # at wave zero would hand back a spent generation budget and would
+            # replace the run's own record of its committed coverage with an
+            # empty one. The unreadable file has been preserved; a deliberate
+            # fresh run is now the operator's decision to make, not the
+            # driver's to make silently.
+            error("\nBLOCKED — this run's scenario plan could not be read.")
+            out(
+                "Nothing was overwritten. To start this task's verification again from\n"
+                "nothing, begin a new run rather than resuming this one."
+            )
+            state.status = RunStatus.BLOCKED
+            store.save_state(state)
+            return _exit_code_for(RunStatus.BLOCKED)
         out(
             f"scenarios: adaptive generation enabled — up to "
             f"{config.scenario_generation.max_total_scenarios} generated case(s) across "
@@ -1380,7 +1465,15 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     builder=builder,
                     evaluator=evaluator,
                     make_executor=lambda artifact_dir: ScenarioExecutor(
-                        config.neyma_repo, config.run, artifact_dir
+                        config.neyma_repo,
+                        config.run,
+                        artifact_dir,
+                        # So the executor can re-check a command whose text
+                        # changed between validation and execution against the
+                        # same set validation used.
+                        approved_commands=(
+                            planner.approved_commands if planner is not None else None
+                        ),
                     ),
                     founder=founder,
                     repo_loader=repo_loader,
@@ -1622,7 +1715,7 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
     header(f"REPLAYING {len(suite)} GENERATED SCENARIO(S) — run {store.run_id}")
     executor = SuiteExecutor(
         make_executor=lambda artifact_dir: ScenarioExecutor(
-            config.neyma_repo, config.run, artifact_dir
+            config.neyma_repo, config.run, artifact_dir, approved_commands=approved
         ),
         artifact_root=artifact_root,
         browser_enabled=config.run.browser_enabled,
@@ -1920,9 +2013,22 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
     if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
         warn("IMPLEMENTED — AWAITING INDEPENDENT REVIEW\n")
         out(
-            "The implementation stands and the product evaluation passed, but the\n"
+            "The implementation stands and the product evaluation reached ACCEPT, but the\n"
             "repository requires criteria that this session may not award itself."
         )
+        # What the deterministic gate said, rather than an assertion nobody
+        # computed. This text used to state flatly that "the product evaluation
+        # passed" on a path that returned before the gate ran at all, so it
+        # could be printed over a required scenario that had just failed.
+        if result.gate is not None:
+            out("")
+            for line in result.gate.summary_block().splitlines():
+                out(line)
+        elif result.suite is None:
+            note(
+                "\nNo scenario suite ran in this configuration, so the deterministic "
+                "acceptance gate was not applied to this outcome."
+            )
         audit = result.audit
         if audit is not None:
             pending = audit.observed_state.progress.independent_pending
@@ -2904,6 +3010,26 @@ async def cmd_investigate(args: argparse.Namespace) -> int:
     }[state.result.status]
 
 
+def _recorded_suite_gate(state: RunState) -> Any:
+    """The acceptance gate re-derived from what the run recorded, or None.
+
+    Deterministic and evidence-only: the suite result was persisted by
+    ``save_iteration`` and again as ``suite-result.json``, so this recomputes
+    the same verdict from the same records rather than trusting anything the
+    run said about itself. Returns None when the run executed no suite, which
+    is not the same as a suite that passed.
+    """
+    for record in reversed(state.iterations or []):
+        if not record.suite:
+            continue
+        try:
+            suite = SuiteResult.model_validate(record.suite)
+        except Exception:
+            continue
+        return evaluate_gate(suite)
+    return None
+
+
 async def cmd_review(args: argparse.Namespace) -> int:
     """Launch a fresh, read-only independent reviewer. Explicitly human-authorized."""
     config = _config_from_args(args)
@@ -2962,6 +3088,31 @@ async def cmd_review(args: argparse.Namespace) -> int:
         out(resolution.render_report(run_id=store.run_id))
         return 11
     note("protocol resolver: topology and authority are valid.")
+
+    # The run's own scenario evidence, read back from what it recorded. This is
+    # the documented way out of NEEDS_INDEPENDENT_REVIEW, and it had never heard
+    # of the acceptance gate: it re-ran the auditor and the resolver from
+    # scratch, built a prompt with no scenario section in it at all, and could
+    # exit 0 over a run in which a required scenario had failed. A reviewer
+    # cannot adjudicate evidence it is never shown, and the reviewer's
+    # independence is spent the moment it is launched.
+    gate = _recorded_suite_gate(state)
+    if gate is not None and gate.blocks_acceptance:
+        error("\nBLOCKED — no reviewer was launched.")
+        out(
+            "This run's scenario suite did not establish the coverage it set out to.\n"
+            "An independent review cannot substitute for verification that never happened."
+        )
+        out("")
+        out(gate.summary_block())
+        out(
+            "\nRe-run the suite and reach a verified gate first:\n"
+            f"  python -m neyma_product_driver run --resume-run {store.run_id}"
+        )
+        return 11
+    if gate is not None:
+        note(f"scenario gate: {gate.headline()}")
+
     note(
         "\nThis launches a FRESH Claude session. It does not resume or inherit the\n"
         "builder conversation, it is read-only (Read/Grep/Glob only), and it will not\n"

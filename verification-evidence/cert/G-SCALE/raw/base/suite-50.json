@@ -1,0 +1,5710 @@
+{
+  "entries": [
+    {
+      "scenario_id": "permanent-health",
+      "scenario": {
+        "name": "case-001-http",
+        "phase": "",
+        "description": "GET /item/1 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 1",
+            "method": "GET",
+            "path": "/item/1",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 1",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "permanent",
+      "priority": "P0",
+      "risk_category": null,
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": null,
+      "required": true
+    },
+    {
+      "scenario_id": "case-001-cmd",
+      "scenario": {
+        "name": "case-001-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 1",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 1",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 1",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=1"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-001-cmd",
+        "proposed_id": "",
+        "title": "item 1 behaves correctly",
+        "purpose": "exercise item 1",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 1 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-002-idem",
+      "scenario": {
+        "name": "case-002-idem",
+        "phase": "",
+        "description": "approving item 2 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 2,
+                "key": "k-2"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 2,
+                "key": "k-2"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 2",
+              "contains": [
+                "item=2 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-002-idem",
+        "proposed_id": "",
+        "title": "item 2 behaves correctly",
+        "purpose": "exercise item 2",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 2 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-003-http",
+      "scenario": {
+        "name": "case-003-http",
+        "phase": "",
+        "description": "GET /item/3 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 3",
+            "method": "GET",
+            "path": "/item/3",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 3",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-003-http",
+        "proposed_id": "",
+        "title": "item 3 behaves correctly",
+        "purpose": "exercise item 3",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 3 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-004-cmd",
+      "scenario": {
+        "name": "case-004-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 4",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 4",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 4",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=4"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-004-cmd",
+        "proposed_id": "",
+        "title": "item 4 behaves correctly",
+        "purpose": "exercise item 4",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 4 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-005-idem",
+      "scenario": {
+        "name": "case-005-idem",
+        "phase": "",
+        "description": "approving item 5 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 5,
+                "key": "k-5"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 5,
+                "key": "k-5"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 5",
+              "contains": [
+                "item=5 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-005-idem",
+        "proposed_id": "",
+        "title": "item 5 behaves correctly",
+        "purpose": "exercise item 5",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "item 5 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-006-http",
+      "scenario": {
+        "name": "case-006-http",
+        "phase": "",
+        "description": "GET /item/6 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 6",
+            "method": "GET",
+            "path": "/item/6",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 6",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-006-http",
+        "proposed_id": "",
+        "title": "item 6 behaves correctly",
+        "purpose": "exercise item 6",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 6 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-007-cmd",
+      "scenario": {
+        "name": "case-007-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 7",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 7",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 7",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=7"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-007-cmd",
+        "proposed_id": "",
+        "title": "item 7 behaves correctly",
+        "purpose": "exercise item 7",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 7 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-008-idem",
+      "scenario": {
+        "name": "case-008-idem",
+        "phase": "",
+        "description": "approving item 8 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 8,
+                "key": "k-8"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 8,
+                "key": "k-8"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 8",
+              "contains": [
+                "item=8 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-008-idem",
+        "proposed_id": "",
+        "title": "item 8 behaves correctly",
+        "purpose": "exercise item 8",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 8 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-009-http",
+      "scenario": {
+        "name": "case-009-http",
+        "phase": "",
+        "description": "GET /item/9 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 9",
+            "method": "GET",
+            "path": "/item/9",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 9",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-009-http",
+        "proposed_id": "",
+        "title": "item 9 behaves correctly",
+        "purpose": "exercise item 9",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 9 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-010-cmd",
+      "scenario": {
+        "name": "case-010-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 10",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 10",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 10",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=10"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-010-cmd",
+        "proposed_id": "",
+        "title": "item 10 behaves correctly",
+        "purpose": "exercise item 10",
+        "risk_category": "persistence_failure",
+        "priority": "P0",
+        "rationale": "item 10 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-011-idem",
+      "scenario": {
+        "name": "case-011-idem",
+        "phase": "",
+        "description": "approving item 11 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 11,
+                "key": "k-11"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 11,
+                "key": "k-11"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 11",
+              "contains": [
+                "item=11 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-011-idem",
+        "proposed_id": "",
+        "title": "item 11 behaves correctly",
+        "purpose": "exercise item 11",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 11 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-012-http",
+      "scenario": {
+        "name": "case-012-http",
+        "phase": "",
+        "description": "GET /item/12 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 12",
+            "method": "GET",
+            "path": "/item/12",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 12",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-012-http",
+        "proposed_id": "",
+        "title": "item 12 behaves correctly",
+        "purpose": "exercise item 12",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 12 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-013-cmd",
+      "scenario": {
+        "name": "case-013-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 13",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 13",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 13",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=13"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-013-cmd",
+        "proposed_id": "",
+        "title": "item 13 behaves correctly",
+        "purpose": "exercise item 13",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 13 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-014-idem",
+      "scenario": {
+        "name": "case-014-idem",
+        "phase": "",
+        "description": "approving item 14 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 14,
+                "key": "k-14"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 14,
+                "key": "k-14"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 14",
+              "contains": [
+                "item=14 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-014-idem",
+        "proposed_id": "",
+        "title": "item 14 behaves correctly",
+        "purpose": "exercise item 14",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 14 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-015-http",
+      "scenario": {
+        "name": "case-015-http",
+        "phase": "",
+        "description": "GET /item/15 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 15",
+            "method": "GET",
+            "path": "/item/15",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 15",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-015-http",
+        "proposed_id": "",
+        "title": "item 15 behaves correctly",
+        "purpose": "exercise item 15",
+        "risk_category": "cross_tenant",
+        "priority": "P0",
+        "rationale": "item 15 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-016-cmd",
+      "scenario": {
+        "name": "case-016-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 16",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 16",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 16",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=16"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-016-cmd",
+        "proposed_id": "",
+        "title": "item 16 behaves correctly",
+        "purpose": "exercise item 16",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 16 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-017-idem",
+      "scenario": {
+        "name": "case-017-idem",
+        "phase": "",
+        "description": "approving item 17 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 17,
+                "key": "k-17"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 17,
+                "key": "k-17"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 17",
+              "contains": [
+                "item=17 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-017-idem",
+        "proposed_id": "",
+        "title": "item 17 behaves correctly",
+        "purpose": "exercise item 17",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 17 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-018-http",
+      "scenario": {
+        "name": "case-018-http",
+        "phase": "",
+        "description": "GET /item/18 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 18",
+            "method": "GET",
+            "path": "/item/18",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 18",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-018-http",
+        "proposed_id": "",
+        "title": "item 18 behaves correctly",
+        "purpose": "exercise item 18",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 18 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-019-cmd",
+      "scenario": {
+        "name": "case-019-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 19",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 19",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 19",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=19"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-019-cmd",
+        "proposed_id": "",
+        "title": "item 19 behaves correctly",
+        "purpose": "exercise item 19",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 19 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-020-idem",
+      "scenario": {
+        "name": "case-020-idem",
+        "phase": "",
+        "description": "approving item 20 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 20,
+                "key": "k-20"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 20,
+                "key": "k-20"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 20",
+              "contains": [
+                "item=20 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-020-idem",
+        "proposed_id": "",
+        "title": "item 20 behaves correctly",
+        "purpose": "exercise item 20",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "item 20 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-021-http",
+      "scenario": {
+        "name": "case-021-http",
+        "phase": "",
+        "description": "GET /item/21 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 21",
+            "method": "GET",
+            "path": "/item/21",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 21",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-021-http",
+        "proposed_id": "",
+        "title": "item 21 behaves correctly",
+        "purpose": "exercise item 21",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 21 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-022-cmd",
+      "scenario": {
+        "name": "case-022-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 22",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 22",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 22",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=22"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-022-cmd",
+        "proposed_id": "",
+        "title": "item 22 behaves correctly",
+        "purpose": "exercise item 22",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 22 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-023-idem",
+      "scenario": {
+        "name": "case-023-idem",
+        "phase": "",
+        "description": "approving item 23 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 23,
+                "key": "k-23"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 23,
+                "key": "k-23"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 23",
+              "contains": [
+                "item=23 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-023-idem",
+        "proposed_id": "",
+        "title": "item 23 behaves correctly",
+        "purpose": "exercise item 23",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 23 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-024-http",
+      "scenario": {
+        "name": "case-024-http",
+        "phase": "",
+        "description": "GET /item/24 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 24",
+            "method": "GET",
+            "path": "/item/24",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 24",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-024-http",
+        "proposed_id": "",
+        "title": "item 24 behaves correctly",
+        "purpose": "exercise item 24",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 24 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-025-cmd",
+      "scenario": {
+        "name": "case-025-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 25",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 25",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 25",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=25"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-025-cmd",
+        "proposed_id": "",
+        "title": "item 25 behaves correctly",
+        "purpose": "exercise item 25",
+        "risk_category": "persistence_failure",
+        "priority": "P0",
+        "rationale": "item 25 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-026-idem",
+      "scenario": {
+        "name": "case-026-idem",
+        "phase": "",
+        "description": "approving item 26 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 26,
+                "key": "k-26"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 26,
+                "key": "k-26"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 26",
+              "contains": [
+                "item=26 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-026-idem",
+        "proposed_id": "",
+        "title": "item 26 behaves correctly",
+        "purpose": "exercise item 26",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 26 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-027-http",
+      "scenario": {
+        "name": "case-027-http",
+        "phase": "",
+        "description": "GET /item/27 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 27",
+            "method": "GET",
+            "path": "/item/27",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 27",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-027-http",
+        "proposed_id": "",
+        "title": "item 27 behaves correctly",
+        "purpose": "exercise item 27",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 27 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-028-cmd",
+      "scenario": {
+        "name": "case-028-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 28",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 28",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 28",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=28"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-028-cmd",
+        "proposed_id": "",
+        "title": "item 28 behaves correctly",
+        "purpose": "exercise item 28",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 28 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-029-idem",
+      "scenario": {
+        "name": "case-029-idem",
+        "phase": "",
+        "description": "approving item 29 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 29,
+                "key": "k-29"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 29,
+                "key": "k-29"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 29",
+              "contains": [
+                "item=29 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-029-idem",
+        "proposed_id": "",
+        "title": "item 29 behaves correctly",
+        "purpose": "exercise item 29",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 29 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-030-http",
+      "scenario": {
+        "name": "case-030-http",
+        "phase": "",
+        "description": "GET /item/30 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 30",
+            "method": "GET",
+            "path": "/item/30",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 30",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-030-http",
+        "proposed_id": "",
+        "title": "item 30 behaves correctly",
+        "purpose": "exercise item 30",
+        "risk_category": "cross_tenant",
+        "priority": "P0",
+        "rationale": "item 30 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-031-cmd",
+      "scenario": {
+        "name": "case-031-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 31",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 31",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 31",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=31"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-031-cmd",
+        "proposed_id": "",
+        "title": "item 31 behaves correctly",
+        "purpose": "exercise item 31",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 31 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-032-idem",
+      "scenario": {
+        "name": "case-032-idem",
+        "phase": "",
+        "description": "approving item 32 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 32,
+                "key": "k-32"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 32,
+                "key": "k-32"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 32",
+              "contains": [
+                "item=32 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-032-idem",
+        "proposed_id": "",
+        "title": "item 32 behaves correctly",
+        "purpose": "exercise item 32",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 32 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-033-http",
+      "scenario": {
+        "name": "case-033-http",
+        "phase": "",
+        "description": "GET /item/33 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 33",
+            "method": "GET",
+            "path": "/item/33",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 33",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-033-http",
+        "proposed_id": "",
+        "title": "item 33 behaves correctly",
+        "purpose": "exercise item 33",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 33 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-034-cmd",
+      "scenario": {
+        "name": "case-034-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 34",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 34",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 34",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=34"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-034-cmd",
+        "proposed_id": "",
+        "title": "item 34 behaves correctly",
+        "purpose": "exercise item 34",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 34 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-035-idem",
+      "scenario": {
+        "name": "case-035-idem",
+        "phase": "",
+        "description": "approving item 35 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 35,
+                "key": "k-35"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 35,
+                "key": "k-35"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 35",
+              "contains": [
+                "item=35 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-035-idem",
+        "proposed_id": "",
+        "title": "item 35 behaves correctly",
+        "purpose": "exercise item 35",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "item 35 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-036-http",
+      "scenario": {
+        "name": "case-036-http",
+        "phase": "",
+        "description": "GET /item/36 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 36",
+            "method": "GET",
+            "path": "/item/36",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 36",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-036-http",
+        "proposed_id": "",
+        "title": "item 36 behaves correctly",
+        "purpose": "exercise item 36",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 36 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-037-cmd",
+      "scenario": {
+        "name": "case-037-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 37",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 37",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 37",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=37"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-037-cmd",
+        "proposed_id": "",
+        "title": "item 37 behaves correctly",
+        "purpose": "exercise item 37",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 37 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-038-idem",
+      "scenario": {
+        "name": "case-038-idem",
+        "phase": "",
+        "description": "approving item 38 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 38,
+                "key": "k-38"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 38,
+                "key": "k-38"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 38",
+              "contains": [
+                "item=38 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-038-idem",
+        "proposed_id": "",
+        "title": "item 38 behaves correctly",
+        "purpose": "exercise item 38",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 38 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-039-http",
+      "scenario": {
+        "name": "case-039-http",
+        "phase": "",
+        "description": "GET /item/39 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 39",
+            "method": "GET",
+            "path": "/item/39",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 39",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-039-http",
+        "proposed_id": "",
+        "title": "item 39 behaves correctly",
+        "purpose": "exercise item 39",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 39 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-040-cmd",
+      "scenario": {
+        "name": "case-040-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 40",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 40",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 40",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=40"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-040-cmd",
+        "proposed_id": "",
+        "title": "item 40 behaves correctly",
+        "purpose": "exercise item 40",
+        "risk_category": "persistence_failure",
+        "priority": "P0",
+        "rationale": "item 40 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-041-idem",
+      "scenario": {
+        "name": "case-041-idem",
+        "phase": "",
+        "description": "approving item 41 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 41,
+                "key": "k-41"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 41,
+                "key": "k-41"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 41",
+              "contains": [
+                "item=41 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-041-idem",
+        "proposed_id": "",
+        "title": "item 41 behaves correctly",
+        "purpose": "exercise item 41",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 41 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-042-http",
+      "scenario": {
+        "name": "case-042-http",
+        "phase": "",
+        "description": "GET /item/42 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 42",
+            "method": "GET",
+            "path": "/item/42",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 42",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-042-http",
+        "proposed_id": "",
+        "title": "item 42 behaves correctly",
+        "purpose": "exercise item 42",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 42 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-043-cmd",
+      "scenario": {
+        "name": "case-043-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 43",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 43",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 43",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=43"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-043-cmd",
+        "proposed_id": "",
+        "title": "item 43 behaves correctly",
+        "purpose": "exercise item 43",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 43 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-044-idem",
+      "scenario": {
+        "name": "case-044-idem",
+        "phase": "",
+        "description": "approving item 44 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 44,
+                "key": "k-44"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 44,
+                "key": "k-44"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 44",
+              "contains": [
+                "item=44 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-044-idem",
+        "proposed_id": "",
+        "title": "item 44 behaves correctly",
+        "purpose": "exercise item 44",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 44 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-045-http",
+      "scenario": {
+        "name": "case-045-http",
+        "phase": "",
+        "description": "GET /item/45 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 45",
+            "method": "GET",
+            "path": "/item/45",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 45",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-045-http",
+        "proposed_id": "",
+        "title": "item 45 behaves correctly",
+        "purpose": "exercise item 45",
+        "risk_category": "cross_tenant",
+        "priority": "P0",
+        "rationale": "item 45 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-046-cmd",
+      "scenario": {
+        "name": "case-046-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 46",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 46",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 46",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=46"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-046-cmd",
+        "proposed_id": "",
+        "title": "item 46 behaves correctly",
+        "purpose": "exercise item 46",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 46 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-047-idem",
+      "scenario": {
+        "name": "case-047-idem",
+        "phase": "",
+        "description": "approving item 47 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 47,
+                "key": "k-47"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 47,
+                "key": "k-47"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 47",
+              "contains": [
+                "item=47 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-047-idem",
+        "proposed_id": "",
+        "title": "item 47 behaves correctly",
+        "purpose": "exercise item 47",
+        "risk_category": "idempotency",
+        "priority": "P1",
+        "rationale": "item 47 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-048-http",
+      "scenario": {
+        "name": "case-048-http",
+        "phase": "",
+        "description": "GET /item/48 returns the item owned by tenant-a",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [
+          {
+            "name": "read item 48",
+            "method": "GET",
+            "path": "/item/48",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 200,
+            "expect_contains": [
+              "\"item\": 48",
+              "\"owner\": \"tenant-a\""
+            ],
+            "timeout_s": null
+          }
+        ],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [
+          "tenant-b"
+        ],
+        "teardown": [],
+        "env": {}
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-048-http",
+        "proposed_id": "",
+        "title": "item 48 behaves correctly",
+        "purpose": "exercise item 48",
+        "risk_category": "cross_tenant",
+        "priority": "P1",
+        "rationale": "item 48 is representative of the cross_tenant surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-049-cmd",
+      "scenario": {
+        "name": "case-049-cmd",
+        "phase": "",
+        "description": "the persisted-state probe reports item 49",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [
+          {
+            "name": "probe 49",
+            "run": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 49",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "item=49"
+            ],
+            "timeout_s": null
+          }
+        ],
+        "fixtures": [],
+        "browser": null,
+        "steps": [],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-049-cmd",
+        "proposed_id": "",
+        "title": "item 49 behaves correctly",
+        "purpose": "exercise item 49",
+        "risk_category": "persistence_failure",
+        "priority": "P1",
+        "rationale": "item 49 is representative of the persistence_failure surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    },
+    {
+      "scenario_id": "case-050-idem",
+      "scenario": {
+        "name": "case-050-idem",
+        "phase": "",
+        "description": "approving item 50 twice with one key stores exactly one row",
+        "mode": "backend",
+        "setup": [],
+        "services": [],
+        "readiness": [
+          {
+            "http": "http://127.0.0.1:8791/health",
+            "expect_status": 200
+          }
+        ],
+        "app_url": "http://127.0.0.1:8791",
+        "requests": [],
+        "commands": [],
+        "fixtures": [],
+        "browser": null,
+        "steps": [
+          {
+            "kind": "request",
+            "name": "first approve",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 50,
+                "key": "k-50"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "request",
+            "name": "repeat approve, same key",
+            "command": null,
+            "state_check": null,
+            "request": {
+              "name": "",
+              "method": "POST",
+              "path": "/approve",
+              "url": null,
+              "headers": {},
+              "json_body": {
+                "item": 50,
+                "key": "k-50"
+              },
+              "body": null,
+              "expect_status": 200,
+              "expect_contains": [],
+              "timeout_s": null
+            },
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          },
+          {
+            "kind": "state_check",
+            "name": "exactly one approval row persisted",
+            "command": null,
+            "state_check": {
+              "name": "",
+              "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 50",
+              "contains": [
+                "item=50 approval_rows=1"
+              ],
+              "not_contains": [
+                "approval_rows=2"
+              ],
+              "timeout_s": null
+            },
+            "request": null,
+            "requests": [],
+            "browser": null,
+            "fixture_name": "",
+            "fixture_content": "",
+            "service": "",
+            "wait_ms": null
+          }
+        ],
+        "expect_visible": [],
+        "expect_state": [],
+        "forbidden": [],
+        "teardown": [],
+        "env": {
+          "TARGET_DB": "/private/tmp/claude-501/-Users-sammyfammy-neyma-product-driver/14ad07bb-8100-4304-a9d3-25273378f23b/scratchpad/gscale.sqlite"
+        }
+      },
+      "origin": "generated",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "isolation_key": "default",
+      "depends_on": [],
+      "generated": {
+        "id": "case-050-idem",
+        "proposed_id": "",
+        "title": "item 50 behaves correctly",
+        "purpose": "exercise item 50",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "rationale": "item 50 is representative of the idempotency surface",
+        "requirement_reference": "G-SCALE-CERT",
+        "product_principle_reference": "",
+        "mode": "backend",
+        "setup": [],
+        "service_refs": [],
+        "actions": [],
+        "persisted_state_checks": [],
+        "expected_observations": [],
+        "forbidden_observations": [],
+        "cleanup": [],
+        "isolation_note": "",
+        "isolation_key": "default",
+        "generated_from": [],
+        "confidence": 0.5,
+        "provenance": {
+          "generated_at": "2026-08-10T07:53:46+00:00",
+          "task_hash": "",
+          "founder_context_version": "",
+          "repository_head": "",
+          "active_unit_id": "",
+          "acceptance_criteria_consulted": [],
+          "files_consulted": [],
+          "diff_files_consulted": [],
+          "prior_failures_consulted": [],
+          "generating_risk": "",
+          "source_failures": [],
+          "source_clusters": [],
+          "stage": "",
+          "wave": 0,
+          "model": "",
+          "session_id": "",
+          "kind": "ephemeral"
+        }
+      },
+      "required": true
+    }
+  ],
+  "assembly_conflicts": []
+}

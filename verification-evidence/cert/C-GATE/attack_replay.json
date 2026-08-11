@@ -1,0 +1,59 @@
+[
+  {
+    "id": "D1",
+    "attack": "replay a P0 plan against a repo with no product: every scenario is BLOCKED",
+    "plan_scenarios": [
+      "gen-idem"
+    ],
+    "plan_priorities": [
+      "P0"
+    ],
+    "plan_risks": [
+      [
+        "R1",
+        "P0",
+        "idempotency"
+      ]
+    ],
+    "exit_code": 20,
+    "expected_zero": false,
+    "stdout_tail": "\n=== REPLAYING 1 GENERATED SCENARIO(S) \u2014 run 2026-cgate-replay ===\n  \u2192 gen-idem (generated)\n\n1 generated case(s) + 0 permanent regression scenario(s): 0 passed, 0 failed, 1 blocked, 0 skipped\nrisk categories exercised: idempotency\n\nFAILURES:\n  [BLOCKED] P0 generated gen-idem  (idempotency)  \u2014 product did not become ready; nothing was observed\n      generated because: duplicate approval could double-pay\n      verifies: U-042: an approved invoice is paid exactly once\n      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D1-mevzni61/driver/runs/2026-cgate-replay/replay/scenarios/gen-idem\n\n1 unresolved high-priority scenario failure(s)\nThis states verified coverage. It is not a claim that all possible cases were verified.\n\nscenario gate: NOT VERIFIED \u2014 1 of 1 required scenario(s) did not establish a pass (1 executed); 1 identified acceptance-blocking risk(s) have no passing scenario\n  [BLOCKED] gen-idem \u2014 the product was never observed (product did not become ready; nothing was observed)\n      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D1-mevzni61/driver/runs/2026-cgate-replay/replay/scenarios/gen-idem\n  KNOWN COVERAGE GAPS \u2014 risks this run identified and did not verify:\n    [P0] idempotency \u2014 approval may not be idempotent  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 blocked))\n\nevidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D1-mevzni61/driver/runs/2026-cgate-replay/replay\n",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "D2",
+    "attack": "replay a P2-ONLY plan with NO risks: every scenario BLOCKED, nothing required",
+    "plan_scenarios": [
+      "gen-idem"
+    ],
+    "plan_priorities": [
+      "P2"
+    ],
+    "plan_risks": [],
+    "exit_code": 0,
+    "expected_zero": false,
+    "stdout_tail": "\n=== REPLAYING 1 GENERATED SCENARIO(S) \u2014 run 2026-cgate-replay ===\n  \u2192 gen-idem (generated)\n\n1 generated case(s) + 0 permanent regression scenario(s): 0 passed, 0 failed, 1 blocked, 0 skipped\nrisk categories exercised: idempotency\n\nFAILURES:\n  [BLOCKED] P2 generated gen-idem  (idempotency)  \u2014 product did not become ready; nothing was observed\n      generated because: duplicate approval could double-pay\n      verifies: U-042: an approved invoice is paid exactly once\n      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D2-905vu8oe/driver/runs/2026-cgate-replay/replay/scenarios/gen-idem\n\n0 unresolved high-priority scenario failures\nThis states verified coverage. It is not a claim that all possible cases were verified.\n\nscenario gate: VERIFIED \u2014 0/0 required scenario(s) passed with resolvable evidence\n\nevidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D2-905vu8oe/driver/runs/2026-cgate-replay/replay\n",
+    "OUTCOME": "FALSE GREEN (exit 0)"
+  },
+  {
+    "id": "D3",
+    "attack": "replay a P2-only plan that declares a P0 risk",
+    "plan_scenarios": [
+      "gen-idem"
+    ],
+    "plan_priorities": [
+      "P2"
+    ],
+    "plan_risks": [
+      [
+        "R1",
+        "P0",
+        "idempotency"
+      ]
+    ],
+    "exit_code": 20,
+    "expected_zero": false,
+    "stdout_tail": "\n=== REPLAYING 1 GENERATED SCENARIO(S) \u2014 run 2026-cgate-replay ===\n  \u2192 gen-idem (generated)\n\n1 generated case(s) + 0 permanent regression scenario(s): 0 passed, 0 failed, 1 blocked, 0 skipped\nrisk categories exercised: idempotency\n\nFAILURES:\n  [BLOCKED] P2 generated gen-idem  (idempotency)  \u2014 product did not become ready; nothing was observed\n      generated because: duplicate approval could double-pay\n      verifies: U-042: an approved invoice is paid exactly once\n      evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D3-kn1pjk24/driver/runs/2026-cgate-replay/replay/scenarios/gen-idem\n\n0 unresolved high-priority scenario failures\nThis states verified coverage. It is not a claim that all possible cases were verified.\n\nscenario gate: NOT VERIFIED \u2014 0 of 0 required scenario(s) did not establish a pass (1 executed); 1 identified acceptance-blocking risk(s) have no passing scenario\n  KNOWN COVERAGE GAPS \u2014 risks this run identified and did not verify:\n    [P0] idempotency \u2014 approval may not be idempotent  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 blocked))\n\nevidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-D3-kn1pjk24/driver/runs/2026-cgate-replay/replay\n",
+    "OUTCOME": "EXPECTED"
+  }
+]

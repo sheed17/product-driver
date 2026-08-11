@@ -1,0 +1,678 @@
+{
+  "run_id": "cert-A-r1",
+  "task": "Improve the exception detail screen so operators can understand the next action.",
+  "active_unit_id": "U-UI-11",
+  "generation_basis": {
+    "task": "Improve the exception detail screen so operators can understand the next action.",
+    "task_hash": "ecfcc59ed1f920c7",
+    "active_unit_id": "U-UI-11",
+    "acceptance_criteria": [
+      "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+      "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+      "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "The exception detail screen could display a workflow state that no longer matches the backend (e.g. after an action was applied through another channel), so an operator acts on a stale picture.",
+      "risk_category": "stale_state",
+      "severity": "P1",
+      "basis": "AC 'the screen never shows a state the backend does not currently hold' (weight 3)",
+      "covered_by": []
+    },
+    {
+      "id": "R3",
+      "description": "The evidence the exception was raised from may be missing, unlinked, or unrenderable on the screen.",
+      "risk_category": "missing_data",
+      "severity": "P2",
+      "basis": "AC 'the screen shows the evidence the exception was raised from' (weight 2)",
+      "covered_by": []
+    },
+    {
+      "id": "R5",
+      "description": "After a service restart the screen could show empty or placeholder state rather than the real persisted backend state.",
+      "risk_category": "restart_recovery",
+      "severity": "P2",
+      "basis": "AC 'the screen never shows a state the backend does not currently hold'; callback server reconstructs WorkflowStore per request",
+      "covered_by": [
+        "EX-05"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "EX-01",
+      "proposed_id": "",
+      "title": "Backend state store is self-consistent: every run's current state is one the audit trail records",
+      "purpose": "Establish the invariant that underpins AC-3: any screen faithfully reading workflow_runs.state shows a state the backend actually holds and has recorded a transition into.",
+      "risk_category": "safety_invariant",
+      "priority": "P1",
+      "rationale": "AC-3 is a UI-backend consistency claim; the exercisable core is that the backend's own state store is coherent, so a screen reading it cannot surface a phantom state.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "inference_presented_as_fact",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "state_check",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": {
+            "name": "",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+            "contains": [
+              "0"
+            ],
+            "not_contains": [],
+            "timeout_s": null
+          },
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no run in a state its latest audit event does not back",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "0"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Read-only SQL against the workspace DB; mutates nothing, safe to run before/after any other scenario.",
+      "isolation_key": "driver_probe_callback_8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T07:59:47+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The screen could show a state the backend does not currently hold (R1).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "278f465a-5830-4494-8433-07d754b1cb76",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "EX-02",
+      "proposed_id": "",
+      "title": "An unverifiable action link renders a REJECTED screen, never an APPLIED one, and moves no state",
+      "purpose": "Exercise the served exception/action surface with a garbage token and confirm it never claims an applied state the backend does not hold.",
+      "risk_category": "malformed_input",
+      "priority": "P1",
+      "rationale": "The served HTML screen renders APPLIED/REJECTED from the signed-action intake; a forged token must produce REJECTED and leave the backend state store untouched and consistent.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "success_without_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action?token=garbage.deadbeef",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 401,
+            "expect_contains": [
+              "Action link rejected",
+              "REJECTED"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "state store still self-consistent after the rejected link",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Action link rejected"
+      ],
+      "forbidden_observations": [
+        "Neyma action applied",
+        "APPLIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "A signature-rejected request is refused before submit_signed_action mutates anything; no cleanup required.",
+      "isolation_key": "driver_probe_callback_8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T07:59:47+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The screen reports success the backend never verified (R4), surfacing a state the backend does not hold (R1).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "278f465a-5830-4494-8433-07d754b1cb76",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "EX-04",
+      "proposed_id": "",
+      "title": "Two racing unverified action links never yield an applied state or corrupt the store",
+      "purpose": "Race two garbage action submissions and confirm neither produces an APPLIED screen and the backend state store stays consistent (no partial/duplicate transition).",
+      "risk_category": "concurrency",
+      "priority": "P2",
+      "rationale": "Concurrent clicks on a stale link are realistic; the invariant is that the screen never flips to a state the backend did not actually and singly perform.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "parallel_requests",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/email/action?token=garbage.aaaa",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 401,
+              "expect_contains": [
+                "REJECTED"
+              ],
+              "timeout_s": 5.0
+            },
+            {
+              "name": "",
+              "method": "GET",
+              "path": "/email/action?token=garbage.bbbb",
+              "url": "",
+              "headers": {},
+              "json_body": null,
+              "body": "",
+              "expect_status": 401,
+              "expect_contains": [
+                "REJECTED"
+              ],
+              "timeout_s": 5.0
+            }
+          ],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "state store still self-consistent after the race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "REJECTED"
+      ],
+      "forbidden_observations": [
+        "Neyma action applied",
+        "APPLIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "Both requests are signature-rejected; nothing is written, so scenarios remain isolated.",
+      "isolation_key": "driver_probe_callback_8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T07:59:47+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A race surfaces a state the backend does not hold (R1) / claims unverified success (R4).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "278f465a-5830-4494-8433-07d754b1cb76",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "EX-05",
+      "proposed_id": "",
+      "title": "After a callback restart the screen still reflects real persisted state, not an empty one",
+      "purpose": "Restart the callback service and confirm the backend state persists and the served surface answers coherently rather than showing an empty/placeholder state.",
+      "risk_category": "restart_recovery",
+      "priority": "P2",
+      "rationale": "AC-3 must survive a process restart: state is reconstructed per request from the DB, so a restart must not blank or desync the state the screen would show.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "failure_recovery",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "restart_service",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "callback",
+          "wait_ms": null
+        },
+        {
+          "kind": "wait",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": 1500
+        },
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "runs survive restart and remain state-consistent",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Missing action token"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Restarts the shared callback service; must not run concurrently with other 8001 scenarios. No data mutation.",
+      "isolation_key": "driver_probe_callback_8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T07:59:47+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "After restart the screen shows empty/placeholder state instead of real persisted state (R5).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "278f465a-5830-4494-8433-07d754b1cb76",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "EX-06",
+      "proposed_id": "",
+      "title": "The action surface cannot be triggered by the wrong HTTP verb",
+      "purpose": "Confirm a POST to the GET-only email action link is refused (405) rather than applying an action, so a prefetch or wrong-verb request can never move state behind the screen.",
+      "risk_category": "retry_safety",
+      "priority": "P3",
+      "rationale": "An action screen that could be actuated by an unintended verb would let a link preview mutate state; the surface must enforce the method and leave state untouched.",
+      "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+      "product_principle_reference": "outcome_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/email/action",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "token": "garbage.cccc"
+            },
+            "body": "",
+            "expect_status": 405,
+            "expect_contains": [
+              "Method not allowed"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "state store unchanged and consistent after the refused verb",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Method not allowed"
+      ],
+      "forbidden_observations": [
+        "Neyma action applied",
+        "APPLIED"
+      ],
+      "cleanup": [],
+      "isolation_note": "Method is rejected before any state change; no cleanup needed.",
+      "isolation_key": "driver_probe_callback_8001",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T07:59:47+00:00",
+        "task_hash": "ecfcc59ed1f920c7",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria_consulted": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "An unintended request applies an action, desyncing the screen from real state (R1/R4).",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "278f465a-5830-4494-8433-07d754b1cb76",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 5,
+    "by_risk_category": {
+      "safety_invariant": 1,
+      "malformed_input": 1,
+      "concurrency": 1,
+      "restart_recovery": 1,
+      "retry_safety": 1
+    },
+    "by_priority": {
+      "P1": 2,
+      "P2": 2,
+      "P3": 1
+    },
+    "uncovered_risks": [
+      "The exception detail screen could display a workflow state that no longer matches the backend (e.g. after an action was applied through another channel), so an operator acts on a stale picture.",
+      "The evidence the exception was raised from may be missing, unlinked, or unrenderable on the screen."
+    ]
+  },
+  "assumptions": [
+    "The 'callback' service serves http://127.0.0.1:8001 and reads the workspace DB at data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite target).",
+    "workflow_runs.state reflects the backend's current state for a run, and audit_events.to_state records the state transitions; runs with an audit trail should have state equal to their latest to_state.",
+    "The served HTML surface (_render_html) emits the literal strings 'Neyma action applied'/'APPLIED' on success and 'REJECTED' with a titled reason on rejection."
+  ],
+  "unresolved_questions": [
+    "The rich exception/packet detail screen (packet_page.py, operator_console.py) is static generated HTML, not served over HTTP; with the browser unavailable and no approved command that renders it, the ACs 'names the next action and who owns it' and 'shows the evidence the exception was raised from' cannot be directly exercised \u2014 only the backend state-integrity AC and the served callback error screen are reachable.",
+    "No diff was available, so I could not confirm which artifact the builder changed for U-UI-11; scenarios assume the change is observable through the callback surface at 8001 and/or the workspace DB.",
+    "No approved command can mint a valid signed action token, so a successful action -> post-action screen refresh (the positive UI-backend-consistency path) cannot be exercised; only rejection/degradation paths are reachable.",
+    "packet_page.py renders state, actions, evidence and audit history but no explicit accountable-owner field was found \u2014 AC-1's 'who owns it' requirement may be unmet and needs a scenario that can actually read the rendered screen (browser or a render command) to verify.",
+    "Is there any HTTP route that returns the exception DETAIL screen (state + next action + owner + evidence) as opposed to the action-result screen? If one exists but was not found, additional AC-1/AC-2 scenarios become possible."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T07:54:06+00:00",
+      "basis": {
+        "task": "Improve the exception detail screen so operators can understand the next action.",
+        "task_hash": "ecfcc59ed1f920c7",
+        "active_unit_id": "U-UI-11",
+        "acceptance_criteria": [
+          "the exception detail screen names the next action and who owns it (weight 3): PENDING",
+          "the screen shows the evidence the exception was raised from (weight 2): PENDING",
+          "the screen never shows a state the backend does not currently hold (weight 3): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 6,
+      "accepted_ids": [
+        "EX-01",
+        "EX-02",
+        "EX-04",
+        "EX-05",
+        "EX-06"
+      ],
+      "rejected": [
+        {
+          "id": "EX-03",
+          "title": "A missing-token exception screen degrades gracefully with a named problem, not a crash",
+          "reasons": [
+            "unknown risk_category 'dead_end_error'"
+          ],
+          "raw": {
+            "id": "EX-03",
+            "title": "A missing-token exception screen degrades gracefully with a named problem, not a crash",
+            "purpose": "Confirm the exception surface, given no token, returns an operator-readable screen naming what is wrong rather than a stack trace or blank 500 dead end.",
+            "risk_category": "dead_end_error",
+            "priority": "P2",
+            "mode": "backend",
+            "rationale": "AC-1 requires the exception screen to guide the operator; a raw crash or unnamed error is the worst dead end and is directly observable on this surface.",
+            "generating_risk": "The exception surface dead-ends without naming the next action/owner (R2).",
+            "requirement_reference": "U-UI-11: the exception detail screen names the next action and who owns it",
+            "product_principle_reference": "dead_end_error",
+            "service_refs": [],
+            "isolation_key": "driver_probe_callback_8001",
+            "isolation_note": "Read-only request path; no state mutation.",
+            "actions": [
+              {
+                "kind": "request",
+                "request": {
+                  "method": "GET",
+                  "path": "/email/action",
+                  "expect_status": 400,
+                  "expect_contains": [
+                    "Missing action token"
+                  ],
+                  "timeout_s": 5
+                }
+              }
+            ],
+            "expected_observations": [
+              "Missing action token"
+            ],
+            "forbidden_observations": [
+              "Traceback",
+              "Internal Server Error"
+            ]
+          }
+        }
+      ],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

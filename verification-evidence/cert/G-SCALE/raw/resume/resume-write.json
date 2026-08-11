@@ -1,0 +1,13 @@
+{
+  "mode": "write",
+  "pid": 69690,
+  "fingerprint": {
+    "scenario_count": 200,
+    "suite_entries": 201,
+    "required_count": 201,
+    "compiled_count": 200,
+    "waves_used": 1,
+    "digest": "4e9e49b1a6b3ad1ddcb8a11bbe45ab63c71225bc87639682f7b11ba3d6eccd86"
+  },
+  "plan_file_bytes": 700321
+}

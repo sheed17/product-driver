@@ -1,0 +1,194 @@
+########## partial_dep-a already present, skipping ##########
+########## nonidempotent-a already present, skipping ##########
+########## ui_lies-a already present, skipping ##########
+########## authz_retry-a (port 9531) 20:16:07 ##########
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-a/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 5 scenario(s) accepted — adaptive-authz-no-downstream, adaptive-authz-determinism, adaptive-authz-concurrency, adaptive-authz-missing-actor, adaptive-authz-restart
+wave 2 produced 5 accepted scenario(s):
+  [P0 safety_invariant] adaptive-authz-no-downstream: Unpermitted approval must write no payment and no ledger entry
+  [P0 repeated_request] adaptive-authz-determinism: Repeated identical unpermitted approvals are all refused (no 403-then-200 flip)
+  [P0 concurrency] adaptive-authz-concurrency: Two simultaneous unpermitted approvals both refused, none recorded
+  [P1 missing_data] adaptive-authz-missing-actor: Approval with missing or empty actor is not default-allowed
+  [P0 restart_recovery] adaptive-authz-restart: An unpermitted refusal leaves no durable approval after api restart
+########## CONTROL-1 (evidence withheld) 20:18:36 ##########
+=== none: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+=== none: WAVE 2 (CONTROL — evidence withheld) ===
+  4 proposed scenario(s) refused:
+    - gen-w2-authz-retry-leak: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - gen-w2-concurrent-double-approve: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - gen-w2-partial-ledger-durable: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - gen-w2-missing-actor-refused: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+wave 2 produced 0 accepted scenario(s):
+########## partial_dep-b (port 9502) 20:24:29 ##########
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-b/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 3 scenario(s) accepted — gen-ledger-lies-vs-store, gen-ledger-retry-not-safe, gen-ledger-concurrent-approve
+wave 2 produced 3 accepted scenario(s):
+  [P0 ui_backend_disagreement] gen-ledger-lies-vs-store: Approve returns {"ledger":"recorded"} but the durable store shows no ledger entry
+  [P1 retry_safety] gen-ledger-retry-not-safe: Retrying an approval after the false success neither double-pays nor recovers the ledger
+  [P1 concurrency] gen-ledger-concurrent-approve: Two simultaneous approvals of one invoice yield one payment and a consistent (still-missing) ledger
+########## nonidempotent-b (port 9512) 20:27:37 ##########
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-b/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 5 scenario(s) accepted — sc-race-approve, sc-repeat-approval-record, sc-repeat-ledger-once, sc-restart-then-reapprove, sc-triple-approve-bounded
+wave 2 produced 5 accepted scenario(s):
+  [P0 concurrency] sc-race-approve: Two simultaneous approvals of one invoice must pay exactly once
+  [P1 repeated_request] sc-repeat-approval-record: Re-approving must not duplicate the durable approval record
+  [P0 dependency_failure] sc-repeat-ledger-once: Re-approving must write the downstream ledger only once
+  [P0 restart_recovery] sc-restart-then-reapprove: Approval survives restart and re-approval after restart does not double-pay
+  [P1 repeated_request] sc-triple-approve-bounded: Three repeated approvals must still pay exactly once
+########## ui_lies-b (port 9522) 20:29:32 ##########
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  wave 2 (adaptive): 6 scenario(s) accepted — gen-approve-durable-record, gen-approve-survives-restart, gen-approve-joint-invariant, gen-approve-concurrent-once, gen-unpermitted-no-downstream, gen-idempotent-across-restart
+wave 2 produced 6 accepted scenario(s):
+  [P0 persistence_failure] gen-approve-durable-record: Approving records status, approver identity, and count durably
+  [P0 restart_recovery] gen-approve-survives-restart: Approval survives an api restart and re-read
+  [P0 safety_invariant] gen-approve-joint-invariant: A single approval yields exactly one payment and one ledger entry
+  [P0 concurrency] gen-approve-concurrent-once: Two simultaneous approvals of one invoice pay and record once
+  [P1 authorization] gen-unpermitted-no-downstream: An unpermitted approver writes no payment or ledger entry
+  [P0 idempotency] gen-idempotent-across-restart: Re-approving after a restart still pays once
+########## authz_retry-b (port 9532) 20:31:33 ##########
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-b/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 5 scenario(s) accepted — adapt-authz-retry-noslip, adapt-authz-race-noslip, adapt-authz-unknown-actor, adapt-authz-missing-actor, adapt-authz-refused-survives-restart
+wave 2 produced 5 accepted scenario(s):
+  [P0 repeated_request] adapt-authz-retry-noslip: Forbidden approver retried five times never slips through
+  [P0 concurrency] adapt-authz-race-noslip: Concurrent forbidden approvals do not race past the authz check
+  [P0 authorization] adapt-authz-unknown-actor: An unknown actor other than the known bad name is also refused
+  [P0 malformed_input] adapt-authz-missing-actor: Approval with no actor field does not default to permitted
+  [P1 restart_recovery] adapt-authz-refused-survives-restart: A refused approval does not appear after a service restart
+########## partial_dep-c (port 9503) 20:34:33 ##########
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-c/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 5 scenario(s) accepted — adapt-ledger-disagreement, adapt-ledger-payment-atomicity, adapt-ledger-idempotent, adapt-ledger-restart-durable, adapt-ledger-concurrent
+wave 2 produced 5 accepted scenario(s):
+  [P0 ui_backend_disagreement] adapt-ledger-disagreement: Approve response claims ledger recorded but durable ledger must show one entry
+  [P0 partial_failure] adapt-ledger-payment-atomicity: Approval must not leave payment written while ledger is missing
+  [P0 idempotency] adapt-ledger-idempotent: Approving twice records exactly one ledger entry
+  [P0 restart_recovery] adapt-ledger-restart-durable: Ledger entry survives an api service restart
+  [P1 concurrency] adapt-ledger-concurrent: Two concurrent approvals record exactly one ledger entry
+########## nonidempotent-c (port 9513) 20:36:40 ##########
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-c/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 5 scenario(s) accepted — gen-concurrent-approve, gen-repeat-ledger-no-dup, gen-restart-no-replay, gen-second-approver-noop, gen-refusal-no-partial-write
+wave 2 produced 5 accepted scenario(s):
+  [P0 concurrency] gen-concurrent-approve: Two approvals racing on one invoice pay exactly once
+  [P0 idempotency] gen-repeat-ledger-no-dup: Repeated approvals do not append duplicate ledger rows
+  [P0 restart_recovery] gen-restart-no-replay: Approval survives restart without replaying a second payment
+  [P1 unexpected_state_transition] gen-second-approver-noop: A different approver on an already-approved invoice does not stack a second payment
+  [P1 authorization] gen-refusal-no-partial-write: A refused approver leaves no payment or ledger row behind
+########## ui_lies-c (port 9523) 20:38:43 ##########
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  wave 2 (adaptive): 6 scenario(s) accepted — w2-restart-durable-approval, w2-authz-not-persisted, w2-approver-identity-recorded, w2-repeat-approve-single-ledger, w2-approval-ledger-atomic, w2-reread-survives
+wave 2 produced 6 accepted scenario(s):
+  [P0 restart_recovery] w2-restart-durable-approval: Approval survives an api restart
+  [P0 authorization] w2-authz-not-persisted: Unpermitted approver leaves the store unapproved
+  [P1 authorization] w2-approver-identity-recorded: Permitted approver's identity is durably recorded
+  [P0 retry_safety] w2-repeat-approve-single-ledger: Repeated approval writes the ledger only once
+  [P0 safety_invariant] w2-approval-ledger-atomic: A persisted approval always has its ledger entry
+  [P1 stale_state] w2-reread-survives: Approval survives a fresh re-read of the store
+########## authz_retry-c (port 9533) 20:42:01 ##########
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  wave 2 (adaptive): 7 scenario(s) accepted — gen-authz-no-ledger-leak, gen-authz-missing-actor, gen-authz-empty-actor, gen-authz-never-seen-actor, gen-authz-repeated-refusal, gen-authz-concurrent-unpermitted, gen-authz-refusal-survives-restart
+wave 2 produced 7 accepted scenario(s):
+  [P0 safety_invariant] gen-authz-no-ledger-leak: Unpermitted approval must not write payment or ledger
+  [P0 missing_data] gen-authz-missing-actor: Approve with no actor field must be refused and record nothing
+  [P1 malformed_input] gen-authz-empty-actor: Approve with an empty/unknown actor string must be refused
+  [P1 authorization] gen-authz-never-seen-actor: A never-seen actor is refused (allowlist, not denylist)
+  [P1 retry_safety] gen-authz-repeated-refusal: Repeated unpermitted attempts never accumulate any effect
+  [P0 concurrency] gen-authz-concurrent-unpermitted: Two concurrent unpermitted approvals produce no effect
+  [P1 restart_recovery] gen-authz-refusal-survives-restart: An unauthorized attempt leaves nothing behind after restart
+########## CONTROL-2 (evidence withheld) 20:44:29 ##########
+=== none: WAVE 1 (generic, defect-blind) ===
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+=== none: WAVE 2 (CONTROL — evidence withheld) ===
+  5 proposed scenario(s) refused:
+    - w2-concurrency-pay-once: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - w2-second-distinct-approver-noop: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - w2-unauthorized-retry-not-recorded: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - w2-missing-actor-refused: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+    - w2-cross-invoice-isolation: adaptive scenario names no source failure or failure cluster; an adaptive case must record which observed failure caused it
+wave 2 produced 0 accepted scenario(s):
+########## partial_dep-d (port 9504) 20:48:16 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/partial_dep-d/artifacts-w1/scenarios/gen-ledger-recorded
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== partial_dep: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## nonidempotent-d (port 9514) 20:48:22 ##########
+  [FAIL] P0 generated gen-idempotent-approve  (idempotency)  — expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      generated because: a repeated approval could pay twice
+      verifies: AC-APPROVAL-001
+      failed: expect_state: exactly one payment: contains 'payments=1' — not found in command output
+      failed: expect_state: exactly one payment: must not contain 'payments=2' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/nonidempotent-d/artifacts-w1/scenarios/gen-idempotent-approve
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== nonidempotent: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## ui_lies-d (port 9524) 20:48:27 ##########
+  [FAIL] P1 generated gen-ledger-recorded  (dependency_failure)  — expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      generated because: the downstream ledger write may not happen
+      verifies: AC-APPROVAL-004
+      failed: expect_state: durable store shows one ledger entry: contains 'ledger=1' — not found in command output
+      failed: expect_state: durable store shows one ledger entry: must not contain 'ledger=0' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/ui_lies-d/artifacts-w1/scenarios/gen-ledger-recorded
+
+4 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== ui_lies: WAVE 2 (adaptive from 4 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## authz_retry-d (port 9534) 20:48:33 ##########
+      verifies: AC-APPROVAL-003
+      failed: expect_state: POST http://127.0.0.1:9534/api/invoices/W1D/approve: status == 403 — got 200
+      failed: expect_state: no approval was recorded for the refused actor: contains 'status=pending' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: contains 'approvals=0' — not found in command output
+      failed: expect_state: no approval was recorded for the refused actor: must not contain 'mallory' — unexpectedly present
+      evidence: /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/B-ADAPTIVE/runs/authz_retry-d/artifacts-w1/scenarios/gen-authz-refusal
+
+1 unresolved high-priority scenario failure(s)
+This states verified coverage. It is not a claim that all possible cases were verified.
+=== authz_retry: WAVE 2 (adaptive from 1 failure(s)) ===
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+wave 2 produced 0 accepted scenario(s):
+########## DONE 20:48:38 ##########

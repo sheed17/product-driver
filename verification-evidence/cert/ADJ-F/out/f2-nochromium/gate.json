@@ -1,0 +1,17 @@
+{
+  "status": "NOT_VERIFIED",
+  "required_total": 1,
+  "required_passed": 0,
+  "executed": 1,
+  "unverified": [
+    {
+      "scenario_id": "ADJF-nochromium",
+      "origin": "generated",
+      "outcome": "BLOCKED",
+      "reason": "the product was never observed (scenario execution raised: Error: BrowserType.launch: Executable doesn't exist at /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-F/out/f2-nochromium/empty-browsers/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed or updated.       \u2551\n\u2551 Please run the following command to download new browsers: \u2551\n\u2551                                                            \u2551\n\u2551     playwright install                                     \u2551\n\u2551                                                            \u2551\n\u2551 <3 Playwright Team                                         \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d)",
+      "evidence_path": "out/f2-nochromium/scenarios/ADJF-nochromium"
+    }
+  ],
+  "uncovered_risks": [],
+  "generation_problems": []
+}

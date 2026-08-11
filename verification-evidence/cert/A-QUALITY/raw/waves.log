@@ -1,0 +1,151 @@
+### START A rep1 flags= 2026-08-10T07:54:06Z
+  1 proposed scenario(s) refused:
+    - EX-03: unknown risk_category 'dead_end_error'
+  wave 1 (initial): 5 scenario(s) accepted — EX-01, EX-02, EX-04, EX-05, EX-06
+
+=== A-r1: 5 accepted, 1 refused, 340.8s ===
+### END   A rep1 rc=0 2026-08-10T07:59:47Z
+### START F rep1 flags= 2026-08-10T07:59:47Z
+  wave 1 (initial): 4 scenario(s) accepted — S1, S2, S3, S4
+
+=== F-r1: 4 accepted, 0 refused, 384.4s ===
+### END   F rep1 rc=0 2026-08-10T08:06:12Z
+### START G rep1 flags= 2026-08-10T08:06:12Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== G-r1: 0 accepted, 0 refused, 2.2s ===
+### END   G rep1 rc=0 2026-08-10T08:06:14Z
+### START D rep1 flags= 2026-08-10T08:06:14Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== D-r1: 0 accepted, 0 refused, 2.3s ===
+### END   D rep1 rc=0 2026-08-10T08:06:17Z
+### START E rep1 flags= 2026-08-10T08:06:17Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== E-r1: 0 accepted, 0 refused, 1.9s ===
+### END   E rep1 rc=0 2026-08-10T08:06:19Z
+### START C rep1 flags= 2026-08-10T08:06:19Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== C-r1: 0 accepted, 0 refused, 2.0s ===
+### END   C rep1 rc=0 2026-08-10T08:06:21Z
+### START B rep1 flags=--diff 2026-08-10T08:06:21Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== B-diff-r1: 0 accepted, 0 refused, 4.3s ===
+### END   B rep1 rc=0 2026-08-10T08:06:26Z
+### START A rep2 flags= 2026-08-10T08:06:26Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== A-r2: 0 accepted, 0 refused, 2.0s ===
+### END   A rep2 rc=0 2026-08-10T08:06:28Z
+### START F rep2 flags= 2026-08-10T08:06:28Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== F-r2: 0 accepted, 0 refused, 2.1s ===
+### END   F rep2 rc=0 2026-08-10T08:06:30Z
+### START G rep2 flags= 2026-08-10T08:06:30Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== G-r2: 0 accepted, 0 refused, 2.5s ===
+### END   G rep2 rc=0 2026-08-10T08:06:33Z
+### START D rep2 flags= 2026-08-10T08:06:33Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== D-r2: 0 accepted, 0 refused, 2.1s ===
+### END   D rep2 rc=0 2026-08-10T08:06:36Z
+### START E rep2 flags= 2026-08-10T08:06:36Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== E-r2: 0 accepted, 0 refused, 1.9s ===
+### END   E rep2 rc=0 2026-08-10T08:06:38Z
+### START C rep2 flags= 2026-08-10T08:06:38Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== C-r2: 0 accepted, 0 refused, 2.1s ===
+### END   C rep2 rc=0 2026-08-10T08:06:40Z
+### START B rep2 flags=--diff 2026-08-10T08:06:40Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== B-diff-r2: 0 accepted, 0 refused, 4.2s ===
+### END   B rep2 rc=0 2026-08-10T08:06:45Z
+### START A2 rep1 flags=--diff 2026-08-10T08:06:45Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== A2-diff-r1: 0 accepted, 0 refused, 4.0s ===
+### END   A2 rep1 rc=0 2026-08-10T08:06:49Z
+ALL DONE 2026-08-10T08:06:49Z
+=== ATTEMPT 2 (after usage-limit abort) 2026-08-10T20:14:00Z ===
+### START G rep1 flags= 2026-08-10T20:14:00Z
+  wave 1 (initial): 3 scenario(s) accepted — UEV4-W1-01, UEV4-W1-02, UEV4-W1-03
+
+=== G-r1: 3 accepted, 0 refused, 517.9s ===
+### END   G rep1 rc=0 2026-08-10T20:22:38Z
+### START D rep1 flags= 2026-08-10T20:22:38Z
+  wave 1 (initial): 5 scenario(s) accepted — S1-restart-survives, S2-durable-schema, S3-crash-no-partial, S4-replay-no-reexecute, S5-rejected-writes-no-partial
+
+=== D-r1: 5 accepted, 0 refused, 494.5s ===
+### END   D rep1 rc=0 2026-08-10T20:30:53Z
+### START E rep1 flags= 2026-08-10T20:30:53Z
+  wave 1 (initial): 4 scenario(s) accepted — AUTHZ-S1, AUTHZ-S2, AUTHZ-S3, AUTHZ-S5
+
+=== E-r1: 4 accepted, 0 refused, 360.6s ===
+### END   E rep1 rc=0 2026-08-10T20:36:53Z
+### START C rep1 flags= 2026-08-10T20:36:53Z
+  wave 1 (initial): 7 scenario(s) accepted — S1, S2, S3, S4, S5, S6, S7
+
+=== C-r1: 7 accepted, 0 refused, 175.1s ===
+### END   C rep1 rc=0 2026-08-10T20:39:49Z
+### START B rep1 flags=--diff 2026-08-10T20:39:49Z
+  wave 1 (initial): 6 scenario(s) accepted — U042-S1, U042-S2, U042-S3, U042-S4, U042-S5, U042-S6
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== B-diff-r1: 6 accepted, 0 refused, 382.9s ===
+### END   B rep1 rc=0 2026-08-10T20:46:12Z
+### START A rep2 flags= 2026-08-10T20:46:12Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== A-r2: 0 accepted, 0 refused, 2.1s ===
+### END   A rep2 rc=0 2026-08-10T20:46:15Z
+### START F rep2 flags= 2026-08-10T20:46:15Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== F-r2: 0 accepted, 0 refused, 1.9s ===
+### END   F rep2 rc=0 2026-08-10T20:46:17Z
+### START G rep2 flags= 2026-08-10T20:46:17Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== G-r2: 0 accepted, 0 refused, 2.0s ===
+### END   G rep2 rc=0 2026-08-10T20:46:19Z
+### START D rep2 flags= 2026-08-10T20:46:19Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== D-r2: 0 accepted, 0 refused, 2.6s ===
+### END   D rep2 rc=0 2026-08-10T20:46:22Z
+### START E rep2 flags= 2026-08-10T20:46:22Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== E-r2: 0 accepted, 0 refused, 1.7s ===
+### END   E rep2 rc=0 2026-08-10T20:46:24Z
+### START C rep2 flags= 2026-08-10T20:46:24Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== C-r2: 0 accepted, 0 refused, 1.9s ===
+### END   C rep2 rc=0 2026-08-10T20:46:26Z
+### START B rep2 flags=--diff 2026-08-10T20:46:26Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== B-diff-r2: 0 accepted, 0 refused, 3.7s ===
+### END   B rep2 rc=0 2026-08-10T20:46:30Z
+### START A2 rep1 flags=--diff 2026-08-10T20:46:30Z
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+  scenario generation: GenerationSessionError: the generator session ended in error (success)
+
+=== A2-diff-r1: 0 accepted, 0 refused, 4.2s ===
+### END   A2 rep1 rc=0 2026-08-10T20:46:35Z
+ATTEMPT2 DONE 2026-08-10T20:46:35Z

@@ -1,0 +1,55 @@
+{
+  "scenario_name": "generated:ADJF-f3",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:28:15+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50369/quiet",
+    "title": "",
+    "visible_text": "nothing to see",
+    "screenshots": [
+      "out/f3/scenarios/ADJF-f3/screenshots/first-look-at-the-failing-screen-01-initial.png",
+      "out/f3/scenarios/ADJF-f3/screenshots/first-look-at-the-failing-screen-02-initial.png",
+      "out/f3/scenarios/ADJF-f3/screenshots/first-look-at-the-failing-screen-99-final.png",
+      "out/f3/scenarios/ADJF-f3/screenshots/second-look-at-an-unrelated-screen-01-initial.png",
+      "out/f3/scenarios/ADJF-f3/screenshots/second-look-at-an-unrelated-screen-02-after.png",
+      "out/f3/scenarios/ADJF-f3/screenshots/second-look-at-an-unrelated-screen-99-final.png"
+    ],
+    "console_errors": [],
+    "network_failures": [],
+    "trace_path": null,
+    "steps": [
+      "opened http://127.0.0.1:50369/",
+      "goto http://127.0.0.1:50369/boom",
+      "opened http://127.0.0.1:50369/",
+      "goto http://127.0.0.1:50369/quiet"
+    ],
+    "text_expectations": [],
+    "step_failures": []
+  },
+  "assertions": [
+    {
+      "kind": "forbidden",
+      "target": "Traceback (most recent call last):",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: first look at the failing screen",
+    "02. browser: second look at an unrelated screen"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-f3",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:28:16+00:00"
+}

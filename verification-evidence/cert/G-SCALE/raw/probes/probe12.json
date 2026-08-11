@@ -1,0 +1,27 @@
+{
+  "scenarios_planned_before_resume": 200,
+  "scenarios_after_resume": 1,
+  "silently_dropped": 199,
+  "restore_note": "resumed scenario plan: 1 scenario(s), 1 wave(s) already used",
+  "generation_problems_after_resume": [],
+  "risks_carried_over": [
+    "idempotency"
+  ],
+  "suite_size_after_resume": 2,
+  "assembly_problems": [],
+  "outcomes": 2,
+  "passed": 2,
+  "gate_status": "VERIFIED",
+  "gate_required_total": 2,
+  "gate_required_passed": 2,
+  "gate_uncovered_risks": 0,
+  "gate_generation_problems": [],
+  "hostile_accept_becomes": "ACCEPT",
+  "persisted_plan_on_disk_still_lists": 200,
+  "loss_visible_anywhere_machine_readable": false,
+  "emitted_first_line": "  199 restored scenario(s) no longer compile and were dropped: gen-part-0001 (CompilationError: refusing to compile gen-part-0001: the cleanup command was not in the approved command set ('./probe.sh ",
+  "plan_time_rejections": [],
+  "survivor_ids": [
+    "gen-part-0000"
+  ]
+}

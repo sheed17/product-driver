@@ -1,0 +1,14 @@
+{
+  "base_at_plan_time": "browser_generic (services: ['site'])",
+  "base_at_resume_time": "backend_generic (services: [])",
+  "planned": 6,
+  "plan_time_rejections": [],
+  "after_resume": 0,
+  "generation_problems": [],
+  "restore_note": "resumed scenario plan: 0 scenario(s), 1 wave(s) already used",
+  "console": [
+    "  6 restored scenario(s) no longer compile and were dropped: gen-site-0 (CompilationError: refusing to compile gen-site-0: it references service(s) site that the base scenario does not declare); gen-site-1 (CompilationEr",
+    "  resumed scenario plan: 0 scenario(s), 1 wave(s) already used"
+  ],
+  "plan_on_disk_after_next_persist": 0
+}

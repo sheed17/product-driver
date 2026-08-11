@@ -1,0 +1,370 @@
+[
+  {
+    "id": "B1a",
+    "attack": "NO PLANNER: the single permanent scenario FAILED; evaluator says ACCEPT",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "NO SUITE (gate not invoked)",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": null,
+    "suite_everything_required_passed": null,
+    "suite_blocking_failures": null,
+    "acceptance_reached": true,
+    "acceptance_expected": false,
+    "OUTCOME": "FALSE ACCEPTANCE"
+  },
+  {
+    "id": "B1b",
+    "attack": "NO PLANNER: the permanent scenario passed (false-refusal control)",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "NO SUITE (gate not invoked)",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": null,
+    "suite_everything_required_passed": null,
+    "suite_blocking_failures": null,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B2",
+    "attack": "PLANNER: the permanent (P0, required) scenario FAILED; evaluator says ACCEPT",
+    "run_status": "MAX_ITERATIONS",
+    "exit_code_would_be": 12,
+    "final_decision": "FIX",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [
+      "[FAILED] backend_generic \u2014 the scenario failed: expect_state: backend_generic: payments row count \u2014 got 2, want 1"
+    ],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": false,
+    "suite_blocking_failures": 1,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B3",
+    "attack": "PLANNER: a required P0 GENERATED scenario FAILED; evaluator says ACCEPT",
+    "run_status": "MAX_ITERATIONS",
+    "exit_code_would_be": 12,
+    "final_decision": "FIX",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [
+      "[FAILED] gen-idem \u2014 the scenario failed: expect_state: gen-idem: payments row count \u2014 got 2, want 1"
+    ],
+    "gate_uncovered_risks": [
+      "[P0] idempotency \u2014 approval may not be idempotent  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 failed))"
+    ],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": false,
+    "suite_blocking_failures": 1,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B4",
+    "attack": "BROWSER SCENARIO planned in a browser-disabled run (permanent scenario is browser)",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [
+      "gen-browser-p0"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [
+      "[SKIPPED] browser_perm \u2014 the scenario did not run (this scenario needs a browser and browser support is disabled (set run.browser_enabled: true or pass --browser)), so nothing was verified"
+    ],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": false,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B5",
+    "attack": "EXECUTION BUDGET of 0s: nothing after the first scenario is allowed to run",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [
+      "[SKIPPED] backend_generic \u2014 the scenario did not run (the suite's 0s execution budget was exhausted before this scenario ran), so nothing was verified",
+      "[SKIPPED] gen-idem \u2014 the scenario did not run (the suite's execution budget was exhausted before this scenario ran), so nothing was verified"
+    ],
+    "gate_uncovered_risks": [
+      "[P0] idempotency \u2014 approval may not be idempotent  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 skipped))"
+    ],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": false,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B6",
+    "attack": "the permanent scenario was BLOCKED (readiness failed); evaluator says ACCEPT",
+    "run_status": "MAX_ITERATIONS",
+    "exit_code_would_be": 12,
+    "final_decision": "FIX",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [
+      "[BLOCKED] backend_generic \u2014 the product was never observed (blocked before execution)"
+    ],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": false,
+    "suite_blocking_failures": 1,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B7",
+    "attack": "GENERATOR RAISES on every wave; everything that ran passed",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [
+      "generation wave 1 failed: RuntimeError: the model session died"
+    ],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B8",
+    "attack": "GENERATOR returns None (no usable structured output); everything that ran passed",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [
+      "generation wave 1 failed: the scenario generator returned no usable structured output; this wave produced nothing and the run continues with existing coverage"
+    ],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B9",
+    "attack": "GENERATOR returns an EMPTY but well-formed plan (nothing to add) \u2014 must NOT block",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B10a",
+    "attack": "WHOLESALE VALIDATION COLLAPSE: every proposal rejected, payload declares NO risks",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B10b",
+    "attack": "WHOLESALE VALIDATION COLLAPSE: every proposal rejected, payload declares a P0 risk",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [
+      "[P0] idempotency \u2014 a duplicate approval pays twice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B11a",
+    "attack": "P0 RISK in a category no scenario exercises; every executed scenario passed",
+    "run_status": "BLOCKED",
+    "exit_code_would_be": 11,
+    "final_decision": "BLOCKED",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "NOT_VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [
+      "[P0] cross_tenant \u2014 an approval crosses a tenant boundary  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B11b",
+    "attack": "P3 RISK uncovered, everything green \u2014 must NOT block (false-refusal control)",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B12a",
+    "attack": "CONTROL: planner enabled, one generated P0 scenario, everything green, risk covered",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B12b",
+    "attack": "CONTROL: planner enabled but the plan is permanent-only; everything green",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "B13",
+    "attack": "NARROWED RERUN: iteration 1 fails, iteration 2's narrowed set is green \u2014 does the run widen before accepting?",
+    "run_status": "ACCEPTED",
+    "exit_code_would_be": 0,
+    "final_decision": "ACCEPT",
+    "scenarios_executed": [
+      "backend_generic",
+      "gen-idem"
+    ],
+    "gate_status": "VERIFIED",
+    "gate_unverified": [],
+    "gate_uncovered_risks": [],
+    "gate_generation_problems": [],
+    "suite_full_run": true,
+    "suite_everything_required_passed": true,
+    "suite_blocking_failures": 0,
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  }
+]

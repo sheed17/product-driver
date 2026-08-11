@@ -1,0 +1,53 @@
+GENERATED SCENARIO PLAN — run cert-B-diff-r1
+task: Add supervised carrier invoice approval.
+active unit: U-042
+
+6 generated case(s)
+risk categories exercised: authorization, concurrency, cross_tenant, idempotency, restart_recovery, safety_invariant
+
+IDENTIFIED RISKS:
+  [P0 idempotency] A double-tap, retry, or concurrent delivery of the same approved invoice causes the payment effect to be recorded/queued/executed more than once.  (covered by U042-S3)
+  [P0 authorization] A payment/write effect is produced without a durable recorded approval preceding it (an intent reaches the adapter/ledger with no matching GovernedWriteIntentQueued decision).  (covered by U042-S2)
+  [P1 authorization] An operator whose tap is not authenticated/authorized nonetheless advances the governed pipeline or produces an effect.  (covered by U042-S2)
+  [P1 restart_recovery] A recorded approval / single-use claim is lost or reset when the callback service restarts, allowing a re-consume or losing the decision.  (covered by U042-S5)
+  [P0 cross_tenant] One tenant's queued invoice-write intent or single-use claim is visible to, or claimable by, another tenant.  (covered by U042-S4)
+
+SCENARIOS:
+  [P0 safety_invariant] U042-S1: No external payment ever lands without a matching recorded approval
+      purpose: Prove the governed write path has produced no completed external payment, and that no completed write exists that lacks a preceding recorded approval (queued intent) with the same approval_id.
+      grounded in: U-042 AC: no payment effect occurs without a recorded approval
+      because: a payment could reach the adapter/ledger with no recorded approval behind it
+  [P0 authorization] U042-S2: Unauthenticated governed tap is refused and records no approval or write
+      purpose: Send a governed-write approval tap to /slack/actions without a valid Slack signature and confirm it is refused (401) and produces no queued intent and no completed write.
+      grounded in: U-042 AC: an operator without approval authority is refused
+      because: an unauthenticated tap could advance the pipeline or cause a write
+  [P0 idempotency] U042-S3: "Paid exactly once" is enforced by the database, not by hope
+      purpose: Confirm the single-use decision claim and the effect ledger's commit-once/live-hold constraints exist structurally in the live workspace DB, so a replayed approval cannot record a second decision or reserve the same effect twice.
+      grounded in: U-042 AC: an approved invoice is paid exactly once
+      because: a duplicate approval could be claimed twice or commit the same effect twice
+  [P0 cross_tenant] U042-S4: Approval and claim state is tenant-first, so another tenant cannot see or claim it
+      purpose: Confirm the decision claim table, the audit/decision event table, and the effect ledger are keyed tenant-first in the live DB, so one tenant's queued invoice-write intent or single-use claim is neither visible nor claimable by another tenant.
+      grounded in: U-042 AC: an invoice belonging to another tenant is never visible or approvable
+      because: a cross-tenant read or claim of another tenant's invoice approval
+  [P1 restart_recovery] U042-S5: Recorded approval / claim store survives a callback restart
+      purpose: Restart the callback service and confirm the durable decision store (single-use claims + decision events) is intact and queryable afterward, and the server is live, so a restart neither wipes a recorded approval nor re-opens a consumed claim.
+      grounded in: U-042 AC: approval survives a restart
+      because: a restart could drop a recorded approval or reset a single-use claim
+  [P1 concurrency] U042-S6: Two simultaneous unauthenticated taps never both cause an effect
+      purpose: Fire two identical governed taps at /slack/actions simultaneously without a valid signature and confirm both are refused and no queued intent or completed write results from the race.
+      grounded in: U-042 AC: an approved invoice is paid exactly once
+      because: a concurrent double-tap could produce two decisions or two writes
+
+ASSUMPTIONS:
+  - The callback service reachable at http://127.0.0.1:8001 is run with --client-config (per scripts/run_teammate.py), so /slack/actions is enabled and requires a valid X-Slack-Signature; an unsigned POST therefore returns 401 with body containing 'invalid Slack signature'.
+  - The callback server's workspace DB is data/active_workspace/driver_probe/workflow.sqlite3 (the approved sqlite3 path), and it has been constructed with the canonical schema (operation_action_claims, security_events, effect_grants present).
+  - In the deployed server the governed-write execution kernel is intentionally None (route BLOCKED pending AC-CKPT-6 adjudication), so the path ships dark and no real external payment is performed; GovernedWrite* events, if any, are refusals rather than verified writes.
+  - GovernedWrite outcome/queue facts are recorded as tenant-scoped rows in security_events with a JSON payload carrying approval_id/state, readable via sqlite3 json_extract.
+
+UNRESOLVED QUESTIONS:
+  - The positive, load-bearing ACs — an authorized approval actually results in the invoice being paid exactly once, and an authorized-vs-unauthorized-operator distinction past authentication — cannot be exercised through this surface without the Slack signing secret and the delivery/HMAC signing secret needed to mint a valid governed approval token; both are off-limits. These ACs remain PENDING and only their negative/structural aspects are verified here.
+  - Because the deployed governed route is BLOCKED (kernel=None → ROUTE_NOT_CONFIGURED) and ships dark, the end-to-end 'approved → paid exactly once' chain (checkpoint → grant → claim → adapter → readback) is unreachable in this environment; verifying it requires the P12 live-writer wiring and a signed tap. Should the founder expect U-042 to demonstrate an actual supervised payment now, that expectation is unmet by the current dark configuration.
+  - The 'approval survives a restart' AC is only partially exercised: with no ability to create a genuine recorded approval (needs a signed tap), the restart scenario proves the durable decision store persists and the service recovers, but not that a specific in-flight approval row survives. A fixture-seeded recorded approval (via an approved seeding command) would be needed to close this fully.
+  - It is unconfirmed whether the driver_probe workflow.sqlite3 already contains any operation_action_claims / GovernedWriteIntentQueued rows; if empty, the count-based oracles pass trivially and attest absence-of-violation rather than presence-of-correct-behavior.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

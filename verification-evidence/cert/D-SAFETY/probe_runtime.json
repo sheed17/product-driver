@@ -1,0 +1,36 @@
+{
+  "R1_redirect": {
+    "requested_url": "http://127.0.0.1:45301/redirect",
+    "recorded_observation_url": "http://127.0.0.1:45301/redirect",
+    "status": 200,
+    "body": "role=offtarget",
+    "offtarget_listener_hits": [
+      "/followed"
+    ],
+    "followed_offtarget": true
+  },
+  "R2_header_crlf": {
+    "status": null,
+    "error": "Invalid header value b'a\\r\\nX-Injected: 1'"
+  },
+  "R3_arbitrary_header": {
+    "status": 200,
+    "accepted": true
+  },
+  "R4_scenario_redirect": {
+    "admitted": true,
+    "requested_path": "/redirect",
+    "recorded_observation_url": [
+      "http://127.0.0.1:45301/redirect"
+    ],
+    "response_body": [
+      "role=offtarget"
+    ],
+    "offtarget_hits_during_scenario": [
+      "/followed"
+    ],
+    "expect_visible_passed": [
+      true
+    ]
+  }
+}

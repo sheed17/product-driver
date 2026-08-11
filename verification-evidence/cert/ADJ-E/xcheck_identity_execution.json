@@ -1,0 +1,163 @@
+{
+  "case_only": {
+    "label": "ids differing only in case",
+    "suite_size": 2,
+    "assembly_conflicts": [],
+    "outcomes": [
+      {
+        "id": "Gen-Case-Probe",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/case/scenarios/Gen-Case-Probe",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      },
+      {
+        "id": "gen-case-probe",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/case/scenarios/gen-case-probe",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      }
+    ],
+    "distinct_evidence_dirs": 2,
+    "result_json_files": {
+      "scenarios/Gen-Case-Probe/result.json": {
+        "scenario_id_in_record": "gen-case-probe",
+        "scenario_name": "generated:gen-case-probe"
+      }
+    },
+    "gate": "VERIFIED",
+    "gate_problems": []
+  },
+  "long_prefix": {
+    "label": "ids sharing a 94-char prefix",
+    "suite_size": 2,
+    "assembly_conflicts": [],
+    "outcomes": [
+      {
+        "id": "gen-ppppppppppppppppppppppppppppppppppppppppppppppp-5de8adc60524",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/long/scenarios/gen-ppppppppppppppppppppppppppppppppppppppppppppppp-5de8adc60524",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      },
+      {
+        "id": "gen-ppppppppppppppppppppppppppppppppppppppppppppppp-c041bbb5928f",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/long/scenarios/gen-ppppppppppppppppppppppppppppppppppppppppppppppp-c041bbb5928f",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      }
+    ],
+    "distinct_evidence_dirs": 2,
+    "result_json_files": {
+      "scenarios/gen-ppppppppppppppppppppppppppppppppppppppppppppppp-5de8adc60524/result.json": {
+        "scenario_id_in_record": "gen-ppppppppppppppppppppppppppppppppppppppppppppppp-5de8adc60524",
+        "scenario_name": "generated:gen-ppppppppppppppppppppppppppppppppppppppppppppppp-5de8adc60524"
+      },
+      "scenarios/gen-ppppppppppppppppppppppppppppppppppppppppppppppp-c041bbb5928f/result.json": {
+        "scenario_id_in_record": "gen-ppppppppppppppppppppppppppppppppppppppppppppppp-c041bbb5928f",
+        "scenario_name": "generated:gen-ppppppppppppppppppppppppppppppppppppppppppppppp-c041bbb5928f"
+      }
+    },
+    "gate": "VERIFIED",
+    "gate_problems": []
+  },
+  "dotdot": {
+    "label": "ids '..' and '.'",
+    "suite_size": 2,
+    "assembly_conflicts": [],
+    "outcomes": [
+      {
+        "id": ".",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/dots/scenarios",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      },
+      {
+        "id": "..",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/dots",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      }
+    ],
+    "distinct_evidence_dirs": 2,
+    "result_json_files": {
+      "result.json": {
+        "scenario_id_in_record": "..",
+        "scenario_name": "generated:.."
+      },
+      "scenarios/result.json": {
+        "scenario_id_in_record": ".",
+        "scenario_name": "generated:."
+      }
+    },
+    "gate": "VERIFIED",
+    "gate_problems": []
+  },
+  "duplicate_admission": {
+    "label": "same id offered twice",
+    "suite_size": 1,
+    "assembly_conflicts": [
+      "the generated scenario 'gen-dup' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+    ],
+    "outcomes": [
+      {
+        "id": "gen-dup",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/dup/scenarios/gen-dup",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      }
+    ],
+    "distinct_evidence_dirs": 1,
+    "result_json_files": {
+      "scenarios/gen-dup/result.json": {
+        "scenario_id_in_record": "gen-dup",
+        "scenario_name": "generated:gen-dup"
+      }
+    },
+    "gate": "NOT_VERIFIED",
+    "gate_problems": [
+      "the generated scenario 'gen-dup' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+    ]
+  },
+  "case_only_asymmetric": {
+    "label": "case-variant ids, second one fails",
+    "suite_size": 2,
+    "assembly_conflicts": [],
+    "outcomes": [
+      {
+        "id": "Gen-Clash",
+        "outcome": "PASSED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/clash/scenarios/Gen-Clash",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      },
+      {
+        "id": "gen-clash",
+        "outcome": "FAILED",
+        "evidence_path": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4/clash/scenarios/gen-clash",
+        "evidence_verified": true,
+        "evidence_problem": ""
+      }
+    ],
+    "distinct_evidence_dirs": 2,
+    "result_json_files": {
+      "scenarios/Gen-Clash/result.json": {
+        "scenario_id_in_record": "gen-clash",
+        "scenario_name": "generated:gen-clash"
+      }
+    },
+    "gate": "NOT_VERIFIED",
+    "gate_problems": [],
+    "directories_on_disk": [
+      "Gen-Clash"
+    ]
+  }
+}
+
+wrote /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/E-RESUME/identity_execution.json
+workdir /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-ident-glzejzr4

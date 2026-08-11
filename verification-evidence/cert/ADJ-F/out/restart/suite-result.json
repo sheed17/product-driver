@@ -1,0 +1,33 @@
+{
+  "started_at": "2026-08-10T20:30:51+00:00",
+  "duration_s": 2.5889212910001334,
+  "full_run": true,
+  "selection_reason": "",
+  "expected_required_ids": [
+    "ADJF-restart"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "ADJF-restart",
+      "scenario_name": "generated:ADJF-restart",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "restart_recovery",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "out/restart/scenarios/ADJF-restart",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": "ADJ-F local fixture"
+    }
+  ],
+  "clusters": []
+}

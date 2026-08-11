@@ -1,0 +1,41 @@
+{
+  "tag": "B-diff-r1",
+  "key": "B",
+  "diff": true,
+  "rep": "1",
+  "elapsed_s": 382.9,
+  "waves": [
+    {
+      "wave_index": 1,
+      "seconds": 366.6,
+      "exception": "",
+      "session_id": "582c1286-f6af-457a-8e35-12c8627de424",
+      "payload_kind": "dict",
+      "n_scenarios": 6
+    },
+    {
+      "wave_index": 2,
+      "seconds": 16.2,
+      "exception": "GenerationSessionError: the generator session ended in error (success)",
+      "session_id": "d46f5975-b7c3-4bb1-9b14-f27ec656f389",
+      "payload_kind": "exception",
+      "n_scenarios": 0
+    }
+  ],
+  "wave_reasoner_errors": [
+    {
+      "wave": 1,
+      "error": ""
+    },
+    {
+      "wave": 2,
+      "error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "generation_problems": [
+    "generation wave 2 failed: GenerationSessionError: the generator session ended in error (success)"
+  ],
+  "accepted": 6,
+  "rejected": 0,
+  "harness_exception": ""
+}

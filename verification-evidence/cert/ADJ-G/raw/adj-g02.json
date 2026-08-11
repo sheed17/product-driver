@@ -1,0 +1,83 @@
+{
+  "filesystem_case_insensitive": true,
+  "sanitize_pure_function_collisions": {
+    "'case 001' vs 'case/001'": [
+      "case-001",
+      "case-001",
+      true
+    ],
+    "'approve twice' vs 'approve-twice'": [
+      "approve-twice",
+      "approve-twice",
+      true
+    ],
+    "'Auth-01' vs 'auth-01' (distinct strings)": [
+      "Auth-01",
+      "auth-01",
+      false
+    ]
+  },
+  "route_b_admitted_ids": [
+    "gen-AUTH-01",
+    "gen-auth-01"
+  ],
+  "route_b_rejected": [],
+  "route_b_suite_entries": [
+    "backend_generic",
+    "gen-AUTH-01",
+    "gen-auth-01"
+  ],
+  "route_b_assembly_conflicts": [],
+  "route_b_evidence_paths": {
+    "backend_generic": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts/scenarios/backend_generic",
+    "gen-AUTH-01": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts/scenarios/gen-AUTH-01",
+    "gen-auth-01": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts/scenarios/gen-auth-01"
+  },
+  "route_b_distinct_paths": 3,
+  "route_b_distinct_paths_casefolded": 2,
+  "route_b_dirs_on_disk": [
+    "backend_generic",
+    "gen-AUTH-01"
+  ],
+  "route_b_evidence_verified": {
+    "backend_generic": true,
+    "gen-AUTH-01": true,
+    "gen-auth-01": true
+  },
+  "route_b_outcomes": {
+    "backend_generic": "PASSED",
+    "gen-AUTH-01": "PASSED",
+    "gen-auth-01": "PASSED"
+  },
+  "route_b_reverification_after_run": {
+    "backend_generic": "OK",
+    "gen-AUTH-01": "the evidence at /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts/scenarios/gen-AUTH-01 belongs to scenario 'gen-auth-01', not 'gen-AUTH-01'",
+    "gen-auth-01": "OK"
+  },
+  "route_b_gate": "VERIFIED 3/3",
+  "route_b_hostile_accept_becomes": "ACCEPT",
+  "route_a": {
+    "suite_entries": [
+      "approve twice",
+      "approve-twice"
+    ],
+    "assembly_conflicts": [],
+    "evidence_paths": {
+      "approve twice": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts2/scenarios/approve-twice",
+      "approve-twice": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts2/scenarios/approve-twice"
+    },
+    "distinct_paths": 1,
+    "dirs_on_disk": [
+      "approve-twice"
+    ],
+    "evidence_verified": {
+      "approve twice": true,
+      "approve-twice": true
+    },
+    "reverification_after_run": {
+      "approve twice": "the evidence at /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-G/raw/g02/artifacts2/scenarios/approve-twice belongs to scenario 'approve-twice', not 'approve twice'",
+      "approve-twice": "OK"
+    },
+    "gate": "VERIFIED 2/2"
+  }
+}

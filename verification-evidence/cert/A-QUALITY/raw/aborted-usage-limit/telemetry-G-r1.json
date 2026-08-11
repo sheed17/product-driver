@@ -1,0 +1,29 @@
+{
+  "tag": "G-r1",
+  "key": "G",
+  "diff": false,
+  "rep": "1",
+  "elapsed_s": 2.2,
+  "waves": [
+    {
+      "wave_index": 1,
+      "seconds": 2.1,
+      "exception": "GenerationSessionError: the generator session ended in error (success)",
+      "session_id": "2a33adb6-6101-46a5-b8cb-6b08a363b1e3",
+      "payload_kind": "exception",
+      "n_scenarios": 0
+    }
+  ],
+  "wave_reasoner_errors": [
+    {
+      "wave": 1,
+      "error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "generation_problems": [
+    "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+  ],
+  "accepted": 0,
+  "rejected": 0,
+  "harness_exception": ""
+}

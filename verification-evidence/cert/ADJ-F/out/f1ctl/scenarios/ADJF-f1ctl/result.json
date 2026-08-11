@@ -1,0 +1,69 @@
+{
+  "scenario_name": "generated:ADJF-f1ctl",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:26:48+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50251/",
+    "title": "",
+    "visible_text": "adjudicator clean page\n\nowner: unassigned",
+    "screenshots": [
+      "out/f1ctl/scenarios/ADJF-f1ctl/screenshots/look-at-the-screen-01-initial.png",
+      "out/f1ctl/scenarios/ADJF-f1ctl/screenshots/look-at-the-screen-01-landed.png",
+      "out/f1ctl/scenarios/ADJF-f1ctl/screenshots/look-at-the-screen-99-final.png"
+    ],
+    "console_errors": [],
+    "network_failures": [],
+    "trace_path": null,
+    "steps": [
+      "opened http://127.0.0.1:50251/",
+      "expect_text 'adjudicator clean page': FOUND",
+      "expect_text 'owner: unassigned': FOUND"
+    ],
+    "text_expectations": [
+      {
+        "text": "adjudicator clean page",
+        "present": true,
+        "step": 2,
+        "label": "look-at-the-screen"
+      },
+      {
+        "text": "owner: unassigned",
+        "present": true,
+        "step": 3,
+        "label": "look-at-the-screen"
+      }
+    ],
+    "step_failures": []
+  },
+  "assertions": [
+    {
+      "kind": "expect_visible",
+      "target": "look-at-the-screen: browser step 2: expect_text 'adjudicator clean page'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_visible",
+      "target": "look-at-the-screen: browser step 3: expect_text 'owner: unassigned'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: look at the screen"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-f1ctl",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:26:49+00:00"
+}

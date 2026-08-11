@@ -1,0 +1,7 @@
+{
+  "validation_reasons": [],
+  "admitted": true,
+  "listener_received": [
+    "fake=not-a-real-token-0000&stripped=%3Cabsent%3E"
+  ]
+}

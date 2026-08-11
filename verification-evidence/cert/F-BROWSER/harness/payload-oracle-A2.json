@@ -1,0 +1,124 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "a browser oracle may be executed and never scored",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    },
+    {
+      "id": "R2",
+      "description": "a page-level network failure may never be scored",
+      "risk_category": "browser_network_error",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    }
+  ],
+  "assumptions": [],
+  "unresolved_questions": [],
+  "scenarios": [
+    {
+      "id": "O08-goto-404",
+      "title": "navigating to a path the app does not serve",
+      "purpose": "isolate exactly one browser oracle so its failure behaviour is provable",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "one oracle per scenario, everything else satisfied",
+      "generating_risk": "a browser oracle that cannot fail makes a browser scenario decorative",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "drive the screen",
+          "browser_steps": [
+            {
+              "goto": "/definitely-missing"
+            },
+            {
+              "expect_text": "not found"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O09-goto-refused",
+      "title": "a navigation that cannot connect, with the prior page still satisfying expect_text",
+      "purpose": "isolate exactly one browser oracle so its failure behaviour is provable",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "one oracle per scenario, everything else satisfied",
+      "generating_risk": "a browser oracle that cannot fail makes a browser scenario decorative",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "drive the screen",
+          "browser_steps": [
+            {
+              "goto": "/"
+            },
+            {
+              "goto": "http://127.0.0.1:1/"
+            },
+            {
+              "expect_text": "status: open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "O12-state-check",
+      "title": "the persisted-state oracle inside a browser scenario",
+      "purpose": "isolate exactly one browser oracle so its failure behaviour is provable",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "one oracle per scenario, everything else satisfied",
+      "generating_risk": "a browser oracle that cannot fail makes a browser scenario decorative",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "drive the screen",
+          "browser_steps": [
+            {
+              "goto": "/"
+            },
+            {
+              "expect_text": "status: open"
+            }
+          ]
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "store owner",
+          "command": "python3 fixture/state.py EX-1",
+          "contains": [
+            "owner=Dana Whitfield"
+          ]
+        }
+      ]
+    }
+  ]
+}

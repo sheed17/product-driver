@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-E-r2
+task: Add role-based authorization to the operator console so only a supervisor can release an operation.
+active unit: U-AUTHZ-2
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

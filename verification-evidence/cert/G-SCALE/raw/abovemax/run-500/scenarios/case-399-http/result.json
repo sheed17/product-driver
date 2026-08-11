@@ -1,0 +1,63 @@
+{
+  "scenario_name": "case-399-http",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:57:14+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [],
+  "http": [
+    {
+      "name": "read item 399",
+      "method": "GET",
+      "url": "http://127.0.0.1:8791/item/399",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"item\": 399, \"label\": \"item-399\", \"owner\": \"tenant-a\", \"state\": \"open\"}",
+      "json_body": {
+        "item": 399,
+        "label": "item-399",
+        "owner": "tenant-a",
+        "state": "open"
+      },
+      "duration_s": 0.000570958000025712
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "GET http://127.0.0.1:8791/item/399: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/399: contains '\"item\": 399'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/399: contains '\"owner\": \"tenant-a\"'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "forbidden",
+      "target": "tenant-b",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-399-http",
+  "origin": "generated",
+  "run_id": "gscale-500",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:57:14+00:00"
+}

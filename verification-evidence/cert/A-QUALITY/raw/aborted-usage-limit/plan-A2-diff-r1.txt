@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-A2-diff-r1
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

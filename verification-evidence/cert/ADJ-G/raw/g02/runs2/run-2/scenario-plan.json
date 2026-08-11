@@ -1,0 +1,208 @@
+{
+  "run_id": "run-2",
+  "task": "t",
+  "active_unit_id": "U-042",
+  "generation_basis": {
+    "task": "t",
+    "task_hash": "e3b98a4da31a127d",
+    "active_unit_id": "U-042",
+    "acceptance_criteria": [
+      "an approved invoice is paid exactly once (weight 3): PENDING",
+      "approval survives a restart (weight 2): PENDING"
+    ],
+    "founder_context_version": "founder-v1",
+    "repository_head": "",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "approve twice"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "approval may not be idempotent",
+      "risk_category": "idempotency",
+      "severity": "P0",
+      "basis": "the diff touched approval state",
+      "covered_by": [
+        "approve-twice"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "approve-twice",
+      "proposed_id": "",
+      "title": "approving the same invoice twice produces one payment",
+      "purpose": "a duplicate approval must not produce a second payment effect",
+      "risk_category": "idempotency",
+      "priority": "P0",
+      "rationale": "the diff touched the approval transition",
+      "requirement_reference": "U-042: an approved invoice is paid exactly once",
+      "product_principle_reference": "effect-truth",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "api"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "first approval",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/invoices/9/approve",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 200,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        },
+        {
+          "kind": "request",
+          "name": "second approval",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/approve",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": null,
+            "expect_contains": [],
+            "timeout_s": null
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "payments",
+          "command": "./probe.sh payments",
+          "contains": [
+            "payments=1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "payments=1"
+      ],
+      "forbidden_observations": [
+        "payments=2"
+      ],
+      "cleanup": [
+        "./probe.sh reset"
+      ],
+      "isolation_note": "",
+      "isolation_key": "workflow-db",
+      "generated_from": [],
+      "confidence": 0.8,
+      "provenance": {
+        "generated_at": "2026-08-10T20:30:02+00:00",
+        "task_hash": "e3b98a4da31a127d",
+        "founder_context_version": "founder-v1",
+        "repository_head": "",
+        "active_unit_id": "U-042",
+        "acceptance_criteria_consulted": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "approve twice"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "duplicate approval could double-pay",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "scripted",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 1,
+    "by_risk_category": {
+      "idempotency": 1
+    },
+    "by_priority": {
+      "P0": 1
+    },
+    "uncovered_risks": []
+  },
+  "assumptions": [
+    "the approval endpoint is POST /approve"
+  ],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:30:02+00:00",
+      "basis": {
+        "task": "t",
+        "task_hash": "e3b98a4da31a127d",
+        "active_unit_id": "U-042",
+        "acceptance_criteria": [
+          "an approved invoice is paid exactly once (weight 3): PENDING",
+          "approval survives a restart (weight 2): PENDING"
+        ],
+        "founder_context_version": "founder-v1",
+        "repository_head": "",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "approve twice"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 1,
+      "accepted_ids": [
+        "approve-twice"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

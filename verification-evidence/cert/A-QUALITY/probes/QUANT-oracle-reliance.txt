@@ -1,0 +1,84 @@
+=== A-r1 ===
+  EX-01                      safety_invariant       oracles=['NUMERIC', 'NUMERIC'] surviving_assertions=0  <== RESTS ENTIRELY ON AN UNRELIABLE ORACLE
+  EX-02                      malformed_input        oracles=['NUMERIC'] surviving_assertions=5
+  EX-04                      concurrency            oracles=['NUMERIC'] surviving_assertions=6
+  EX-05                      restart_recovery       oracles=['NUMERIC'] surviving_assertions=2
+  EX-06                      retry_safety           oracles=['NUMERIC'] surviving_assertions=4
+=== D-r1 ===
+  S1-restart-survives        restart_recovery       oracles=['SENTINEL', 'SENTINEL', 'SENTINEL', 'SENTINEL'] surviving_assertions=6
+  S2-durable-schema          safety_invariant       oracles=['(none)'] surviving_assertions=2
+  S3-crash-no-partial        crash_mid_workflow     oracles=['SENTINEL', 'SENTINEL', 'SENTINEL'] surviving_assertions=5
+  S4-replay-no-reexecute     idempotency            oracles=['SENTINEL', 'SENTINEL', 'SENTINEL', 'SENTINEL'] surviving_assertions=6
+  S5-rejected-writes-no-partial malformed_input        oracles=['SENTINEL', 'SENTINEL'] surviving_assertions=9
+=== E-r1 ===
+  AUTHZ-S1                   missing_data           oracles=['(none)'] surviving_assertions=1
+  AUTHZ-S2                   authorization          oracles=['NUMERIC'] surviving_assertions=4
+  AUTHZ-S3                   authorization          oracles=['NUMERIC'] surviving_assertions=4
+  AUTHZ-S5                   authorization          oracles=['NUMERIC'] surviving_assertions=4
+=== F-r1 ===
+  S1                         malformed_input        oracles=['SENTINEL', 'SENTINEL'] surviving_assertions=5
+  S2                         missing_data           oracles=['(none)'] surviving_assertions=3
+  S3                         concurrency            oracles=['NUMERIC', 'NUMERIC'] surviving_assertions=4
+  S4                         restart_recovery       oracles=['NUMERIC', 'NUMERIC'] surviving_assertions=4
+=== G-r1 ===
+  UEV4-W1-01                 malformed_input        oracles=['NUMERIC', 'NUMERIC'] surviving_assertions=5
+  UEV4-W1-02                 missing_data           oracles=['NUMERIC'] surviving_assertions=5
+  UEV4-W1-03                 malformed_input        oracles=['NUMERIC'] surviving_assertions=4
+
+accepted scenarios                                  : 21
+  with >=1 NUMERIC / ERRORONLY / EMPTY state oracle : 13  (62%)
+  that REST ENTIRELY on such an oracle              : 1  (5%)
+state checks classified NUMERIC                     : 17
+state checks classified ERRORONLY or EMPTY          : 0
+
+==============================================================================
+DIRECTION OF EXPOSURE for every NUMERIC oracle in the live accepted set
+
+  contains=['N']     : the count must BE N. A count that merely CONTAINS the
+                       digit N (10, 20, 100 ...) passes -> VACUOUS PASS.
+  not_contains=['N'] : the count must NOT be N. A larger count containing that
+                       digit (10, 12, 20 ...) fails -> SPURIOUS FAIL on a
+                       correct product.
+
+  A-r1     EX-01                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  A-r1     EX-01                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  A-r1     EX-02                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  A-r1     EX-04                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  A-r1     EX-05                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  A-r1     EX-06                      VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.stat
+  E-r1     AUTHZ-S2                   VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_
+  E-r1     AUTHZ-S3                   VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_
+  E-r1     AUTHZ-S5                   VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_
+  F-r1     S3                         VACUOUS-PASS contains=['1']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) > 0 FROM security_events WHERE ev
+  F-r1     S3                         VACUOUS-PASS contains=['1']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) > 0 FROM security_events WHERE ev
+  F-r1     S4                         VACUOUS-PASS contains=['1']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) > 0 FROM security_events WHERE ev
+  F-r1     S4                         VACUOUS-PASS contains=['1']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) > 0 FROM security_events WHERE ev
+  G-r1     UEV4-W1-01                 VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state='V
+  G-r1     UEV4-W1-01                 VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state IN
+  G-r1     UEV4-W1-02                 VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state='V
+  G-r1     UEV4-W1-03                 VACUOUS-PASS contains=['0']
+           sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state IN
+
+NUMERIC oracles exposed to a VACUOUS PASS : 17
+NUMERIC oracles exposed to a SPURIOUS FAIL: 0
+
+PRACTICAL READING. A scenario fails if ANY assertion fails, so an extra sound
+assertion does NOT protect against the spurious-fail direction — it only helps
+against the vacuous-pass direction. Every scenario carrying a not_contains
+numeric oracle can fail against a CORRECT product.

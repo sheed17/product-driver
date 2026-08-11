@@ -1,0 +1,157 @@
+staging a clean copy under /tmp/npd-mutations ...
+
+=== M1: disable adaptive generation (expand_after_failures becomes a no-op) ===
+    CAUGHT
+    [2s, caught by the contracts]         """Not "an expectation failed" — the value that was actually wrong."""
+                        failed_assertions=["expect_state: exactly one payment — not found"],
+    FAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_the_observed_value_reaches_the_generator
+    1 failed, 140 passed in 1.99s
+
+=== M2: duplicate detection always reports 'not a duplicate' ===
+    CAUGHT
+    [334s, caught by the full suite] FAILED tests/test_scenario_generation.py::TestDuplicateDetection::test_a_repeat_of_an_accepted_scenario_is_rejected
+    1 failed, 1028 passed in 330.73s (0:05:30)
+
+=== M3: failed scenarios report PASSED ===
+    CAUGHT
+    [2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_8_a_builder_completion_claim_cannot_override_a_failed_scenario
+    1 failed, 93 passed in 1.71s
+
+=== M4: remove safety validation of generated scenarios ===
+    CAUGHT
+    [7s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_11_an_unsafe_generated_operation_is_refused
+    1 failed, 96 passed in 6.71s
+
+=== M5: ignore generated scenario failure during acceptance ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_an_accept_is_overridden_when_only_a_coverage_gap_remains
+    1 failed, 34 passed in 0.56s
+
+=== M6: remove provenance derivation from generated scenarios ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_a_generated_wave_really_reaches_the_plan_through_the_async_path
+    1 failed, 105 passed in 2.54s
+
+=== M7: no failure ever blocks acceptance (blocking_failures always empty) ===
+    CAUGHT
+    [347s, caught by the full suite] FAILED tests/test_scenario_e2e.py::test_generate_execute_learn_expand_rerun_then_accept
+    1 failed, 980 passed in 343.14s (0:05:43)
+
+=== M8: everything_required_passed forced True ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestConvenienceFlagsCannotOverrideTheGate::test_everything_required_passed_is_false_when_a_required_scenario_failed
+    1 failed, 101 passed in 2.66s
+
+=== N1: real reasoner never invoked (propose returns nothing) ===
+    CAUGHT
+    [6s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_the_real_reasoner_runs_inside_an_already_running_event_loop
+    1 failed, 104 passed in 5.75s
+
+=== N2: reasoner exception silently converted to an empty generation ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestRealReasonerPath::test_a_reasoner_failure_is_recorded_not_silently_an_empty_wave
+    1 failed, 106 passed in 2.61s
+
+=== N3: control characters accepted (newline shell composition) ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestCommandBoundary::test_composition_outside_quotes_is_refused[echo payments\necho INJECTED]
+    1 failed, 108 passed in 2.26s
+
+=== N4: absolute URL in a generated request path accepted ===
+    CAUGHT
+    [2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_12_an_external_url_attempt_is_refused
+    1 failed, 97 passed in 1.82s
+
+=== N5: shell scanner made quote-blind (legitimate SQL probes rejected) ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestCommandBoundary::test_quoted_payloads_are_accepted[sqlite3 db "SELECT key FROM grants GROUP BY key HAVING count(*) > 1"]
+    1 failed, 122 passed in 2.43s
+
+=== N6: adaptive generation receives no failure evidence ===
+    CAUGHT
+    [3s, caught by the contracts]         """Not "an expectation failed" — the value that was actually wrong."""
+                        failed_assertions=["expect_state: exactly one payment — not found"],
+    FAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_the_observed_value_reaches_the_generator
+    1 failed, 140 passed in 2.52s
+
+=== N7: adaptive provenance no longer linked to a source failure ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAdaptiveUsesFailureEvidence::test_an_adaptive_scenario_must_name_the_failure_that_caused_it
+    1 failed, 141 passed in 2.31s
+
+=== N8: required SKIPPED treated as success by the gate ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_3_a_skipped_required_scenario_blocks
+    1 failed, 88 passed in 1.21s
+
+=== N9: evidence reference accepted without any artifact ===
+    CAUGHT
+    [2s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestAcceptanceContract::test_7_fabricated_evidence_does_not_satisfy_the_gate
+    1 failed, 92 passed in 1.28s
+
+=== N10: resume regenerates from wave zero ===
+    CAUGHT
+    [3s, caught by the contracts] FAILED tests/test_remediation_contract.py::TestResumePreservesAdaptiveState::test_a_resumed_planner_continues_from_the_persisted_plan
+    1 failed, 152 passed in 2.68s
+
+=== P1: scenario ids truncated again, so two long proposals become one ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_two_long_ids_sharing_64_characters_stay_distinct
+    1 failed in 0.45s
+
+=== P2: evidence directory names truncated again, so two scenarios share one ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_sanitize_filename_never_merges_two_long_names
+    1 failed, 7 passed in 0.46s
+
+=== P3: a duplicate suite id is dropped silently again ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_a_duplicate_id_is_recorded_rather_than_dropped
+    1 failed, 15 passed in 0.77s
+
+=== P4: assembly conflicts never reach the acceptance gate ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestScenarioIdsDoNotCollide::test_a_dropped_scenario_blocks_acceptance
+    1 failed, 17 passed in 0.62s
+
+=== P5: uncovered required risks never computed (the detector returns nothing) ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_a_required_risk_with_no_scenario_is_a_gap
+    1 failed, 19 passed in 0.49s
+
+=== P6: a coverage gap no longer blocks acceptance ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_every_executed_scenario_passing_does_not_close_the_gap
+    1 failed, 20 passed in 0.51s
+
+=== P7: the control loop stops handing the risk register to the gate ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_dropping_the_risk_register_at_the_call_site_is_caught
+    1 failed, 33 passed in 0.52s
+
+=== P8: the evaluator is no longer shown the coverage gaps ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestUncoveredRisksReachAcceptance::test_the_control_loop_supplies_the_gaps_it_computed
+    1 failed, 30 passed in 0.53s
+
+=== P9: the executor silently coerces max_parallel again instead of refusing ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestParallelismIsNotClaimedFalsely::test_the_executor_refuses_any_other_value[0]
+    1 failed, 37 passed in 0.56s
+
+=== P10: the run journal reads a field IterationRecord does not have ===
+    CAUGHT
+    [1s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestRunJournalIsWritten::test_a_run_with_one_iteration_writes_a_journal
+    1 failed, 44 passed in 0.94s
+
+=== P11: browser expect_text goes back to narration nobody scores ===
+    CAUGHT
+    [2s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestBrowserTextExpectationsAreScored::test_narration_alone_is_not_accepted_as_an_oracle
+    1 failed, 53 passed in 1.84s
+
+=== P12: browser expect_text results are no longer recorded structurally ===
+    CAUGHT
+    [2s, caught by the contracts] FAILED tests/test_post_remediation_contract.py::TestBrowserTextExpectationsAreScored::test_the_observation_records_expectations_structurally
+    1 failed, 54 passed in 1.54s
+
+30/30 mutations caught

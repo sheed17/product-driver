@@ -1,0 +1,20 @@
+==============================================================================
+ORACLE 1 — plan-E.json S1 (accepted, happy_path, 'every refusal is recorded')
+  CORRECT product: 1 audit row exists           rc=0 out='1'                              -> PASS
+  BROKEN: audit log never written (0 rows)      rc=0 out='0'                              -> FAIL
+  BROKEN: audit table does not exist at all     rc=1 out='Error: in prepare, no such table: audit_events' -> PASS
+  CORRECT but busy: 10 audit rows               rc=0 out='10'                             -> FAIL
+
+==============================================================================
+ORACLE 2 — plan-E.json S6 (accepted, concurrency, 'single releaser wins')
+  CORRECT: exactly 1 release recorded           rc=0 out='1'                              -> PASS
+  BROKEN: double release (2 recorded)           rc=0 out='2'                              -> FAIL
+  BROKEN: NO release happened at all (0)        rc=0 out='0'                              -> PASS
+  BROKEN: 12 releases recorded                  rc=0 out='12'                             -> FAIL
+  BROKEN: table missing entirely                rc=1 out='Error: in prepare, no such table: audit_events' -> PASS
+
+==============================================================================
+ORACLE 3 — plan-A2-diff.json S1 (accepted, ui_backend_disagreement)
+  CORRECT product                               rc=0 out='1'                              -> PASS
+  BROKEN: every workflow row lost               rc=0 out='0'                              -> PASS
+  (this oracle asserts only that the SQL did not error; it constrains no product behaviour)

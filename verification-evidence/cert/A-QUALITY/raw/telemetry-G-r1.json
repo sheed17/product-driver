@@ -1,0 +1,27 @@
+{
+  "tag": "G-r1",
+  "key": "G",
+  "diff": false,
+  "rep": "1",
+  "elapsed_s": 517.9,
+  "waves": [
+    {
+      "wave_index": 1,
+      "seconds": 517.8,
+      "exception": "",
+      "session_id": "b5ff4e3d-c48a-48ef-a5aa-f6cb6cec6390",
+      "payload_kind": "dict",
+      "n_scenarios": 3
+    }
+  ],
+  "wave_reasoner_errors": [
+    {
+      "wave": 1,
+      "error": ""
+    }
+  ],
+  "generation_problems": [],
+  "accepted": 3,
+  "rejected": 0,
+  "harness_exception": ""
+}

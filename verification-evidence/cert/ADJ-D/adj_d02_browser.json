@@ -1,0 +1,21 @@
+{
+  "approved_app_url": "http://127.0.0.1:45921",
+  "proposed_goto": "http:/127.0.0.1:45922/escaped-the-approved-target",
+  "validator_inspected_goto": false,
+  "executor_treats_as_absolute": true,
+  "safety_reasons": [],
+  "browser_steps_recorded": [
+    "opened http://127.0.0.1:45921",
+    "goto http:/127.0.0.1:45922/escaped-the-approved-target",
+    "expect_text 'role': FOUND"
+  ],
+  "final_url": "http://127.0.0.1:45922/escaped-the-approved-target",
+  "visible_text": "role=OFFTARGET",
+  "hits_on_approved_port": [
+    "/"
+  ],
+  "hits_on_unvalidated_port": [
+    "/escaped-the-approved-target"
+  ],
+  "VERDICT_escaped_approved_target": true
+}

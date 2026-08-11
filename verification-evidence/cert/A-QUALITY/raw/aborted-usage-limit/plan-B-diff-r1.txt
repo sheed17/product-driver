@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-B-diff-r1
+task: Add supervised carrier invoice approval.
+active unit: U-042
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

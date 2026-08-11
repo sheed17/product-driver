@@ -1,0 +1,443 @@
+{
+  "run_id": "cert-G-r1",
+  "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+  "active_unit_id": "U-EV-4",
+  "generation_basis": {
+    "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+    "task_hash": "047ccc15231cfbce",
+    "active_unit_id": "U-EV-4",
+    "acceptance_criteria": [
+      "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+      "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+      "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+      "an inference is never presented as a known fact (weight 2): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "AC-1 (a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it) cannot be exercised with the approved toolset. The reconciler (reconciliation.reconcile_load / extraction_bridge.reconciliation_from_extraction) that produces VARIANCE reasons and keeps the rate/source-of-truth side untouched is in-process only; there is no approved command or 8001 endpoint that ingests a carrier document with a conflicting field and persists the outcome to workflow_runs for inspection. The single most load-bearing AC (weight 3) is therefore unverified in this wave.",
+      "risk_category": "conflicting_evidence",
+      "severity": "P0",
+      "basis": "Active unit U-EV-4 AC: 'a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it'; implemented in src/freight_recon/extraction_bridge.py + reconciliation.py, no approved driver.",
+      "covered_by": []
+    },
+    {
+      "id": "R2",
+      "description": "AC-2 (a document missing a required field yields a stated missing-evidence result rather than a guess) is unverified. extraction.py sets absent fields to null/confidence 0 and extraction_bridge.REQUIRED_CONFIDENCE_FIELDS forces NEEDS_REVIEW, but nothing driveable feeds a document missing a required field and reads back the persisted 'missing-evidence' outcome/reason, so a regression to guessing would not be caught.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "U-EV-4 AC: 'a document missing a required field yields a stated missing-evidence result rather than a guess'; REQUIRED_CONFIDENCE_FIELDS in extraction_bridge.py.",
+      "covered_by": [
+        "UEV4-W1-02"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "AC-4 (an inference is never presented as a known fact) is unverified. The known/inferred split (deterministic agreed_rate_total vs model-extracted invoice side; low_confidence_required flags) exists in code, but there is no driveable surface or persisted-provenance field a scenario can inspect to prove an inferred value is not rendered as known.",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P1",
+      "basis": "U-EV-4 AC: 'an inference is never presented as a known fact'; reconciliation.agreed_rate_total docstring + extraction_bridge low_confidence_required.",
+      "covered_by": []
+    },
+    {
+      "id": "R4",
+      "description": "AC-3's vision-layer half (an unparseable *document* is refused with a reason and changes no state) is only partially reachable. The callback boundary lets me prove an unverifiable *token* is refused without committing an effect, but the actual unparseable-PDF path (document_identifier.extract_pdf_identifiers / extraction.extract_from_pdf returning error=... FAILED) is not driveable, so a bad scan silently mutating state at the extraction layer would not be caught here.",
+      "risk_category": "malformed_input",
+      "severity": "P1",
+      "basis": "U-EV-4 AC: 'an unparseable document is refused with a reason and changes no state'; extraction.py/document_identifier.py fail-closed error paths.",
+      "covered_by": [
+        "UEV4-W1-01",
+        "UEV4-W1-03"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "UEV4-W1-01",
+      "proposed_id": "",
+      "title": "Unverifiable signed action is refused with a stated reason, not a 500, and commits nothing",
+      "purpose": "Exercise the deployed decision-application boundary with an unverifiable input and confirm it is refused WITH A REASON while no external effect is committed to the system of record.",
+      "risk_category": "malformed_input",
+      "priority": "P0",
+      "rationale": "AC-3 requires an unparseable input be refused with a reason and change no state; the callback is the only driveable path that applies a decision to workflow.sqlite3, so a crash/500 or a silent apply here is a direct AC-3/AC-1 violation.",
+      "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+      "product_principle_reference": "dead_end_error",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "token": "UEV4-PROBE-malformed.not-a-real-signature"
+            },
+            "body": "",
+            "expect_status": 401,
+            "expect_contains": [
+              "Action link rejected",
+              "could not be verified"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no external effect verified",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        {
+          "name": "no external effect even attempted",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIMED','VERIFIED')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Action link rejected",
+        "could not be verified"
+      ],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "APPLIED",
+        "Neyma action applied"
+      ],
+      "cleanup": [],
+      "isolation_note": "Submits only an unverifiable token; a refusal commits nothing and the persisted_state_checks confirm no external effect grant was created, so it cannot contaminate the next scenario.",
+      "isolation_key": "workflow.sqlite3:driver_probe",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:22:38+00:00",
+        "task_hash": "047ccc15231cfbce",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-EV-4",
+        "acceptance_criteria_consulted": [
+          "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+          "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+          "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+          "an inference is never presented as a known fact (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "a malformed/unverifiable input is swallowed or crashes (500/traceback) instead of yielding a stated refusal that commits nothing",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "b5ff4e3d-c48a-48ef-a5aa-f6cb6cec6390",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "UEV4-W1-02",
+      "proposed_id": "",
+      "title": "Missing action token yields a stated missing-input refusal, not a silent success",
+      "purpose": "Confirm that an input missing its required credential is answered with an explicit stated-missing result rather than proceeding or guessing, and changes no state.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "Mirrors AC-2's shape at the driveable boundary: a missing required element must produce a stated result, never a silent proceed; the email-action route with no token is the only approved way to observe this against the system of record.",
+      "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+      "product_principle_reference": "evidence_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token",
+              "missing its signed token"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no external effect verified after missing-token request",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Missing action token"
+      ],
+      "forbidden_observations": [
+        "APPLIED",
+        "Neyma action applied",
+        "Traceback"
+      ],
+      "cleanup": [],
+      "isolation_note": "A GET with no token never reaches submit; nothing is written, and the state check confirms no committed effect.",
+      "isolation_key": "workflow.sqlite3:driver_probe",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:22:38+00:00",
+        "task_hash": "047ccc15231cfbce",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-EV-4",
+        "acceptance_criteria_consulted": [
+          "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+          "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+          "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+          "an inference is never presented as a known fact (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "a request missing its required token is treated as valid / proceeds silently instead of returning a stated 'missing' refusal",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "b5ff4e3d-c48a-48ef-a5aa-f6cb6cec6390",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "UEV4-W1-03",
+      "proposed_id": "",
+      "title": "A non-parseable request body is refused cleanly and commits no effect",
+      "purpose": "Drive the boundary with a body that is neither valid JSON nor a token-bearing form and confirm a stated refusal with no state mutation \u2014 the 'unparseable input, no state change' invariant on the deployed surface.",
+      "risk_category": "malformed_input",
+      "priority": "P1",
+      "rationale": "AC-3 demands unparseable input be refused with a reason and change no state; a garbage body must not be coerced into an applied action, and the effect ledger must remain dark.",
+      "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+      "product_principle_reference": "success_without_verification",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [
+        "callback"
+      ],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "garbage": "UEV4-PROBE-\u0000-not-json-shaped"
+            },
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "effect ledger still shows no verified external write",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIMED','VERIFIED')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Missing action token"
+      ],
+      "forbidden_observations": [
+        "Traceback",
+        "Internal Server Error",
+        "APPLIED",
+        "Neyma action applied"
+      ],
+      "cleanup": [],
+      "isolation_note": "Garbage body cannot carry a valid token, so submit is never reached; state checks confirm nothing committed.",
+      "isolation_key": "workflow.sqlite3:driver_probe",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:22:38+00:00",
+        "task_hash": "047ccc15231cfbce",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-EV-4",
+        "acceptance_criteria_consulted": [
+          "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+          "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+          "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+          "an inference is never presented as a known fact (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "an unparseable request body is partially interpreted and mutates state, or errors into a 500 instead of a stated refusal",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "b5ff4e3d-c48a-48ef-a5aa-f6cb6cec6390",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 3,
+    "by_risk_category": {
+      "malformed_input": 2,
+      "missing_data": 1
+    },
+    "by_priority": {
+      "P0": 1,
+      "P1": 2
+    },
+    "uncovered_risks": [
+      "AC-1 (a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it) cannot be exercised with the approved toolset. The reconciler (reconciliation.reconcile_load / extraction_bridge.reconciliation_from_extraction) that produces VARIANCE reasons and keeps the rate/source-of-truth side untouched is in-process only; there is no approved command or 8001 endpoint that ingests a carrier document with a conflicting field and persists the outcome to workflow_runs for inspection. The single most load-bearing AC (weight 3) is therefore unverified in this wave.",
+      "AC-4 (an inference is never presented as a known fact) is unverified. The known/inferred split (deterministic agreed_rate_total vs model-extracted invoice side; low_confidence_required flags) exists in code, but there is no driveable surface or persisted-provenance field a scenario can inspect to prove an inferred value is not rendered as known."
+    ]
+  },
+  "assumptions": [
+    "The 'callback' service on http://127.0.0.1:8001 is bound to the system-of-record database at data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite3 target), so refusals and effects on that surface are observable there.",
+    "The deployment ships 'dark' (P4/R-07, governed route kernel is None \u2192 ROUTE_NOT_CONFIGURED): no real external write is ever VERIFIED, so a standing safety invariant is that effect_grants has zero rows in ATTEMPTED/CLAIMED/VERIFIED. A scenario that ever observes such a row indicates a silent overwrite of the system of record.",
+    "Slack routes (/slack/*) are disabled in the harness because no Slack signing secret is configured, so only /actions/signed and /email/action are reachable without secrets; the scenarios use only those.",
+    "effect_grants.state literals are exactly {GRANTED,CLAIMED,ATTEMPTED,VERIFIED,FAILED,EXPIRED_UNCLAIMED,REVOKED,UNKNOWN_OUTCOME} (migrations/phase2_tenant_first.py), with VERIFIED being the terminal 'external effect committed' state."
+  ],
+  "unresolved_questions": [
+    "The core U-EV-4 behaviour \u2014 vision extraction of a carrier document reconciled against the shipment record, with conflict surfacing (AC-1), stated missing-evidence results (AC-2), and known-vs-inferred labeling (AC-4) \u2014 is implemented in-process (extraction.py, extraction_bridge.py, reconciliation.py) but is NOT reachable via any approved command or port-8001 endpoint. Is there an ingestion endpoint or an approved CLI that reconciles a *supplied* document (or corpus fixture) and persists the outcome/reason to workflow_runs so AC-1/AC-2/AC-4 can be driven black-box? Without one, three of the four ACs (two of them weight-3) are unverifiable this wave.",
+    "Where is the 'known fact vs inference' provenance persisted for a reconciled document (workflow_runs.reason, an audit_events.payload_json, or an extraction audit payload)? A scenario needs a concrete persisted field to assert that an inferred value is never rendered as a known fact.",
+    "No approved command resets or seeds driver_probe/workflow.sqlite3, so 'changes no state' can only be asserted against the absolute dark-deployment invariant (no ATTEMPTED/CLAIMED/VERIFIED effect grants), not against a per-request row delta. Is a fixture/reset or a baseline-capture command available so before/after mutation of workflow_runs and delivery_action_claims can be verified directly?",
+    "Should the token-boundary refusal invariants I can drive here be treated as satisfying AC-3, or only as adjacent effect-boundary safety checks? The AC is literally about an unparseable *carrier document* at the extraction layer; I have deliberately not claimed the callback-token scenarios discharge the document-layer AC."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:14:00+00:00",
+      "basis": {
+        "task": "Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an inference.",
+        "task_hash": "047ccc15231cfbce",
+        "active_unit_id": "U-EV-4",
+        "acceptance_criteria": [
+          "a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it (weight 3): PENDING",
+          "a document missing a required field yields a stated missing-evidence result rather than a guess (weight 3): PENDING",
+          "an unparseable document is refused with a reason and changes no state (weight 3): PENDING",
+          "an inference is never presented as a known fact (weight 2): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 3,
+      "accepted_ids": [
+        "UEV4-W1-01",
+        "UEV4-W1-02",
+        "UEV4-W1-03"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

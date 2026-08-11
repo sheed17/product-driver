@@ -190,6 +190,25 @@ def test_new_run_id_shape() -> None:
 
 
 def test_sanitize_filename() -> None:
-    assert sanitize_filename("a b/c:d") == "a-b-c-d"
-    assert sanitize_filename("///") == "unnamed"
+    """Readable, bounded, and — the part that was not true — injective.
+
+    The exact equalities this used to assert (``"a b/c:d" -> "a-b-c-d"``,
+    ``"///" -> "unnamed"``) pinned the folding *without* the disambiguator, and
+    that is the defect: every label that folds to the same characters became the
+    same evidence directory, and the digest could not separate them because it
+    was taken over the already-folded string. The properties that matter are
+    asserted instead of the literal output.
+    """
+    assert sanitize_filename("a b/c:d").startswith("a-b-c-d-")
+    assert sanitize_filename("///").startswith("unnamed-")
     assert len(sanitize_filename("x" * 300)) <= 80
+
+    # Already safe and already casefolded: nothing is added.
+    assert sanitize_filename("gen-auth-01") == "gen-auth-01"
+    assert sanitize_filename("backend_generic") == "backend_generic"
+
+    # Distinct labels stay distinct as the filesystem compares them.
+    folding = ["a b/c:d", "a-b-c-d", "a_b/c:d", "a/b/c/d"]
+    keys = [sanitize_filename(n).casefold() for n in folding]
+    assert len(set(keys)) == len(folding)
+    assert sanitize_filename("gen-AUTH-01").casefold() != sanitize_filename("gen-auth-01")

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -39,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .config import ScenarioGenerationConfig
 from .evidence import EvidenceStore
 from .failure_clustering import FailureCluster
-from .models import utcnow
+from .models import redact_obj, utcnow
 from .scenario_generator import (
     GenerationBrief,
     ScenarioReasoner,
@@ -75,6 +76,35 @@ PROMOTION_FILENAME = "promotion-candidates.json"
 STAGE_INITIAL = "initial"
 STAGE_DIFF = "diff_refinement"
 STAGE_ADAPTIVE = "adaptive"
+#: Recorded on a wave whose "generation" was the resume itself: scenarios the
+#: plan had committed to that can no longer be executed.
+STAGE_RESUME = "resume"
+
+
+@dataclass(frozen=True)
+class PlanRestore:
+    """What ``restore_from_store`` found, as three states rather than one.
+
+    "There is no plan" and "there is a plan and it cannot be read" were the same
+    empty string, so the second was handled as the first: the run started again
+    at wave zero with an empty plan, and the next ``persist()`` wrote that empty
+    plan over the only machine-readable record of what the run had decided to
+    verify. They are opposite situations — one is a run with nothing behind it,
+    the other is a run whose state exists and is inaccessible — and only the
+    second must fail closed.
+    """
+
+    state: str  # "absent" | "restored" | "unreadable"
+    note: str = ""
+    #: Where the unreadable file was preserved, so nothing can overwrite it.
+    preserved_path: str = ""
+
+    @property
+    def unreadable(self) -> bool:
+        return self.state == "unreadable"
+
+    def __str__(self) -> str:  # the note is what callers used to receive
+        return self.note
 
 
 # --------------------------------------------------------------------------
@@ -218,12 +248,21 @@ class ScenarioPlanner:
         #: scenario may only name one of these as its cause.
         self._observed_failure_ids: set[str] = set()
         self._observed_cluster_ids: set[str] = set()
+        #: Set when a plan existed on disk and could not be read. A run in this
+        #: state cannot say what it had already decided to verify, so it may not
+        #: reach an acceptance — see :meth:`generation_problems`.
+        self._restore_failure: str = ""
 
     # -- public API --------------------------------------------------------
 
     @property
     def waves_used(self) -> int:
         return self._wave
+
+    @property
+    def restore_failed(self) -> bool:
+        """True when this run's plan exists on disk and could not be read."""
+        return bool(self._restore_failure)
 
     def generation_problems(self) -> list[str]:
         """Waves that failed rather than waves that had nothing to add.
@@ -233,12 +272,32 @@ class ScenarioPlanner:
         generator that answered with an empty list said something. Only the
         first belongs here, and the acceptance gate refuses to accept a run that
         has one.
+
+        A resume that *dropped* coverage belongs here for the same reason, and
+        did not reach it. The plan had committed to those scenarios, the builder
+        was told about them, and they can no longer be executed — the run
+        verified less than it set out to and the only report was a line of
+        terminal scrollback the gate never saw. Same for a plan that could not
+        be read at all: a run that cannot say what it decided to verify has not
+        established that it verified it.
         """
-        return [
+        problems = [
             f"generation wave {record.wave} failed: {record.reasoner_error}"
             for record in self.plan.waves
             if record.reasoner_error
         ]
+        if self._restore_failure:
+            problems.append(self._restore_failure)
+        for record in self.plan.waves:
+            if record.stage != STAGE_RESUME:
+                continue
+            for rejected in record.rejected:
+                problems.append(
+                    f"scenario {rejected.id!r} was planned and executed by this run and "
+                    "could not be restored on resume, so the coverage it provided is gone: "
+                    + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
+                )
+        return problems
 
     def budget_exhausted(self) -> bool:
         return (
@@ -511,7 +570,14 @@ class ScenarioPlanner:
             principle_tokens=principle_tokens_from(self.founder),
             existing_signatures=self.plan.signatures()
             | permanent_signatures(self.permanent_scenarios),
-            existing_ids={s.id for s in self.plan.scenarios},
+            # Permanent scenario names are ids too: `_assemble_suite` uses the
+            # name verbatim as the suite id and the evidence directory is
+            # derived from it. Leaving them out let a generated id collide with
+            # a handwritten P0 regression anchor's evidence, which nothing
+            # compared and nothing reported.
+            existing_ids={s.id for s in self.plan.scenarios}
+            | {s.name for s in self.permanent_scenarios}
+            | ({self.base_scenario.name} if self.base_scenario else set()),
             declared_services={
                 s.name for s in (self.base_scenario.services if self.base_scenario else [])
             },
@@ -585,36 +651,72 @@ class ScenarioPlanner:
 
     # -- persistence -------------------------------------------------------
 
-    def restore_from_store(self) -> str:
+    def _waves_recorded_on_disk(self) -> int:
+        """The highest wave number the surviving per-wave records show.
+
+        The wave budget is the only thing bounding how much a run may generate,
+        and it lived solely in the plan file. When that file could not be read
+        the counter restarted at zero and the run was handed back an allowance
+        it had already spent — repeatedly, once per resume. The per-wave records
+        are written separately and survive, so the spent allowance can be
+        reconstructed from them rather than forgotten.
+        """
+        if self.store is None:
+            return 0
+        waves_dir = self.store.run_dir / WAVES_DIRNAME
+        if not waves_dir.exists():
+            return 0
+        highest = 0
+        for path in sorted(waves_dir.glob("wave-*.json")):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(raw, dict):
+                try:
+                    highest = max(highest, int(raw.get("wave", 0) or 0))
+                except (TypeError, ValueError):
+                    continue
+        return highest
+
+    def restore_from_store(self) -> PlanRestore:
         """Continue a run's plan instead of starting a new one.
 
-        Returns a human-readable note about what was restored, or "" when there
-        was nothing to restore. Resuming without this silently began again at
-        wave zero: prior scenarios were forgotten, duplicates regenerated, the
-        wave budget started over, and the next ``persist()`` overwrote the
-        earlier plan — destroying the record of what the run had already
-        decided.
+        Returns a :class:`PlanRestore` describing which of three things was
+        found: no plan at all, a plan that was restored, or a plan that exists
+        and cannot be read. The last used to be indistinguishable from the
+        first, which is what made an unreadable plan *fail open*: the run began
+        again at wave zero, with an empty plan and a fresh wave budget, and the
+        next ``persist()`` destroyed the surviving record.
+
+        Resuming without any of this silently began again at wave zero: prior
+        scenarios were forgotten, duplicates regenerated, the wave budget
+        started over, and the next ``persist()`` overwrote the earlier plan —
+        destroying the record of what the run had already decided.
 
         A plan generated against a different repository state is restored but
         flagged: its scenarios were chosen for code that has since changed, and
         that is a fact the run should state rather than paper over.
         """
         if self.store is None:
-            return ""
+            return PlanRestore(state="absent")
         path = self.store.run_dir / PLAN_FILENAME
         if not path.exists():
-            return ""
+            # No plan, but possibly waves already spent — a plan file that a
+            # previous resume preserved as corrupt, say. The allowance still
+            # binds.
+            self._wave = self._waves_recorded_on_disk()
+            return PlanRestore(state="absent")
 
         try:
             plan = GeneratedScenarioPlan.model_validate_json(path.read_text(encoding="utf-8"))
         except Exception as exc:
-            # A plan we cannot read is not a plan we may half-adopt.
-            self.emit(f"  could not restore the scenario plan ({type(exc).__name__}); "
-                      "this run will generate a new one")
-            return ""
+            return self._plan_is_unreadable(path, exc)
 
         self.plan = plan
-        self._wave = max((w.wave for w in plan.waves), default=0)
+        self._wave = max(
+            max((w.wave for w in plan.waves), default=0), self._waves_recorded_on_disk()
+        )
         self._observed_failure_ids = set(plan.observed_failure_ids)
         self._observed_cluster_ids = set(plan.observed_cluster_ids)
 
@@ -622,6 +724,7 @@ class ScenarioPlanner:
         # command set is derived from the repository as it is *now*, so a
         # scenario whose command is no longer approved must not come back to life.
         restored, dropped = 0, []
+        rejected: list[RejectedScenario] = []
         for scenario in list(plan.scenarios):
             approved = self._approved_for(scenario)
             try:
@@ -631,8 +734,33 @@ class ScenarioPlanner:
                 restored += 1
             except Exception as exc:
                 dropped.append(f"{scenario.id} ({type(exc).__name__}: {exc})")
+                rejected.append(
+                    RejectedScenario(
+                        id=scenario.id,
+                        title=scenario.title,
+                        reasons=[
+                            "this run had already committed to verifying it, and on resume "
+                            f"it no longer compiles: {type(exc).__name__}: {exc}"
+                        ],
+                    )
+                )
                 plan.scenarios.remove(scenario)
         if dropped:
+            # Recorded in the plan, not only on the terminal. A scenario the run
+            # had committed to and can no longer execute is lost coverage, and
+            # coverage that vanishes between two processes with nothing but a
+            # print to show for it is exactly the state the gate exists to
+            # refuse. `generation_problems()` reads this back, which is the
+            # channel `evaluate_gate` already consumes.
+            plan.waves.append(
+                WaveRecord(
+                    wave=self._wave,
+                    stage=STAGE_RESUME,
+                    basis=plan.generation_basis,
+                    proposed=len(rejected),
+                    rejected=rejected,
+                )
+            )
             self.emit(
                 f"  {len(dropped)} restored scenario(s) no longer compile and were dropped: "
                 + "; ".join(dropped[:4])
@@ -650,7 +778,48 @@ class ScenarioPlanner:
                 "the plan was made, so its coverage was chosen against different code"
             )
         self.emit(f"  {note}")
-        return note
+        if dropped:
+            self.persist()
+        return PlanRestore(state="restored", note=note)
+
+    def _plan_is_unreadable(self, path: Path, exc: Exception) -> PlanRestore:
+        """Fail closed on a plan that exists and cannot be read.
+
+        Three things, none of them optional. The file is preserved under a name
+        nothing writes, so ``persist()`` cannot destroy the only record of what
+        the run decided. The spent wave allowance is reconstructed from the
+        per-wave records that survive, so a corrupt plan is not a way to earn
+        unbounded generation across repeated resumes. And the failure is
+        recorded as a generation problem, so the acceptance gate refuses rather
+        than accepting a run whose committed verification silently collapsed.
+        """
+        detail = f"{type(exc).__name__}: {exc}"
+        preserved = path.with_name(
+            f"{path.stem}.corrupt-{utcnow().replace(':', '').replace('-', '')}.json"
+        )
+        try:
+            path.replace(preserved)
+        except OSError as move_exc:  # pragma: no cover - filesystem refusal
+            self.emit(f"  could not preserve the unreadable scenario plan: {move_exc}")
+            preserved = path
+
+        self._wave = self._waves_recorded_on_disk()
+        self._restore_failure = (
+            f"the scenario plan for this run exists and could not be read ({detail}); "
+            f"it was preserved at {preserved.name} and this run cannot re-establish what "
+            "it had already decided to verify"
+        )
+        self.emit(f"  {self._restore_failure}")
+        if self._wave:
+            self.emit(
+                f"  {self._wave} generation wave(s) were already spent according to the "
+                "surviving per-wave records; that allowance still binds"
+            )
+        return PlanRestore(
+            state="unreadable",
+            note=self._restore_failure,
+            preserved_path=str(preserved),
+        )
 
     def note_executed(self, scenario_ids: Sequence[str]) -> None:
         """Record which scenarios have actually run, for a later resume."""
@@ -659,14 +828,49 @@ class ScenarioPlanner:
         self.persist()
 
     def persist(self) -> None:
-        """Write the plan and each wave. Generated plans never enter git."""
+        """Write the plan and each wave. Generated plans never enter git.
+
+        The plan is written whole and then moved into place, and only after the
+        exact bytes have been read back through the model that will have to
+        parse them on resume. Both halves are load-bearing:
+
+        * **atomic.** ``Path.write_text`` truncates first, so a crash inside the
+          window leaves a half-written plan — and a crash mid-run is precisely
+          the event resume exists to survive. ``write_case_evidence`` in the
+          suite already stages and replaces for this reason; the plan, which is
+          the run's own record of what it decided to verify, did not.
+        * **round-tripped.** A write-time transform silently rendered this file
+          unparseable once already (key-based redaction replacing an ``int``
+          count with the string ``"[REDACTED]"``), and nothing noticed until a
+          resume found the plan unreadable. Refusing the write when the payload
+          will not re-validate makes that class of failure loud at the moment it
+          is caused rather than at the moment it is fatal.
+        """
         if self.store is None:
             return
         # Carried in the plan so a resumed run can still verify an adaptive
         # scenario's stated cause against what was actually observed.
         self.plan.observed_failure_ids = sorted(self._observed_failure_ids)
         self.plan.observed_cluster_ids = sorted(self._observed_cluster_ids)
-        self.store.write_json(PLAN_FILENAME, self.plan.model_dump(mode="json"))
+
+        payload = redact_obj(self.plan.model_dump(mode="json"))
+        text = json.dumps(payload, indent=2, default=str, ensure_ascii=False)
+        try:
+            GeneratedScenarioPlan.model_validate_json(text)
+        except Exception as exc:
+            self.emit(
+                "  REFUSED to write the scenario plan: the record it would have written "
+                f"cannot be read back as a plan ({type(exc).__name__}: {exc}). The "
+                "previous plan is left intact rather than replaced with one no resume and "
+                "no reader could parse."
+            )
+            return
+
+        path = self.store.run_dir / PLAN_FILENAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staging = path.with_name(f".{PLAN_FILENAME}.partial")
+        staging.write_text(text, encoding="utf-8")
+        staging.replace(path)
         # Indexed by position in the wave list, not by wave number. A wave
         # refused before it could run never increments the wave counter, so
         # numbering these files by wave number silently overwrote each refusal

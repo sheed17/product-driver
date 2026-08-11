@@ -1,0 +1,309 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "A Slack post that TIMES OUT after chat.postMessage actually landed is collapsed to FAILED (SlackApiPoster catches every urlopen exception and returns ok=False), and there is no delivery-identity/commit key on the notification, so a retry re-posts and the operator receives the same notification twice.",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "basis": "delivery_dispatch.SlackApiPoster.post_message maps any exception to ok=False; _dispatch_slack maps not-ok to DispatchStatus.FAILED with no dedup on external_id/ts. AC 'a retry after an unknown outcome does not produce a second delivery' and 'a confirmed send is recorded delivered exactly once'."
+      },
+      {
+        "id": "R2",
+        "description": "There is no UNKNOWN/unconfirmed dispatch outcome: DispatchStatus is {DRY_RUN,OUTBOXED,SENT,BLOCKED,FAILED}. An ambiguous transport result (timeout after post, connection reset mid-response) is forced into SENT or FAILED, so an unconfirmed send is mis-recorded as one or the other rather than as unknown.",
+        "risk_category": "ambiguous_external_effect",
+        "severity": "P0",
+        "basis": "delivery_dispatch.DispatchStatus enum has no UNKNOWN member; status = SENT if result.ok else FAILED. AC 'a send whose outcome is unconfirmed is recorded as unknown, never as delivered'."
+      },
+      {
+        "id": "R3",
+        "description": "On a full transport outage the attempt is recorded FAILED but nothing appears to re-drive or surface it to an owner, so the operator notification is effectively dropped (recorded-but-silent) with no next action.",
+        "risk_category": "dependency_failure",
+        "severity": "P1",
+        "basis": "_dispatch_slack returns a terminal FAILED DispatchAttempt; no retry/queue/escalation observed on this path. AC 'a transport outage leaves no notification silently dropped'."
+      },
+      {
+        "id": "R4",
+        "description": "No per-notification delivery ledger / commit key exists (commit_key.py governs external TMS writes, not operator notifications), so even a correct UNKNOWN state has nothing to converge a retry against \u2014 dedup is impossible.",
+        "risk_category": "retry_safety",
+        "severity": "P1",
+        "basis": "commit_key.OCCURRENCE_RULES covers raise_invoice/file_document/etc., not notification delivery; delivery attempts are append-only audit_events with no unique delivery key. AC 'retry after unknown does not produce a second delivery'."
+      },
+      {
+        "id": "R5",
+        "description": "VERIFICATION GAP: the outbound dispatch path cannot be driven through the approved surface. No callback endpoint triggers dispatch_delivery_message, no approved command invokes it, and a valid signed token (needing the secret) is out of scope \u2014 so all four U-DEL-7 ACs are unexercised in this harness and this wave can only probe the reachable intake-recording invariant.",
+        "risk_category": "test-coverage",
+        "severity": "P1",
+        "basis": "action_callback routes only /actions/signed, /email/action, /slack/* (all inbound); approved commands are pytest/probe/sqlite only. delivery_dispatch is import-only from these entry points."
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1",
+        "title": "Unverifiable action intake is recorded as rejected, never applied",
+        "purpose": "Drive the reachable delivery intake with a tampered token and prove the boundary durably RECORDS the unconfirmable outcome instead of treating it as success or dropping it \u2014 the persistence invariant the 'unconfirmed => unknown, never delivered' AC depends on.",
+        "risk_category": "malformed_input",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "An unverifiable input is the intake analog of an unconfirmable outcome; U-DEL-7 requires such outcomes be recorded (not applied, not silently swallowed), and this is the only slice of that invariant reachable without the signing secret.",
+        "generating_risk": "An outcome that cannot be confirmed/verified could be silently swallowed or wrongly treated as a success instead of being recorded as a non-delivery.",
+        "requirement_reference": "a send whose outcome is unconfirmed is recorded as unknown, never as delivered",
+        "product_principle_reference": "outcome_verification",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Appends only a security_events row with event_type='delivery_action_rejected'; mutates no workflow run, delivery state, or tenant data. Oracle reads the latest matching row, so accumulation across runs is harmless; audit rows are meant to be durable, so no deletion cleanup.",
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "tampered.0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "expect_status": 401,
+              "expect_contains": [
+                "could not be verified"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type, payload_json FROM security_events WHERE event_type='delivery_action_rejected' ORDER BY id DESC LIMIT 1\"",
+              "contains": [
+                "delivery_action_rejected",
+                "signature"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "could not be verified",
+          "delivery_action_rejected"
+        ],
+        "forbidden_observations": [
+          "delivery_action_applied"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "tampered intake recorded as rejection",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type, payload_json FROM security_events WHERE event_type='delivery_action_rejected' ORDER BY id DESC LIMIT 1\"",
+            "contains": [
+              "delivery_action_rejected",
+              "signature"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S2",
+        "title": "Missing token yields a recorded dead-end-free refusal, not a silent no-op",
+        "purpose": "POST the intake with no token and confirm the server returns an explicit, actionable refusal rather than silently accepting or crashing.",
+        "risk_category": "missing_data",
+        "priority": "P2",
+        "mode": "backend",
+        "rationale": "A delivery request stripped of its identifying token is the degenerate 'nothing to deliver' case; the product must answer explicitly (no silent success), which is the observable half of 'nothing silently dropped'.",
+        "generating_risk": "An empty/identity-less delivery request could be silently accepted or dropped with no operator-visible outcome.",
+        "requirement_reference": "a transport outage leaves no notification silently dropped",
+        "product_principle_reference": "dead_end_error",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Read-only with respect to persisted state: a missing-token request is refused before submit_signed_action, so no rows are written. Nothing to clean up.",
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {},
+              "expect_status": 400,
+              "expect_contains": [
+                "missing its signed token"
+              ],
+              "timeout_s": 5
+            }
+          }
+        ],
+        "expected_observations": [
+          "missing its signed token"
+        ],
+        "forbidden_observations": [
+          "Neyma action applied"
+        ]
+      },
+      {
+        "id": "S3",
+        "title": "Simultaneous identical retries are each recorded; none dropped, no crash",
+        "purpose": "Fire two identical tampered submissions in parallel and confirm the intake answers both and durably records the attempts under concurrency, rather than losing one to a race or crashing.",
+        "risk_category": "concurrency",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "Retry storms and double-clicks are exactly when a delivery layer drops or double-processes; this proves the reachable intake neither drops an attempt nor 500s when two arrive at once.",
+        "generating_risk": "Concurrent identical retries could race such that an attempt is silently lost or the handler crashes, leaving the outcome unrecorded.",
+        "requirement_reference": "a transport outage leaves no notification silently dropped",
+        "product_principle_reference": "repository_silent",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Appends only delivery_action_rejected security_events rows; oracle is an existence (>0) test tolerant of accumulation; no run/delivery state mutated.",
+        "actions": [
+          {
+            "kind": "parallel_requests",
+            "requests": [
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {
+                  "token": "raceA.1111111111111111111111111111111111111111111111111111111111111111"
+                },
+                "expect_status": 401,
+                "expect_contains": [
+                  "could not be verified"
+                ],
+                "timeout_s": 5
+              },
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {
+                  "token": "raceA.1111111111111111111111111111111111111111111111111111111111111111"
+                },
+                "expect_status": 401,
+                "expect_contains": [
+                  "could not be verified"
+                ],
+                "timeout_s": 5
+              }
+            ]
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+              "contains": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "could not be verified"
+        ],
+        "forbidden_observations": [
+          "Internal Server Error",
+          "Traceback"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "rejections recorded under concurrency",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "S4",
+        "title": "Recorded outcomes survive a callback restart (durability)",
+        "purpose": "Record a rejected intake, restart the callback service, submit again, and confirm the persisted rejection record survives the restart and the store is still writable \u2014 the durability the 'nothing silently dropped' guarantee rests on.",
+        "risk_category": "restart_recovery",
+        "priority": "P2",
+        "mode": "backend",
+        "rationale": "A resilience guarantee is only real if the record outlives a process bounce; if outcome records lived in memory or a lost handle, a restart between send and confirm would erase the evidence a notification was ever attempted.",
+        "generating_risk": "An outcome recorded before a restart could be lost (in-memory/unflushed), so post-restart the system cannot tell a notification was already attempted and re-drives or forgets it.",
+        "requirement_reference": "U-DEL-7",
+        "product_principle_reference": "failure_recovery",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Appends only delivery_action_rejected security_events rows and restarts the callback service (returned to running state). Oracle is an existence test; no delivery/run state mutated.",
+        "actions": [
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "beforeRestart.2222222222222222222222222222222222222222222222222222222222222222"
+              },
+              "expect_status": 401,
+              "expect_contains": [
+                "could not be verified"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1500
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {
+                "token": "afterRestart.3333333333333333333333333333333333333333333333333333333333333333"
+              },
+              "expect_status": 401,
+              "expect_contains": [
+                "could not be verified"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+              "contains": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "expected_observations": [
+          "could not be verified"
+        ],
+        "forbidden_observations": [
+          "Traceback",
+          "no such table"
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "rejection records durable across restart",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+            "contains": [
+              "1"
+            ]
+          }
+        ]
+      }
+    ],
+    "assumptions": [
+      "The 'callback' service on http://127.0.0.1:8001 is the NeymaActionCallbackHandler bound to db_path data/active_workspace/driver_probe/workflow.sqlite3, so security_events rows written by submit_signed_action land in that DB.",
+      "submit_signed_action records a security_events row (event_type='delivery_action_rejected', failure='signature') for a token that fails signature verification, regardless of whether Slack interactivity is configured \u2014 the signer is always constructed.",
+      "The driver_probe workflow DB is effectively single-tenant, so an unfiltered aggregate query over security_events reflects only this deployment's rows.",
+      "A DispatchStatus.UNKNOWN member and a per-notification delivery key would be the expected shape of the U-DEL-7 change; the code visible in delivery_dispatch.py still maps outcomes only to SENT/FAILED, which is the pre-resilience shape."
+    ],
+    "unresolved_questions": [
+      "Which code path implements U-DEL-7's OUTBOUND operator-notification delivery, and is there any loopback endpoint or approved command that triggers dispatch_delivery_message? None of /actions/signed, /email/action, or /slack/* invoke an outbound dispatch, so the delivered/unknown/dedup ACs cannot be driven end-to-end here.",
+      "Is there a new UNKNOWN DispatchStatus and a per-notification delivery ledger/commit key? The canonical schema surfaces audit_events/security_events; confirm where an 'unknown' notification outcome is persisted and what column enforces at-most-one delivery per logical notification.",
+      "To exercise 'recorded delivered exactly once' and the timeout-after-post dedup, the harness needs either a loopback dispatch trigger with an injectable/faultable transport or a valid signed-token fixture; the signing secret is out of scope for this stage. Should a fault-injectable SlackPoster seam be exposed for verification?",
+      "Does a FAILED/UNKNOWN outbound attempt get re-driven or escalated to an owner, or is it terminal? AC-4 ('no notification silently dropped') needs a named recovery/surfacing path, which is not visible on the current _dispatch_slack return."
+    ]
+  }
+]

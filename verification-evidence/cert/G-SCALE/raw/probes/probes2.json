@@ -1,0 +1,27 @@
+{
+  "p10_resume_drops_uncompilable_scenarios": {
+    "scenarios_before_resume": 200,
+    "scenarios_after_resume": 0,
+    "dropped": 200,
+    "restore_note": "resumed scenario plan: 0 scenario(s), 1 wave(s) already used",
+    "dropped_mentioned_in_restore_note": false,
+    "emitted_lines": [
+      "  200 restored scenario(s) no longer compile and were dropped: gen-drop-0000 (CompilationError: refusing to compile gen-drop-0000: the persisted-state command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.); gen-drop-0001 (CompilationError: refusing to compile gen-drop-0001: the persisted-state command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.); gen-drop-0002 (CompilationError: refusing to compile gen-drop-0002: the persisted-state command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.); gen-drop-0003 (CompilationError: refusing to compile gen-drop-0003: the persisted-state command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.)",
+      "  resumed scenario plan: 0 scenario(s), 1 wave(s) already used"
+    ],
+    "generation_problems_after_resume": [],
+    "wave_records_mention_the_drop": [],
+    "rejected_records_mention_the_drop": [],
+    "gate_sees_a_problem": false,
+    "gate_generation_problems": [],
+    "persisted_plan_still_lists_them": 200
+  },
+  "p11_gate_trusts_stale_evidence_flag": {
+    "outcomes": 201,
+    "gate_with_evidence_present": "VERIFIED",
+    "gate_with_evidence_deleted": "VERIFIED",
+    "required_passed_with_evidence_deleted": 201,
+    "evidence_dirs_that_still_resolve": 0,
+    "gate_rechecks_evidence_on_reload": false
+  }
+}

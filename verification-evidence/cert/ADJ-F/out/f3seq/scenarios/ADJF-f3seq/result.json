@@ -1,0 +1,51 @@
+{
+  "scenario_name": "generated:ADJF-f3seq",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:34:09+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50630/quiet",
+    "title": "",
+    "visible_text": "nothing to see",
+    "screenshots": [
+      "out/f3seq/scenarios/ADJF-f3seq/screenshots/walk-the-surface-the-way-an-operator-would-01-initial.png",
+      "out/f3seq/scenarios/ADJF-f3seq/screenshots/walk-the-surface-the-way-an-operator-would-02-first-screen.png",
+      "out/f3seq/scenarios/ADJF-f3seq/screenshots/walk-the-surface-the-way-an-operator-would-04-second-screen.png",
+      "out/f3seq/scenarios/ADJF-f3seq/screenshots/walk-the-surface-the-way-an-operator-would-99-final.png"
+    ],
+    "console_errors": [],
+    "network_failures": [],
+    "trace_path": null,
+    "steps": [
+      "opened http://127.0.0.1:50630/",
+      "goto http://127.0.0.1:50630/boom",
+      "goto http://127.0.0.1:50630/quiet"
+    ],
+    "text_expectations": [],
+    "step_failures": []
+  },
+  "assertions": [
+    {
+      "kind": "forbidden",
+      "target": "Traceback (most recent call last):",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: walk the surface the way an operator would"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-f3seq",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:34:10+00:00"
+}

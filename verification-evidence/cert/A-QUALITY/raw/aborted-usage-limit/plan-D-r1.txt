@@ -1,0 +1,8 @@
+GENERATED SCENARIO PLAN — run cert-D-r1
+task: Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.
+active unit: U-P5-1
+
+0 generated case(s)
+risk categories exercised: none
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

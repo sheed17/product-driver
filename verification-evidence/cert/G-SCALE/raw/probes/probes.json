@@ -1,0 +1,175 @@
+{
+  "p6_complexity": {
+    "rows": [
+      {
+        "n": 100,
+        "build_suite_ms": 0.43,
+        "cluster_failures_ms": 2.74,
+        "evaluate_gate_ms": 0.24,
+        "select_rerun_ms": 0.29,
+        "summary_block_ms": 0.3,
+        "execution_order_chain_deps_ms": 0.1,
+        "summary_chars": 21260,
+        "clusters": 100
+      },
+      {
+        "n": 200,
+        "build_suite_ms": 1.32,
+        "cluster_failures_ms": 9.17,
+        "evaluate_gate_ms": 0.49,
+        "select_rerun_ms": 0.91,
+        "summary_block_ms": 0.57,
+        "execution_order_chain_deps_ms": 0.17,
+        "summary_chars": 42560,
+        "clusters": 200
+      },
+      {
+        "n": 400,
+        "build_suite_ms": 4.29,
+        "cluster_failures_ms": 28.48,
+        "evaluate_gate_ms": 0.87,
+        "select_rerun_ms": 4.09,
+        "summary_block_ms": 1.16,
+        "execution_order_chain_deps_ms": 0.33,
+        "summary_chars": 85160,
+        "clusters": 400
+      },
+      {
+        "n": 800,
+        "build_suite_ms": 15.77,
+        "cluster_failures_ms": 104.99,
+        "evaluate_gate_ms": 2.04,
+        "select_rerun_ms": 13.36,
+        "summary_block_ms": 2.19,
+        "execution_order_chain_deps_ms": 0.67,
+        "summary_chars": 170360,
+        "clusters": 800
+      },
+      {
+        "n": 1600,
+        "build_suite_ms": 58.65,
+        "cluster_failures_ms": 418.38,
+        "evaluate_gate_ms": 4.03,
+        "select_rerun_ms": 55.52,
+        "summary_block_ms": 5.04,
+        "execution_order_chain_deps_ms": 1.41,
+        "summary_chars": 342563,
+        "clusters": 1600
+      }
+    ],
+    "doubling_ratios (2.0=linear, 4.0=quadratic)": {
+      "build_suite_ms": [
+        3.07,
+        3.25,
+        3.68,
+        3.72
+      ],
+      "cluster_failures_ms": [
+        3.35,
+        3.11,
+        3.69,
+        3.98
+      ],
+      "evaluate_gate_ms": [
+        2.04,
+        1.78,
+        2.34,
+        1.98
+      ],
+      "select_rerun_ms": [
+        3.14,
+        4.49,
+        3.27,
+        4.16
+      ],
+      "summary_block_ms": [
+        1.9,
+        2.04,
+        1.89,
+        2.3
+      ],
+      "execution_order_chain_deps_ms": [
+        1.7,
+        1.94,
+        2.03,
+        2.1
+      ]
+    }
+  },
+  "p7_prompt_bound": {
+    "rows": [
+      {
+        "failures": 10,
+        "assertion_chars": 100,
+        "summary_chars": 10497,
+        "prompt_chars": 12009,
+        "prompt_est_tokens": 3002,
+        "failures_named_in_prompt": 10,
+        "all_failures_named": true
+      },
+      {
+        "failures": 200,
+        "assertion_chars": 100,
+        "summary_chars": 206520,
+        "prompt_chars": 208032,
+        "prompt_est_tokens": 52008,
+        "failures_named_in_prompt": 200,
+        "all_failures_named": true
+      },
+      {
+        "failures": 200,
+        "assertion_chars": 1000,
+        "summary_chars": 1300830,
+        "prompt_chars": 1302342,
+        "prompt_est_tokens": 325585,
+        "failures_named_in_prompt": 200,
+        "all_failures_named": true
+      },
+      {
+        "failures": 200,
+        "assertion_chars": 10000,
+        "summary_chars": 12100830,
+        "prompt_chars": 12102342,
+        "prompt_est_tokens": 3025585,
+        "failures_named_in_prompt": 200,
+        "all_failures_named": true
+      },
+      {
+        "failures": 500,
+        "assertion_chars": 10000,
+        "summary_chars": 30252630,
+        "prompt_chars": 30254142,
+        "prompt_est_tokens": 7563535,
+        "failures_named_in_prompt": 500,
+        "all_failures_named": true
+      }
+    ],
+    "is_bounded": false,
+    "note": "prompt size grows linearly in (failures x assertion length) with no cap"
+  },
+  "p8_one_giant_cluster": {
+    "failures": 200,
+    "clusters": 1,
+    "largest_cluster": 200,
+    "cluster_seconds": 0.0146,
+    "every_failure_in_exactly_one_cluster": true,
+    "render_chars_of_largest": 1996,
+    "evidence_paths_listed_in_render": 6
+  },
+  "p9_gate_duplicate_required_ids": {
+    "duplicate_required_ids": {
+      "required_total": 3,
+      "required_passed": 3,
+      "status": "VERIFIED",
+      "double_counted": true
+    },
+    "missing_required_id": {
+      "required_total": 2,
+      "required_passed": 1,
+      "status": "NOT_VERIFIED",
+      "unverified": [
+        "[NO RESULT] b \u2014 no result was recorded for this required scenario, so it cannot have been verified"
+      ]
+    }
+  }
+}

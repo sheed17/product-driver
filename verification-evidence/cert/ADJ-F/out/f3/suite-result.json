@@ -1,0 +1,33 @@
+{
+  "started_at": "2026-08-10T20:28:15+00:00",
+  "duration_s": 1.3773484169998937,
+  "full_run": true,
+  "selection_reason": "",
+  "expected_required_ids": [
+    "ADJF-f3"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "ADJF-f3",
+      "scenario_name": "generated:ADJF-f3",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "ui_backend_disagreement",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 1,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "out/f3/scenarios/ADJF-f3",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": "ADJ-F local fixture"
+    }
+  ],
+  "clusters": []
+}

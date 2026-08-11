@@ -1,0 +1,52 @@
+GENERATED SCENARIO PLAN — run cert-D-r1
+task: Move workflow state from the in-process cache to the durable workflow store, so state survives a process restart.
+active unit: U-P5-1
+
+5 generated case(s)
+risk categories exercised: crash_mid_workflow, idempotency, malformed_input, restart_recovery, safety_invariant
+identified but NOT exercised: A write that fails partway (crash between the workflow_runs UPDATE and the audit_events/effect insert, or an exception mid-transaction) leaves a half-applied workflow: an orphaned audit event, an invalid state value, or a run advanced without its ledger row.; After the move to the durable store, a read still returns a value cached in memory rather than the last committed write, so a reader sees stale state (e.g. a run shown as NEEDS_REVIEW after it was transitioned to DONE).; A freshly started process cannot open the durable store (schema not ready, WAL lock, wrong path), so instead of surviving the restart the whole surface fails closed with 500s or dead ends.
+
+IDENTIFIED RISKS:
+  [P0 restart_recovery] Workflow run state that was only held in the in-process cache is lost when the callback process is restarted, so a fresh process serves empty or missing state for runs that were mid-flight.  (covered by S1-restart-survives)
+  [P0 partial_failure] A write that fails partway (crash between the workflow_runs UPDATE and the audit_events/effect insert, or an exception mid-transaction) leaves a half-applied workflow: an orphaned audit event, an invalid state value, or a run advanced without its ledger row.  (NOT covered)
+  [P1 stale_state] After the move to the durable store, a read still returns a value cached in memory rather than the last committed write, so a reader sees stale state (e.g. a run shown as NEEDS_REVIEW after it was transitioned to DONE).  (NOT covered)
+  [P0 idempotency] Rebuilding workflow state from the durable history after a restart re-mints a grant or re-runs a committing step, producing a duplicate live effect_grants row for a commit_key or a CLAIMED grant with no witness — i.e. an external effect executed twice.  (covered by S4-replay-no-reexecute)
+  [P1 dependency_failure] A freshly started process cannot open the durable store (schema not ready, WAL lock, wrong path), so instead of surviving the restart the whole surface fails closed with 500s or dead ends.  (NOT covered)
+
+SCENARIOS:
+  [P0 restart_recovery] S1-restart-survives: Workflow state and process health survive a real callback restart
+      purpose: Exercise AC1 directly: the durable store must retain workflow_runs across a full process restart, and the freshly started process must open that store and serve requests. Assumes the driver_probe workspace DB is the canonical durable store the running callback server is bound to.
+      grounded in: workflow state survives a process restart
+      because: A restart discards in-memory run state, so a new process serves empty/missing workflow state (R1) or cannot even open the store (R5).
+  [P1 safety_invariant] S2-durable-schema: The durable store defines the state, audit, and effect-ledger tables
+      purpose: Ground the claim that workflow state lives in a durable store (not memory): the canonical schema must materialize the run table, the audit history, the effect ledger, and the immutable witness table that replay-safety depends on.
+      grounded in: workflow state survives a process restart
+      because: State or effect history is not represented as durable tables at all, so nothing can survive a restart (R1) and history-based replay has no ledger to be idempotent against (R4).
+  [P0 crash_mid_workflow] S3-crash-no-partial: Abrupt stop then restart leaves no partially applied workflow
+      purpose: Exercise AC2 under a crash: kill the callback process (no graceful shutdown), start a fresh one, and assert the durable store holds no half-applied workflow — no orphaned audit events, no invalid state values, no duplicate live grants.
+      grounded in: a failed write leaves no partially applied workflow
+      because: A write interrupted by a crash commits half of a transition (state advanced but audit/ledger row missing, or vice-versa), leaving a partially applied workflow (R2), or the fresh process cannot reopen the store (R5).
+  [P0 idempotency] S4-replay-no-reexecute: Restart-driven rebuild does not re-execute an effect
+      purpose: Exercise AC4: after a restart (which forces state to be rebuilt from the durable store rather than memory), the effect ledger must show no duplicated live grant for any commit_key and every CLAIMED grant must still be backed by exactly one witness — i.e. no effect was re-run on rebuild.
+      grounded in: rebuilding state from history never re-executes an effect
+      because: Rebuilding workflow state from history after restart re-mints a grant or re-drives a committing step, creating a duplicate live effect_grants row or a CLAIMED grant with no witness (R4).
+  [P1 malformed_input] S5-rejected-writes-no-partial: Rejected/malformed requests create no partial workflow state
+      purpose: Exercise AC2 from the request side: concurrent malformed callbacks (missing token, unknown path, wrong method) must be cleanly rejected and must leave the durable store with no new orphaned rows and no invalid states — a failed request is not a partial write.
+      grounded in: a failed write leaves no partially applied workflow
+      because: A malformed or concurrent rejected request partially advances or corrupts workflow state instead of failing atomically (R2), or the server 500s instead of rejecting cleanly (R5).
+
+ASSUMPTIONS:
+  - The callback service at http://127.0.0.1:8001 is bound to data/active_workspace/driver_probe/workflow.sqlite3 (the same file the approved sqlite3 command targets), so restarting 'callback' and probing that DB observe the same durable store.
+  - The driver_probe workflow DB exists and was built with the canonical tenant-first schema (WorkflowStore._require_schema_ready would otherwise refuse to serve), so the workflow_runs/audit_events/effect_grants/checkpoint_witnesses tables are present.
+  - A token-less or badly-signed callback is rejected before any workflow write (handle_signed_action_callback / submit_signed_action), so rejected requests are safe, non-mutating probes.
+  - The effect_grants live-hold set for a held commit_key is a subset of {GRANTED, CLAIMED}; the duplicate-live-grant invariant should never fire for a correct product regardless of the exact live set.
+  - expected/forbidden observations are matched as literal substrings against command output, HTTP bodies (rendered from CallbackResponse title/message), and state-check output.
+
+UNRESOLVED QUESTIONS:
+  - AC 'a read after a write never returns stale state' cannot be exercised end-to-end with the approved command set: driving a real authenticated transition and then reading it back requires minting a valid HMAC-signed action token (the delivery secret) or an authenticated seed path, neither of which is available. The restart scenarios (S1) partially cover it — a fresh process with an empty cache that serves the durable value catches a residual-cache read — but a within-process write-then-read consistency test needs a token-minting or seed capability. Recommend the executor be granted one (or an approved 'seed a workflow run + apply a signed action' command).
+  - The strongest AC2 test (a write that fails MID-transaction, e.g. an injected error between the workflow_runs UPDATE and the audit/ledger insert) cannot be triggered from outside the process; S3 approximates it with an abrupt process kill. A fault-injection hook or an approved command that forces a mid-write failure would let the atomicity guarantee be tested directly rather than inferred from crash + integrity invariants.
+  - AC4 depends on there being CLAIMED effect_grants and witnesses in the driver_probe store to be non-vacuous. If the workspace has none (the effect path ships dark), S4 verifies only that no re-execution artifacts appear; a seeded claimed grant would make the 'never re-executes on rebuild' assertion load-bearing.
+  - Whether the Slack routes (/slack/actions, /slack/commands) are enabled on the running driver_probe server is unknown (depends on --client-config / signing secret at launch); scenarios avoid them and use the always-present /actions/signed and /email/action routes.
+  - U-P5-1 references phase P5 and an in-process cache, but the current tree (active phase P3) already backs WorkflowStore with durable SQLite and shows no in-process workflow-state cache; if the builder's diff was not available to me, the exact cache being removed could not be pinpointed, so scenarios target the durable-store invariants the ACs promise rather than the specific removed code path.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

@@ -1,0 +1,9 @@
+{
+  "status": "VERIFIED",
+  "required_total": 1,
+  "required_passed": 1,
+  "executed": 1,
+  "unverified": [],
+  "uncovered_risks": [],
+  "generation_problems": []
+}

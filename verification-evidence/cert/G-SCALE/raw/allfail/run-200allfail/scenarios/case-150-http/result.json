@@ -1,0 +1,63 @@
+{
+  "scenario_name": "case-150-http",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:54:43+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [],
+  "http": [
+    {
+      "name": "read item 150",
+      "method": "GET",
+      "url": "http://127.0.0.1:8791/item/150",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"item\": 150, \"label\": \"item-150\", \"owner\": \"tenant-b\", \"state\": \"open\"}",
+      "json_body": {
+        "item": 150,
+        "label": "item-150",
+        "owner": "tenant-b",
+        "state": "open"
+      },
+      "duration_s": 0.0005400419977377169
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "GET http://127.0.0.1:8791/item/150: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/150: contains '\"item\": 150'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/150: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'",
+      "passed": false,
+      "detail": "not found in response body"
+    },
+    {
+      "kind": "forbidden",
+      "target": "tenant-b",
+      "passed": false,
+      "detail": "present in observed output"
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-150-http",
+  "origin": "generated",
+  "run_id": "gscale-200allfail",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:54:43+00:00"
+}

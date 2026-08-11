@@ -1,0 +1,17 @@
+{
+  "status": "NOT_VERIFIED",
+  "required_total": 1,
+  "required_passed": 0,
+  "executed": 1,
+  "unverified": [
+    {
+      "scenario_id": "ADJF-f3ctl",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "reason": "the scenario failed: forbidden: Traceback (most recent call last): \u2014 present in observed output",
+      "evidence_path": "out/f3ctl/scenarios/ADJF-f3ctl"
+    }
+  ],
+  "uncovered_risks": [],
+  "generation_problems": []
+}

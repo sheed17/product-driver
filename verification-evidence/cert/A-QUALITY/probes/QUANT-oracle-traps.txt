@@ -1,0 +1,40 @@
+GENUINE substring traps (bare count compared by substring):
+
+  A-r1   EX-01                      P1 safety_invariant   needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  A-r1   EX-01                      P1 safety_invariant   needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  A-r1   EX-02                      P1 malformed_input    needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  A-r1   EX-04                      P2 concurrency        needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  A-r1   EX-05                      P2 restart_recovery   needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  A-r1   EX-06                      P3 retry_safety       needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_st
+  E-r1   AUTHZ-S2                   P0 authorization      needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_type='slack_operatio
+  E-r1   AUTHZ-S3                   P0 authorization      needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_type='slack_operatio
+  E-r1   AUTHZ-S5                   P1 authorization      needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM security_events WHERE event_type='slack_operatio
+  G-r1   UEV4-W1-01                 P0 malformed_input    needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state='VERIFIED'"
+  G-r1   UEV4-W1-01                 P0 malformed_input    needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIM
+  G-r1   UEV4-W1-02                 P1 missing_data       needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state='VERIFIED'"
+  G-r1   UEV4-W1-03                 P1 malformed_input    needles=['0']
+         sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 "SELECT count(*) FROM effect_grants WHERE state IN ('ATTEMPTED','CLAIM
+
+accepted scenarios in live waves                 : 21
+numeric oracles that are SOUND (boolean/CASE)    : 4
+numeric oracles that are GENUINE TRAPS           : 13
+accepted scenarios carrying >=1 genuine trap     : 11  (52%)
+
+Direction, for every trap above: the needle sits in `contains`, so the failure
+mode is a VACUOUS PASS (a count of 10 satisfies contains=['0']). Not one trap in
+my live waves sits in `not_contains`, so none of them can spuriously FAIL a
+correct product. The spurious-fail direction appears only in the PRIOR campaign's
+accepted set (after-fix/plan-E.json S1 not_contains=['0'], S6 not_contains=['2','3']),
+demonstrated by execution in probe V1.

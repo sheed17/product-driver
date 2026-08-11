@@ -1,0 +1,31 @@
+{
+  "mode": "read",
+  "pid": 69960,
+  "restore_note": "resumed scenario plan: 200 scenario(s), 1 wave(s) already used",
+  "fingerprint": {
+    "scenario_count": 200,
+    "suite_entries": 201,
+    "required_count": 201,
+    "compiled_count": 200,
+    "waves_used": 1,
+    "digest": "4e9e49b1a6b3ad1ddcb8a11bbe45ab63c71225bc87639682f7b11ba3d6eccd86"
+  },
+  "identical_state": true,
+  "suite_result_reload": {
+    "total": 201,
+    "passed": 193,
+    "failed": 8,
+    "blocked": 0,
+    "skipped": 0,
+    "expected_required_ids": 201,
+    "outcome_ids": 201,
+    "gate_status": "NOT_VERIFIED",
+    "gate_required_total": 201,
+    "gate_required_passed": 193,
+    "gate_unverified": 8,
+    "clusters": 4,
+    "evidence_verified_flags": 201,
+    "evidence_still_resolves_on_disk": 201,
+    "evidence_now_broken": []
+  }
+}

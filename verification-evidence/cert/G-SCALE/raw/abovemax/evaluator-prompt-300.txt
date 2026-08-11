@@ -1,0 +1,52 @@
+=== LAYER C — IMMEDIATE EVIDENCE FROM THIS ITERATION ===
+ITERATION 3 of 3
+
+--- THE TASK GIVEN TO THE BUILDER ---
+G-SCALE certification sweep
+
+--- THE BUILDER'S LATEST CLAIM ---
+claimed everything works
+
+--- GIT STATE (Neyma repo, read-only) ---
+(no git snapshot)
+
+--- WHAT THE DRIVER ACTUALLY OBSERVED BY OPERATING THE PRODUCT ---
+scenario: case-001-http  (mode=backend)
+readiness: OK — all readiness checks passed
+
+--- API RESPONSES ---
+GET http://127.0.0.1:8791/item/1 -> 200
+{"item": 1, "label": "item-1", "owner": "tenant-a", "state": "open"}
+
+--- SCENARIO ASSERTIONS ---
+[PASS] expect_state: GET http://127.0.0.1:8791/item/1: status == 200  got 200
+[PASS] expect_visible: GET http://127.0.0.1:8791/item/1: contains '"item": 1'  
+[PASS] expect_visible: GET http://127.0.0.1:8791/item/1: contains '"owner": "tenant-a"'  
+[PASS] forbidden: tenant-b  
+
+scenario overall: PASSED
+
+=== VERIFICATION SUITE — GENERATED + PERMANENT SCENARIOS ===
+300 generated case(s) + 1 permanent regression scenario(s): 301 passed, 0 failed, 0 blocked, 0 skipped
+risk categories exercised: cross_tenant, idempotency, persistence_failure
+
+0 unresolved high-priority scenario failures
+This states verified coverage. It is not a claim that all possible cases were verified.
+
+The generated scenarios are situations this run decided were worth exercising, derived from the task, the acceptance criteria, the diff and what has already failed. Each failure above names the risk it was generated for and the evidence directory holding its full artifacts.
+
+Judge four things:
+  1. does the observed behaviour satisfy the task?
+  2. did the generated scenarios expose a meaningful defect, or only a      mis-stated expectation? Say which.
+  3. was the coverage sufficient for the risk surface of what changed?
+  4. is further targeted verification warranted?
+
+
+Set additional_verification_needed and list scenario_requests when the coverage does not yet reach the risk surface. Those are advisory: they request more verification and never change your decision. A required scenario that failed cannot be accepted — the harness enforces that regardless of what you return, so do not argue around it.
+
+Describe coverage honestly. Never claim all possible cases were verified.
+
+=== EVIDENCE DIRECTORY (use these paths in evidence_paths) ===
+/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/abovemax/run-300
+
+Return the JSON decision object now.

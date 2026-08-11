@@ -1,0 +1,45 @@
+{
+  "scenario_name": "case-298-cmd",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:56:56+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 298",
+      "exit_code": 0,
+      "stdout": "item=298 approval_rows=0\n",
+      "stderr": "",
+      "duration_s": 0.047586749999027234,
+      "timed_out": false,
+      "cwd": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work"
+    }
+  ],
+  "http": [],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "probe 298: exit == 0",
+      "passed": true,
+      "detail": "got exit=0"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "probe 298: contains 'item=298'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-298-cmd",
+  "origin": "generated",
+  "run_id": "gscale-300",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:56:56+00:00"
+}

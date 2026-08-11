@@ -1,0 +1,154 @@
+PROBE G1 — can a scenario ground itself in a requirement that does not exist?
+grounding tokens the validator accepts: ['an approved invoice is paid exactly once', 'supervised carrier invoice approval', 'u-042']
+
+REAL unit id                 ref='U-042'                                            -> ACCEPTED
+REAL acceptance criterion    ref='an approved invoice is paid exactly once'         -> ACCEPTED
+FABRICATED AC id             ref='AC-PAYMENT-417'                                   -> ACCEPTED
+FABRICATED AC id, absurd     ref='AC-ZZZZ-99999 which exists nowhere in any repo'   -> ACCEPTED
+FABRICATED free prose        ref='the invoice must be beautiful'                    -> REFUSED
+      reason: requirement_reference 'the invoice must be beautiful' does not name the active unit, one of its acceptance criteria, or an AC-<AREA>-<nnn> id — a scenario may not invent a product requirement
+FABRICATED principle         ref='U-042'                                            -> REFUSED
+      reason: product_principle_reference 'invented_principle_id' does not name a founder rubric category
+
+ValidationContext.grounds_requirement (scenario_validation.py:338) returns True
+for ANY string matching AC-<AREA>-<nnn>, on shape alone, never on existence.
+Free prose is caught; a fabricated AC id is not. The refusal message that does
+fire claims 'a scenario may not invent a product requirement' — it can.
+
+==============================================================================
+
+PROBE E1 — does the EFFECT_FAMILY rule require an oracle that can FAIL?
+
+EMPTY oracle: command, no contains, no not_contains        -> ACCEPTED
+ONLY not_contains 'Error' (passes unless the probe crashes) -> ACCEPTED
+A REAL oracle: contains 'PAID_ONCE'                        -> ACCEPTED
+NO persisted_state_checks at all (control — must be refused) -> REFUSED
+      reason: a restart_recovery scenario asserts something about whether an effect durably happened, but inspects no persisted state.
+
+The rule (scenario_validation.py:615) tests inspects_persisted_state() — the
+PRESENCE of a state check. A P0 effect-family scenario whose state check asserts
+nothing at all is ACCEPTED, and the prior campaign's metric
+'effect_family_with_state_oracle 9/9' counts exactly that as an oracle.
+
+==============================================================================
+
+PROBE R1 — can a `regression` scenario ever be accepted in an INITIAL wave?
+
+INITIAL wave (plan_initial: basis has no diff files): -> REFUSED
+    reason: a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope
+DIFF wave    (refine_for_diff: basis has diff files): -> ACCEPTED
+
+The brief and the system prompt both advertise `regression` as an available
+category. Neither says it is unsatisfiable in an initial wave. The rule keys off
+provenance.diff_files_consulted, which the PLANNER stamps — no field the model
+writes can satisfy it. The refusal blames the scenario for the stage it is in.
+
+==============================================================================
+
+PROBE C1 — risk coverage is decided by RISK-CATEGORY STRING EQUALITY only.
+(scenario_gate.py:110 matches outcome.risk_category == risk.risk_category;
+ nothing compares what the scenario does with what the risk describes.)
+
+==============================================================================
+TASK G (live, this session) risks:
+  P0  conflicting_evidence       covered_by=[]
+  P1  missing_data               covered_by=['UEV4-W1-02']
+  P1  ui_backend_disagreement    covered_by=[]
+  P1  malformed_input            covered_by=['UEV4-W1-01', 'UEV4-W1-03']
+TASK G (live, this session) scenarios:
+  UEV4-W1-01   malformed_input        drives=['/actions/signed']
+               cites: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+  UEV4-W1-02   missing_data           drives=['/email/action']
+               cites: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+  UEV4-W1-03   malformed_input        drives=['/actions/signed']
+               cites: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+
+  nothing executed            -> 4 gaps
+  all scenarios PASS w/evidence -> 2 gaps
+      P0 conflicting_evidence
+      P1 ui_backend_disagreement
+  risks then treated as VERIFIED: ['missing_data', 'malformed_input']
+
+Every task-G scenario drives HTTP token/body handling. No document, no
+extraction, no reconciliation appears anywhere in the plan, and all three cite
+the same acceptance criterion about unparseable DOCUMENTS. Yet on a passing run
+the gate marks ['missing_data', 'malformed_input'] verified.
+
+==============================================================================
+TASK F (live, this session) risks:
+  P0  idempotency                covered_by=[]
+  P0  ambiguous_external_effect  covered_by=[]
+  P1  dependency_failure         covered_by=[]
+  P1  retry_safety               covered_by=[]
+TASK F (live, this session) scenarios:
+  S1           malformed_input        drives=['/actions/signed']
+               cites: a send whose outcome is unconfirmed is recorded as unknown, never as delivered
+  S2           missing_data           drives=['/actions/signed']
+               cites: a transport outage leaves no notification silently dropped
+  S3           concurrency            drives=['/actions/signed']
+               cites: a transport outage leaves no notification silently dropped
+  S4           restart_recovery       drives=['/actions/signed']
+               cites: U-DEL-7
+
+  nothing executed            -> 4 gaps
+  all scenarios PASS w/evidence -> 4 gaps
+      P0 idempotency
+      P0 ambiguous_external_effect
+      P1 dependency_failure
+      P1 retry_safety
+  risks then treated as VERIFIED: []
+
+Task F is the control: the scenario categories do not intersect the risk
+categories at all, so all four risks stay gaps even on a fully passing run.
+The acceptance-tightening works — when the labels happen to disagree.
+
+==============================================================================
+
+PROBE P0 — a P0 risk in the candidate's OWN committed plan is 'covered' by a
+scenario whose assertions cannot detect the failure the risk describes.
+
+artifact         : verification-evidence/post-remediation/a-generation-quality/after-fix/plan-A2-diff.json
+risk             : P0 ui_backend_disagreement, covered_by ['S1']
+risk description : AC3 (highest weight): the detail screen may read a cached/snapshotted next-action or state rather than the live backend, so after an exception is resolved or transitions, the screen keeps naming a nex
+scenario S1      : P0 — Detail screen reflects a backend state change even across a service restart (no stale next action)
+purpose          : Prove the exception detail screen renders from live backend state, not a cached snapshot, so it can never name a next action the backend no longer holds.
+
+EVERY assertion S1 can produce:
+  1. probe output does NOT contain 'no such table'
+  2. probe output does NOT contain 'no such column'
+  3. probe output does NOT contain 'Error'
+  4. HTTP GET /exceptions status == 200
+  5. HTTP GET /exceptions status == 200
+  6. persisted probe does NOT contain 'no such table'
+  7. persisted probe does NOT contain 'Error'
+  8. nowhere in observed output: 'Traceback'
+  9. nowhere in observed output: 'Internal Server Error'
+  10. nowhere in observed output: 'no such column'
+  11. nowhere in observed output: 'no such table'
+
+COUNTERFACTUAL: the screen serves a permanently cached snapshot (exactly the
+P0 risk). Both GETs still return 200; both sqlite probes still run cleanly; no
+traceback appears. EVERY assertion still PASSES, and the P0 risk is booked covered.
+
+==============================================================================
+
+PROBE V1 — counterfactual EXECUTION of oracles the prior campaign ACCEPTED.
+Uses the driver's own state-check semantics (scenarios.py:705-728): a PASS per
+`contains` needle found in stdout+stderr and per `not_contains` needle absent.
+The exit code is never asserted.
+
+ORACLE — after-fix/plan-E.json S1 (accepted, 'every refusal is recorded'):
+  CORRECT: 1 audit row                   rc=0 out='1'                                              -> PASS
+  BROKEN: audit never written (0 rows)   rc=0 out='0'                                              -> FAIL
+  BROKEN: audit table absent entirely    rc=1 out='Error: in prepare, no such table: audit_events' -> PASS
+  CORRECT but busy: 10 audit rows        rc=0 out='10'                                             -> FAIL
+  => passes when the table is missing entirely; FAILS on a correct product with
+     10 rows, because '10' contains the substring '0'.
+
+ORACLE — after-fix/plan-E.json S6 (accepted, concurrency 'single releaser wins'):
+  CORRECT: exactly 1 release             rc=0 out='1'                                              -> PASS
+  BROKEN: double release (2)             rc=0 out='2'                                              -> FAIL
+  BROKEN: 11 releases                    rc=0 out='11'                                             -> PASS
+  BROKEN: table absent entirely          rc=1 out='Error: in prepare, no such table: audit_events' -> PASS
+  => catches exactly 2 and 3 releases; 11 concurrent releases pass, and so does
+     a completely absent audit table.

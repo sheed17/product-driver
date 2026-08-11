@@ -1,0 +1,54 @@
+{
+  "started_at": "2026-08-10T20:28:06+00:00",
+  "duration_s": 0.8871160840001266,
+  "full_run": true,
+  "selection_reason": "",
+  "expected_required_ids": [
+    "ADJF-f3ctl"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "ADJF-f3ctl",
+      "scenario_name": "generated:ADJF-f3ctl",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "ui_backend_disagreement",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 1,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "forbidden: Traceback (most recent call last): \u2014 present in observed output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "out/f3ctl/scenarios/ADJF-f3ctl",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": "ADJ-F local fixture"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "ADJF-f3ctl"
+      ],
+      "shared_observations": [
+        "forbidden: traceback (most recent call last): \u2014 present in observed output"
+      ],
+      "likely_failure_domain": "generated:ADJF-f3ctl: forbidden: Traceback (most recent call last): \u2014 present in observed output",
+      "evidence_paths": [
+        "out/f3ctl/scenarios/ADJF-f3ctl"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "ui_backend_disagreement"
+      ],
+      "singleton": true
+    }
+  ]
+}

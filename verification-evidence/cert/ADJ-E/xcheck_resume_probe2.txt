@@ -1,0 +1,436 @@
+{
+  "workdir": "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1b-jd8wlk6g",
+  "A_baseline_clean": {
+    "risk_category_b": "boundary",
+    "p1_rc": 9,
+    "persisted_by_risk_category": {
+      "idempotency": 1,
+      "boundary": 1
+    },
+    "restore_emissions": [
+      "  resumed scenario plan: 2 scenario(s), 1 wave(s) already used"
+    ],
+    "lost": []
+  },
+  "A_baseline_authorization": {
+    "risk_category_b": "authorization",
+    "p1_rc": 9,
+    "persisted_by_risk_category": {
+      "idempotency": 1,
+      "authorization": "[REDACTED]"
+    },
+    "restore_emissions": [
+      "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+    ],
+    "lost": [
+      {
+        "field": "plan.scenario_ids",
+        "p1": [
+          "gen-alpha-idempotency",
+          "gen-beta-other"
+        ],
+        "p2": []
+      },
+      {
+        "field": "plan.proposed_ids",
+        "p1": [
+          "",
+          ""
+        ],
+        "p2": []
+      },
+      {
+        "field": "plan.signatures",
+        "p1": [
+          "83c1c5af7edd208f5d96",
+          "212b76f0ca15dbc3bac6"
+        ],
+        "p2": []
+      },
+      {
+        "field": "plan.source_failures",
+        "p1": {
+          "gen-alpha-idempotency": [],
+          "gen-beta-other": []
+        },
+        "p2": {}
+      },
+      {
+        "field": "plan.source_clusters",
+        "p1": {
+          "gen-alpha-idempotency": [],
+          "gen-beta-other": []
+        },
+        "p2": {}
+      },
+      {
+        "field": "plan.executed_scenario_ids",
+        "p1": [
+          "gen-alpha-idempotency",
+          "gen-beta-other"
+        ],
+        "p2": []
+      },
+      {
+        "field": "plan.risks",
+        "p1": [
+          "approval may not be idempotent"
+        ],
+        "p2": []
+      },
+      {
+        "field": "plan.waves",
+        "p1": [
+          {
+            "wave": 1,
+            "stage": "initial",
+            "proposed": 2,
+            "accepted_ids": [
+              "gen-alpha-idempotency",
+              "gen-beta-other"
+            ],
+            "rejected": [],
+            "budget_notes": [],
+            "reasoner_error": ""
+          }
+        ],
+        "p2": []
+      },
+      {
+        "field": "waves_used",
+        "p1": 1,
+        "p2": 0
+      },
+      {
+        "field": "compiled_ids",
+        "p1": [
+          "gen-alpha-idempotency",
+          "gen-beta-other"
+        ],
+        "p2": []
+      },
+      {
+        "field": "compiled_digest",
+        "p1": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T20:28:00+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD bad1944, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-other": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T20:28:00+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD bad1944, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-other\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "p2": {}
+      }
+    ]
+  },
+  "B_wave_budget_clean": {
+    "risk_category_b": "boundary",
+    "restore_note": "resumed scenario plan: 2 scenario(s), 1 wave(s) already used",
+    "waves_used_after_restore": 1,
+    "waves_used_after_second_generate": 1,
+    "scenario_ids_after": [
+      "gen-alpha-idempotency",
+      "gen-beta-other"
+    ],
+    "wave_records_after": [
+      {
+        "wave": 1,
+        "stage": "initial",
+        "accepted": [
+          "gen-alpha-idempotency",
+          "gen-beta-other"
+        ],
+        "budget_notes": []
+      },
+      {
+        "wave": 2,
+        "stage": "initial",
+        "accepted": [],
+        "budget_notes": [
+          "refused: 1 generation wave(s) already used"
+        ]
+      }
+    ],
+    "escaped_max_waves": false,
+    "regenerated_from_scratch": false
+  },
+  "B_wave_budget_authorization": {
+    "risk_category_b": "authorization",
+    "restore_note": "",
+    "waves_used_after_restore": 0,
+    "waves_used_after_second_generate": 1,
+    "scenario_ids_after": [
+      "gen-delta-boundary"
+    ],
+    "wave_records_after": [
+      {
+        "wave": 1,
+        "stage": "initial",
+        "accepted": [
+          "gen-delta-boundary"
+        ],
+        "budget_notes": []
+      }
+    ],
+    "escaped_max_waves": false,
+    "regenerated_from_scratch": true
+  },
+  "C_command_narrowed": {
+    "restore_emissions": [
+      "  2 restored scenario(s) no longer compile and were dropped: gen-alpha-idempotency (CompilationError: refusing to compile gen-alpha-idempotency: the state-check command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.); gen-beta-other (CompilationError: refusing to compile gen-beta-other: the state-check command was not in the approved command set ('./probe.sh payments'). Generated scenarios may only run commands a human already approved.)",
+      "  resumed scenario plan: 0 scenario(s), 1 wave(s) already used"
+    ],
+    "scenario_ids_after_resume": [],
+    "compiled_after_resume": [],
+    "approved_commands_after_resume": [
+      "./probe.sh reset"
+    ],
+    "scenario_came_back_to_life": false
+  },
+  "E_promotion_across_resume": {
+    "iteration1_failing": [
+      "gen-alpha-idempotency"
+    ],
+    "iteration1_promotion_candidates": [],
+    "iteration2_all_pass": true,
+    "iteration2_promotion_candidates": [],
+    "iteration2_executed": [
+      "backend_generic",
+      "gen-alpha-idempotency",
+      "gen-beta-other"
+    ],
+    "defect_memory_survived": false
+  },
+  "F_partial_
+{
+  "attempts": 40,
+  "half_written_plans": 0,
+  "detail": [
+    {
+      "attempt": 0,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 1,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 2,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 3,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 4,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 5,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 6,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 7,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 8,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 9,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 10,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 11,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 12,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 13,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 14,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 15,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 16,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 17,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 18,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 19,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 20,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 21,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 22,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 23,
+      "bytes": 7648,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 24,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 25,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 26,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 27,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 28,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 29,
+      "bytes": 377138,
+      "parses": true,
+      "error": ""
+    },
+    {
+      "attempt": 30,
+      "bytes": 377138,
+   
+{
+  "iteration1_failing": [
+    "gen-alpha-idempotency"
+  ],
+  "iteration1_promotion_candidates": [],
+  "iteration2_all_pass": true,
+  "iteration2_promotion_candidates": [],
+  "iteration2_executed": [
+    "backend_generic",
+    "gen-alpha-idempotency",
+    "gen-beta-other"
+  ],
+  "defect_memory_survived": false
+}
+{
+  "reads": 28285,
+  "incomplete_observations": 89,
+  "distinct_sizes_seen": [
+    0,
+    7648,
+    377138
+  ],
+  "window_exists": true
+}
+{
+  "scenarios_before": [
+    "gen-alpha-idempotency",
+    "gen-beta-other"
+  ],
+  "scenarios_after": [
+    "gen-alpha-idempotency",
+    "gen-beta-other"
+  ],
+  "waves_before": 1,
+  "waves_after": 1,
+  "executed_before": [
+    "gen-alpha-idempotency",
+    "gen-beta-other"
+  ],
+  "executed_after": [
+    "gen-alpha-idempotency",
+    "gen-beta-other"
+  ],
+  "record_destroyed": false
+}
+
+wrote /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/E-RESUME/resume_probe2.json
+workdir /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1b-jd8wlk6g

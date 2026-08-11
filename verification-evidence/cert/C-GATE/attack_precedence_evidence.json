@@ -1,0 +1,162 @@
+[
+  {
+    "id": "C1a",
+    "attack": "audit=REQUIRES_INDEPENDENT_REVIEW + hostile ACCEPT + a suite that ran NOTHING",
+    "observed": {
+      "LoopResult.suite_present": false,
+      "iteration_record_suite_present": true,
+      "run_status": "NEEDS_INDEPENDENT_REVIEW",
+      "exit_code": 14,
+      "persisted_final_decision": "ACCEPT",
+      "scenarios_executed": [],
+      "gate_would_have_said": "NOT_VERIFIED",
+      "gate_unverified_count": 2
+    },
+    "expected": "the suite gate is consulted before any terminal state records ACCEPT",
+    "OUTCOME": "GATE BYPASSED"
+  },
+  {
+    "id": "C1b",
+    "attack": "CONTROL: audit=VERIFIED + hostile ACCEPT + a suite that ran NOTHING",
+    "observed": {
+      "LoopResult.suite_present": true,
+      "iteration_record_suite_present": true,
+      "run_status": "BLOCKED",
+      "exit_code": 11,
+      "persisted_final_decision": "BLOCKED",
+      "scenarios_executed": [],
+      "gate_would_have_said": "NOT_VERIFIED",
+      "gate_unverified_count": 2
+    },
+    "expected": "the suite gate is consulted before any terminal state records ACCEPT",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C1c",
+    "attack": "CONTROL: audit=CONTRADICTED + hostile ACCEPT + a suite that ran NOTHING",
+    "observed": {
+      "LoopResult.suite_present": true,
+      "iteration_record_suite_present": true,
+      "run_status": "MAX_ITERATIONS",
+      "exit_code": 12,
+      "persisted_final_decision": "FIX",
+      "scenarios_executed": [],
+      "gate_would_have_said": "NOT_VERIFIED",
+      "gate_unverified_count": 2
+    },
+    "expected": "the suite gate is consulted before any terminal state records ACCEPT",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2a",
+    "attack": "CONTROL: a real execution writes and verifies its own evidence",
+    "observed": {
+      "outcome": "PASSED",
+      "evidence_verified": true,
+      "problem": ""
+    },
+    "expected": "PASSED with evidence_verified=True",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2b",
+    "attack": "evidence record DELETED after the run",
+    "observed": "the cited evidence directory holds no result.json, so nothing records what this scenario actually did: /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2c",
+    "attack": "evidence record CORRUPTED (unparseable JSON)",
+    "observed": "the evidence record could not be read (JSONDecodeError): /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm/result.json",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2d",
+    "attack": "evidence record EMPTY",
+    "observed": "the evidence record is empty: /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm/result.json",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2e",
+    "attack": "evidence belongs to ANOTHER SCENARIO",
+    "observed": "the evidence at /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm belongs to scenario 'some-other-scenario', not 'perm'",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2f",
+    "attack": "evidence belongs to ANOTHER RUN (stale leftover directory)",
+    "observed": "the evidence at /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm belongs to run 'RUN-OLD', not 'RUN-A'",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2g",
+    "attack": "evidence written in ANOTHER ITERATION",
+    "observed": "the evidence at /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm was written in iteration 1, not 2",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2h",
+    "attack": "evidence stamped iteration=0 checked against iteration 3",
+    "observed": "the evidence at /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm was written in iteration 0, not 3",
+    "expected": "a refusal string, or a documented reason it cannot happen",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2i",
+    "attack": "evidence with an EMPTY run_id checked against run RUN-A",
+    "observed": "the evidence at /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm belongs to run '', not 'RUN-A'",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2j",
+    "attack": "evidence DIRECTORY removed entirely",
+    "observed": "the cited evidence directory does not exist: /var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/cgate-C2-gx3gl2u4/iter1/scenarios/perm",
+    "expected": "a refusal string",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C2k",
+    "attack": "a PASSED required outcome whose evidence stopped resolving",
+    "observed": {
+      "gate": "NOT_VERIFIED",
+      "unverified": [
+        "[PASSED] perm \u2014 the cited evidence directory does not exist"
+      ]
+    },
+    "expected": "NOT_VERIFIED",
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "C3",
+    "attack": "narrowed rerun after a failure: is the ACCEPTed suite a full execution?",
+    "observed": {
+      "run_status": "ACCEPTED",
+      "iteration_1_executed": [
+        "backend_generic",
+        "gen-a",
+        "gen-b",
+        "gen-c"
+      ],
+      "iteration_2_executed": [
+        "backend_generic",
+        "gen-a",
+        "backend_generic",
+        "gen-a",
+        "gen-b",
+        "gen-c"
+      ],
+      "final_full_run": true,
+      "final_selection_reason": "full required regression set before acceptance",
+      "gate": "VERIFIED"
+    },
+    "expected": "acceptance rests on a full 4-scenario execution",
+    "OUTCOME": "EXPECTED"
+  }
+]

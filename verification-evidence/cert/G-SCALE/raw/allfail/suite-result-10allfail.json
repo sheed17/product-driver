@@ -1,0 +1,462 @@
+{
+  "started_at": "2026-08-10T07:54:35+00:00",
+  "duration_s": 0.42442175000178395,
+  "full_run": true,
+  "selection_reason": "G-SCALE certification sweep",
+  "expected_required_ids": [
+    "permanent-health",
+    "case-001-cmd",
+    "case-002-idem",
+    "case-003-http",
+    "case-004-cmd",
+    "case-005-idem",
+    "case-006-http",
+    "case-007-cmd",
+    "case-008-idem",
+    "case-009-http",
+    "case-010-cmd"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "permanent-health",
+      "scenario_name": "case-001-http",
+      "origin": "permanent",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: GET http://127.0.0.1:8791/item/1: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in response body"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/permanent-health",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "case-005-idem",
+      "scenario_name": "case-005-idem",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 5: contains 'item=5 approval_rows=9999XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in command output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-005-idem",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 5 is representative of the idempotency surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-010-cmd",
+      "scenario_name": "case-010-cmd",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P0",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: probe 10: contains 'item=NOPE10XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-010-cmd",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 10 is representative of the persistence_failure surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-001-cmd",
+      "scenario_name": "case-001-cmd",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: probe 1: contains 'item=NOPE1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-001-cmd",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 1 is representative of the persistence_failure surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-002-idem",
+      "scenario_name": "case-002-idem",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 2: contains 'item=2 approval_rows=9999XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in command output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-002-idem",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 2 is representative of the idempotency surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-003-http",
+      "scenario_name": "case-003-http",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: GET http://127.0.0.1:8791/item/3: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in response body"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-003-http",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 3 is representative of the cross_tenant surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-004-cmd",
+      "scenario_name": "case-004-cmd",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: probe 4: contains 'item=NOPE4XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-004-cmd",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 4 is representative of the persistence_failure surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-006-http",
+      "scenario_name": "case-006-http",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: GET http://127.0.0.1:8791/item/6: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in response body"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-006-http",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 6 is representative of the cross_tenant surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-007-cmd",
+      "scenario_name": "case-007-cmd",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "persistence_failure",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 2,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: probe 7: contains 'item=NOPE7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-007-cmd",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 7 is representative of the persistence_failure surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-008-idem",
+      "scenario_name": "case-008-idem",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "idempotency",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 8: contains 'item=8 approval_rows=9999XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in command output"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-008-idem",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 8 is representative of the idempotency surface",
+      "requirement_reference": "G-SCALE-CERT"
+    },
+    {
+      "scenario_id": "case-009-http",
+      "scenario_name": "case-009-http",
+      "origin": "generated",
+      "outcome": "FAILED",
+      "priority": "P1",
+      "risk_category": "cross_tenant",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 4,
+      "assertions_failed": 1,
+      "failed_assertions": [
+        "expect_visible: GET http://127.0.0.1:8791/item/9: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' — not found in response body"
+      ],
+      "error": "",
+      "skip_reason": "",
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-009-http",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "item 9 is representative of the cross_tenant surface",
+      "requirement_reference": "G-SCALE-CERT"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "permanent-health"
+      ],
+      "shared_observations": [
+        "expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '\"owner\": \"tenant-zzz\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in response body"
+      ],
+      "likely_failure_domain": "case-001-http: expect_visible: GET http://127.0.0.1:8791/item/1: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/permanent-health"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C02",
+      "affected_scenarios": [
+        "case-005-idem"
+      ],
+      "shared_observations": [
+        "expect_state: /users/sammyfammy/neyma-product-driver/.venv/bin/python /users/sammyfammy/neyma-product-driver/verification-evidence/cert/g-scale/work/probe.py <n>: contains 'item=<n> approval_rows=9999xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in command output"
+      ],
+      "likely_failure_domain": "case-005-idem: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 5:",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-005-idem"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C03",
+      "affected_scenarios": [
+        "case-010-cmd"
+      ],
+      "shared_observations": [
+        "expect_visible: probe <n>: contains 'item=nope10xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in output"
+      ],
+      "likely_failure_domain": "case-010-cmd: expect_visible: probe 10: contains 'item=NOPE10XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-010-cmd"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "persistence_failure"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C04",
+      "affected_scenarios": [
+        "case-001-cmd"
+      ],
+      "shared_observations": [
+        "expect_visible: probe <n>: contains 'item=nope1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in output"
+      ],
+      "likely_failure_domain": "case-001-cmd: expect_visible: probe 1: contains 'item=NOPE1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-001-cmd"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "persistence_failure"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C05",
+      "affected_scenarios": [
+        "case-002-idem"
+      ],
+      "shared_observations": [
+        "expect_state: /users/sammyfammy/neyma-product-driver/.venv/bin/python /users/sammyfammy/neyma-product-driver/verification-evidence/cert/g-scale/work/probe.py <n>: contains 'item=<n> approval_rows=9999xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in command output"
+      ],
+      "likely_failure_domain": "case-002-idem: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 2:",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-002-idem"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C06",
+      "affected_scenarios": [
+        "case-003-http"
+      ],
+      "shared_observations": [
+        "expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '\"owner\": \"tenant-zzz\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in response body"
+      ],
+      "likely_failure_domain": "case-003-http: expect_visible: GET http://127.0.0.1:8791/item/3: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-003-http"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "cross_tenant"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C07",
+      "affected_scenarios": [
+        "case-004-cmd"
+      ],
+      "shared_observations": [
+        "expect_visible: probe <n>: contains 'item=nope4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in output"
+      ],
+      "likely_failure_domain": "case-004-cmd: expect_visible: probe 4: contains 'item=NOPE4XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-004-cmd"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "persistence_failure"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C08",
+      "affected_scenarios": [
+        "case-006-http"
+      ],
+      "shared_observations": [
+        "expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '\"owner\": \"tenant-zzz\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in response body"
+      ],
+      "likely_failure_domain": "case-006-http: expect_visible: GET http://127.0.0.1:8791/item/6: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-006-http"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "cross_tenant"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C09",
+      "affected_scenarios": [
+        "case-007-cmd"
+      ],
+      "shared_observations": [
+        "expect_visible: probe <n>: contains 'item=nope7xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in output"
+      ],
+      "likely_failure_domain": "case-007-cmd: expect_visible: probe 7: contains 'item=NOPE7XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-007-cmd"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "persistence_failure"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C10",
+      "affected_scenarios": [
+        "case-008-idem"
+      ],
+      "shared_observations": [
+        "expect_state: /users/sammyfammy/neyma-product-driver/.venv/bin/python /users/sammyfammy/neyma-product-driver/verification-evidence/cert/g-scale/work/probe.py <n>: contains 'item=<n> approval_rows=9999xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in command output"
+      ],
+      "likely_failure_domain": "case-008-idem: expect_state: /Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 8:",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-008-idem"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "idempotency"
+      ],
+      "singleton": true
+    },
+    {
+      "cluster_id": "C11",
+      "affected_scenarios": [
+        "case-009-http"
+      ],
+      "shared_observations": [
+        "expect_visible: get http://<n>.<n>.<n>.<n>:<port>/item/<n>: contains '\"owner\": \"tenant-zzz\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' — not found in response body"
+      ],
+      "likely_failure_domain": "case-009-http: expect_visible: GET http://127.0.0.1:8791/item/9: contains '\"owner\": \"tenant-zzz\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "evidence_paths": [
+        "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/raw/allfail/run-10allfail/scenarios/case-009-http"
+      ],
+      "highest_priority": "P1",
+      "risk_categories": [
+        "cross_tenant"
+      ],
+      "singleton": true
+    }
+  ]
+}

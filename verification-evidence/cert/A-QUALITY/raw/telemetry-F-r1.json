@@ -1,0 +1,27 @@
+{
+  "tag": "F-r1",
+  "key": "F",
+  "diff": false,
+  "rep": "1",
+  "elapsed_s": 384.4,
+  "waves": [
+    {
+      "wave_index": 1,
+      "seconds": 384.3,
+      "exception": "",
+      "session_id": "2d0b1f96-a130-4a3a-a50b-691008f8219f",
+      "payload_kind": "dict",
+      "n_scenarios": 4
+    }
+  ],
+  "wave_reasoner_errors": [
+    {
+      "wave": 1,
+      "error": ""
+    }
+  ],
+  "generation_problems": [],
+  "accepted": 4,
+  "rejected": 0,
+  "harness_exception": ""
+}

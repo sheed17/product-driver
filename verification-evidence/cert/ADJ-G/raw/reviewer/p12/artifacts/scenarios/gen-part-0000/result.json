@@ -1,0 +1,22 @@
+{
+  "scenario_name": "generated:gen-part-0000",
+  "mode": "backend",
+  "started_at": "2026-08-10T20:26:18+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": null,
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "gen-part-0000",
+  "origin": "generated",
+  "run_id": "run-1",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:26:18+00:00"
+}

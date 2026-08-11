@@ -1,0 +1,65 @@
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+  wave 2 (adaptive): 3 scenario(s) accepted — fab-nonexistent-id, fab-passing-scenario, fab-nonexistent-cluster
+  wave 1 (initial): 5 scenario(s) accepted — gen-happy-approve, gen-persist-approve, gen-idempotent-approve, gen-authz-refusal, gen-ledger-recorded
+  3 proposed scenario(s) refused:
+    - fab-nonexistent-id: adaptive scenario cites failure/cluster id(s) that this run never observed: FAILURE-THAT-NEVER-HAPPENED
+    - fab-passing-scenario: adaptive scenario cites failure/cluster id(s) that this run never observed: gen-happy-approve
+    - fab-nonexistent-cluster: adaptive scenario cites failure/cluster id(s) that this run never observed: C99
+[
+  {
+    "condition": "A-evidence-free",
+    "with_evidence": false,
+    "accepted": [
+      {
+        "id": "fab-nonexistent-id",
+        "title": "Adaptive case citing a failure id this run never produced",
+        "source_failures": [
+          "FAILURE-THAT-NEVER-HAPPENED"
+        ],
+        "source_clusters": []
+      },
+      {
+        "id": "fab-passing-scenario",
+        "title": "Adaptive case citing a wave-1 scenario that PASSED",
+        "source_failures": [
+          "gen-happy-approve"
+        ],
+        "source_clusters": []
+      },
+      {
+        "id": "fab-nonexistent-cluster",
+        "title": "Adaptive case citing a failure cluster this run never produced",
+        "source_failures": [],
+        "source_clusters": [
+          "C99"
+        ]
+      }
+    ],
+    "rejected": []
+  },
+  {
+    "condition": "B-evidence-present",
+    "with_evidence": true,
+    "accepted": [],
+    "rejected": [
+      {
+        "id": "fab-nonexistent-id",
+        "reasons": [
+          "adaptive scenario cites failure/cluster id(s) that this run never observed: FAILURE-THAT-NEVER-HAPPENED"
+        ]
+      },
+      {
+        "id": "fab-passing-scenario",
+        "reasons": [
+          "adaptive scenario cites failure/cluster id(s) that this run never observed: gen-happy-approve"
+        ]
+      },
+      {
+        "id": "fab-nonexistent-cluster",
+        "reasons": [
+          "adaptive scenario cites failure/cluster id(s) that this run never observed: C99"
+        ]
+      }
+    ]
+  }
+]

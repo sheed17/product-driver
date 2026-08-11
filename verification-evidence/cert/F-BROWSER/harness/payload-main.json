@@ -1,0 +1,94 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "the detail screen may display an owner or next action the durable store does not hold",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    },
+    {
+      "id": "R2",
+      "description": "assigning an exception may not durably record the owner",
+      "risk_category": "unexpected_state_transition",
+      "severity": "P0",
+      "basis": "AC-UI-101"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "gen-screen-agrees-with-store",
+      "title": "an unassigned exception is shown as unassigned",
+      "purpose": "a screen that invents an owner sends an operator to a person who was never told",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "the acceptance criterion is about what a person can see versus what is stored",
+      "generating_risk": "the screen may fabricate an owner or a next action",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": ["ui"],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "open the detail screen",
+          "browser_steps": [
+            {"goto": "/", "screenshot": "detail"},
+            {"expect_text": "status: open"},
+            {"expect_text": "owner: unassigned"},
+            {"expect_text": "next action: none recorded"}
+          ]
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "the store holds no owner for EX-1",
+          "command": "python3 fixture/state.py EX-1",
+          "contains": ["owner=none"],
+          "not_contains": ["owner=Dana"]
+        }
+      ],
+      "expected_observations": ["Exception EX-1"],
+      "forbidden_observations": ["Traceback", "[object Object]"]
+    },
+    {
+      "id": "gen-assign-is-durable",
+      "title": "assigning through the screen durably records the owner",
+      "purpose": "an assignment a reload forgets is not an assignment",
+      "risk_category": "unexpected_state_transition",
+      "priority": "P0",
+      "rationale": "the screen is the only way an operator assigns, so the write must survive a reload",
+      "generating_risk": "the click may update only the rendered page",
+      "requirement_reference": "AC-UI-101",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": ["ui"],
+      "isolation_key": "store",
+      "isolation_note": "runs against its own freshly started service; the store is recreated at start",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "assign then reload",
+          "browser_steps": [
+            {"goto": "/"},
+            {"click": "#assign"},
+            {"wait_ms": 500},
+            {"goto": "/", "screenshot": "after-assign"},
+            {"expect_text": "owner: operator@local"},
+            {"expect_text": "next action: call the carrier"}
+          ]
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "the store records the assignment",
+          "command": "python3 fixture/state.py EX-1",
+          "contains": ["owner=operator@local"]
+        }
+      ]
+    }
+  ],
+  "assumptions": ["the exception detail screen is served at /"],
+  "unresolved_questions": []
+}

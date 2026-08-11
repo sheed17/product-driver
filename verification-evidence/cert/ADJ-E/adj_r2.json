@@ -1,0 +1,565 @@
+{
+  "A_redaction_changes_in_full_plan": [
+    {
+      "path": ".scenarios[0].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[0].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[0].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[1].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[1].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[1].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[2].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[2].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[2].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[3].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[3].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[3].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[4].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[4].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[4].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[5].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[5].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[5].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[6].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[6].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[6].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[7].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[7].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[7].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[8].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[8].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[8].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[9].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[9].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[9].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[10].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[10].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[10].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[11].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[11].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[11].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[12].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[12].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[12].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[13].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[13].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[13].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[14].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[14].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[14].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[15].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[15].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[15].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[16].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[16].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[16].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[17].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[17].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[17].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[18].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[18].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[18].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[19].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[19].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[19].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[20].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[20].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[20].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[21].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[21].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[21].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[22].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[22].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[22].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[23].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[23].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[23].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[24].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[24].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[24].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[25].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[25].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[25].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[26].actions[0].request.headers.Authorization",
+      "before": "Bearer abc",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[26].actions[0].request.headers.X-Token",
+      "before": "t",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".scenarios[26].actions[0].request.json_body.password",
+      "before": "hunter2",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".coverage_summary.by_risk_category.authorization",
+      "before": "1",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".waves[0].rejected[0].raw.authorization",
+      "before": "7",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".waves[0].rejected[0].raw.secret",
+      "before": "1",
+      "after": "[REDACTED]"
+    },
+    {
+      "path": ".waves[0].rejected[0].raw.nested.token",
+      "before": "2",
+      "after": "[REDACTED]"
+    }
+  ],
+  "A_reparse_full_redacted_plan": [
+    "1 validation error for GeneratedScenarioPlan",
+    "coverage_summary.by_risk_category.authorization",
+    "  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='[REDACTED]', input_type=str]",
+    "    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+  ],
+  "A_categories_fatal_to_reparse": [
+    "authorization"
+  ],
+  "B_state_json_authorization_bucket": {
+    "authorization": "[REDACTED]",
+    "boundary": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "B_state_reloads": true,
+  "C_clean_plan_bytes": 66877,
+  "C_truncated_plan_restore": {
+    "0.1": {
+      "restore_note": "",
+      "emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "waves_used_after": 0,
+      "scenarios_after": 0
+    },
+    "0.5": {
+      "restore_note": "",
+      "emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "waves_used_after": 0,
+      "scenarios_after": 0
+    },
+    "0.9": {
+      "restore_note": "",
+      "emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "waves_used_after": 0,
+      "scenarios_after": 0
+    },
+    "0.999": {
+      "restore_note": "",
+      "emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "waves_used_after": 0,
+      "scenarios_after": 0
+    }
+  },
+  "D_atomicity_probe": {
+    "reads": 6597,
+    "unparseable_reads": 21,
+    "distinct_sizes_seen": 3,
+    "size_range": [
+      0,
+      2449623
+    ],
+    "staging_file_used_for_plan": false
+  },
+  "E_budget_clean": {
+    "waves_used_at_restore": 1,
+    "budget_exhausted_at_restore": true,
+    "waves_used_after_plan_initial": 1,
+    "wave_records_after_plan_initial": [
+      {
+        "wave": 1,
+        "stage": "initial",
+        "notes": []
+      },
+      {
+        "wave": 2,
+        "stage": "initial",
+        "notes": [
+          "refused: 1 generation wave(s) already used"
+        ]
+      }
+    ],
+    "plan_bytes_before": 2556,
+    "plan_bytes_after": 3286,
+    "scenarios_after": [
+      "gen-a"
+    ],
+    "emissions": [
+      "  resumed scenario plan: 1 scenario(s), 1 wave(s) already used",
+      "  scenario budget: refused: 1 generation wave(s) already used"
+    ],
+    "wave_files": [
+      "wave-01.json",
+      "wave-02.json"
+    ]
+  },
+  "E_budget_authorization": {
+    "waves_used_at_restore": 0,
+    "budget_exhausted_at_restore": false,
+    "waves_used_after_plan_initial": 1,
+    "wave_records_after_plan_initial": [
+      {
+        "wave": 1,
+        "stage": "initial",
+        "notes": []
+      }
+    ],
+    "plan_bytes_before": 2577,
+    "plan_bytes_after": 1399,
+    "scenarios_after": [],
+    "emissions": [
+      "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+    ],
+    "wave_files": [
+      "wave-01.json"
+    ]
+  },
+  "E_budget_truncated": {
+    "waves_used_at_restore": 0,
+    "budget_exhausted_at_restore": false,
+    "waves_used_after_plan_initial": 1,
+    "wave_records_after_plan_initial": [
+      {
+        "wave": 1,
+        "stage": "initial",
+        "notes": []
+      }
+    ],
+    "plan_bytes_before": 2556,
+    "plan_bytes_after": 1399,
+    "scenarios_after": [],
+    "emissions": [
+      "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+    ],
+    "wave_files": [
+      "wave-01.json"
+    ]
+  }
+}

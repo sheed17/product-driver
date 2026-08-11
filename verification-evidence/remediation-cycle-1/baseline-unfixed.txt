@@ -1,0 +1,1664 @@
+============================= test session starts ==============================
+collecting ... collected 65 items
+
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_a_failing_required_scenario_is_not_held_for_review_as_an_accept FAILED [  1%]
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_the_review_hold_still_carries_the_suite_it_executed FAILED [  3%]
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_a_loop_result_cannot_be_constructed_positionally FAILED [  4%]
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_the_review_hold_does_not_assert_that_the_evaluation_passed FAILED [  6%]
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_a_recorded_unverified_gate_is_visible_to_review FAILED [  7%]
+tests/test_remediation_cycle_1.py::TestTheGatePrecedesEveryTerminalState::test_a_run_with_no_suite_is_not_reported_as_gated FAILED [  9%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[probe_case.py] FAILED [ 10%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[conftest.py] FAILED [ 12%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[setup.sh] FAILED [ 13%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[payload.js] FAILED [ 15%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[pytest.ini] FAILED [ 16%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_fixture_an_interpreter_would_run_is_refused[x.PY] FAILED [ 18%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_data_fixture_is_still_permitted[invoice.json] PASSED [ 20%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_data_fixture_is_still_permitted[rows.csv] PASSED [ 21%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_data_fixture_is_still_permitted[notes.txt] PASSED [ 23%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_data_fixture_is_still_permitted[cfg.yaml] PASSED [ 24%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_the_generator_is_told_the_rule_it_will_be_judged_against FAILED [ 26%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_the_command_that_runs_is_the_command_that_was_validated FAILED [ 27%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_data_fixture_still_reaches_the_command_that_consumes_it FAILED [ 29%]
+tests/test_remediation_cycle_1.py::TestAFixtureCannotBeAProgram::test_a_placeholder_may_only_expand_inside_the_run_fixture_directory FAILED [ 30%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[http:/example.com/admin] FAILED [ 32%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[http:example.com/admin] FAILED [ 33%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[http:\\\\example.com\\admin] FAILED [ 35%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[httpx://example.com/admin] FAILED [ 36%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[//example.com/admin] FAILED [ 38%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[javascript:alert(1)] FAILED [ 40%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_a_scheme_shaped_navigation_is_refused[file:///etc/passwd] FAILED [ 41%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_relative_navigation_still_passes[/] PASSED [ 43%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_relative_navigation_still_passes[/operator/] PASSED [ 44%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_relative_navigation_still_passes[/invoices/LD5600] PASSED [ 46%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_shipped_browser_template_still_validates FAILED [ 47%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[http:/example.com/admin] FAILED [ 49%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[http:example.com/admin] FAILED [ 50%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[http:\\\\example.com\\admin] FAILED [ 52%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[httpx://example.com/admin] FAILED [ 53%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[//example.com/admin] FAILED [ 55%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[javascript:alert(1)] FAILED [ 56%]
+tests/test_remediation_cycle_1.py::TestBrowserNavigationIsAnAllowlist::test_the_executor_refuses_what_the_validator_refuses[file:///etc/passwd] FAILED [ 58%]
+tests/test_remediation_cycle_1.py::TestRedactionPreservesTypes::test_a_count_under_a_secret_shaped_key_survives FAILED [ 60%]
+tests/test_remediation_cycle_1.py::TestRedactionPreservesTypes::test_a_credential_under_a_secret_shaped_key_is_still_masked PASSED [ 61%]
+tests/test_remediation_cycle_1.py::TestRedactionPreservesTypes::test_strings_nested_under_a_secret_key_are_still_masked FAILED [ 63%]
+tests/test_remediation_cycle_1.py::TestRedactionPreservesTypes::test_a_plan_that_names_authorization_can_be_read_back FAILED [ 64%]
+tests/test_remediation_cycle_1.py::TestRedactionPreservesTypes::test_persist_refuses_a_payload_it_could_not_read_back FAILED [ 66%]
+tests/test_remediation_cycle_1.py::TestAnUnreadablePlanFailsClosed::test_no_plan_and_an_unreadable_plan_are_different_states FAILED [ 67%]
+tests/test_remediation_cycle_1.py::TestAnUnreadablePlanFailsClosed::test_the_unreadable_plan_is_preserved_and_never_overwritten FAILED [ 69%]
+tests/test_remediation_cycle_1.py::TestAnUnreadablePlanFailsClosed::test_a_spent_wave_budget_is_not_returned_by_a_corrupt_plan FAILED [ 70%]
+tests/test_remediation_cycle_1.py::TestAnUnreadablePlanFailsClosed::test_an_unreadable_plan_blocks_acceptance FAILED [ 72%]
+tests/test_remediation_cycle_1.py::TestAnUnreadablePlanFailsClosed::test_the_plan_is_written_whole_or_not_at_all FAILED [ 73%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_folding_and_case_no_longer_merge_two_labels FAILED [ 75%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_two_ids_differing_only_in_case_are_refused_by_the_suite FAILED [ 76%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_a_generated_id_cannot_case_match_a_permanent_scenario_name FAILED [ 78%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_a_permanent_scenario_name_that_folds_is_refused_at_its_source FAILED [ 80%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_an_occupied_evidence_directory_is_refused_not_overwritten FAILED [ 81%]
+tests/test_remediation_cycle_1.py::TestEvidenceDirectoriesAreInjective::test_a_folding_filesystem_cannot_merge_two_evidence_records FAILED [ 83%]
+tests/test_remediation_cycle_1.py::TestResumeTimeDropsAreVisible::test_a_dropped_scenario_reaches_the_gate_and_the_plan FAILED [ 84%]
+tests/test_remediation_cycle_1.py::TestResumeTimeDropsAreVisible::test_a_resume_prefers_the_runs_own_base_scenario FAILED [ 86%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_a_session_that_never_loaded_a_page_cannot_pass FAILED [ 87%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_a_missing_playwright_install_is_not_a_pass FAILED [ 89%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_a_never_observed_browser_scenario_is_blocked_not_failed FAILED [ 90%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_a_loaded_page_does_not_earn_a_synthetic_assertion PASSED [ 92%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_cmd_run_preflights_the_browser_it_just_enabled FAILED [ 93%]
+tests/test_remediation_cycle_1.py::TestABrowserScenarioMustHaveObservedSomething::test_a_session_level_navigation_failure_is_recorded_structurally FAILED [ 95%]
+tests/test_remediation_cycle_1.py::TestEveryScreenTheRunLookedAtIsSearchable::test_the_haystack_holds_every_screen_not_only_the_last FAILED [ 96%]
+tests/test_remediation_cycle_1.py::TestEveryScreenTheRunLookedAtIsSearchable::test_merging_two_browser_actions_keeps_both_pages FAILED [ 98%]
+tests/test_remediation_cycle_1.py::TestEveryScreenTheRunLookedAtIsSearchable::test_a_single_session_that_navigates_twice_records_both_pages FAILED [100%]
+
+=================================== FAILURES ===================================
+_ TestTheGatePrecedesEveryTerminalState.test_a_failing_required_scenario_is_not_held_for_review_as_an_accept _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x10449fd90>
+loop_bits = (DriverConfig(neyma_repo=PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pyte...se, rubric_categories=[], additional_verification_needed=False, scenario_requests=[]), stop_requested=False, pid=None))
+
+    @pytest.mark.asyncio
+    async def test_a_failing_required_scenario_is_not_held_for_review_as_an_accept(
+        self, loop_bits  # noqa: F811
+    ):
+        """The defect, exactly.
+    
+        Evaluator says ACCEPT, the completion audit blocks with
+        REQUIRES_INDEPENDENT_REVIEW, and a required scenario has failed. The
+        audit branch returned before ``_apply_suite_precedence`` was reached, so
+        the run recorded ``final_decision: ACCEPT``, exited 14 and printed
+        nothing about the failure. The gate must decide first.
+        """
+        config, store, state = loop_bits
+        config.max_iterations = 1
+        planner = make_planner(config, store, [raw_payload(raw_scenario("gen-dup"))])
+    
+        result = await run_control_loop(
+            config=config,
+            scenario=base_scenario(),
+            store=store,
+            state=state,
+            builder=FakeBuilder(),
+            evaluator=FakeEvaluator([accept()]),
+            make_executor=lambda d: RecordingExecutor(d, {"gen-dup": False}, []),
+            emit=lambda _m: None,
+            repo_loader=FakeRepoLoader(),
+            auditor=_review_auditor(),
+            planner=planner,
+        )
+    
+>       assert result.status is not RunStatus.NEEDS_INDEPENDENT_REVIEW
+E       AssertionError: assert <RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'> is not <RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'>
+E        +  where <RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'> = LoopResult(status=<RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'>, state=RunState(run_id='20260809-000000', created_at='2026-08-11T20:42:02+00:00', updated_at='2026-08-11T20:42:03+00:00', status=<RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'>, neyma_repo='', scenario_name='', task='build supervised approval', builder_session_id='builder-1', evaluator_session_id='evaluator-1', iteration=1, max_iterations=3, iterations=[IterationRecord(iteration=1, timestamp='2026-08-11T20:42:02+00:00', builder_session_id='builder-1', evaluator_session_id='evaluator-1', builder_summary='done.\n\nRUNNABLE CHECKPOINT: run `make demo`.', git=GitSnapshot(branch='main', status_porcelain='', diff_stat='', head_commit='a487091', dirty_file_count=0), scenario=ScenarioResult(scenario_name='backend_generic', mode='backend', started_at='2026-08-11T20:42:03+00:00', setup=[], services_started=[], readiness_ok=True, readiness_detail='', commands=[], http=[], browser=None, assertions=[AssertionResult(kind='expect_state', target='backend_generic: payments row count', passed=True, detail='')], teardown=[], error=None, steps_performed=[], fixtures_written=[], scenario_id='backend_ge...CEPT'>, summary='looks good', observed_behavior=['saw it'], problems=[], correction_prompt='', evidence_paths=[], confidence=0.0, requirement_reference='', product_principle_reference='', scenario='', observed_result='', expected_result='', preserve='', retest='', customer_facing=False, rubric_categories=[], additional_verification_needed=False, scenario_requests=[]), audit=CompletionAudit(decision=<AuditDecision.REQUIRES_INDEPENDENT_REVIEW: 'REQUIRES_INDEPENDENT_REVIEW'>, claim=None, claims=[], observed_state=ObservedState(head_commit='', head_tree='', branch='', dirty_file_count=0, untracked_count=0, active_unit_id='', active_unit_status='', progress=WeightedProgress(unit_id='', total_weight=0.0, earned_weight=0.0, percent=0.0, passed=[], pending=[], independent_pending=[], self_awardable_ceiling_percent=100.0), receipts=[], implementation_present=False, implementation_detail='', build_status_percent=None, open_risks=[], files_consulted=[]), missing_evidence=[], contradictions=[], evidence_paths=[], correction_prompt='', confidence=0.9, audited_at='2026-08-11T20:42:03+00:00', headline='independent review criteria are pending'), protocol=None, suite=None, promotion_candidates=[]).status
+E        +  and   <RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'> = RunStatus.NEEDS_INDEPENDENT_REVIEW
+
+tests/test_remediation_cycle_1.py:135: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+=== ITERATION 1 / 1 ===
+_ TestTheGatePrecedesEveryTerminalState.test_the_review_hold_still_carries_the_suite_it_executed _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x1057b0910>
+loop_bits = (DriverConfig(neyma_repo=PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pyte...se, rubric_categories=[], additional_verification_needed=False, scenario_requests=[]), stop_requested=False, pid=None))
+
+    @pytest.mark.asyncio
+    async def test_the_review_hold_still_carries_the_suite_it_executed(
+        self, loop_bits  # noqa: F811
+    ):
+        """The dropped-fields half: four positional arguments, seven fields.
+    
+        With a green suite the hold is legitimate, and the result must still
+        carry the suite, the gate verdict and the promotion ledger — without
+        them ``_report_coverage`` returns immediately and the run prints no
+        coverage section, no gate verdict and no plan pointer at all.
+        """
+        config, store, state = loop_bits
+        config.max_iterations = 1
+        planner = make_planner(config, store, [raw_payload(raw_scenario("gen-ok"))])
+    
+        result = await run_control_loop(
+            config=config,
+            scenario=base_scenario(),
+            store=store,
+            state=state,
+            builder=FakeBuilder(),
+            evaluator=FakeEvaluator([accept()]),
+            make_executor=lambda d: RecordingExecutor(d, {}, []),
+            emit=lambda _m: None,
+            repo_loader=FakeRepoLoader(),
+            auditor=_review_auditor(),
+            planner=planner,
+        )
+    
+        assert result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW
+>       assert result.suite is not None
+E       AssertionError: assert None is not None
+E        +  where None = LoopResult(status=<RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'>, state=RunState(run_id='20260809-000000', created_at='2026-08-11T20:42:03+00:00', updated_at='2026-08-11T20:42:03+00:00', status=<RunStatus.NEEDS_INDEPENDENT_REVIEW: 'NEEDS_INDEPENDENT_REVIEW'>, neyma_repo='', scenario_name='', task='build supervised approval', builder_session_id='builder-1', evaluator_session_id='evaluator-1', iteration=1, max_iterations=3, iterations=[IterationRecord(iteration=1, timestamp='2026-08-11T20:42:03+00:00', builder_session_id='builder-1', evaluator_session_id='evaluator-1', builder_summary='done.\n\nRUNNABLE CHECKPOINT: run `make demo`.', git=GitSnapshot(branch='main', status_porcelain='', diff_stat='', head_commit='52abbb1', dirty_file_count=0), scenario=ScenarioResult(scenario_name='backend_generic', mode='backend', started_at='2026-08-11T20:42:03+00:00', setup=[], services_started=[], readiness_ok=True, readiness_detail='', commands=[], http=[], browser=None, assertions=[AssertionResult(kind='expect_state', target='backend_generic: payments row count', passed=True, detail='')], teardown=[], error=None, steps_performed=[], fixtures_written=[], scenario_id='backend_ge...CEPT'>, summary='looks good', observed_behavior=['saw it'], problems=[], correction_prompt='', evidence_paths=[], confidence=0.0, requirement_reference='', product_principle_reference='', scenario='', observed_result='', expected_result='', preserve='', retest='', customer_facing=False, rubric_categories=[], additional_verification_needed=False, scenario_requests=[]), audit=CompletionAudit(decision=<AuditDecision.REQUIRES_INDEPENDENT_REVIEW: 'REQUIRES_INDEPENDENT_REVIEW'>, claim=None, claims=[], observed_state=ObservedState(head_commit='', head_tree='', branch='', dirty_file_count=0, untracked_count=0, active_unit_id='', active_unit_status='', progress=WeightedProgress(unit_id='', total_weight=0.0, earned_weight=0.0, percent=0.0, passed=[], pending=[], independent_pending=[], self_awardable_ceiling_percent=100.0), receipts=[], implementation_present=False, implementation_detail='', build_status_percent=None, open_risks=[], files_consulted=[]), missing_evidence=[], contradictions=[], evidence_paths=[], correction_prompt='', confidence=0.9, audited_at='2026-08-11T20:42:03+00:00', headline='independent review criteria are pending'), protocol=None, suite=None, promotion_candidates=[]).suite
+
+tests/test_remediation_cycle_1.py:170: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+=== ITERATION 1 / 1 ===
+_ TestTheGatePrecedesEveryTerminalState.test_a_loop_result_cannot_be_constructed_positionally _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x105163950>
+
+    def test_a_loop_result_cannot_be_constructed_positionally(self):
+        """The systemic half. A positional construction is a silent truncation."""
+        state = RunState(run_id="r", task="t")
+>       with pytest.raises(TypeError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE TypeError
+
+tests/test_remediation_cycle_1.py:177: Failed
+_ TestTheGatePrecedesEveryTerminalState.test_the_review_hold_does_not_assert_that_the_evaluation_passed _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x105163bb0>
+capsys = <_pytest.capture.CaptureFixture object at 0x10515b620>
+
+    def test_the_review_hold_does_not_assert_that_the_evaluation_passed(self, capsys):
+        """The console statement of fact that was false whenever the gate blocked."""
+        suite = SuiteResult(expected_required_ids=["gen-a"])
+        gate = evaluate_gate(suite)
+>       result = LoopResult(
+            status=RunStatus.NEEDS_INDEPENDENT_REVIEW,
+            state=RunState(run_id="r", task="t"),
+            suite=suite,
+            gate=gate,
+        )
+E       TypeError: LoopResult.__init__() got an unexpected keyword argument 'gate'. Did you mean 'state'?
+
+tests/test_remediation_cycle_1.py:188: TypeError
+_ TestTheGatePrecedesEveryTerminalState.test_a_recorded_unverified_gate_is_visible_to_review _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x10578f1d0>
+
+    def test_a_recorded_unverified_gate_is_visible_to_review(self):
+        """``cmd_review`` had no way to know the gate had refused."""
+        from neyma_product_driver.models import IterationRecord
+    
+        failing = SuiteResult(
+            expected_required_ids=["gen-a"],
+            outcomes=[
+                {
+                    "scenario_id": "gen-a",
+                    "scenario_name": "gen-a",
+                    "origin": "generated",
+                    "outcome": "FAILED",
+                    "required": True,
+                }
+            ],
+        )
+        state = RunState(run_id="r", task="t")
+        state.iterations = [
+            IterationRecord(iteration=1, suite=failing.model_dump(mode="json"))
+        ]
+>       gate = _recorded_suite_gate(state)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: 'NoneType' object is not callable
+
+tests/test_remediation_cycle_1.py:219: TypeError
+_ TestTheGatePrecedesEveryTerminalState.test_a_run_with_no_suite_is_not_reported_as_gated _
+
+self = <test_remediation_cycle_1.TestTheGatePrecedesEveryTerminalState object at 0x105749f20>
+
+    def test_a_run_with_no_suite_is_not_reported_as_gated(self):
+>       assert _recorded_suite_gate(RunState(run_id="r", task="t")) is None
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: 'NoneType' object is not callable
+
+tests/test_remediation_cycle_1.py:227: TypeError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[probe_case.py] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x1057b0b90>
+name = 'probe_case.py'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a58110>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[conftest.py] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x1057b0cd0>
+name = 'conftest.py'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a5b9f0>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[setup.sh] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105764050>
+name = 'setup.sh'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a5a810>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[payload.js] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105764180>
+name = 'payload.js'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a592f0>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[pytest.ini] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x10578fe30>
+name = 'pytest.ini'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a80520>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused[x.PY] _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x10574a8b0>
+name = 'x.PY'
+
+    @pytest.mark.parametrize(
+        "name",
+        ["probe_case.py", "conftest.py", "setup.sh", "payload.js", "pytest.ini", "x.PY"],
+    )
+    def test_a_fixture_an_interpreter_would_run_is_refused(self, name):
+        """The chain in one line: the fixture's path becomes an argument to an
+        approved interpreter *after* validation, so a fixture that is a program
+        is model-authored code with the driver's own authority."""
+        scenario = make_scenario(
+            actions=[
+                GeneratedAction(
+                    kind="fixture", fixture_name=name, fixture_content="print('x')"
+                )
+            ]
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("fixture name" in r and "must end in" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestAFixtureCannotBeAProgram.test_a_fixture_an_interpreter_would_run_is_refused.<locals>.<genexpr> at 0x105a59700>)
+
+tests/test_remediation_cycle_1.py:252: AssertionError
+_ TestAFixtureCannotBeAProgram.test_the_generator_is_told_the_rule_it_will_be_judged_against _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105aa05f0>
+
+    def test_the_generator_is_told_the_rule_it_will_be_judged_against(self):
+        """A boundary the prompt still advertises around earns refused waves."""
+        from neyma_product_driver.scenario_generator import GENERATOR_SYSTEM
+    
+        assert ".json" in GENERATOR_SYSTEM
+>       assert "conftest.py" in GENERATOR_SYSTEM
+E       assert 'conftest.py' in 'You design verification scenarios for a freight-operations product. You decide\nWHAT SITUATIONS SHOULD BE EXERCISED before an implementation is trusted. You do\nnot diagnose failures, you do not judge the product, and you do not write code.\n\nYou are given the task, the repository\'s active work unit and its acceptance\ncriteria, the founder\'s product principles, what the builder actually changed,\nwhat is already covered, and what has already failed. Propose the highest-value\nsituations that could realistically go wrong.\n\nGROUND EVERY SCENARIO. `requirement_reference` must name the active unit, one of\nthe acceptance criteria you were shown, or an AC-<AREA>-<nnn> id.\n`product_principle_reference` must name one of the product principle ids you were\nshown. You may NOT invent a product requirement: if the repository and founder\ncontext do not promise something, there is nothing to verify. When you believe a\nrequirement is missing, say so in `unresolved_questions` instead of inventing it.\n\nBE SELECTIVE. Do not emit one scenario per category. Choose by applicability and\nrisk: what did the diff actually touch, what does this feature promise, what\nwould a careful engineer...ntry. A local write is not evidence of\n    an external effect either. A passing test suite is not such an oracle: it\n    reports on tests, not on the state your actions just produced. Concretely:\n\n        "persisted_state_checks": [\n          {"name": "exactly one payment",\n           "command": "sqlite3 data/app.sqlite3 \\"SELECT count(*) FROM payments\\"",\n           "contains": ["1"], "not_contains": ["2"]}\n        ]\n\n    `command` is required and must come from the approved list. Do not write a\n    `description` or `expect` field here — those do not exist, and an entry\n    carrying one is discarded, taking the whole scenario\'s only oracle with it.\n  - A scenario that mutates local state must declare `cleanup` commands or an\n    `isolation_note` explaining why it cannot contaminate the next scenario.\n  - Do not duplicate a situation already covered. Adding a different label to the\n    same operations and expectations is a duplicate.\n  - Set `isolation_key` to whatever shared resource the scenario contends for\n    (a database name, a port, a workspace) so the harness knows what may not run\n    concurrently with it.\n\nReturn only the requested JSON object.\n'
+
+tests/test_remediation_cycle_1.py:275: AssertionError
+_ TestAFixtureCannotBeAProgram.test_the_command_that_runs_is_the_command_that_was_validated _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105738670>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_the_command_that_runs_is_0')
+
+    @pytest.mark.asyncio
+    async def test_the_command_that_runs_is_the_command_that_was_validated(self, tmp_path):
+        """Substitution happened after validation, so the string that was judged
+        safe and the string that became a subprocess were different strings."""
+>       executor = ScenarioExecutor(
+            tmp_path,
+            ScenarioRunConfig(),
+            tmp_path / "art",
+            approved_commands=ApprovedCommands(["echo hi"]),
+        )
+E       TypeError: ScenarioExecutor.__init__() got an unexpected keyword argument 'approved_commands'
+
+tests/test_remediation_cycle_1.py:281: TypeError
+_ TestAFixtureCannotBeAProgram.test_a_data_fixture_still_reaches_the_command_that_consumes_it _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105738ad0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_data_fixture_still_reac0')
+
+    @pytest.mark.asyncio
+    async def test_a_data_fixture_still_reaches_the_command_that_consumes_it(self, tmp_path):
+        """The re-check must not cost the capability the prompt advertises."""
+>       executor = ScenarioExecutor(
+            tmp_path,
+            ScenarioRunConfig(),
+            tmp_path / "art",
+            approved_commands=ApprovedCommands(["echo hi"]),
+        )
+E       TypeError: ScenarioExecutor.__init__() got an unexpected keyword argument 'approved_commands'
+
+tests/test_remediation_cycle_1.py:312: TypeError
+_ TestAFixtureCannotBeAProgram.test_a_placeholder_may_only_expand_inside_the_run_fixture_directory _
+
+self = <test_remediation_cycle_1.TestAFixtureCannotBeAProgram object at 0x105a81cc0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_placeholder_may_only_ex0')
+
+    @pytest.mark.asyncio
+    async def test_a_placeholder_may_only_expand_inside_the_run_fixture_directory(
+        self, tmp_path
+    ):
+        executor = ScenarioExecutor(tmp_path, ScenarioRunConfig(), tmp_path / "art")
+        executor._fixtures["escape"] = "/etc/passwd"
+        scenario = Scenario(
+            name="probe",
+            steps=[
+                {
+                    "kind": "command",
+                    "name": "escape",
+                    "command": {"run": "echo {{fixture:escape}}"},
+                }
+            ],
+        )
+        result = await executor.execute(scenario)
+>       assert not result.passed
+E       AssertionError: assert not True
+E        +  where True = ScenarioResult(scenario_name='probe', mode='backend', started_at='2026-08-11T20:42:03+00:00', setup=[], services_started=[], readiness_ok=True, readiness_detail='', commands=[CommandResult(command='echo /etc/passwd', exit_code=0, stdout='/etc/passwd\n', stderr='', duration_s=0.009843625000030443, timed_out=False, cwd='/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_placeholder_may_only_ex0')], http=[], browser=None, assertions=[AssertionResult(kind='expect_state', target='echo /etc/passwd: exit == 0', passed=True, detail='got exit=0')], teardown=[], error=None, steps_performed=['01. command: escape'], fixtures_written=[], scenario_id='', origin='permanent').passed
+
+tests/test_remediation_cycle_1.py:354: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[http:/example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057b1090>
+goto = 'http:/example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('http:/example.com/admin', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x105ab85f0>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[http:example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057b11d0>
+goto = 'http:example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('http:example.com/admin', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x1058e4d40>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[http:\\\\example.com\\admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057642b0>
+goto = 'http:\\\\example.com\\admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('http:\\\\example.com\\admin', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x105ab92f0>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[httpx://example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057643e0>
+goto = 'httpx://example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('httpx://example.com/admin', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x1058e4790>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[//example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10572db50>
+goto = '//example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('//example.com/admin', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x1058cfc60>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[javascript:alert(1)] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10574a580>
+goto = 'javascript:alert(1)'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('javascript:alert(1)', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x1059320c0>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused[file:///etc/passwd] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10574aad0>
+goto = 'file:///etc/passwd'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_a_scheme_shaped_navigation_is_refused(self, goto):
+        """Every one of these was admitted with zero reasons and navigated to:
+        the validator inspected only ``http://``/``https://`` while the executor
+        treated anything starting ``http`` as absolute."""
+        scenario = make_scenario(
+            mode="browser",
+            actions=[
+                GeneratedAction(kind="browser", browser_steps=[GeneratedBrowserStep(goto=goto)])
+            ],
+        )
+        reasons = validate_scenario(scenario, validation_context())
+>       assert any("unsupported external navigation" in r for r in reasons), (goto, reasons)
+E       AssertionError: ('file:///etc/passwd', [])
+E       assert False
+E        +  where False = any(<generator object TestBrowserNavigationIsAnAllowlist.test_a_scheme_shaped_navigation_is_refused.<locals>.<genexpr> at 0x105a80520>)
+
+tests/test_remediation_cycle_1.py:388: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_shipped_browser_template_still_validates _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x105aa07d0>
+
+    def test_the_shipped_browser_template_still_validates(self):
+        shipped = load_scenario(Path("scenarios/browser_generic.yaml"))
+        gotos = [
+            step.goto
+            for step in (shipped.browser.steps if shipped.browser else [])
+            if step.goto is not None
+        ]
+        assert gotos, "the template is expected to navigate"
+        for goto in gotos:
+>           _target, problem = resolve_browser_target(app_url=shipped.app_url, goto=goto)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           TypeError: 'NoneType' object is not callable
+
+tests/test_remediation_cycle_1.py:410: TypeError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[http:/example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10573a190>
+goto = 'http:/example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http:/example.com/admin'] == []
+E         
+E         Left contains one more item: 'http:/example.com/admin'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http:/example.com/admin',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[http:example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10573a430>
+goto = 'http:example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http:example.com/admin'] == []
+E         
+E         Left contains one more item: 'http:example.com/admin'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http:example.com/admin',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[http:\\\\example.com\\admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x105a83040>
+goto = 'http:\\\\example.com\\admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http:\\\\ex...e.com\\admin'] == []
+E         
+E         Left contains one more item: 'http:\\\\example.com\\admin'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http:\\\\example.com\\admin',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[httpx://example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10579a090>
+goto = 'httpx://example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['httpx://example.com/admin'] == []
+E         
+E         Left contains one more item: 'httpx://example.com/admin'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'httpx://example.com/admin',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[//example.com/admin] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x10579a210>
+goto = '//example.com/admin'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http://127....le.com/admin'] == []
+E         
+E         Left contains one more item: 'http://127.0.0.1:8931/example.com/admin'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http://127.0.0.1:8931/example.com/admin',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[javascript:alert(1)] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057b6db0>
+goto = 'javascript:alert(1)'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http://127....ipt:alert(1)'] == []
+E         
+E         Left contains one more item: 'http://127.0.0.1:8931/javascript:alert(1)'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http://127.0.0.1:8931/javascript:alert(1)',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestBrowserNavigationIsAnAllowlist.test_the_executor_refuses_what_the_validator_refuses[file:///etc/passwd] _
+
+self = <test_remediation_cycle_1.TestBrowserNavigationIsAnAllowlist object at 0x1057b6e60>
+goto = 'file:///etc/passwd'
+
+    @pytest.mark.parametrize("goto", SCHEME_SHAPED)
+    def test_the_executor_refuses_what_the_validator_refuses(self, goto):
+        """One resolution function, two callers. The executor used to re-derive
+        the target from ``startswith("http")`` and reach a host nothing checked."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.visited: list[str] = []
+    
+            async def goto(self, url, **_kw):
+                self.visited.append(url)
+    
+            async def evaluate(self, _script):
+                return ""
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        asyncio.run(
+            ScenarioExecutor._run_step(
+                executor,
+                page,
+                BrowserStep(goto=goto),
+                obs,
+                Path("."),
+                1,
+                "http://127.0.0.1:8931",
+                "",
+            )
+        )
+>       assert page.visited == []
+E       AssertionError: assert ['http://127....//etc/passwd'] == []
+E         
+E         Left contains one more item: 'http://127.0.0.1:8931/file:///etc/passwd'
+E         
+E         Full diff:
+E         - []
+E         + [
+E         +     'http://127.0.0.1:8931/file:///etc/passwd',
+E         + ]
+
+tests/test_remediation_cycle_1.py:443: AssertionError
+_ TestRedactionPreservesTypes.test_a_count_under_a_secret_shaped_key_survives __
+
+self = <test_remediation_cycle_1.TestRedactionPreservesTypes object at 0x1057b1450>
+
+    def test_a_count_under_a_secret_shaped_key_survives(self):
+        masked = redact_obj({"by_risk_category": {"authorization": 3, "boundary": 1}})
+>       assert masked["by_risk_category"]["authorization"] == 3
+E       AssertionError: assert '[REDACTED]' == 3
+
+tests/test_remediation_cycle_1.py:456: AssertionError
+_ TestRedactionPreservesTypes.test_strings_nested_under_a_secret_key_are_still_masked _
+
+self = <test_remediation_cycle_1.TestRedactionPreservesTypes object at 0x105764770>
+
+    def test_strings_nested_under_a_secret_key_are_still_masked(self):
+        masked = redact_obj({"credentials": {"user": "neyma", "rounds": 4, "keys": ["k1"]}})
+>       assert masked["credentials"]["user"] == "[REDACTED]"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: string indices must be integers, not 'str'
+
+tests/test_remediation_cycle_1.py:465: TypeError
+_ TestRedactionPreservesTypes.test_a_plan_that_names_authorization_can_be_read_back _
+
+self = <test_remediation_cycle_1.TestRedactionPreservesTypes object at 0x105163820>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_plan_that_names_authori0')
+
+    def test_a_plan_that_names_authorization_can_be_read_back(self, tmp_path):
+        """The whole defect in one round trip: one authorization-category
+        scenario made the run's own plan permanently unparseable."""
+        store = EvidenceStore(tmp_path, "20260810-000000")
+        planner = ScenarioPlanner(
+            repo=tmp_path,
+            config=_generation_config(),
+            reasoner=ScriptedReasoner([]),
+            store=store,
+            base_scenario=base_scenario(),
+            founder=FakeFounder(),
+        )
+        planner.plan.coverage_summary.by_risk_category = {"authorization": 2, "boundary": 1}
+        planner.persist()
+    
+        raw = (store.run_dir / PLAN_FILENAME).read_text(encoding="utf-8")
+>       restored = GeneratedScenarioPlan.model_validate_json(raw)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for GeneratedScenarioPlan
+E       coverage_summary.by_risk_category.authorization
+E         Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='[REDACTED]', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/int_parsing
+
+tests/test_remediation_cycle_1.py:485: ValidationError
+_ TestRedactionPreservesTypes.test_persist_refuses_a_payload_it_could_not_read_back _
+
+obj = <module 'neyma_product_driver.scenario_planner' from '/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmp.OKIXg0XVVi/neyma_product_driver/scenario_planner.py'>
+name = 'redact_obj', ann = 'neyma_product_driver.scenario_planner'
+
+    def annotated_getattr(obj: object, name: str, ann: str) -> object:
+        try:
+>           obj = getattr(obj, name)
+                  ^^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'neyma_product_driver.scenario_planner' has no attribute 'redact_obj'
+
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/_pytest/monkeypatch.py:95: AttributeError
+
+The above exception was the direct cause of the following exception:
+
+self = <test_remediation_cycle_1.TestRedactionPreservesTypes object at 0x10578eb10>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_persist_refuses_a_payload0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x105a2ec80>
+
+    def test_persist_refuses_a_payload_it_could_not_read_back(self, tmp_path, monkeypatch):
+        """The systemic half: no write-time transform may silently render the
+        run's own state record unreadable, whatever the transform is."""
+        store = EvidenceStore(tmp_path, "20260810-000001")
+        planner = ScenarioPlanner(
+            repo=tmp_path,
+            config=_generation_config(),
+            reasoner=ScriptedReasoner([]),
+            store=store,
+            base_scenario=base_scenario(),
+            founder=FakeFounder(),
+            emit=lambda _m: None,
+        )
+        planner.persist()
+        good = (store.run_dir / PLAN_FILENAME).read_text(encoding="utf-8")
+    
+        def corrupting(obj: Any) -> Any:
+            payload = redact_obj(obj)
+            payload["coverage_summary"]["by_risk_category"]["authorization"] = "[REDACTED]"
+            return payload
+    
+>       monkeypatch.setattr("neyma_product_driver.scenario_planner.redact_obj", corrupting)
+
+tests/test_remediation_cycle_1.py:509: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/_pytest/monkeypatch.py:109: in derive_importpath
+    annotated_getattr(target, attr, ann=module)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+obj = <module 'neyma_product_driver.scenario_planner' from '/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/tmp.OKIXg0XVVi/neyma_product_driver/scenario_planner.py'>
+name = 'redact_obj', ann = 'neyma_product_driver.scenario_planner'
+
+    def annotated_getattr(obj: object, name: str, ann: str) -> object:
+        try:
+            obj = getattr(obj, name)
+        except AttributeError as e:
+>           raise AttributeError(
+                f"{type(obj).__name__!r} object at {ann} has no attribute {name!r}"
+            ) from e
+E           AttributeError: 'module' object at neyma_product_driver.scenario_planner has no attribute 'redact_obj'
+
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/_pytest/monkeypatch.py:97: AttributeError
+_ TestAnUnreadablePlanFailsClosed.test_no_plan_and_an_unreadable_plan_are_different_states _
+
+self = <test_remediation_cycle_1.TestAnUnreadablePlanFailsClosed object at 0x10449f9d0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_no_plan_and_an_unreadable0')
+
+    def test_no_plan_and_an_unreadable_plan_are_different_states(self, tmp_path):
+        absent = _planner_for(tmp_path, "20260810-000010").restore_from_store()
+>       assert absent.state == "absent"
+               ^^^^^^^^^^^^
+E       AttributeError: 'str' object has no attribute 'state'
+
+tests/test_remediation_cycle_1.py:543: AttributeError
+_ TestAnUnreadablePlanFailsClosed.test_the_unreadable_plan_is_preserved_and_never_overwritten _
+
+self = <test_remediation_cycle_1.TestAnUnreadablePlanFailsClosed object at 0x1057b1310>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_the_unreadable_plan_is_pr0')
+
+    def test_the_unreadable_plan_is_preserved_and_never_overwritten(self, tmp_path):
+        planner = _planner_for(tmp_path, "20260810-000012")
+        original = '{"scenarios": ['
+        path = planner.store.run_dir / PLAN_FILENAME
+        path.write_text(original, encoding="utf-8")
+    
+        outcome = planner.restore_from_store()
+        planner.persist()  # the write that used to destroy the surviving record
+    
+>       preserved = Path(outcome.preserved_path)
+                         ^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'str' object has no attribute 'preserved_path'
+
+tests/test_remediation_cycle_1.py:561: AttributeError
+_ TestAnUnreadablePlanFailsClosed.test_a_spent_wave_budget_is_not_returned_by_a_corrupt_plan _
+
+self = <test_remediation_cycle_1.TestAnUnreadablePlanFailsClosed object at 0x1051636f0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_spent_wave_budget_is_no0')
+
+    def test_a_spent_wave_budget_is_not_returned_by_a_corrupt_plan(self, tmp_path):
+        planner = _planner_for(tmp_path, "20260810-000013")
+        waves = planner.store.run_dir / WAVES_DIRNAME
+        waves.mkdir(parents=True, exist_ok=True)
+        (waves / "wave-01.json").write_text(
+            json.dumps({"wave": 1, "stage": "initial"}), encoding="utf-8"
+        )
+        (planner.store.run_dir / PLAN_FILENAME).write_text("{", encoding="utf-8")
+    
+        planner.restore_from_store()
+>       assert planner.waves_used == 1
+E       assert 0 == 1
+E        +  where 0 = <neyma_product_driver.scenario_planner.ScenarioPlanner object at 0x105a1d590>.waves_used
+
+tests/test_remediation_cycle_1.py:575: AssertionError
+__ TestAnUnreadablePlanFailsClosed.test_an_unreadable_plan_blocks_acceptance ___
+
+self = <test_remediation_cycle_1.TestAnUnreadablePlanFailsClosed object at 0x1057648a0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_an_unreadable_plan_blocks0')
+
+    def test_an_unreadable_plan_blocks_acceptance(self, tmp_path):
+        planner = _planner_for(tmp_path, "20260810-000014")
+        (planner.store.run_dir / PLAN_FILENAME).write_text("{", encoding="utf-8")
+        planner.restore_from_store()
+    
+>       assert planner.restore_failed
+               ^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'ScenarioPlanner' object has no attribute 'restore_failed'
+
+tests/test_remediation_cycle_1.py:583: AttributeError
+_ TestAnUnreadablePlanFailsClosed.test_the_plan_is_written_whole_or_not_at_all _
+
+self = <test_remediation_cycle_1.TestAnUnreadablePlanFailsClosed object at 0x10572deb0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_the_plan_is_written_whole0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1059d5780>
+
+    def test_the_plan_is_written_whole_or_not_at_all(self, tmp_path, monkeypatch):
+        """``Path.write_text`` truncates first, so a crash inside the window
+        leaves a plan no resume can read — and a crash mid-run is the event
+        resume exists to survive."""
+        planner = _planner_for(tmp_path, "20260810-000015")
+        planner.persist()
+        path = planner.store.run_dir / PLAN_FILENAME
+        before = path.read_text(encoding="utf-8")
+    
+        real_replace = Path.replace
+    
+        def exploding(self, target):
+            if Path(target).name == PLAN_FILENAME:
+                raise OSError("interrupted before the move")
+            return real_replace(self, target)
+    
+        monkeypatch.setattr(Path, "replace", exploding)
+        planner.plan.task = "something new that must not half-land"
+>       with pytest.raises(OSError):
+             ^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE OSError
+
+tests/test_remediation_cycle_1.py:606: Failed
+_ TestEvidenceDirectoriesAreInjective.test_folding_and_case_no_longer_merge_two_labels _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x1057b16d0>
+
+    def test_folding_and_case_no_longer_merge_two_labels(self):
+>       assert sanitize_filename("approve twice") != sanitize_filename("approve-twice")
+E       AssertionError: assert 'approve-twice' != 'approve-twice'
+E        +  where 'approve-twice' = sanitize_filename('approve twice')
+E        +  and   'approve-twice' = sanitize_filename('approve-twice')
+
+tests/test_remediation_cycle_1.py:619: AssertionError
+_ TestEvidenceDirectoriesAreInjective.test_two_ids_differing_only_in_case_are_refused_by_the_suite _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x1057b1810>
+
+    def test_two_ids_differing_only_in_case_are_refused_by_the_suite(self):
+        upper = make_scenario("gen-AUTH-01")
+        lower = make_scenario("gen-auth-01", expected_observations=["something else"])
+        suite = build_suite(
+            generated=[(upper, Scenario(name="a")), (lower, Scenario(name="b"))]
+        )
+>       assert len(suite) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len(ScenarioSuite(entries=[SuiteEntry(scenario_id='gen-AUTH-01', scenario=Scenario(name='a', phase='', description='', mode='backend', setup=[], services=[], readiness=[], app_url='', requests=[], commands=[], fixtures=[], browser=None, steps=[], expect_visible=[], expect_state=[], forbidden=[], teardown=[], env={}), origin=<Origin.GENERATED: 'generated'>, priority=<Priority.P0: 'P0'>, risk_category=<RiskCategory.IDEMPOTENCY: 'idempotency'>, isolation_key='workflow-db', depends_on=[], generated=GeneratedScenario(id='gen-AUTH-01', proposed_id='', title='approving twice pays once', purpose='a duplicate approval must not produce a second payment effect', risk_category=<RiskCategory.IDEMPOTENCY: 'idempotency'>, priority=<Priority.P0: 'P0'>, rationale='', requirement_reference='U-042: an approved invoice is paid exactly once', product_principle_reference='effect-truth', mode='backend', setup=[], service_refs=['api'], actions=[GeneratedAction(kind='request', name='', command='', expect_exit_code=0, expect_contains=[], timeout_s=None, request=GeneratedRequest(name='', method='POST', path='/approve', url='', headers={}, json_body=None, body='', expect_status=200, expect_contains=[], timeout_...code=0, expect_contains=[], timeout_s=None, request=GeneratedRequest(name='', method='POST', path='/approve', url='', headers={}, json_body=None, body='', expect_status=200, expect_contains=[], timeout_s=None), requests=[], browser_steps=[], state_check=None, fixture_name='', fixture_content='', service='', wait_ms=None)], persisted_state_checks=[GeneratedStateCheck(name='', command='./probe.sh payments', contains=['payments=1'], not_contains=[], timeout_s=None)], expected_observations=['something else'], forbidden_observations=[], cleanup=['./probe.sh reset'], isolation_note='', isolation_key='workflow-db', generated_from=[], confidence=0.5, provenance=ScenarioProvenance(generated_at='2026-08-11T20:42:03+00:00', task_hash='task-digest-fixture', founder_context_version='', repository_head='0000000000000000000000000000000000000000', active_unit_id='U-042', acceptance_criteria_consulted=[], files_consulted=[], diff_files_consulted=[], prior_failures_consulted=[], generating_risk='duplicate approval could double-pay', source_failures=[], source_clusters=[], stage='initial', wave=1, model='opus', session_id='fixture-session', kind='ephemeral')), required=True)], assembly_conflicts=[]))
+
+tests/test_remediation_cycle_1.py:632: AssertionError
+_ TestEvidenceDirectoriesAreInjective.test_a_generated_id_cannot_case_match_a_permanent_scenario_name _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x1057649d0>
+
+    def test_a_generated_id_cannot_case_match_a_permanent_scenario_name(self):
+        scenario = make_scenario("Backend_Generic")
+        reasons = validate_scenario(
+            scenario, validation_context(existing_ids={"backend_generic"})
+        )
+>       assert any("already used in this run" in r for r in reasons), reasons
+E       AssertionError: []
+E       assert False
+E        +  where False = any(<generator object TestEvidenceDirectoriesAreInjective.test_a_generated_id_cannot_case_match_a_permanent_scenario_name.<locals>.<genexpr> at 0x105920790>)
+
+tests/test_remediation_cycle_1.py:643: AssertionError
+_ TestEvidenceDirectoriesAreInjective.test_a_permanent_scenario_name_that_folds_is_refused_at_its_source _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x105764b00>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_permanent_scenario_name0')
+
+    def test_a_permanent_scenario_name_that_folds_is_refused_at_its_source(self, tmp_path):
+        path = tmp_path / "s.yaml"
+        path.write_text("name: approve twice\n", encoding="utf-8")
+>       with pytest.raises(ValueError, match="must be made only of"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_remediation_cycle_1.py:648: Failed
+_ TestEvidenceDirectoriesAreInjective.test_an_occupied_evidence_directory_is_refused_not_overwritten _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x10572f890>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_an_occupied_evidence_dire0')
+
+    @pytest.mark.asyncio
+    async def test_an_occupied_evidence_directory_is_refused_not_overwritten(self, tmp_path):
+        """The backstop, which makes no assumption about how the filesystem
+        compares two names: it observes the collision that actually happened."""
+        entry = SuiteEntry(
+            scenario_id="gen-a",
+            scenario=Scenario(name="gen-a"),
+            origin=Origin.GENERATED,
+            priority=Priority.P0,
+        )
+        suite = ScenarioSuite()
+        suite.add(entry)
+    
+        artifact_root = tmp_path / "iteration-01"
+        occupied = artifact_root / "scenarios" / sanitize_filename("gen-a")
+        occupied.mkdir(parents=True)
+        write_case_evidence(
+            occupied,
+            ScenarioResult(scenario_name="someone-else"),
+            scenario_id="someone-else",
+            run_id="run-1",
+            iteration=1,
+        )
+    
+        executor = SuiteExecutor(
+            make_executor=lambda d: RecordingExecutor(d, {}, []),
+            artifact_root=artifact_root,
+            run_id="run-1",
+            iteration=1,
+            emit=lambda _m: None,
+        )
+        result = await executor.run(suite)
+    
+>       assert result.assembly_problems
+E       AssertionError: assert []
+E        +  where [] = SuiteResult(started_at='2026-08-11T20:42:03+00:00', duration_s=0.00043500000003859896, full_run=True, selection_reason='', expected_required_ids=['gen-a'], assembly_problems=[], outcomes=[ScenarioOutcome(scenario_id='gen-a', scenario_name='gen-a', origin=<Origin.GENERATED: 'generated'>, outcome=<Outcome.PASSED: 'PASSED'>, priority=<Priority.P0: 'P0'>, risk_category='', required=True, duration_s=0.0, assertions_total=1, assertions_failed=0, failed_assertions=[], error='', skip_reason='', evidence_path='/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_an_occupied_evidence_dire0/iteration-01/scenarios/gen-a', evidence_verified=True, evidence_problem='', generated_because='', requirement_reference='')], clusters=[]).assembly_problems
+
+tests/test_remediation_cycle_1.py:684: AssertionError
+_ TestEvidenceDirectoriesAreInjective.test_a_folding_filesystem_cannot_merge_two_evidence_records _
+
+self = <test_remediation_cycle_1.TestEvidenceDirectoriesAreInjective object at 0x105749bf0>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_folding_filesystem_cann0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1059d6970>
+
+    @pytest.mark.asyncio
+    async def test_a_folding_filesystem_cannot_merge_two_evidence_records(
+        self, tmp_path, monkeypatch
+    ):
+        """Simulates a volume whose equivalence relation nobody enumerated, by
+        folding every name onto one. Correctness must not depend on having
+        modelled it."""
+        monkeypatch.setattr(
+            "neyma_product_driver.scenario_suite.sanitize_filename", lambda _n: "one-dir"
+        )
+        suite = ScenarioSuite()
+        for scenario_id in ("gen-a", "gen-b"):
+            suite.add(
+                SuiteEntry(
+                    scenario_id=scenario_id,
+                    scenario=Scenario(name=scenario_id),
+                    origin=Origin.GENERATED,
+                    priority=Priority.P0,
+                )
+            )
+    
+        executor = SuiteExecutor(
+            make_executor=lambda d: RecordingExecutor(d, {}, []),
+            artifact_root=tmp_path / "iteration-01",
+            run_id="run-1",
+            iteration=1,
+            emit=lambda _m: None,
+        )
+        result = await executor.run(suite)
+    
+>       assert result.assembly_problems
+E       AssertionError: assert []
+E        +  where [] = SuiteResult(started_at='2026-08-11T20:42:03+00:00', duration_s=0.0010427500000105283, full_run=True, selection_reason='', expected_required_ids=['gen-a', 'gen-b'], assembly_problems=[], outcomes=[ScenarioOutcome(scenario_id='gen-a', scenario_name='gen-a', origin=<Origin.GENERATED: 'generated'>, outcome=<Outcome.PASSED: 'PASSED'>, priority=<Priority.P0: 'P0'>, risk_category='', required=True, duration_s=0.0, assertions_total=1, assertions_failed=0, failed_assertions=[], error='', skip_reason='', evidence_path='/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_folding_filesystem_cann0/iteration-01/scenarios/one-dir', evidence_verified=True, evidence_problem='', generated_because='', requirement_reference=''), ScenarioOutcome(scenario_id='gen-b', scenario_name='gen-b', origin=<Origin.GENERATED: 'generated'>, outcome=<Outcome.PASSED: 'PASSED'>, priority=<Priority.P0: 'P0'>, risk_category='', required=True, duration_s=0.0, assertions_total=1, assertions_failed=0, failed_assertions=[], error='', skip_reason='', evidence_path='/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_folding_filesystem_cann0/iteration-01/scenarios/one-dir', evidence_verified=True, evidence_problem='', generated_because='', requirement_reference='')], clusters=[]).assembly_problems
+
+tests/test_remediation_cycle_1.py:721: AssertionError
+_ TestResumeTimeDropsAreVisible.test_a_dropped_scenario_reaches_the_gate_and_the_plan _
+
+self = <test_remediation_cycle_1.TestResumeTimeDropsAreVisible object at 0x1057b1950>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_dropped_scenario_reache0')
+
+    def test_a_dropped_scenario_reaches_the_gate_and_the_plan(self, tmp_path):
+        """The plan committed to it, the builder was told about it, and on
+        resume it can no longer run. That is lost coverage, and the only report
+        was a print the gate never saw."""
+        run_id = "20260810-000020"
+        self._run_with_a_plan(tmp_path, run_id)
+    
+        # A resume against a base scenario that declares no services: exactly
+        # what omitting --scenario used to produce.
+        store = EvidenceStore(tmp_path, run_id)
+        narrowed = ScenarioPlanner(
+            repo=tmp_path,
+            config=_generation_config(),
+            reasoner=ScriptedReasoner([]),
+            store=store,
+            base_scenario=Scenario(name="backend_generic"),
+            permanent_scenarios=[Scenario(name="backend_generic")],
+            founder=FakeFounder(),
+            emit=lambda _m: None,
+        )
+        outcome = narrowed.restore_from_store()
+    
+>       assert outcome.state == "restored"
+               ^^^^^^^^^^^^^
+E       AttributeError: 'str' object has no attribute 'state'
+
+tests/test_remediation_cycle_1.py:762: AttributeError
+_ TestResumeTimeDropsAreVisible.test_a_resume_prefers_the_runs_own_base_scenario _
+
+self = <test_remediation_cycle_1.TestResumeTimeDropsAreVisible object at 0x1057b1a90>
+
+    def test_a_resume_prefers_the_runs_own_base_scenario(self):
+        """The cheap companion: omitting --scenario silently swapped the base
+        scenario underneath the plan built against it."""
+        source = inspect.getsource(driver_cli.cmd_run)
+        assert "state.scenario_name" in source
+>       assert source.index("state.scenario_name") < source.index("load_scenario(")
+E       assert 2170 < 839
+E        +  where 2170 = <built-in method index of str object at 0x15183ae00>('state.scenario_name')
+E        +    where <built-in method index of str object at 0x15183ae00> = 'async def cmd_run(args: argparse.Namespace) -> int:\n    config = _config_from_args(args)\n\n    problems = config.validate_repo()\n    if problems:\n        for p in problems:\n            error(p)\n        return 2\n\n    if not _preflight_api_key(config):\n        return 3\n\n    git = git_snapshot(config.neyma_repo)\n    header("NEYMA PRODUCT DRIVER")\n    out(f"repo:     {config.neyma_repo}")\n    out(f"branch:   {git.branch}  (HEAD {git.head_commit}, {git.dirty_file_count} dirty files)")\n\n    if config.require_branch and git.branch != config.require_branch:\n        error(f"branch is {git.branch!r} but require_branch is {config.require_branch!r}")\n        return 2\n    if git.dirty_file_count and not config.allow_dirty_tree:\n        error("working tree is dirty and allow_dirty_tree is false")\n        return 2\n\n    try:\n        scenario = load_scenario(config.scenario_path(args.scenario))\n    except (FileNotFoundError, ValueError) as exc:\n        error(str(exc))\n        return 2\n\n    task = args.task or config.task\n    if not task.strip():\n        error("No task given. Pass --task \'...\' or set \'task:\' in the config file.")\n        return 2\n\n    if scen...         config=config,\n                    scenario=scenario,\n                    store=store,\n                    state=state,\n                    builder=builder,\n                    evaluator=evaluator,\n                    make_executor=lambda artifact_dir: ScenarioExecutor(\n                        config.neyma_repo, config.run, artifact_dir\n                    ),\n                    founder=founder,\n                    repo_loader=repo_loader,\n                    auditor=CompletionAuditor(config.neyma_repo),\n                    protocol_resolver=ProtocolResolver(config.neyma_repo),\n                    planner=planner,\n                )\n    except KeyboardInterrupt:\n        warn("\\ninterrupted — saving state")\n        state.status = RunStatus.STOPPED\n        store.save_state(state)\n        return 130\n    except Exception as exc:\n        error(f"\\ndriver error: {type(exc).__name__}: {redact(str(exc))}")\n        state.status = RunStatus.ERROR\n        store.save_state(state)\n        return 1\n\n    _write_run_journal(store, state, config)\n    _report_coverage(result, store)\n    _report_outcome(result, store)\n    return _exit_code_for(result.status)\n'.index
+E        +  and   839 = <built-in method index of str object at 0x15183ae00>('load_scenario(')
+E        +    where <built-in method index of str object at 0x15183ae00> = 'async def cmd_run(args: argparse.Namespace) -> int:\n    config = _config_from_args(args)\n\n    problems = config.validate_repo()\n    if problems:\n        for p in problems:\n            error(p)\n        return 2\n\n    if not _preflight_api_key(config):\n        return 3\n\n    git = git_snapshot(config.neyma_repo)\n    header("NEYMA PRODUCT DRIVER")\n    out(f"repo:     {config.neyma_repo}")\n    out(f"branch:   {git.branch}  (HEAD {git.head_commit}, {git.dirty_file_count} dirty files)")\n\n    if config.require_branch and git.branch != config.require_branch:\n        error(f"branch is {git.branch!r} but require_branch is {config.require_branch!r}")\n        return 2\n    if git.dirty_file_count and not config.allow_dirty_tree:\n        error("working tree is dirty and allow_dirty_tree is false")\n        return 2\n\n    try:\n        scenario = load_scenario(config.scenario_path(args.scenario))\n    except (FileNotFoundError, ValueError) as exc:\n        error(str(exc))\n        return 2\n\n    task = args.task or config.task\n    if not task.strip():\n        error("No task given. Pass --task \'...\' or set \'task:\' in the config file.")\n        return 2\n\n    if scen...         config=config,\n                    scenario=scenario,\n                    store=store,\n                    state=state,\n                    builder=builder,\n                    evaluator=evaluator,\n                    make_executor=lambda artifact_dir: ScenarioExecutor(\n                        config.neyma_repo, config.run, artifact_dir\n                    ),\n                    founder=founder,\n                    repo_loader=repo_loader,\n                    auditor=CompletionAuditor(config.neyma_repo),\n                    protocol_resolver=ProtocolResolver(config.neyma_repo),\n                    planner=planner,\n                )\n    except KeyboardInterrupt:\n        warn("\\ninterrupted — saving state")\n        state.status = RunStatus.STOPPED\n        store.save_state(state)\n        return 130\n    except Exception as exc:\n        error(f"\\ndriver error: {type(exc).__name__}: {redact(str(exc))}")\n        state.status = RunStatus.ERROR\n        store.save_state(state)\n        return 1\n\n    _write_run_journal(store, state, config)\n    _report_coverage(result, store)\n    _report_outcome(result, store)\n    return _exit_code_for(result.status)\n'.index
+
+tests/test_remediation_cycle_1.py:779: AssertionError
+_ TestABrowserScenarioMustHaveObservedSomething.test_a_session_that_never_loaded_a_page_cannot_pass _
+
+self = <test_remediation_cycle_1.TestABrowserScenarioMustHaveObservedSomething object at 0x1057b1bd0>
+
+    def test_a_session_that_never_loaded_a_page_cannot_pass(self):
+        result = ScenarioResult(scenario_name="s")
+        obs = BrowserObservation(steps=["ERROR: TimeoutError: Page.goto: Timeout 30000ms"])
+        ScenarioExecutor._assert_browser_text(result, obs)
+>       assert result.assertions
+E       AssertionError: assert []
+E        +  where [] = ScenarioResult(scenario_name='s', mode='backend', started_at='2026-08-11T20:42:03+00:00', setup=[], services_started=[], readiness_ok=True, readiness_detail='', commands=[], http=[], browser=None, assertions=[], teardown=[], error=None, steps_performed=[], fixtures_written=[], scenario_id='', origin='permanent').assertions
+
+tests/test_remediation_cycle_1.py:798: AssertionError
+_ TestABrowserScenarioMustHaveObservedSomething.test_a_missing_playwright_install_is_not_a_pass _
+
+self = <test_remediation_cycle_1.TestABrowserScenarioMustHaveObservedSomething object at 0x1057b1d10>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_missing_playwright_inst0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1058d72a0>
+
+    def test_a_missing_playwright_install_is_not_a_pass(self, tmp_path, monkeypatch):
+        """The second door into the same room, and the one that proves the
+        first was not a considered design decision: the chromium *binary*
+        missing fails closed, while the *package* missing failed open."""
+    
+        class Blocker:
+            def find_module(self, name, path=None):
+                return None
+    
+            def find_spec(self, name, path=None, target=None):
+                if name == "playwright" or name.startswith("playwright."):
+                    raise ModuleNotFoundError(name)
+                return None
+    
+        for module in [m for m in sys.modules if m.startswith("playwright")]:
+            monkeypatch.delitem(sys.modules, module, raising=False)
+        monkeypatch.setattr(sys, "meta_path", [Blocker(), *sys.meta_path])
+        importlib.invalidate_caches()
+    
+        executor = ScenarioExecutor(
+            tmp_path, ScenarioRunConfig(browser_enabled=True), tmp_path / "art"
+        )
+        scenario = Scenario(
+            name="ui", mode="browser", app_url="http://127.0.0.1:1", browser={"steps": []}
+        )
+        result = asyncio.run(executor.execute(scenario))
+    
+>       assert not result.passed
+E       AssertionError: assert not True
+E        +  where True = ScenarioResult(scenario_name='ui', mode='browser', started_at='2026-08-11T20:42:03+00:00', setup=[], services_started=[], readiness_ok=True, readiness_detail='', commands=[], http=[], browser=BrowserObservation(url='', title='', visible_text='', screenshots=[], console_errors=[], network_failures=[], trace_path=None, steps=['playwright is not installed; run: pip install playwright && playwright install chromium'], text_expectations=[], step_failures=[]), assertions=[], teardown=[], error=None, steps_performed=[], fixtures_written=[], scenario_id='', origin='permanent').passed
+
+tests/test_remediation_cycle_1.py:828: AssertionError
+_ TestABrowserScenarioMustHaveObservedSomething.test_a_never_observed_browser_scenario_is_blocked_not_failed _
+
+self = <test_remediation_cycle_1.TestABrowserScenarioMustHaveObservedSomething object at 0x105764c30>
+
+    def test_a_never_observed_browser_scenario_is_blocked_not_failed(self):
+        """BLOCKED is the honest verdict — it did not disagree with the
+        product, it never reached it — and it blocks acceptance either way."""
+        entry = SuiteEntry(
+            scenario_id="gen-ui",
+            scenario=Scenario(name="gen-ui"),
+            origin=Origin.GENERATED,
+            priority=Priority.P0,
+        )
+        result = ScenarioResult(scenario_name="gen-ui", mode="browser")
+        result.browser = BrowserObservation(steps=["ERROR: net::ERR_CONNECTION_REFUSED"])
+        ScenarioExecutor._assert_browser_text(result, result.browser)
+    
+        outcome = SuiteExecutor._outcome(entry, result, Path("/tmp/x"), 0.0)
+>       assert outcome.outcome is Outcome.BLOCKED
+E       AssertionError: assert <Outcome.PASSED: 'PASSED'> is <Outcome.BLOCKED: 'BLOCKED'>
+E        +  where <Outcome.PASSED: 'PASSED'> = ScenarioOutcome(scenario_id='gen-ui', scenario_name='gen-ui', origin=<Origin.GENERATED: 'generated'>, outcome=<Outcome.PASSED: 'PASSED'>, priority=<Priority.P0: 'P0'>, risk_category='', required=True, duration_s=0.0, assertions_total=0, assertions_failed=0, failed_assertions=[], error='', skip_reason='', evidence_path='/tmp/x', evidence_verified=False, evidence_problem='', generated_because='', requirement_reference='').outcome
+E        +  and   <Outcome.BLOCKED: 'BLOCKED'> = Outcome.BLOCKED
+
+tests/test_remediation_cycle_1.py:845: AssertionError
+_ TestABrowserScenarioMustHaveObservedSomething.test_cmd_run_preflights_the_browser_it_just_enabled _
+
+self = <test_remediation_cycle_1.TestABrowserScenarioMustHaveObservedSomething object at 0x1059fcef0>
+
+    def test_cmd_run_preflights_the_browser_it_just_enabled(self):
+        source = inspect.getsource(driver_cli.cmd_run)
+>       assert "_check_chromium" in source
+E       assert '_check_chromium' in 'async def cmd_run(args: argparse.Namespace) -> int:\n    config = _config_from_args(args)\n\n    problems = config.validate_repo()\n    if problems:\n        for p in problems:\n            error(p)\n        return 2\n\n    if not _preflight_api_key(config):\n        return 3\n\n    git = git_snapshot(config.neyma_repo)\n    header("NEYMA PRODUCT DRIVER")\n    out(f"repo:     {config.neyma_repo}")\n    out(f"branch:   {git.branch}  (HEAD {git.head_commit}, {git.dirty_file_count} dirty files)")\n\n    if config.require_branch and git.branch != config.require_branch:\n        error(f"branch is {git.branch!r} but require_branch is {config.require_branch!r}")\n        return 2\n    if git.dirty_file_count and not config.allow_dirty_tree:\n        error("working tree is dirty and allow_dirty_tree is false")\n        return 2\n\n    try:\n        scenario = load_scenario(config.scenario_path(args.scenario))\n    except (FileNotFoundError, ValueError) as exc:\n        error(str(exc))\n        return 2\n\n    task = args.task or config.task\n    if not task.strip():\n        error("No task given. Pass --task \'...\' or set \'task:\' in the config file.")\n        return 2\n\n    if scen...         config=config,\n                    scenario=scenario,\n                    store=store,\n                    state=state,\n                    builder=builder,\n                    evaluator=evaluator,\n                    make_executor=lambda artifact_dir: ScenarioExecutor(\n                        config.neyma_repo, config.run, artifact_dir\n                    ),\n                    founder=founder,\n                    repo_loader=repo_loader,\n                    auditor=CompletionAuditor(config.neyma_repo),\n                    protocol_resolver=ProtocolResolver(config.neyma_repo),\n                    planner=planner,\n                )\n    except KeyboardInterrupt:\n        warn("\\ninterrupted — saving state")\n        state.status = RunStatus.STOPPED\n        store.save_state(state)\n        return 130\n    except Exception as exc:\n        error(f"\\ndriver error: {type(exc).__name__}: {redact(str(exc))}")\n        state.status = RunStatus.ERROR\n        store.save_state(state)\n        return 1\n\n    _write_run_journal(store, state, config)\n    _report_coverage(result, store)\n    _report_outcome(result, store)\n    return _exit_code_for(result.status)\n'
+
+tests/test_remediation_cycle_1.py:856: AssertionError
+_ TestABrowserScenarioMustHaveObservedSomething.test_a_session_level_navigation_failure_is_recorded_structurally _
+
+self = <test_remediation_cycle_1.TestABrowserScenarioMustHaveObservedSomething object at 0x10574ae00>
+tmp_path = PosixPath('/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/pytest-of-sammyfammy/pytest-1/test_a_session_level_navigatio0')
+
+    @pytest.mark.e2e
+    def test_a_session_level_navigation_failure_is_recorded_structurally(self, tmp_path):
+        """The restart-recovery shape, against a real chromium: the product is
+        not there, the session-level ``page.goto`` raises, and the failure used
+        to land only in the narration channel nothing scores. Zero assertions,
+        ``all([])`` is True, PASSED, evidence verified, gate VERIFIED."""
+        executor = ScenarioExecutor(
+            tmp_path,
+            ScenarioRunConfig(browser_enabled=True, capture_trace=False),
+            tmp_path / "art",
+        )
+        scenario = Scenario(
+            name="ui",
+            mode="browser",
+            app_url="http://127.0.0.1:1",
+            browser={"steps": [{"expect_text": "invoices"}]},
+        )
+        result = asyncio.run(executor.execute(scenario))
+    
+        assert result.browser is not None
+>       assert not result.browser.page_loaded
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_remediation_cycle_1.py:878: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = BrowserObservation(url='http://127.0.0.1:1', title='', visible_text='', screenshots=['/private/var/folders/b0/6h_5p8v1...n  - navigating to "http://127.0.0.1:1/", waiting until "domcontentloaded"\n'], text_expectations=[], step_failures=[])
+item = 'page_loaded'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'BrowserObservation' object has no attribute 'page_loaded'
+
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/pydantic/main.py:1042: AttributeError
+_ TestEveryScreenTheRunLookedAtIsSearchable.test_the_haystack_holds_every_screen_not_only_the_last _
+
+self = <test_remediation_cycle_1.TestEveryScreenTheRunLookedAtIsSearchable object at 0x1057b1e50>
+
+    def test_the_haystack_holds_every_screen_not_only_the_last(self):
+        result = ScenarioResult(scenario_name="s")
+        result.browser = BrowserObservation(
+            page_loaded=True,
+            visible_text="nothing to see",
+            observed_texts=["Traceback (most recent call last):", "nothing to see"],
+        )
+        haystack = ScenarioExecutor._observed_text(result)
+>       assert "Traceback (most recent call last):" in haystack
+E       AssertionError: assert 'Traceback (most recent call last):' in 'nothing to see'
+
+tests/test_remediation_cycle_1.py:897: AssertionError
+_ TestEveryScreenTheRunLookedAtIsSearchable.test_merging_two_browser_actions_keeps_both_pages _
+
+self = <test_remediation_cycle_1.TestEveryScreenTheRunLookedAtIsSearchable object at 0x1057b1f90>
+
+    def test_merging_two_browser_actions_keeps_both_pages(self):
+        result = ScenarioResult(scenario_name="s")
+        executor = object.__new__(ScenarioExecutor)
+        ScenarioExecutor._merge_browser(
+            executor,
+            result,
+            BrowserObservation(page_loaded=True, visible_text="a", observed_texts=["a"]),
+        )
+        ScenarioExecutor._merge_browser(
+            executor,
+            result,
+            BrowserObservation(page_loaded=True, visible_text="b", observed_texts=["b"]),
+        )
+>       assert result.browser.observed_texts == ["a", "b"]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_remediation_cycle_1.py:912: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = BrowserObservation(url='', title='', visible_text='b', screenshots=[], console_errors=[], network_failures=[], trace_path=None, steps=[], text_expectations=[], step_failures=[])
+item = 'observed_texts'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'BrowserObservation' object has no attribute 'observed_texts'
+
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/pydantic/main.py:1042: AttributeError
+_ TestEveryScreenTheRunLookedAtIsSearchable.test_a_single_session_that_navigates_twice_records_both_pages _
+
+self = <test_remediation_cycle_1.TestEveryScreenTheRunLookedAtIsSearchable object at 0x105764e90>
+
+    def test_a_single_session_that_navigates_twice_records_both_pages(self):
+        """The shipped template's exact shape: one browser action, two gotos.
+        The first screen's text was discarded before anything could assert on
+        it, so a traceback on the landing page was structurally invisible."""
+    
+        class StubPage:
+            def __init__(self) -> None:
+                self.url = ""
+    
+            async def goto(self, url, **_kw):
+                self.url = url
+    
+            async def evaluate(self, _script):
+                return "Traceback (most recent call last):" if "boom" in self.url else "quiet"
+    
+        page = StubPage()
+        obs = BrowserObservation()
+        executor = object.__new__(ScenarioExecutor)
+        for index, target in enumerate(("/boom", "/quiet"), start=1):
+            asyncio.run(
+                ScenarioExecutor._run_step(
+                    executor,
+                    page,
+                    BrowserStep(goto=target),
+                    obs,
+                    Path("."),
+                    index,
+                    "http://127.0.0.1:8931",
+                    "",
+                )
+            )
+    
+>       assert obs.observed_texts == ["Traceback (most recent call last):", "quiet"]
+               ^^^^^^^^^^^^^^^^^^
+
+tests/test_remediation_cycle_1.py:947: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = BrowserObservation(url='', title='', visible_text='', screenshots=[], console_errors=[], network_failures=[], trace_pa... steps=['goto http://127.0.0.1:8931/boom', 'goto http://127.0.0.1:8931/quiet'], text_expectations=[], step_failures=[])
+item = 'observed_texts'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'BrowserObservation' object has no attribute 'observed_texts'
+
+/Users/sammyfammy/neyma-product-driver/.venv/lib/python3.13/site-packages/pydantic/main.py:1042: AttributeError
+========================= 56 failed, 9 passed in 2.30s =========================

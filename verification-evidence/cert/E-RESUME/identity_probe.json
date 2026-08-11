@@ -1,0 +1,475 @@
+{
+  "prefix_families": {
+    "prefix_60": {
+      "a_len": 66,
+      "a": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-af18464bc7f9",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha"
+      ],
+      "b": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-d4dc1da36ae3",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta"
+      ],
+      "collides": false,
+      "fs_a": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-af18464bc7f9",
+      "fs_b": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-d4dc1da36ae3",
+      "fs_collides": false
+    },
+    "prefix_64": {
+      "a_len": 70,
+      "a": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-121ab1aabc9f",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha"
+      ],
+      "b": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-ce88879c06b1",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta"
+      ],
+      "collides": false,
+      "fs_a": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-121ab1aabc9f",
+      "fs_b": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-ce88879c06b1",
+      "fs_collides": false
+    },
+    "prefix_68": {
+      "a_len": 74,
+      "a": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-803707bcd3f3",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha"
+      ],
+      "b": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-f3306273d582",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta"
+      ],
+      "collides": false,
+      "fs_a": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-803707bcd3f3",
+      "fs_b": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-f3306273d582",
+      "fs_collides": false
+    },
+    "prefix_80": {
+      "a_len": 86,
+      "a": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-b5aba1326ae0",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha"
+      ],
+      "b": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-fe03a128751d",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta"
+      ],
+      "collides": false,
+      "fs_a": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-b5aba1326ae0",
+      "fs_b": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-fe03a128751d",
+      "fs_collides": false
+    },
+    "prefix_200": {
+      "a_len": 206,
+      "a": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-691febc87deb",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha"
+      ],
+      "b": [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-6fb627a39fb4",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta"
+      ],
+      "collides": false,
+      "fs_a": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-691febc87deb",
+      "fs_b": "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-6fb627a39fb4",
+      "fs_collides": false
+    },
+    "differ_after_truncation": {
+      "a": [
+        "ggggggggggggggggggggggggggggggggggggggggggggggggggg-e88a18c78267",
+        "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggAtail-one"
+      ],
+      "b": [
+        "ggggggggggggggggggggggggggggggggggggggggggggggggggg-e34428b23578",
+        "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggAtail-two"
+      ],
+      "collides": false
+    }
+  },
+  "sanitisation": {
+    "separator_family": {
+      "rows": [
+        {
+          "raw": "a/b",
+          "identity": [
+            "a-b",
+            "a/b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a\\b",
+          "identity": [
+            "a-b",
+            "a\\b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a:b",
+          "identity": [
+            "a-b",
+            "a:b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a b",
+          "identity": [
+            "a-b",
+            "a b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a|b",
+          "identity": [
+            "a-b",
+            "a|b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a*b",
+          "identity": [
+            "a-b",
+            "a*b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "a-b",
+          "identity": [
+            "a-b",
+            ""
+          ],
+          "sanitize_filename": "a-b"
+        }
+      ],
+      "distinct_ids": 1,
+      "members_admitted": 7,
+      "collapsed": true
+    },
+    "dotdot_family": {
+      "rows": [
+        {
+          "raw": "a..b",
+          "identity": [
+            "a..b",
+            ""
+          ],
+          "sanitize_filename": "a..b"
+        },
+        {
+          "raw": "a/../b",
+          "identity": [
+            "a-..-b",
+            "a/../b"
+          ],
+          "sanitize_filename": "a-..-b"
+        }
+      ],
+      "distinct_ids": 2,
+      "members_admitted": 2,
+      "collapsed": false
+    },
+    "case_family": {
+      "rows": [
+        {
+          "raw": "Gen-Approve-Twice",
+          "identity": [
+            "Gen-Approve-Twice",
+            ""
+          ],
+          "sanitize_filename": "Gen-Approve-Twice"
+        },
+        {
+          "raw": "gen-approve-twice",
+          "identity": [
+            "gen-approve-twice",
+            ""
+          ],
+          "sanitize_filename": "gen-approve-twice"
+        },
+        {
+          "raw": "GEN-APPROVE-TWICE",
+          "identity": [
+            "GEN-APPROVE-TWICE",
+            ""
+          ],
+          "sanitize_filename": "GEN-APPROVE-TWICE"
+        }
+      ],
+      "distinct_ids": 3,
+      "members_admitted": 3,
+      "collapsed": false
+    },
+    "unicode_family": {
+      "rows": [
+        {
+          "raw": "café-test",
+          "identity": [
+            "caf--test",
+            "café-test"
+          ],
+          "sanitize_filename": "caf--test"
+        },
+        {
+          "raw": "cafè-test",
+          "identity": [
+            "caf--test",
+            "cafè-test"
+          ],
+          "sanitize_filename": "caf--test"
+        },
+        {
+          "raw": "caf中-test",
+          "identity": [
+            "caf--test",
+            "caf中-test"
+          ],
+          "sanitize_filename": "caf--test"
+        }
+      ],
+      "distinct_ids": 1,
+      "members_admitted": 3,
+      "collapsed": true
+    },
+    "nfc_nfd_family": {
+      "rows": [
+        {
+          "raw": "café",
+          "identity": [
+            "caf",
+            "café"
+          ],
+          "sanitize_filename": "caf"
+        },
+        {
+          "raw": "café",
+          "identity": [
+            "cafe",
+            "café"
+          ],
+          "sanitize_filename": "cafe"
+        }
+      ],
+      "distinct_ids": 2,
+      "members_admitted": 2,
+      "collapsed": false
+    },
+    "pure_separators": {
+      "rows": [
+        {
+          "raw": "///",
+          "identity": "REFUSED: ValidationError",
+          "sanitize_filename": "unnamed"
+        },
+        {
+          "raw": "---",
+          "identity": "REFUSED: ValidationError",
+          "sanitize_filename": "unnamed"
+        },
+        {
+          "raw": "   ",
+          "identity": "REFUSED: ValidationError",
+          "sanitize_filename": "unnamed"
+        },
+        {
+          "raw": "",
+          "identity": "REFUSED: ValidationError",
+          "sanitize_filename": "unnamed"
+        },
+        {
+          "raw": "...",
+          "identity": [
+            "...",
+            ""
+          ],
+          "sanitize_filename": "..."
+        }
+      ],
+      "distinct_ids": 1,
+      "members_admitted": 1,
+      "collapsed": false
+    },
+    "path_escape": {
+      "rows": [
+        {
+          "raw": "..",
+          "identity": [
+            "..",
+            ""
+          ],
+          "sanitize_filename": ".."
+        },
+        {
+          "raw": ".",
+          "identity": [
+            ".",
+            ""
+          ],
+          "sanitize_filename": "."
+        },
+        {
+          "raw": "../..",
+          "identity": [
+            "..-..",
+            "../.."
+          ],
+          "sanitize_filename": "..-.."
+        },
+        {
+          "raw": "/etc/passwd",
+          "identity": [
+            "etc-passwd",
+            "/etc/passwd"
+          ],
+          "sanitize_filename": "etc-passwd"
+        },
+        {
+          "raw": "~/.ssh/id_rsa",
+          "identity": [
+            ".ssh-id_rsa",
+            "~/.ssh/id_rsa"
+          ],
+          "sanitize_filename": ".ssh-id_rsa"
+        },
+        {
+          "raw": "a\u0000b",
+          "identity": [
+            "a-b",
+            "a\u0000b"
+          ],
+          "sanitize_filename": "a-b"
+        },
+        {
+          "raw": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "identity": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-0d4e2ca9e9cb",
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ],
+          "sanitize_filename": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-0d4e2ca9e9cb"
+        }
+      ],
+      "distinct_ids": 7,
+      "members_admitted": 7,
+      "collapsed": false
+    }
+  },
+  "scale": {
+    "inputs": 3600,
+    "refused_at_model_validation": 0,
+    "distinct_ids": 3595,
+    "id_collision_groups": 4,
+    "id_collision_examples": {
+      "a-b-a": [
+        "\\/*  /a*:/ /|/\\:\\b|***:/a*\\ *|*\\:",
+        "a *b|a*  \\*:| :*\\ |\\\\ \\|",
+        "  \\a**|\\| b \\| /\\/\\ a: *\\\\:"
+      ],
+      "a-b-bb": [
+        "* | /\\|/:\\\\*a :\\|b///\\\\bb|: :::",
+        "/\\*\\ :*a///b |:|/ |*bb :  \\| *|"
+      ],
+      "b-ab-a-b-bb": [
+        "/|\\ \\| b::|::|\\|* |ab/:a /  |:b bb*\\\\",
+        "*  |:**||b|ab*:*\\:**a:b\\\\ :|bb /"
+      ],
+      "b-a-a": [
+        "* / * *b:/:a/:*: :|| //a*/",
+        "* b:::\\*:a/:|||:/a||\\:"
+      ]
+    },
+    "case_folded_fs_collision_groups": 4,
+    "case_folded_fs_collision_examples": {
+      "a-b-a": [
+        "\\/*  /a*:/ /|/\\:\\b|***:/a*\\ *|*\\:",
+        "a *b|a*  \\*:| :*\\ |\\\\ \\|",
+        "  \\a**|\\| b \\| /\\/\\ a: *\\\\:"
+      ],
+      "a-b-bb": [
+        "* | /\\|/:\\\\*a :\\|b///\\\\bb|: :::",
+        "/\\*\\ :*a///b |:|/ |*bb :  \\| *|"
+      ],
+      "b-ab-a-b-bb": [
+        "/|\\ \\| b::|::|\\|* |ab/:a /  |:b bb*\\\\",
+        "*  |:**||b|ab*:*\\:**a:b\\\\ :|bb /"
+      ],
+      "b-a-a": [
+        "* / * *b:/:a/:*: :|| //a*/",
+        "* b:::\\*:a/:|||:/a||\\:"
+      ]
+    },
+    "max_id_len": 64,
+    "max_fs_len": 64,
+    "id_limit": 64,
+    "fs_limit": 80
+  },
+  "determinism": {
+    "sample": [
+      "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha",
+      "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta",
+      "café-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "a/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/b"
+    ],
+    "per_seed_equal_to_seed0": {
+      "0": true,
+      "1": true,
+      "12345": true,
+      "random": true
+    },
+    "seed0_result": [
+      [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-dcc22eaa3107",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-alpha",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-dcc22eaa3107",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-dcc22eaa3107"
+      ],
+      [
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-3ed61ccd05a9",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-beta",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-3ed61ccd05a9",
+        "gen-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-3ed61ccd05a9"
+      ],
+      [
+        "caf--yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy-ed1181a99b88",
+        "café-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "caf--yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy-ed1181a99b88",
+        "café-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy-ac526899d615"
+      ],
+      [
+        "a-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-b-1444dd6c2d02",
+        "a/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/b",
+        "a-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-ba-b-1444dd6c2d02",
+        "a/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/ba/b-60286e6939d3"
+      ]
+    ]
+  },
+  "proposed_id_roundtrip": {
+    "originals": [
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-alpha",
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-beta"
+    ],
+    "ids": [
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-bbea5b8e6c73",
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-9f6762e05b00"
+    ],
+    "proposed_ids": [
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-alpha",
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-beta"
+    ],
+    "preserved": true,
+    "ids_distinct": true
+  },
+  "idempotence": {
+    "id_stable": true,
+    "proposed_stable": true,
+    "ids": [
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-bbea5b8e6c73",
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-bbea5b8e6c73",
+      "gen-wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww-bbea5b8e6c73"
+    ]
+  }
+}

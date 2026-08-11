@@ -1,0 +1,26 @@
+{
+  "validation_reasons": [],
+  "admitted": true,
+  "probe_output": {
+    "cwd": "/private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/dsafety-auth-jshr0fst/target-repo",
+    "uid": 501,
+    "reachable": {
+      "driver_config": true,
+      "driver_source_package": true,
+      "driver_claude_dir": true,
+      "driver_evidence_tree": true,
+      "driver_runs_dir": true,
+      "driver_git_dir": true,
+      "founder_context": true
+    },
+    "writable_dir": {
+      "driver_config": true,
+      "driver_source_package": true,
+      "driver_claude_dir": true,
+      "driver_evidence_tree": true,
+      "driver_runs_dir": true,
+      "driver_git_dir": true,
+      "founder_context": true
+    }
+  }
+}

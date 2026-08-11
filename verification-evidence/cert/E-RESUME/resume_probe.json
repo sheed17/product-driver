@@ -1,0 +1,3743 @@
+{
+  "workdir": "/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1-cxcoeva1",
+  "results": {
+    "mid_wave1": {
+      "case": "mid_wave1",
+      "mutation": "",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": true,
+          "process1": {},
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": true,
+          "process1": {},
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": true,
+          "process1": {},
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {},
+          "process2": {}
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [],
+      "expected": {
+        "label": "process1@propose-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {},
+        "plan_file_bytes": null,
+        "wave_files": []
+      },
+      "restored": {
+        "label": "process2@resume(mid_wave1)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {},
+        "plan_file_bytes": null,
+        "wave_files": [],
+        "restore_emissions": []
+      }
+    },
+    "after_wave1_exec": {
+      "case": "after_wave1_exec",
+      "mutation": "",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:56:59+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD b006923, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:56:59+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD b006923, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:56:59+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD b006923, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:56:59+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD b006923, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(after_wave1_exec)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "mid_adaptive": {
+      "case": "mid_adaptive",
+      "mutation": "",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 2,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:01+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a8e0be5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:01+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a8e0be5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@propose-2",
+        "waves_used": 2,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:01+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a8e0be5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:01+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a8e0be5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(mid_adaptive)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "failed_wave": {
+      "case": "failed_wave",
+      "mutation": "",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": false,
+          "process1": [
+            "C01"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            },
+            {
+              "wave": 2,
+              "stage": "adaptive",
+              "proposed": 0,
+              "accepted_ids": [],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": "RuntimeError: the model session died"
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 2,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:03+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 959fcf7, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:03+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 959fcf7, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-02/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-02/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json",
+        "wave-02.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-2",
+        "waves_used": 2,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [
+          "generation wave 2 failed: RuntimeError: the model session died"
+        ],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            },
+            {
+              "wave": 2,
+              "stage": "adaptive",
+              "proposed": 0,
+              "accepted_ids": [],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": "RuntimeError: the model session died"
+            }
+          ],
+          "observed_failure_ids": [
+            "gen-alpha-idempotency"
+          ],
+          "observed_cluster_ids": [
+            "C01"
+          ],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:03+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 959fcf7, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:03+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 959fcf7, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-02/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 9315,
+        "wave_files": [
+          "wave-01.json",
+          "wave-02.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(failed_wave)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-02/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 9315,
+        "wave_files": [
+          "wave-01.json",
+          "wave-02.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "budget_exhausted": {
+      "case": "budget_exhausted",
+      "mutation": "",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:05+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 1a50646, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:05+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 1a50646, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {},
+          "process2": {}
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:05+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 1a50646, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:05+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 1a50646, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {},
+        "plan_file_bytes": 7685,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(budget_exhausted)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {},
+        "plan_file_bytes": 7685,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "complete": {
+      "case": "complete",
+      "mutation": "",
+      "p1_returncode": 0,
+      "p1_died_abruptly": false,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization",
+            "gen-gamma-adaptive"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6",
+            "55a00e4c97a13ecfc20c"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": [],
+            "gen-gamma-adaptive": [
+              "gen-alpha-idempotency"
+            ]
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": [],
+            "gen-gamma-adaptive": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": false,
+          "process1": [
+            "C01"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization",
+            "gen-gamma-adaptive"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            },
+            {
+              "wave": 2,
+              "stage": "adaptive",
+              "proposed": 1,
+              "accepted_ids": [
+                "gen-gamma-adaptive"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 2,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization",
+            "gen-gamma-adaptive"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:06+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:06+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-gamma-adaptive": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: retry_safety (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:07+00:00 (stage=adaptive, wave 2)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\\nprior failures consulted: [gen-alpha-idempotency] generated:gen-alpha-idempotency\\n  risk: idempotency (P0)  cluster: C01\\n  verifies: U-042: an approved invoice is paid exactly once\\n  generated because: duplicate approval could double-pay\\n  expected: payments-alpha=1\\n  must not appear: payments-alpha=2\\n  FAILED: expect_state: gen-alpha-idempotency: payments row count \\u2014 got payments=2, want payments=1\\n  evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1-cxcoeva1/complete/driver/runs/20260810-000000/iteration-01/scenarios/gen-alpha-idempotency\\ngenerated in response to failure(s): gen-alpha-idempotency\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-gamma=1\"], \"fixtures\": [], \"forbidden\": [\"payments-gamma=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-gamma-adaptive\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"gamma\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=gamma\"], \"name\": \"gamma\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"gamma\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"gamma\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-02/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-gamma-adaptive/result.json": {
+              "scenario_id": "gen-gamma-adaptive",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-02/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            },
+            "iteration-02/scenarios/gen-gamma-adaptive/result.json": {
+              "scenario_id": "gen-gamma-adaptive",
+              "run_id": "20260810-000000",
+              "iteration": 2,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json",
+        "wave-02.json"
+      ],
+      "expected": {
+        "label": "process1@completed(complete)",
+        "waves_used": 2,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization",
+            "gen-gamma-adaptive"
+          ],
+          "proposed_ids": [
+            "",
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization",
+            "retry_safety"
+          ],
+          "priorities": [
+            "P0",
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6",
+            "55a00e4c97a13ecfc20c"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": [],
+            "gen-gamma-adaptive": [
+              "gen-alpha-idempotency"
+            ]
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": [],
+            "gen-gamma-adaptive": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1,
+            "gen-gamma-adaptive": 2
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 3,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            },
+            {
+              "wave": 2,
+              "stage": "adaptive",
+              "proposed": 1,
+              "accepted_ids": [
+                "gen-gamma-adaptive"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [
+            "gen-alpha-idempotency"
+          ],
+          "observed_cluster_ids": [
+            "C01"
+          ],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization",
+            "gen-gamma-adaptive"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization",
+          "gen-gamma-adaptive"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:06+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:06+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-gamma-adaptive": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: retry_safety (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:07+00:00 (stage=adaptive, wave 2)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD a6623b0, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\\nprior failures consulted: [gen-alpha-idempotency] generated:gen-alpha-idempotency\\n  risk: idempotency (P0)  cluster: C01\\n  verifies: U-042: an approved invoice is paid exactly once\\n  generated because: duplicate approval could double-pay\\n  expected: payments-alpha=1\\n  must not appear: payments-alpha=2\\n  FAILED: expect_state: gen-alpha-idempotency: payments row count \\u2014 got payments=2, want payments=1\\n  evidence: /private/var/folders/b0/6h_5p8v179n_z4v6ngf9n_540000gn/T/e-resume-part1-cxcoeva1/complete/driver/runs/20260810-000000/iteration-01/scenarios/gen-alpha-idempotency\\ngenerated in response to failure(s): gen-alpha-idempotency\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-gamma=1\"], \"fixtures\": [], \"forbidden\": [\"payments-gamma=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-gamma-adaptive\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"gamma\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=gamma\"], \"name\": \"gamma\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"gamma\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"gamma\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-02/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-gamma-adaptive/result.json": {
+            "scenario_id": "gen-gamma-adaptive",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 12643,
+        "wave_files": [
+          "wave-01.json",
+          "wave-02.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(complete)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-02/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          },
+          "iteration-02/scenarios/gen-gamma-adaptive/result.json": {
+            "scenario_id": "gen-gamma-adaptive",
+            "run_id": "20260810-000000",
+            "iteration": 2,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 12643,
+        "wave_files": [
+          "wave-01.json",
+          "wave-02.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "hostile_truncated_plan": {
+      "case": "hostile_truncated_plan",
+      "mutation": "scenario-plan.json truncated to 3884 of 7769 bytes",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:09+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 6ea6075, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:09+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 6ea6075, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:09+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 6ea6075, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:09+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 6ea6075, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(after_wave1_exec)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 3884,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "hostile_empty_plan": {
+      "case": "hostile_empty_plan",
+      "mutation": "scenario-plan.json truncated to 0 of 7769 bytes",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:11+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD ac227b5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:11+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD ac227b5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:11+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD ac227b5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:11+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD ac227b5, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(after_wave1_exec)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 0,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "hostile_head_moved": {
+      "case": "hostile_head_moved",
+      "mutation": "repository HEAD moved to d11f660",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:12+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 043b97f, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:12+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 043b97f, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": true,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          }
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:12+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 043b97f, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:12+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 043b97f, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(after_wave1_exec)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    },
+    "hostile_evidence_deleted": {
+      "case": "hostile_evidence_deleted",
+      "mutation": "deleted evidence directories: ['iteration-01/scenarios/backend_generic', 'iteration-01/scenarios/gen-alpha-idempotency', 'iteration-01/scenarios/gen-beta-authorization']",
+      "p1_returncode": 9,
+      "p1_died_abruptly": true,
+      "p2_returncode": 0,
+      "p2_stderr_tail": "",
+      "restore_emissions": [
+        "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+      ],
+      "comparison": [
+        {
+          "field": "plan.scenario_ids",
+          "what": "the generated plan (scenario ids)",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.proposed_ids",
+          "what": "proposed ids",
+          "survived": false,
+          "process1": [
+            "",
+            ""
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.signatures",
+          "what": "scenario signatures",
+          "survived": false,
+          "process1": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.source_failures",
+          "what": "causal links (source_failures)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.source_clusters",
+          "what": "causal links (source_clusters)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "process2": {}
+        },
+        {
+          "field": "plan.observed_failure_ids",
+          "what": "observed failures",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.observed_cluster_ids",
+          "what": "failure clusters",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "plan.executed_scenario_ids",
+          "what": "executed scenario ids",
+          "survived": false,
+          "process1": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.risks",
+          "what": "identified risks",
+          "survived": false,
+          "process1": [
+            "approval may not be idempotent"
+          ],
+          "process2": []
+        },
+        {
+          "field": "plan.waves",
+          "what": "wave records",
+          "survived": false,
+          "process1": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "process2": []
+        },
+        {
+          "field": "waves_used",
+          "what": "wave counter",
+          "survived": false,
+          "process1": 1,
+          "process2": 0
+        },
+        {
+          "field": "max_waves",
+          "what": "max_waves",
+          "survived": true,
+          "process1": 3,
+          "process2": 3
+        },
+        {
+          "field": "compiled_ids",
+          "what": "compiled forms",
+          "survived": false,
+          "process1": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "process2": []
+        },
+        {
+          "field": "compiled_digest",
+          "what": "compiled forms (full)",
+          "survived": false,
+          "process1": {
+            "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:14+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 4c3e0cd, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+            "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:14+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 4c3e0cd, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+          },
+          "process2": {}
+        },
+        {
+          "field": "promotion_candidates",
+          "what": "promotion candidates",
+          "survived": true,
+          "process1": [],
+          "process2": []
+        },
+        {
+          "field": "evidence_records",
+          "what": "per-case evidence",
+          "survived": false,
+          "process1": {
+            "iteration-01/scenarios/backend_generic/result.json": {
+              "scenario_id": "backend_generic",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+              "scenario_id": "gen-alpha-idempotency",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            },
+            "iteration-01/scenarios/gen-beta-authorization/result.json": {
+              "scenario_id": "gen-beta-authorization",
+              "run_id": "20260810-000000",
+              "iteration": 1,
+              "passed": null
+            }
+          },
+          "process2": {}
+        }
+      ],
+      "resume_twice_identical": true,
+      "after_repersist_scenarios": [],
+      "after_repersist_waves": 0,
+      "after_repersist_executed": [
+        "a-post-resume-marker"
+      ],
+      "after_repersist_wave_files": [
+        "wave-01.json"
+      ],
+      "expected": {
+        "label": "process1@evaluator-call-1",
+        "waves_used": 1,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "20260810-000000",
+          "task": "build supervised carrier invoice approval",
+          "scenario_ids": [
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ],
+          "proposed_ids": [
+            "",
+            ""
+          ],
+          "titles": [
+            "approving the same invoice twice produces one payment",
+            "approving the same invoice twice produces one payment"
+          ],
+          "risk_categories": [
+            "idempotency",
+            "authorization"
+          ],
+          "priorities": [
+            "P0",
+            "P0"
+          ],
+          "signatures": [
+            "83c1c5af7edd208f5d96",
+            "212b76f0ca15dbc3bac6"
+          ],
+          "source_failures": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "source_clusters": {
+            "gen-alpha-idempotency": [],
+            "gen-beta-authorization": []
+          },
+          "provenance_waves": {
+            "gen-alpha-idempotency": 1,
+            "gen-beta-authorization": 1
+          },
+          "risks": [
+            "approval may not be idempotent"
+          ],
+          "coverage_total": 2,
+          "waves": [
+            {
+              "wave": 1,
+              "stage": "initial",
+              "proposed": 2,
+              "accepted_ids": [
+                "gen-alpha-idempotency",
+                "gen-beta-authorization"
+              ],
+              "rejected": [],
+              "budget_notes": [],
+              "reasoner_error": ""
+            }
+          ],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": [
+            "backend_generic",
+            "gen-alpha-idempotency",
+            "gen-beta-authorization"
+          ]
+        },
+        "compiled_ids": [
+          "gen-alpha-idempotency",
+          "gen-beta-authorization"
+        ],
+        "compiled_digest": {
+          "gen-alpha-idempotency": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: idempotency (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:14+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 4c3e0cd, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-alpha=1\"], \"fixtures\": [], \"forbidden\": [\"payments-alpha=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-alpha-idempotency\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=alpha\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"alpha\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"alpha\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}",
+          "gen-beta-authorization": "{\"app_url\": \"http://127.0.0.1:8931\", \"browser\": null, \"commands\": [], \"description\": \"approving the same invoice twice produces one payment\\n\\nrisk: authorization (priority P0)\\npurpose: a duplicate approval must not produce a second payment effect\\nrequirement: U-042: an approved invoice is paid exactly once\\nproduct principle: effect-truth\\nrationale: the diff touched the approval transition\\n\\ngenerated at 2026-08-10T07:57:14+00:00 (stage=initial, wave 1)\\nbecause of risk: duplicate approval could double-pay\\nrepository HEAD 4c3e0cd, active unit U-042, founder context founder-v1\\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; approval survives a restart (weight 2): PENDING\", \"env\": {}, \"expect_state\": [], \"expect_visible\": [\"payments-beta=1\"], \"fixtures\": [], \"forbidden\": [\"payments-beta=2\"], \"mode\": \"backend\", \"name\": \"generated:gen-beta-authorization\", \"phase\": \"\", \"readiness\": [{\"tcp\": \"127.0.0.1:8931\"}], \"requests\": [], \"services\": [{\"command\": \"./serve.sh\", \"env\": {}, \"name\": \"api\"}], \"setup\": [], \"steps\": [{\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=beta\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}, {\"browser\": null, \"command\": null, \"fixture_content\": \"\", \"fixture_name\": \"\", \"kind\": \"state_check\", \"name\": \"beta\", \"request\": null, \"requests\": [], \"service\": \"\", \"state_check\": {\"command\": \"./probe.sh payments\", \"contains\": [\"payments=1\"], \"name\": \"beta\", \"not_contains\": [], \"timeout_s\": null}, \"wait_ms\": null}], \"teardown\": [\"./probe.sh reset\"]}"
+        },
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {
+          "iteration-01/scenarios/backend_generic/result.json": {
+            "scenario_id": "backend_generic",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-alpha-idempotency/result.json": {
+            "scenario_id": "gen-alpha-idempotency",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          },
+          "iteration-01/scenarios/gen-beta-authorization/result.json": {
+            "scenario_id": "gen-beta-authorization",
+            "run_id": "20260810-000000",
+            "iteration": 1,
+            "passed": null
+          }
+        },
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ]
+      },
+      "restored": {
+        "label": "process2@resume(after_wave1_exec)",
+        "waves_used": 0,
+        "max_waves": 3,
+        "budget_exhausted": false,
+        "generation_problems": [],
+        "plan": {
+          "run_id": "",
+          "task": "",
+          "scenario_ids": [],
+          "proposed_ids": [],
+          "titles": [],
+          "risk_categories": [],
+          "priorities": [],
+          "signatures": [],
+          "source_failures": {},
+          "source_clusters": {},
+          "provenance_waves": {},
+          "risks": [],
+          "coverage_total": 0,
+          "waves": [],
+          "observed_failure_ids": [],
+          "observed_cluster_ids": [],
+          "executed_scenario_ids": []
+        },
+        "compiled_ids": [],
+        "compiled_digest": {},
+        "approved_commands": [
+          "./probe.sh payments",
+          "./probe.sh reset",
+          "./probe.sh seed"
+        ],
+        "promotion_candidates": [],
+        "evidence_records": {},
+        "plan_file_bytes": 7769,
+        "wave_files": [
+          "wave-01.json"
+        ],
+        "restore_emissions": [
+          "  could not restore the scenario plan (ValidationError); this run will generate a new one"
+        ]
+      }
+    }
+  }
+}

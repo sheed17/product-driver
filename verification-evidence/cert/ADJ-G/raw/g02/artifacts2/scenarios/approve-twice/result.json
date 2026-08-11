@@ -1,0 +1,22 @@
+{
+  "scenario_name": "generated:approve-twice",
+  "mode": "backend",
+  "started_at": "2026-08-10T20:30:02+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": null,
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "approve-twice",
+  "origin": "generated",
+  "run_id": "run-2",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:30:02+00:00"
+}

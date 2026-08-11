@@ -1,0 +1,473 @@
+[
+  {
+    "risks": [
+      {
+        "id": "R1",
+        "description": "Workflow run state that was only held in the in-process cache is lost when the callback process is restarted, so a fresh process serves empty or missing state for runs that were mid-flight.",
+        "risk_category": "restart_recovery",
+        "severity": "P0",
+        "basis": "AC 'workflow state survives a process restart' (U-P5-1)"
+      },
+      {
+        "id": "R2",
+        "description": "A write that fails partway (crash between the workflow_runs UPDATE and the audit_events/effect insert, or an exception mid-transaction) leaves a half-applied workflow: an orphaned audit event, an invalid state value, or a run advanced without its ledger row.",
+        "risk_category": "partial_failure",
+        "severity": "P0",
+        "basis": "AC 'a failed write leaves no partially applied workflow' (U-P5-1)"
+      },
+      {
+        "id": "R3",
+        "description": "After the move to the durable store, a read still returns a value cached in memory rather than the last committed write, so a reader sees stale state (e.g. a run shown as NEEDS_REVIEW after it was transitioned to DONE).",
+        "risk_category": "stale_state",
+        "severity": "P1",
+        "basis": "AC 'a read after a write never returns stale state' (U-P5-1)"
+      },
+      {
+        "id": "R4",
+        "description": "Rebuilding workflow state from the durable history after a restart re-mints a grant or re-runs a committing step, producing a duplicate live effect_grants row for a commit_key or a CLAIMED grant with no witness \u2014 i.e. an external effect executed twice.",
+        "risk_category": "idempotency",
+        "severity": "P0",
+        "basis": "AC 'rebuilding state from history never re-executes an effect' (U-P5-1)"
+      },
+      {
+        "id": "R5",
+        "description": "A freshly started process cannot open the durable store (schema not ready, WAL lock, wrong path), so instead of surviving the restart the whole surface fails closed with 500s or dead ends.",
+        "risk_category": "dependency_failure",
+        "severity": "P1",
+        "basis": "AC 'workflow state survives a process restart' + WorkflowStore._require_schema_ready fail-closed on construction"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "S1-restart-survives",
+        "title": "Workflow state and process health survive a real callback restart",
+        "purpose": "Exercise AC1 directly: the durable store must retain workflow_runs across a full process restart, and the freshly started process must open that store and serve requests. Assumes the driver_probe workspace DB is the canonical durable store the running callback server is bound to.",
+        "risk_category": "restart_recovery",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "The whole point of U-P5-1 is that a restart must not lose state; a fresh process reading pre-restart runs can only have gotten them from the durable store.",
+        "generating_risk": "A restart discards in-memory run state, so a new process serves empty/missing workflow state (R1) or cannot even open the store (R5).",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "failure_recovery",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Only restarts the callback process and reads the store; creates/modifies no workflow_runs or effect_grants rows, so it cannot contaminate later scenarios. Ends with the service running.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'RUNS_TABLE_OK' WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_runs')\"",
+              "contains": [
+                "RUNS_TABLE_OK"
+              ],
+              "not_contains": [
+                "no such table",
+                "Error"
+              ]
+            }
+          },
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1500
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {},
+              "expect_status": 400,
+              "expect_contains": [
+                "Missing action token"
+              ],
+              "timeout_s": 5
+            }
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'RUNS_TABLE_OK' WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_runs')\"",
+              "contains": [
+                "RUNS_TABLE_OK"
+              ],
+              "not_contains": [
+                "no such table",
+                "Error"
+              ]
+            }
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no orphaned audit events after restart",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ORPHANS_NONE' ELSE 'ORPHANS_FOUND' END FROM audit_events a LEFT JOIN workflow_runs r ON a.tenant = r.tenant AND a.run_id = r.id WHERE r.id IS NULL\"",
+            "contains": [
+              "ORPHANS_NONE"
+            ],
+            "not_contains": [
+              "ORPHANS_FOUND",
+              "no such table"
+            ]
+          },
+          {
+            "name": "all run states valid after restart",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'STATES_ALL_VALID' ELSE 'STATE_INVALID' END FROM workflow_runs WHERE state NOT IN ('RECEIVED','EXTRACTED','RECONCILED','NEEDS_REVIEW','APPROVED','DISPUTED','REQUESTED_BACKUP','READY_FOR_ENTRY','ENTERING','ENTERED','DONE','FAILED','WAITING_FOR_SESSION')\"",
+            "contains": [
+              "STATES_ALL_VALID"
+            ],
+            "not_contains": [
+              "STATE_INVALID"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Missing action token",
+          "RUNS_TABLE_OK"
+        ],
+        "forbidden_observations": [
+          "no such table",
+          "Traceback"
+        ],
+        "confidence": 0.7,
+        "generated_from": [
+          "AC:U-P5-1"
+        ]
+      },
+      {
+        "id": "S2-durable-schema",
+        "title": "The durable store defines the state, audit, and effect-ledger tables",
+        "purpose": "Ground the claim that workflow state lives in a durable store (not memory): the canonical schema must materialize the run table, the audit history, the effect ledger, and the immutable witness table that replay-safety depends on.",
+        "risk_category": "safety_invariant",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "AC1 (survives restart) and AC4 (rebuild from history) are only meaningful if state, history, and the effect ledger are actually durable tables; this verifies the canonical schema builds them.",
+        "generating_risk": "State or effect history is not represented as durable tables at all, so nothing can survive a restart (R1) and history-based replay has no ledger to be idempotent against (R4).",
+        "requirement_reference": "workflow state survives a process restart",
+        "product_principle_reference": "operational_clarity",
+        "isolation_key": "schema_probe_tempdir",
+        "isolation_note": "Runs against a throwaway temp database created by the probe; touches no shared state.",
+        "actions": [
+          {
+            "kind": "command",
+            "name": "canonical schema table list",
+            "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+            "expect_exit_code": 0,
+            "expect_contains": [
+              "'workflow_runs'",
+              "'audit_events'",
+              "'effect_grants'",
+              "'checkpoint_witnesses'"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "'workflow_runs'",
+          "'audit_events'",
+          "'effect_grants'",
+          "'checkpoint_witnesses'"
+        ],
+        "forbidden_observations": [
+          "Traceback",
+          "SchemaNotReady"
+        ],
+        "confidence": 0.8,
+        "generated_from": [
+          "AC:U-P5-1"
+        ]
+      },
+      {
+        "id": "S3-crash-no-partial",
+        "title": "Abrupt stop then restart leaves no partially applied workflow",
+        "purpose": "Exercise AC2 under a crash: kill the callback process (no graceful shutdown), start a fresh one, and assert the durable store holds no half-applied workflow \u2014 no orphaned audit events, no invalid state values, no duplicate live grants.",
+        "risk_category": "crash_mid_workflow",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "A durable store must be all-or-nothing per write; an abrupt crash is the realistic way a partial write would be exposed, and the invariants below are exactly what 'no partially applied workflow' means on disk.",
+        "generating_risk": "A write interrupted by a crash commits half of a transition (state advanced but audit/ledger row missing, or vice-versa), leaving a partially applied workflow (R2), or the fresh process cannot reopen the store (R5).",
+        "requirement_reference": "a failed write leaves no partially applied workflow",
+        "product_principle_reference": "failure_recovery",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Stops/starts the callback process and reads the store; issues only a token-less request that is rejected before any write. Creates no rows. Ends with the service running.",
+        "actions": [
+          {
+            "kind": "stop_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 500
+          },
+          {
+            "kind": "start_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1500
+          },
+          {
+            "kind": "request",
+            "request": {
+              "method": "POST",
+              "path": "/actions/signed",
+              "json_body": {},
+              "expect_status": 400,
+              "expect_contains": [
+                "Missing action token"
+              ],
+              "timeout_s": 5
+            }
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no orphaned audit events",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ORPHANS_NONE' ELSE 'ORPHANS_FOUND' END FROM audit_events a LEFT JOIN workflow_runs r ON a.tenant = r.tenant AND a.run_id = r.id WHERE r.id IS NULL\"",
+            "contains": [
+              "ORPHANS_NONE"
+            ],
+            "not_contains": [
+              "ORPHANS_FOUND",
+              "no such table"
+            ]
+          },
+          {
+            "name": "no invalid run states",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'STATES_ALL_VALID' ELSE 'STATE_INVALID' END FROM workflow_runs WHERE state NOT IN ('RECEIVED','EXTRACTED','RECONCILED','NEEDS_REVIEW','APPROVED','DISPUTED','REQUESTED_BACKUP','READY_FOR_ENTRY','ENTERING','ENTERED','DONE','FAILED','WAITING_FOR_SESSION')\"",
+            "contains": [
+              "STATES_ALL_VALID"
+            ],
+            "not_contains": [
+              "STATE_INVALID"
+            ]
+          },
+          {
+            "name": "no duplicate live grants per commit_key",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'NO_DUP_LIVE_GRANTS' ELSE 'DUP_LIVE_GRANTS' END FROM (SELECT 1 FROM effect_grants WHERE state IN ('GRANTED','CLAIMED') GROUP BY tenant, commit_key HAVING count(*) > 1)\"",
+            "contains": [
+              "NO_DUP_LIVE_GRANTS"
+            ],
+            "not_contains": [
+              "DUP_LIVE_GRANTS"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Missing action token",
+          "ORPHANS_NONE",
+          "STATES_ALL_VALID"
+        ],
+        "forbidden_observations": [
+          "no such table",
+          "Traceback"
+        ],
+        "confidence": 0.6,
+        "generated_from": [
+          "AC:U-P5-1"
+        ]
+      },
+      {
+        "id": "S4-replay-no-reexecute",
+        "title": "Restart-driven rebuild does not re-execute an effect",
+        "purpose": "Exercise AC4: after a restart (which forces state to be rebuilt from the durable store rather than memory), the effect ledger must show no duplicated live grant for any commit_key and every CLAIMED grant must still be backed by exactly one witness \u2014 i.e. no effect was re-run on rebuild.",
+        "risk_category": "idempotency",
+        "priority": "P0",
+        "mode": "backend",
+        "rationale": "The dangerous failure of moving to a durable, history-backed store is that rebuilding from history re-issues an already-executed effect; the ledger uniqueness and witness 1:1 invariants are the on-disk oracle for that.",
+        "generating_risk": "Rebuilding workflow state from history after restart re-mints a grant or re-drives a committing step, creating a duplicate live effect_grants row or a CLAIMED grant with no witness (R4).",
+        "requirement_reference": "rebuilding state from history never re-executes an effect",
+        "product_principle_reference": "outcome_verification",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Restarts the process and reads the effect ledger; creates/modifies no rows. Ends with the service running.",
+        "actions": [
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT 'GRANTS_TABLE_OK' WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='effect_grants')\"",
+              "contains": [
+                "GRANTS_TABLE_OK"
+              ],
+              "not_contains": [
+                "no such table"
+              ]
+            }
+          },
+          {
+            "kind": "restart_service",
+            "service": "callback"
+          },
+          {
+            "kind": "wait",
+            "wait_ms": 1500
+          },
+          {
+            "kind": "state_check",
+            "state_check": {
+              "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'NO_DUP_LIVE_GRANTS' ELSE 'DUP_LIVE_GRANTS' END FROM (SELECT 1 FROM effect_grants WHERE state IN ('GRANTED','CLAIMED') GROUP BY tenant, commit_key HAVING count(*) > 1)\"",
+              "contains": [
+                "NO_DUP_LIVE_GRANTS"
+              ],
+              "not_contains": [
+                "DUP_LIVE_GRANTS"
+              ]
+            }
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no duplicate live grants per commit_key after restart",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'NO_DUP_LIVE_GRANTS' ELSE 'DUP_LIVE_GRANTS' END FROM (SELECT 1 FROM effect_grants WHERE state IN ('GRANTED','CLAIMED') GROUP BY tenant, commit_key HAVING count(*) > 1)\"",
+            "contains": [
+              "NO_DUP_LIVE_GRANTS"
+            ],
+            "not_contains": [
+              "DUP_LIVE_GRANTS"
+            ]
+          },
+          {
+            "name": "every claimed grant still has its witness",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ALL_CLAIMED_WITNESSED' ELSE 'CLAIMED_NO_WITNESS' END FROM effect_grants g WHERE g.state='CLAIMED' AND g.checkpoint_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM checkpoint_witnesses w WHERE w.tenant=g.tenant AND w.grant_id=g.grant_id)\"",
+            "contains": [
+              "ALL_CLAIMED_WITNESSED"
+            ],
+            "not_contains": [
+              "CLAIMED_NO_WITNESS"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "NO_DUP_LIVE_GRANTS",
+          "ALL_CLAIMED_WITNESSED"
+        ],
+        "forbidden_observations": [
+          "DUP_LIVE_GRANTS",
+          "CLAIMED_NO_WITNESS",
+          "no such table"
+        ],
+        "confidence": 0.55,
+        "generated_from": [
+          "AC:U-P5-1"
+        ]
+      },
+      {
+        "id": "S5-rejected-writes-no-partial",
+        "title": "Rejected/malformed requests create no partial workflow state",
+        "purpose": "Exercise AC2 from the request side: concurrent malformed callbacks (missing token, unknown path, wrong method) must be cleanly rejected and must leave the durable store with no new orphaned rows and no invalid states \u2014 a failed request is not a partial write.",
+        "risk_category": "malformed_input",
+        "priority": "P1",
+        "mode": "backend",
+        "rationale": "A failed/rejected write must leave nothing behind; firing several bad requests concurrently at the live service and then checking on-disk integrity is a cheap, executable probe of that guarantee and of concurrency safety on the reject path.",
+        "generating_risk": "A malformed or concurrent rejected request partially advances or corrupts workflow state instead of failing atomically (R2), or the server 500s instead of rejecting cleanly (R5).",
+        "requirement_reference": "a failed write leaves no partially applied workflow",
+        "product_principle_reference": "failure_recovery",
+        "service_refs": [
+          "callback"
+        ],
+        "isolation_key": "driver_probe_workflow_db",
+        "isolation_note": "Issues only rejected requests (no valid token) and reads the store; asserts no new rows via integrity invariants. Creates no workflow_runs.",
+        "actions": [
+          {
+            "kind": "parallel_requests",
+            "requests": [
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {},
+                "expect_status": 400,
+                "expect_contains": [
+                  "Missing action token"
+                ],
+                "timeout_s": 5
+              },
+              {
+                "method": "GET",
+                "path": "/neyma-does-not-exist",
+                "expect_status": 404,
+                "expect_contains": [
+                  "Unknown Neyma callback path."
+                ],
+                "timeout_s": 5
+              },
+              {
+                "method": "GET",
+                "path": "/actions/signed",
+                "expect_status": 405,
+                "timeout_s": 5
+              },
+              {
+                "method": "POST",
+                "path": "/actions/signed",
+                "json_body": {
+                  "token": "not-a-valid-signed-token"
+                },
+                "expect_status": 401,
+                "timeout_s": 5
+              }
+            ]
+          }
+        ],
+        "persisted_state_checks": [
+          {
+            "name": "no orphaned audit events after bad requests",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'ORPHANS_NONE' ELSE 'ORPHANS_FOUND' END FROM audit_events a LEFT JOIN workflow_runs r ON a.tenant = r.tenant AND a.run_id = r.id WHERE r.id IS NULL\"",
+            "contains": [
+              "ORPHANS_NONE"
+            ],
+            "not_contains": [
+              "ORPHANS_FOUND"
+            ]
+          },
+          {
+            "name": "no invalid run states after bad requests",
+            "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT CASE WHEN count(*)=0 THEN 'STATES_ALL_VALID' ELSE 'STATE_INVALID' END FROM workflow_runs WHERE state NOT IN ('RECEIVED','EXTRACTED','RECONCILED','NEEDS_REVIEW','APPROVED','DISPUTED','REQUESTED_BACKUP','READY_FOR_ENTRY','ENTERING','ENTERED','DONE','FAILED','WAITING_FOR_SESSION')\"",
+            "contains": [
+              "STATES_ALL_VALID"
+            ],
+            "not_contains": [
+              "STATE_INVALID"
+            ]
+          }
+        ],
+        "expected_observations": [
+          "Missing action token",
+          "Unknown Neyma callback path.",
+          "ORPHANS_NONE"
+        ],
+        "forbidden_observations": [
+          "Traceback",
+          "STATE_INVALID"
+        ],
+        "confidence": 0.6,
+        "generated_from": [
+          "AC:U-P5-1"
+        ]
+      }
+    ],
+    "assumptions": [
+      "The callback service at http://127.0.0.1:8001 is bound to data/active_workspace/driver_probe/workflow.sqlite3 (the same file the approved sqlite3 command targets), so restarting 'callback' and probing that DB observe the same durable store.",
+      "The driver_probe workflow DB exists and was built with the canonical tenant-first schema (WorkflowStore._require_schema_ready would otherwise refuse to serve), so the workflow_runs/audit_events/effect_grants/checkpoint_witnesses tables are present.",
+      "A token-less or badly-signed callback is rejected before any workflow write (handle_signed_action_callback / submit_signed_action), so rejected requests are safe, non-mutating probes.",
+      "The effect_grants live-hold set for a held commit_key is a subset of {GRANTED, CLAIMED}; the duplicate-live-grant invariant should never fire for a correct product regardless of the exact live set.",
+      "expected/forbidden observations are matched as literal substrings against command output, HTTP bodies (rendered from CallbackResponse title/message), and state-check output."
+    ],
+    "unresolved_questions": [
+      "AC 'a read after a write never returns stale state' cannot be exercised end-to-end with the approved command set: driving a real authenticated transition and then reading it back requires minting a valid HMAC-signed action token (the delivery secret) or an authenticated seed path, neither of which is available. The restart scenarios (S1) partially cover it \u2014 a fresh process with an empty cache that serves the durable value catches a residual-cache read \u2014 but a within-process write-then-read consistency test needs a token-minting or seed capability. Recommend the executor be granted one (or an approved 'seed a workflow run + apply a signed action' command).",
+      "The strongest AC2 test (a write that fails MID-transaction, e.g. an injected error between the workflow_runs UPDATE and the audit/ledger insert) cannot be triggered from outside the process; S3 approximates it with an abrupt process kill. A fault-injection hook or an approved command that forces a mid-write failure would let the atomicity guarantee be tested directly rather than inferred from crash + integrity invariants.",
+      "AC4 depends on there being CLAIMED effect_grants and witnesses in the driver_probe store to be non-vacuous. If the workspace has none (the effect path ships dark), S4 verifies only that no re-execution artifacts appear; a seeded claimed grant would make the 'never re-executes on rebuild' assertion load-bearing.",
+      "Whether the Slack routes (/slack/actions, /slack/commands) are enabled on the running driver_probe server is unknown (depends on --client-config / signing secret at launch); scenarios avoid them and use the always-present /actions/signed and /email/action routes.",
+      "U-P5-1 references phase P5 and an in-process cache, but the current tree (active phase P3) already backs WorkflowStore with durable SQLite and shows no in-process workflow-state cache; if the builder's diff was not available to me, the exact cache being removed could not be pinpointed, so scenarios target the durable-store invariants the ACs promise rather than the specific removed code path."
+    ]
+  }
+]

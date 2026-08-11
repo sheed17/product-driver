@@ -1,0 +1,455 @@
+{
+  "S1": {
+    "name": "generated:S1",
+    "phase": "P3",
+    "description": "Unverifiable action intake is recorded as rejected, never applied\n\nrisk: malformed_input (priority P1)\npurpose: Drive the reachable delivery intake with a tampered token and prove the boundary durably RECORDS the unconfirmable outcome instead of treating it as success or dropping it \u2014 the persistence invariant the 'unconfirmed => unknown, never delivered' AC depends on.\nrequirement: a send whose outcome is unconfirmed is recorded as unknown, never as delivered\nproduct principle: outcome_verification\nrationale: An unverifiable input is the intake analog of an unconfirmable outcome; U-DEL-7 requires such outcomes be recorded (not applied, not silently swallowed), and this is the only slice of that invariant reachable without the signing secret.\n\ngenerated at 2026-08-10T08:06:11+00:00 (stage=initial, wave 1)\nbecause of risk: An outcome that cannot be confirmed/verified could be silently swallowed or wrongly treated as a success instead of being recorded as a non-delivery.\nrepository HEAD 6e8127d, active unit U-DEL-7, founder context 0cb51e5158467505\nacceptance criteria consulted: a confirmed send is recorded delivered exactly once (weight 3): PENDING; a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING; a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING; a transport outage leaves no notification silently dropped (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "token": "tampered.0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "could not be verified"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type, payload_json FROM security_events WHERE event_type='delivery_action_rejected' ORDER BY id DESC LIMIT 1\"",
+          "contains": [
+            "delivery_action_rejected",
+            "signature"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "tampered intake recorded as rejection",
+        "command": null,
+        "state_check": {
+          "name": "tampered intake recorded as rejection",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT event_type, payload_json FROM security_events WHERE event_type='delivery_action_rejected' ORDER BY id DESC LIMIT 1\"",
+          "contains": [
+            "delivery_action_rejected",
+            "signature"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "could not be verified",
+      "delivery_action_rejected"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "delivery_action_applied"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S2": {
+    "name": "generated:S2",
+    "phase": "P3",
+    "description": "Missing token yields a recorded dead-end-free refusal, not a silent no-op\n\nrisk: missing_data (priority P2)\npurpose: POST the intake with no token and confirm the server returns an explicit, actionable refusal rather than silently accepting or crashing.\nrequirement: a transport outage leaves no notification silently dropped\nproduct principle: dead_end_error\nrationale: A delivery request stripped of its identifying token is the degenerate 'nothing to deliver' case; the product must answer explicitly (no silent success), which is the observable half of 'nothing silently dropped'.\n\ngenerated at 2026-08-10T08:06:11+00:00 (stage=initial, wave 1)\nbecause of risk: An empty/identity-less delivery request could be silently accepted or dropped with no operator-visible outcome.\nrepository HEAD 6e8127d, active unit U-DEL-7, founder context 0cb51e5158467505\nacceptance criteria consulted: a confirmed send is recorded delivered exactly once (weight 3): PENDING; a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING; a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING; a transport outage leaves no notification silently dropped (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {},
+          "body": null,
+          "expect_status": 400,
+          "expect_contains": [
+            "missing its signed token"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "missing its signed token"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Neyma action applied"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S3": {
+    "name": "generated:S3",
+    "phase": "P3",
+    "description": "Simultaneous identical retries are each recorded; none dropped, no crash\n\nrisk: concurrency (priority P1)\npurpose: Fire two identical tampered submissions in parallel and confirm the intake answers both and durably records the attempts under concurrency, rather than losing one to a race or crashing.\nrequirement: a transport outage leaves no notification silently dropped\nproduct principle: repository_silent\nrationale: Retry storms and double-clicks are exactly when a delivery layer drops or double-processes; this proves the reachable intake neither drops an attempt nor 500s when two arrive at once.\n\ngenerated at 2026-08-10T08:06:11+00:00 (stage=initial, wave 1)\nbecause of risk: Concurrent identical retries could race such that an attempt is silently lost or the handler crashes, leaving the outcome unrecorded.\nrepository HEAD 6e8127d, active unit U-DEL-7, founder context 0cb51e5158467505\nacceptance criteria consulted: a confirmed send is recorded delivered exactly once (weight 3): PENDING; a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING; a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING; a transport outage leaves no notification silently dropped (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "token": "raceA.1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "could not be verified"
+            ],
+            "timeout_s": 5.0
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "token": "raceA.1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "could not be verified"
+            ],
+            "timeout_s": 5.0
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "rejections recorded under concurrency",
+        "command": null,
+        "state_check": {
+          "name": "rejections recorded under concurrency",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "could not be verified"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Internal Server Error",
+      "Traceback"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "S4": {
+    "name": "generated:S4",
+    "phase": "P3",
+    "description": "Recorded outcomes survive a callback restart (durability)\n\nrisk: restart_recovery (priority P2)\npurpose: Record a rejected intake, restart the callback service, submit again, and confirm the persisted rejection record survives the restart and the store is still writable \u2014 the durability the 'nothing silently dropped' guarantee rests on.\nrequirement: U-DEL-7\nproduct principle: failure_recovery\nrationale: A resilience guarantee is only real if the record outlives a process bounce; if outcome records lived in memory or a lost handle, a restart between send and confirm would erase the evidence a notification was ever attempted.\n\ngenerated at 2026-08-10T08:06:11+00:00 (stage=initial, wave 1)\nbecause of risk: An outcome recorded before a restart could be lost (in-memory/unflushed), so post-restart the system cannot tell a notification was already attempted and re-drives or forgets it.\nrepository HEAD 6e8127d, active unit U-DEL-7, founder context 0cb51e5158467505\nacceptance criteria consulted: a confirmed send is recorded delivered exactly once (weight 3): PENDING; a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING; a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING; a transport outage leaves no notification silently dropped (weight 2): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "token": "beforeRestart.2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "could not be verified"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1500
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/actions/signed",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "token": "afterRestart.3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "could not be verified"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "rejection records durable across restart",
+        "command": null,
+        "state_check": {
+          "name": "rejection records durable across restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) > 0 FROM security_events WHERE event_type='delivery_action_rejected'\"",
+          "contains": [
+            "1"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "could not be verified"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Traceback",
+      "no such table"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

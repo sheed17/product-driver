@@ -1,0 +1,41 @@
+GENERATED SCENARIO PLAN — run cert-G-r1
+task: Reconcile a carrier document against the shipment record when the extracted fields disagree with, or are missing from, the system of record. The operator must be able to tell a known fact from an infe
+active unit: U-EV-4
+
+3 generated case(s)
+risk categories exercised: malformed_input, missing_data
+identified but NOT exercised: AC-1 (a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it) cannot be exercised with the approved toolset. The reconciler (reconciliation.reconcile_load / extraction_bridge.reconciliation_from_extraction) that produces VARIANCE reasons and keeps the rate/source-of-truth side untouched is in-process only; there is no approved command or 8001 endpoint that ingests a carrier document with a conflicting field and persists the outcome to workflow_runs for inspection. The single most load-bearing AC (weight 3) is therefore unverified in this wave.; AC-4 (an inference is never presented as a known fact) is unverified. The known/inferred split (deterministic agreed_rate_total vs model-extracted invoice side; low_confidence_required flags) exists in code, but there is no driveable surface or persisted-provenance field a scenario can inspect to prove an inferred value is not rendered as known.
+
+IDENTIFIED RISKS:
+  [P0 conflicting_evidence] AC-1 (a document field that conflicts with the system of record is surfaced as a conflict and never silently overwrites it) cannot be exercised with the approved toolset. The reconciler (reconciliation.reconcile_load / extraction_bridge.reconciliation_from_extraction) that produces VARIANCE reasons and keeps the rate/source-of-truth side untouched is in-process only; there is no approved command or 8001 endpoint that ingests a carrier document with a conflicting field and persists the outcome to workflow_runs for inspection. The single most load-bearing AC (weight 3) is therefore unverified in this wave.  (NOT covered)
+  [P1 missing_data] AC-2 (a document missing a required field yields a stated missing-evidence result rather than a guess) is unverified. extraction.py sets absent fields to null/confidence 0 and extraction_bridge.REQUIRED_CONFIDENCE_FIELDS forces NEEDS_REVIEW, but nothing driveable feeds a document missing a required field and reads back the persisted 'missing-evidence' outcome/reason, so a regression to guessing would not be caught.  (covered by UEV4-W1-02)
+  [P1 ui_backend_disagreement] AC-4 (an inference is never presented as a known fact) is unverified. The known/inferred split (deterministic agreed_rate_total vs model-extracted invoice side; low_confidence_required flags) exists in code, but there is no driveable surface or persisted-provenance field a scenario can inspect to prove an inferred value is not rendered as known.  (NOT covered)
+  [P1 malformed_input] AC-3's vision-layer half (an unparseable *document* is refused with a reason and changes no state) is only partially reachable. The callback boundary lets me prove an unverifiable *token* is refused without committing an effect, but the actual unparseable-PDF path (document_identifier.extract_pdf_identifiers / extraction.extract_from_pdf returning error=... FAILED) is not driveable, so a bad scan silently mutating state at the extraction layer would not be caught here.  (covered by UEV4-W1-01, UEV4-W1-03)
+
+SCENARIOS:
+  [P0 malformed_input] UEV4-W1-01: Unverifiable signed action is refused with a stated reason, not a 500, and commits nothing
+      purpose: Exercise the deployed decision-application boundary with an unverifiable input and confirm it is refused WITH A REASON while no external effect is committed to the system of record.
+      grounded in: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+      because: a malformed/unverifiable input is swallowed or crashes (500/traceback) instead of yielding a stated refusal that commits nothing
+  [P1 missing_data] UEV4-W1-02: Missing action token yields a stated missing-input refusal, not a silent success
+      purpose: Confirm that an input missing its required credential is answered with an explicit stated-missing result rather than proceeding or guessing, and changes no state.
+      grounded in: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+      because: a request missing its required token is treated as valid / proceeds silently instead of returning a stated 'missing' refusal
+  [P1 malformed_input] UEV4-W1-03: A non-parseable request body is refused cleanly and commits no effect
+      purpose: Drive the boundary with a body that is neither valid JSON nor a token-bearing form and confirm a stated refusal with no state mutation — the 'unparseable input, no state change' invariant on the deployed surface.
+      grounded in: U-EV-4 AC: an unparseable document is refused with a reason and changes no state
+      because: an unparseable request body is partially interpreted and mutates state, or errors into a 500 instead of a stated refusal
+
+ASSUMPTIONS:
+  - The 'callback' service on http://127.0.0.1:8001 is bound to the system-of-record database at data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite3 target), so refusals and effects on that surface are observable there.
+  - The deployment ships 'dark' (P4/R-07, governed route kernel is None → ROUTE_NOT_CONFIGURED): no real external write is ever VERIFIED, so a standing safety invariant is that effect_grants has zero rows in ATTEMPTED/CLAIMED/VERIFIED. A scenario that ever observes such a row indicates a silent overwrite of the system of record.
+  - Slack routes (/slack/*) are disabled in the harness because no Slack signing secret is configured, so only /actions/signed and /email/action are reachable without secrets; the scenarios use only those.
+  - effect_grants.state literals are exactly {GRANTED,CLAIMED,ATTEMPTED,VERIFIED,FAILED,EXPIRED_UNCLAIMED,REVOKED,UNKNOWN_OUTCOME} (migrations/phase2_tenant_first.py), with VERIFIED being the terminal 'external effect committed' state.
+
+UNRESOLVED QUESTIONS:
+  - The core U-EV-4 behaviour — vision extraction of a carrier document reconciled against the shipment record, with conflict surfacing (AC-1), stated missing-evidence results (AC-2), and known-vs-inferred labeling (AC-4) — is implemented in-process (extraction.py, extraction_bridge.py, reconciliation.py) but is NOT reachable via any approved command or port-8001 endpoint. Is there an ingestion endpoint or an approved CLI that reconciles a *supplied* document (or corpus fixture) and persists the outcome/reason to workflow_runs so AC-1/AC-2/AC-4 can be driven black-box? Without one, three of the four ACs (two of them weight-3) are unverifiable this wave.
+  - Where is the 'known fact vs inference' provenance persisted for a reconciled document (workflow_runs.reason, an audit_events.payload_json, or an extraction audit payload)? A scenario needs a concrete persisted field to assert that an inferred value is never rendered as a known fact.
+  - No approved command resets or seeds driver_probe/workflow.sqlite3, so 'changes no state' can only be asserted against the absolute dark-deployment invariant (no ATTEMPTED/CLAIMED/VERIFIED effect grants), not against a per-request row delta. Is a fixture/reset or a baseline-capture command available so before/after mutation of workflow_runs and delivery_action_claims can be verified directly?
+  - Should the token-boundary refusal invariants I can drive here be treated as satisfying AC-3, or only as adjacent effect-boundary safety checks? The AC is literally about an unparseable *carrier document* at the extraction layer; I have deliberately not claimed the callback-token scenarios discharge the document-layer AC.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

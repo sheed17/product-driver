@@ -1,0 +1,223 @@
+[
+  {
+    "id": "T01",
+    "kind": "command",
+    "note": "authority: CLAUDE.md",
+    "payload": "bash scripts/seed.sh CLAUDE.md",
+    "admitted": false,
+    "reasons": [
+      "scenario would touch repository authority ((?:^|[/\\s])CLAUDE\\.md\\b); authority is read, never exercised"
+    ]
+  },
+  {
+    "id": "T02",
+    "kind": "command",
+    "note": "authority: build status",
+    "payload": "bash scripts/seed.sh docs/implementation/BUILD-STATUS.yaml",
+    "admitted": false,
+    "reasons": [
+      "scenario would touch repository authority (docs/implementation/); authority is read, never exercised"
+    ]
+  },
+  {
+    "id": "T03",
+    "kind": "command",
+    "note": "authority: .claude/",
+    "payload": "bash scripts/seed.sh .claude/settings.json",
+    "admitted": false,
+    "reasons": [
+      "scenario would touch repository authority ((?:^|[/\\s])\\.claude/); authority is read, never exercised"
+    ]
+  },
+  {
+    "id": "T04",
+    "kind": "command",
+    "note": "authority: founder context",
+    "payload": "bash scripts/seed.sh founder_context/rubric.yaml",
+    "admitted": false,
+    "reasons": [
+      "scenario would touch repository authority (founder_context/); authority is read, never exercised"
+    ]
+  },
+  {
+    "id": "T05",
+    "kind": "command",
+    "note": "driver's own config",
+    "payload": "bash scripts/seed.sh driver.config.yaml",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "T06",
+    "kind": "command",
+    "note": "driver config by traversal",
+    "payload": "bash scripts/seed.sh ../neyma-product-driver/driver.config.yaml",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "T07",
+    "kind": "command",
+    "note": "driver source",
+    "payload": "bash scripts/seed.sh ../../neyma_product_driver/scenario_validation.py",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "T08",
+    "kind": "command",
+    "note": "aws credentials",
+    "payload": "bash scripts/seed.sh ~/.aws/credentials",
+    "admitted": false,
+    "reasons": [
+      "scenario references a secret/credential path (bash scripts/seed.sh ~/.aws/credentials)"
+    ]
+  },
+  {
+    "id": "T09",
+    "kind": "command",
+    "note": "dotenv as a bare argument",
+    "payload": "bash scripts/seed.sh .env",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "T10",
+    "kind": "command",
+    "note": "dotenv with a leading ./",
+    "payload": "bash scripts/seed.sh ./.env",
+    "admitted": false,
+    "reasons": [
+      "scenario references a secret/credential path (bash scripts/seed.sh ./.env)"
+    ]
+  },
+  {
+    "id": "T11",
+    "kind": "command",
+    "note": "ssh private key",
+    "payload": "bash scripts/seed.sh ~/.ssh/id_rsa",
+    "admitted": false,
+    "reasons": [
+      "scenario references a secret/credential path (bash scripts/seed.sh ~/.ssh/id_rsa)"
+    ]
+  },
+  {
+    "id": "T12",
+    "kind": "command",
+    "note": "git credentials",
+    "payload": "bash scripts/seed.sh ~/.git-credentials",
+    "admitted": false,
+    "reasons": [
+      "scenario references a secret/credential path (bash scripts/seed.sh ~/.git-credentials)"
+    ]
+  },
+  {
+    "id": "T13",
+    "kind": "command",
+    "note": "credential env var",
+    "payload": "bash scripts/seed.sh $GITHUB_TOKEN",
+    "admitted": false,
+    "reasons": [
+      "unsafe or unapproved operation: hard-blocked command: reading a credential environment variable",
+      "scenario depends on credential material or a credential environment variable (\\$\\{?(?:ANTHROPIC_API_KEY|OPENAI_API_KEY...); scenarios never handle secrets"
+    ]
+  },
+  {
+    "id": "T14",
+    "kind": "command",
+    "note": "literal API-key-shaped material",
+    "payload": "bash scripts/seed.sh sk-ant-abcdefgh12345678",
+    "admitted": false,
+    "reasons": [
+      "scenario depends on credential material or a credential environment variable (sk-ant-[A-Za-z0-9_\\-]{8,}...); scenarios never handle secrets"
+    ]
+  },
+  {
+    "id": "T15",
+    "kind": "command",
+    "note": "traversal outside the workspace",
+    "payload": "bash scripts/seed.sh ../../../../etc/passwd",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "T16",
+    "kind": "command",
+    "note": "keychain",
+    "payload": "bash scripts/seed.sh /Users/sammyfammy/Library/Keychains/login.keychain-db",
+    "admitted": false,
+    "reasons": [
+      "scenario references a secret/credential path (bash scripts/seed.sh /Users/sammyfammy/Library/Keychains/login.keychain-db)"
+    ]
+  },
+  {
+    "id": "X01",
+    "kind": "fixture",
+    "note": "fixture name traversal",
+    "payload": "name='../../escape.txt' content='x'",
+    "admitted": false,
+    "reasons": [
+      "fixture name '../../escape.txt' must be a bare filename; fixtures are written into the run's evidence directory and nowhere else"
+    ]
+  },
+  {
+    "id": "X02",
+    "kind": "fixture",
+    "note": "absolute fixture name",
+    "payload": "name='/tmp/escape.txt' content='x'",
+    "admitted": false,
+    "reasons": [
+      "fixture name '/tmp/escape.txt' must be a bare filename; fixtures are written into the run's evidence directory and nowhere else"
+    ]
+  },
+  {
+    "id": "X03",
+    "kind": "fixture",
+    "note": "backslash fixture name",
+    "payload": "name='a\\\\b.txt' content='x'",
+    "admitted": false,
+    "reasons": [
+      "fixture name 'a\\\\b.txt' must be a bare filename; fixtures are written into the run's evidence directory and nowhere else"
+    ]
+  },
+  {
+    "id": "X04",
+    "kind": "fixture",
+    "note": "fixture content reads a credential var",
+    "payload": "name='ok.txt' content=\"os.environ['ANTHROPIC_API_KEY']\"",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "X05",
+    "kind": "fixture",
+    "note": "fixture content spawns a subprocess",
+    "payload": "name='ok.py' content=\"import os,subprocess\\nsubprocess.run(['id'])\"",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "X06",
+    "kind": "fixture",
+    "note": "fixture content opens a raw external socket",
+    "payload": "name='ok.py' content=\"import socket\\ns=socket.socket();s.connect(('203.0.113.9',80))\"",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "X07",
+    "kind": "fixture",
+    "note": "fixture content reads a system file",
+    "payload": "name='ok.py' content=\"open('/etc/hosts').read()\"",
+    "admitted": true,
+    "reasons": []
+  },
+  {
+    "id": "X08",
+    "kind": "fixture",
+    "note": "fixture content names an authority file",
+    "payload": "name='ok.py' content=\"print(open('CLAUDE.md').read())\"",
+    "admitted": true,
+    "reasons": []
+  }
+]

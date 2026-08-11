@@ -1,0 +1,52 @@
+==============================================================================
+A-r1: 1 acceptance-blocking risks; on an all-PASS run 0 are treated as VERIFIED, 1 remain gaps.
+
+==============================================================================
+D-r1: 5 acceptance-blocking risks; on an all-PASS run 2 are treated as VERIFIED, 3 remain gaps.
+
+  CLAIM: P0 restart_recovery  -> GENUINE
+    risk says      : Workflow run state that was only held in the in-process cache is lost when the callback process is restarted, so a fresh process serves empty or missing state for runs that were mid-flight.
+    credited to    : S1-restart-survives (P0) drives ['/actions/signed']
+    reviewer       : S1 re-probes EXISTS(SELECT 1 FROM workflow_runs) after the restart; total loss of durable state removes the RUNS_TABLE_OK sentinel and fails. Incomplete: a PARTIAL loss of rows is not detected (no before/after count comparison).
+
+  CLAIM: P0 idempotency  -> GENUINE
+    risk says      : Rebuilding workflow state from the durable history after a restart re-mints a grant or re-runs a committing step, producing a duplicate live effect_grants row for a commit_key or a CLAIMED g
+    credited to    : S4-replay-no-reexecute (P0) drives (no HTTP)
+    reviewer       : S4 restarts and asserts NO_DUP_LIVE_GRANTS / ALL_CLAIMED_WITNESSED. A rebuild that re-mints a grant emits DUP_LIVE_GRANTS and fails. Directly on the risk.
+
+==============================================================================
+E-r1: 2 acceptance-blocking risks; on an all-PASS run 1 are treated as VERIFIED, 1 remain gaps.
+
+  CLAIM: P0 authorization  -> GENUINE-BUT-NARROWED
+    risk says      : A release requested without a valid signed credential (unauthenticated / non-supervisor stand-in) is not refused, or is refused but still advances/claims the operation, violating 'a non-supe
+    credited to    : AUTHZ-S2 (P0) drives ['/actions/signed']
+    credited to    : AUTHZ-S3 (P0) drives ['/actions/signed']
+    credited to    : AUTHZ-S5 (P1) drives ['/email/action']
+    reviewer       : S2/S3/S5 genuinely exercise the risk AS THE MODEL WROTE IT ('a release without a valid signed credential is refused'). But the model wrote that risk as an explicit 'non-supervisor stand-in' because no driveable release endpoint exists. The unit's weight-3 criteria 'a supervisor CAN release' and 'a supervisor of one tenant cannot release another tenant's operation' are never verified and never appear as risks. The register is narrower than the acceptance contract.
+
+==============================================================================
+F-r1: 4 acceptance-blocking risks; on an all-PASS run 0 are treated as VERIFIED, 4 remain gaps.
+
+==============================================================================
+G-r1: 4 acceptance-blocking risks; on an all-PASS run 2 are treated as VERIFIED, 2 remain gaps.
+
+  CLAIM: P1 missing_data  -> FALSE
+    risk says      : AC-2 (a document missing a required field yields a stated missing-evidence result rather than a guess) is unverified. extraction.py sets absent fields to null/confidence 0 and extraction_bri
+    credited to    : UEV4-W1-02 (P1) drives ['/email/action']
+    reviewer       : risk: 'a DOCUMENT missing a required field yields a stated missing-evidence result rather than a guess'. UEV4-W1-02 sends an HTTP GET with no action token. No document is involved. A reconciler that guesses at missing document fields passes.
+
+  CLAIM: P1 malformed_input  -> FALSE
+    risk says      : AC-3's vision-layer half (an unparseable *document* is refused with a reason and changes no state) is only partially reachable. The callback boundary lets me prove an unverifiable *token* is
+    credited to    : UEV4-W1-01 (P0) drives ['/actions/signed']
+    credited to    : UEV4-W1-03 (P1) drives ['/actions/signed']
+    reviewer       : risk: 'an unparseable DOCUMENT is refused with a reason and changes no state'. UEV4-W1-01/03 send a forged token and a non-JSON body to the signed-action endpoint. No document is parsed anywhere. An extractor that silently accepts a corrupt document passes.
+
+==============================================================================
+risk-verification claims produced across the live plans : 5
+  GENUINE                                              : 2
+  GENUINE BUT NARROWED (register < acceptance contract) : 1
+  FALSE (a defect of the named kind passes)            : 2  (40%)
+
+ANSWER: on live plans this produces claims that are ACTUALLY FALSE, not merely
+loose. 2 of 5 risk-verification claims credit a risk to a scenario whose
+assertions cannot observe the behaviour the risk describes.

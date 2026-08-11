@@ -319,14 +319,24 @@ class TestAcceptanceContract:
         assert result.status is not RunStatus.ACCEPTED
 
     def test_15_protocol_resolver_precedence_is_unchanged(self):
-        """The suite gate is deliberately last; protocol still outranks everything."""
+        """Protocol still outranks everything, and the gate now precedes the audit.
+
+        The second assertion here used to be the reverse — the audit's
+        ``blocks_acceptance`` test before ``_apply_suite_precedence``, because
+        the suite gate was "deliberately last". That is the ordering that let
+        the completion-audit branch record a terminal state and return before
+        the gate had ever been consulted: a required scenario could fail, the
+        run could stop, and no report anywhere said so. Measurement is not a
+        peer of the layers that judge claims, it is their input, so it goes
+        first. Protocol precedence, which outranks both, is unmoved.
+        """
         import inspect
 
         from neyma_product_driver import cli
 
         source = inspect.getsource(cli.run_control_loop)
         assert source.index("_apply_protocol_precedence") < source.index("_apply_suite_precedence")
-        assert source.index("blocks_acceptance") < source.index("_apply_suite_precedence")
+        assert source.index("_apply_suite_precedence") < source.index("blocks_acceptance")
 
 
 class TestConvenienceFlagsCannotOverrideTheGate:

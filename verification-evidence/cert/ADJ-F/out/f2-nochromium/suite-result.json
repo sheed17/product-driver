@@ -1,0 +1,52 @@
+{
+  "started_at": "2026-08-10T20:29:05+00:00",
+  "duration_s": 0.41699866700014354,
+  "full_run": true,
+  "selection_reason": "",
+  "expected_required_ids": [
+    "ADJF-nochromium"
+  ],
+  "assembly_problems": [],
+  "outcomes": [
+    {
+      "scenario_id": "ADJF-nochromium",
+      "scenario_name": "generated:ADJF-nochromium",
+      "origin": "generated",
+      "outcome": "BLOCKED",
+      "priority": "P0",
+      "risk_category": "ui_backend_disagreement",
+      "required": true,
+      "duration_s": 0.0,
+      "assertions_total": 0,
+      "assertions_failed": 0,
+      "failed_assertions": [],
+      "error": "scenario execution raised: Error: BrowserType.launch: Executable doesn't exist at /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-F/out/f2-nochromium/empty-browsers/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed or updated.       \u2551\n\u2551 Please run the following command to download new browsers: \u2551\n\u2551                                                            \u2551\n\u2551     playwright install                                     \u2551\n\u2551                                                            \u2551\n\u2551 <3 Playwright Team                                         \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d",
+      "skip_reason": "",
+      "evidence_path": "out/f2-nochromium/scenarios/ADJF-nochromium",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "generated_because": "",
+      "requirement_reference": "ADJ-F local fixture"
+    }
+  ],
+  "clusters": [
+    {
+      "cluster_id": "C01",
+      "affected_scenarios": [
+        "ADJF-nochromium"
+      ],
+      "shared_observations": [
+        "scenario execution raised: error: browsertype.launch: executable doesn't exist at /users/sammyfammy/neyma-product-driver/verification-evidence/cert/adj-f/out/f2-nochromium/empty-browsers/chromium_headless_shell-<n>/chrome-headless-shell-mac-arm64/chrome-headless-shell \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557 \u2551 looks like playwright was just installed or updated. \u2551 \u2551 please run the following command to download new browsers: \u2551 \u2551 \u2551 \u2551 playwright install \u2551 \u2551 \u2551 \u2551 <<n> playwright team \u2551 \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"
+      ],
+      "likely_failure_domain": "generated:ADJF-nochromium: scenario execution raised: Error: BrowserType.launch: Executable doesn't exist at /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/ADJ-F/out/f2",
+      "evidence_paths": [
+        "out/f2-nochromium/scenarios/ADJF-nochromium"
+      ],
+      "highest_priority": "P0",
+      "risk_categories": [
+        "ui_backend_disagreement"
+      ],
+      "singleton": true
+    }
+  ]
+}

@@ -1,0 +1,615 @@
+{
+  "http_targets": [
+    {
+      "id": "H01",
+      "field": "url",
+      "value": "http://offtarget.invalid/x",
+      "note": "absolute off-target url",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://offtarget.invalid/x",
+        "problem": "url 'http://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H02",
+      "field": "path",
+      "value": "http://offtarget.invalid/x",
+      "note": "absolute url in path",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: request path 'http://offtarget.invalid/x' carries a URL scheme, so it would replace the approved base URL. A generated request path must be relative."
+      ],
+      "resolve_http_target": {
+        "target": "",
+        "problem": "request path 'http://offtarget.invalid/x' carries a URL scheme, so it would replace the approved base URL. A generated request path must be relative."
+      },
+      "executor_would_dial": "http://offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H03",
+      "field": "path",
+      "value": "//offtarget.invalid/x",
+      "note": "scheme-relative path",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: request path '//offtarget.invalid/x' is scheme-relative, so it would address another host. A generated request path must be relative."
+      ],
+      "resolve_http_target": {
+        "target": "",
+        "problem": "request path '//offtarget.invalid/x' is scheme-relative, so it would address another host. A generated request path must be relative."
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H04",
+      "field": "path",
+      "value": "\\\\offtarget.invalid\\x",
+      "note": "backslash host",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: request path '\\\\\\\\offtarget.invalid\\\\x' is scheme-relative, so it would address another host. A generated request path must be relative."
+      ],
+      "resolve_http_target": {
+        "target": "",
+        "problem": "request path '\\\\\\\\offtarget.invalid\\\\x' is scheme-relative, so it would address another host. A generated request path must be relative."
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/\\\\offtarget.invalid\\x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H05",
+      "field": "path",
+      "value": "/\\offtarget.invalid/x",
+      "note": "slash-backslash host",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/\\offtarget.invalid/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/\\offtarget.invalid/x",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H06",
+      "field": "path",
+      "value": "\\/offtarget.invalid/x",
+      "note": "backslash-slash host",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/\\/offtarget.invalid/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/\\/offtarget.invalid/x",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H07",
+      "field": "url",
+      "value": "http://localhost@offtarget.invalid/x",
+      "note": "userinfo confusion",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://localhost@offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://localhost@offtarget.invalid/x",
+        "problem": "url 'http://localhost@offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://localhost@offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H08",
+      "field": "url",
+      "value": "http://offtarget.invalid@127.0.0.1:8001/x",
+      "note": "userinfo, real host loopback",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://offtarget.invalid@127.0.0.1:8001/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://offtarget.invalid@127.0.0.1:8001/x",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H09",
+      "field": "url",
+      "value": "http://2130706433/x",
+      "note": "decimal IP for 127.0.0.1",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://2130706433/x' addresses '2130706433', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://2130706433/x",
+        "problem": "url 'http://2130706433/x' addresses '2130706433', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://2130706433/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H10",
+      "field": "url",
+      "value": "http://0177.0.0.1/x",
+      "note": "octal IP",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://0177.0.0.1/x' addresses '0177.0.0.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://0177.0.0.1/x",
+        "problem": "url 'http://0177.0.0.1/x' addresses '0177.0.0.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://0177.0.0.1/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H11",
+      "field": "url",
+      "value": "http://0x7f000001/x",
+      "note": "hex IP",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://0x7f000001/x' addresses '0x7f000001', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://0x7f000001/x",
+        "problem": "url 'http://0x7f000001/x' addresses '0x7f000001', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://0x7f000001/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H12",
+      "field": "url",
+      "value": "http://127.1/x",
+      "note": "short-form loopback",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://127.1/x' addresses '127.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://127.1/x",
+        "problem": "url 'http://127.1/x' addresses '127.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://127.1/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H13",
+      "field": "url",
+      "value": "http://[::1]:8001/x",
+      "note": "IPv6 loopback",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://[::1]:8001/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://[::1]:8001/x",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H14",
+      "field": "url",
+      "value": "http://[::ffff:127.0.0.1]/x",
+      "note": "IPv4-mapped IPv6",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://[::ffff:127.0.0.1]/x' addresses '::ffff:127.0.0.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://[::ffff:127.0.0.1]/x",
+        "problem": "url 'http://[::ffff:127.0.0.1]/x' addresses '::ffff:127.0.0.1', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://[::ffff:127.0.0.1]/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H15",
+      "field": "url",
+      "value": "http://0.0.0.0:8001/x",
+      "note": "0.0.0.0",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://0.0.0.0:8001/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://0.0.0.0:8001/x",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H16",
+      "field": "url",
+      "value": "http://localhost./x",
+      "note": "trailing dot",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://localhost./x' addresses 'localhost.', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://localhost./x",
+        "problem": "url 'http://localhost./x' addresses 'localhost.', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://localhost./x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H17",
+      "field": "url",
+      "value": "http://127.0.0.1.nip.io/x",
+      "note": "DNS-rebinding-shaped name",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http://127.0.0.1.nip.io/x' addresses '127.0.0.1.nip.io', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1.nip.io/x",
+        "problem": "url 'http://127.0.0.1.nip.io/x' addresses '127.0.0.1.nip.io', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "http://127.0.0.1.nip.io/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H18",
+      "field": "url",
+      "value": "file:///etc/hosts",
+      "note": "file scheme",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: unsupported scheme 'file' in 'file:///etc/hosts'"
+      ],
+      "resolve_http_target": {
+        "target": "file:///etc/hosts",
+        "problem": "unsupported scheme 'file' in 'file:///etc/hosts'"
+      },
+      "executor_would_dial": "file:///etc/hosts",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H19",
+      "field": "url",
+      "value": "gopher://offtarget.invalid/x",
+      "note": "gopher scheme",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: unsupported scheme 'gopher' in 'gopher://offtarget.invalid/x'"
+      ],
+      "resolve_http_target": {
+        "target": "gopher://offtarget.invalid/x",
+        "problem": "unsupported scheme 'gopher' in 'gopher://offtarget.invalid/x'"
+      },
+      "executor_would_dial": "gopher://offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H20",
+      "field": "url",
+      "value": "data:text/html,hi",
+      "note": "data scheme",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: unsupported scheme 'data' in 'data:text/html,hi'"
+      ],
+      "resolve_http_target": {
+        "target": "data:text/html,hi",
+        "problem": "unsupported scheme 'data' in 'data:text/html,hi'"
+      },
+      "executor_would_dial": "data:text/html,hi",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H21",
+      "field": "path",
+      "value": "%2f%2fevil",
+      "note": "percent-encoded scheme-relative",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/%2f%2fevil",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/%2f%2fevil",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H22",
+      "field": "url",
+      "value": "htTp://offtarget.invalid/x",
+      "note": "mixed-case scheme",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'htTp://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": "htTp://offtarget.invalid/x",
+        "problem": "url 'htTp://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": "htTp://offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H23",
+      "field": "url",
+      "value": " http://offtarget.invalid/x",
+      "note": "leading space",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url ' http://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "resolve_http_target": {
+        "target": " http://offtarget.invalid/x",
+        "problem": "url ' http://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      },
+      "executor_would_dial": " http://offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H24",
+      "field": "url",
+      "value": "http:/offtarget.invalid/x",
+      "note": "single-slash absolute url",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http:/offtarget.invalid/x' names no host"
+      ],
+      "resolve_http_target": {
+        "target": "http:/offtarget.invalid/x",
+        "problem": "url 'http:/offtarget.invalid/x' names no host"
+      },
+      "executor_would_dial": "http:/offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H25",
+      "field": "url",
+      "value": "http:offtarget.invalid/x",
+      "note": "no-slash absolute url",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: url 'http:offtarget.invalid/x' names no host"
+      ],
+      "resolve_http_target": {
+        "target": "http:offtarget.invalid/x",
+        "problem": "url 'http:offtarget.invalid/x' names no host"
+      },
+      "executor_would_dial": "http:offtarget.invalid/x",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H26",
+      "field": "url",
+      "value": "javascript:alert(1)",
+      "note": "javascript scheme",
+      "admitted": false,
+      "reasons": [
+        "unsupported external effect: unsupported scheme 'javascript' in 'javascript:alert(1)'"
+      ],
+      "resolve_http_target": {
+        "target": "javascript:alert(1)",
+        "problem": "unsupported scheme 'javascript' in 'javascript:alert(1)'"
+      },
+      "executor_would_dial": "javascript:alert(1)",
+      "resolver_and_executor_agree": false
+    },
+    {
+      "id": "H27",
+      "field": "path",
+      "value": "../../../etc/passwd",
+      "note": "path traversal",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/../../../etc/passwd",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/../../../etc/passwd",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H28",
+      "field": "url",
+      "value": "http://127.0.0.1:8001/x\r\nX-Injected: 1",
+      "note": "CRLF in url",
+      "admitted": false,
+      "reasons": [
+        "unsupported request target: command contains the control character '\\r' (U+000D); a command is a single line of ordinary text"
+      ],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/x\r\nX-Injected: 1",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/x\r\nX-Injected: 1",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H29",
+      "field": "path",
+      "value": "x\r\nX-Injected: 1",
+      "note": "CRLF in path",
+      "admitted": false,
+      "reasons": [
+        "unsupported request target: command contains the control character '\\r' (U+000D); a command is a single line of ordinary text"
+      ],
+      "resolve_http_target": {
+        "target": "http://127.0.0.1:8001/x\r\nX-Injected: 1",
+        "problem": ""
+      },
+      "executor_would_dial": "http://127.0.0.1:8001/x\r\nX-Injected: 1",
+      "resolver_and_executor_agree": true
+    },
+    {
+      "id": "H30",
+      "field": "url",
+      "value": "http://LOCALHOST:8001/x",
+      "note": "uppercase host",
+      "admitted": true,
+      "reasons": [],
+      "resolve_http_target": {
+        "target": "http://LOCALHOST:8001/x",
+        "problem": ""
+      },
+      "executor_would_dial": "http://LOCALHOST:8001/x",
+      "resolver_and_executor_agree": true
+    }
+  ],
+  "browser_goto": [
+    {
+      "id": "B01",
+      "goto": "http://offtarget.invalid/x",
+      "note": "plain absolute",
+      "admitted": false,
+      "reasons": [
+        "unsupported external navigation: url 'http://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "validator_inspected": true,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "http://offtarget.invalid/x"
+    },
+    {
+      "id": "B02",
+      "goto": "https://offtarget.invalid/x",
+      "note": "plain absolute https",
+      "admitted": false,
+      "reasons": [
+        "unsupported external navigation: url 'https://offtarget.invalid/x' addresses 'offtarget.invalid', which is not loopback. Scenarios operate the locally running product and never produce an external effect."
+      ],
+      "validator_inspected": true,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "https://offtarget.invalid/x"
+    },
+    {
+      "id": "B03",
+      "goto": "http:/offtarget.invalid/x",
+      "note": "single-slash absolute",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "http:/offtarget.invalid/x"
+    },
+    {
+      "id": "B04",
+      "goto": "http:offtarget.invalid/x",
+      "note": "no-slash absolute",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "http:offtarget.invalid/x"
+    },
+    {
+      "id": "B05",
+      "goto": "http:\\\\offtarget.invalid\\x",
+      "note": "backslash authority",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "http:\\\\offtarget.invalid\\x"
+    },
+    {
+      "id": "B06",
+      "goto": "httpx://offtarget.invalid/x",
+      "note": "unknown scheme starting 'http'",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "httpx://offtarget.invalid/x"
+    },
+    {
+      "id": "B07",
+      "goto": "//offtarget.invalid/x",
+      "note": "scheme-relative",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": false,
+      "executor_would_navigate_to": "http://127.0.0.1:8001/offtarget.invalid/x"
+    },
+    {
+      "id": "B08",
+      "goto": "file:///etc/hosts",
+      "note": "file scheme",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": false,
+      "executor_would_navigate_to": "http://127.0.0.1:8001/file:///etc/hosts"
+    },
+    {
+      "id": "B09",
+      "goto": "javascript:alert(1)",
+      "note": "javascript scheme",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": false,
+      "executor_would_navigate_to": "http://127.0.0.1:8001/javascript:alert(1)"
+    },
+    {
+      "id": "B10",
+      "goto": "HTTP://offtarget.invalid/x",
+      "note": "uppercase scheme",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": false,
+      "executor_would_navigate_to": "http://127.0.0.1:8001/HTTP://offtarget.invalid/x"
+    },
+    {
+      "id": "B11",
+      "goto": "http:/198.51.100.9:1/x",
+      "note": "single-slash reserved IP",
+      "admitted": true,
+      "reasons": [],
+      "validator_inspected": false,
+      "executor_treats_as_absolute": true,
+      "executor_would_navigate_to": "http:/198.51.100.9:1/x"
+    }
+  ],
+  "browser_execution": {
+    "goto": "http:/127.0.0.1:45212/escaped-the-approved-target",
+    "app_url": "http://127.0.0.1:45211",
+    "admitted": true,
+    "reasons": [],
+    "scenario_error": null,
+    "assertions": [
+      {
+        "target": "step-1-browser: browser step 1: expect_text 'served by port'",
+        "passed": true,
+        "detail": ""
+      },
+      {
+        "target": "x",
+        "passed": false,
+        "detail": "not present in any observed output"
+      }
+    ],
+    "browser_steps": [
+      "opened http://127.0.0.1:45211",
+      "goto http:/127.0.0.1:45212/escaped-the-approved-target",
+      "expect_text 'served by port': FOUND"
+    ],
+    "final_url": "http://127.0.0.1:45212/escaped-the-approved-target",
+    "hits_on_approved_app_url_port": [
+      "/"
+    ],
+    "hits_on_unvalidated_goto_port": [
+      "/escaped-the-approved-target"
+    ]
+  }
+}

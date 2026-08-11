@@ -1,0 +1,39 @@
+{
+  "scenario_name": "generated:ADJF-f1",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:27:02+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50290/hang",
+    "title": "",
+    "visible_text": "",
+    "screenshots": [],
+    "console_errors": [],
+    "network_failures": [
+      "GET http://127.0.0.1:50290/hang \u2014 net::ERR_ABORTED"
+    ],
+    "trace_path": null,
+    "steps": [
+      "ERROR: TimeoutError: Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"http://127.0.0.1:50290/hang\", waiting until \"domcontentloaded\"\n"
+    ],
+    "text_expectations": [],
+    "step_failures": []
+  },
+  "assertions": [],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: look at the screen"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-f1",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:28:03+00:00"
+}

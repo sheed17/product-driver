@@ -346,11 +346,31 @@ def shorten_preserving_identity(value: str, limit: int) -> str:
 def sanitize_filename(name: str) -> str:
     """Make an arbitrary label safe for use as a filename component.
 
-    Distinct labels always produce distinct filenames: two scenarios sharing an
-    80-character prefix must not share one evidence directory, or each would
-    overwrite the other's record and only one of them could ever be proven.
+    Distinct labels produce distinct filenames *as the filesystem compares
+    them*: two scenarios sharing an 80-character prefix must not share one
+    evidence directory, or each would overwrite the other's record and only one
+    of them could ever be proven.
+
+    Two things could previously merge two labels into one path, and the digest
+    could not separate either, because it was taken over the already-cleaned
+    string rather than over the input:
+
+    * **folding.** ``approve twice`` and ``approve-twice`` both clean to
+      ``approve-twice``; every label made only of punctuation cleaned to
+      ``unnamed``.
+    * **case.** ``gen-AUTH-01`` and ``gen-auth-01`` are two strings and one
+      directory on APFS and NTFS.
+
+    So the digest is taken over the *original* input and appended whenever
+    cleaning changed the string, or whenever the cleaned string is not already
+    case-folded. A label that is already lowercase and already filename-safe —
+    which every generated scenario id and every shipped scenario name is — is
+    returned unchanged.
     """
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
-    if not cleaned:
-        return "unnamed"
+    from hashlib import sha256
+
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "unnamed"
+    if cleaned != name or cleaned != cleaned.casefold():
+        digest = sha256(name.encode("utf-8")).hexdigest()[:_DIGEST_CHARS]
+        cleaned = f"{cleaned}-{digest}"
     return shorten_preserving_identity(cleaned, FILENAME_LIMIT)

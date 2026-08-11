@@ -1,0 +1,441 @@
+{
+  "EX-01": {
+    "name": "generated:EX-01",
+    "phase": "P3",
+    "description": "Backend state store is self-consistent: every run's current state is one the audit trail records\n\nrisk: safety_invariant (priority P1)\npurpose: Establish the invariant that underpins AC-3: any screen faithfully reading workflow_runs.state shows a state the backend actually holds and has recorded a transition into.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: inference_presented_as_fact\nrationale: AC-3 is a UI-backend consistency claim; the exercisable core is that the backend's own state store is coherent, so a screen reading it cannot surface a phantom state.\n\ngenerated at 2026-08-10T07:59:47+00:00 (stage=initial, wave 1)\nbecause of risk: The screen could show a state the backend does not currently hold (R1).\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no run in a state its latest audit event does not back",
+        "command": null,
+        "state_check": {
+          "name": "no run in a state its latest audit event does not back",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "0"
+    ],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "EX-02": {
+    "name": "generated:EX-02",
+    "phase": "P3",
+    "description": "An unverifiable action link renders a REJECTED screen, never an APPLIED one, and moves no state\n\nrisk: malformed_input (priority P1)\npurpose: Exercise the served exception/action surface with a garbage token and confirm it never claims an applied state the backend does not hold.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: success_without_verification\nrationale: The served HTML screen renders APPLIED/REJECTED from the signed-action intake; a forged token must produce REJECTED and leave the backend state store untouched and consistent.\n\ngenerated at 2026-08-10T07:59:47+00:00 (stage=initial, wave 1)\nbecause of risk: The screen reports success the backend never verified (R4), surfacing a state the backend does not hold (R1).\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/email/action?token=garbage.deadbeef",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "Action link rejected",
+            "REJECTED"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "state store still self-consistent after the rejected link",
+        "command": null,
+        "state_check": {
+          "name": "state store still self-consistent after the rejected link",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Action link rejected"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Neyma action applied",
+      "APPLIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "EX-04": {
+    "name": "generated:EX-04",
+    "phase": "P3",
+    "description": "Two racing unverified action links never yield an applied state or corrupt the store\n\nrisk: concurrency (priority P2)\npurpose: Race two garbage action submissions and confirm neither produces an APPLIED screen and the backend state store stays consistent (no partial/duplicate transition).\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: outcome_verification\nrationale: Concurrent clicks on a stale link are realistic; the invariant is that the screen never flips to a state the backend did not actually and singly perform.\n\ngenerated at 2026-08-10T07:59:47+00:00 (stage=initial, wave 1)\nbecause of risk: A race surfaces a state the backend does not hold (R1) / claims unverified success (R4).\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action?token=garbage.aaaa",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "REJECTED"
+            ],
+            "timeout_s": 5.0
+          },
+          {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action?token=garbage.bbbb",
+            "url": null,
+            "headers": {},
+            "json_body": null,
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "REJECTED"
+            ],
+            "timeout_s": 5.0
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "state store still self-consistent after the race",
+        "command": null,
+        "state_check": {
+          "name": "state store still self-consistent after the race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "REJECTED"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Neyma action applied",
+      "APPLIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "EX-05": {
+    "name": "generated:EX-05",
+    "phase": "P3",
+    "description": "After a callback restart the screen still reflects real persisted state, not an empty one\n\nrisk: restart_recovery (priority P2)\npurpose: Restart the callback service and confirm the backend state persists and the served surface answers coherently rather than showing an empty/placeholder state.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: failure_recovery\nrationale: AC-3 must survive a process restart: state is reconstructed per request from the DB, so a restart must not blank or desync the state the screen would show.\n\ngenerated at 2026-08-10T07:59:47+00:00 (stage=initial, wave 1)\nbecause of risk: After restart the screen shows empty/placeholder state instead of real persisted state (R5).\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 1500
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "GET",
+          "path": "/email/action",
+          "url": null,
+          "headers": {},
+          "json_body": null,
+          "body": null,
+          "expect_status": 400,
+          "expect_contains": [
+            "Missing action token"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "runs survive restart and remain state-consistent",
+        "command": null,
+        "state_check": {
+          "name": "runs survive restart and remain state-consistent",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Missing action token"
+    ],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "EX-06": {
+    "name": "generated:EX-06",
+    "phase": "P3",
+    "description": "The action surface cannot be triggered by the wrong HTTP verb\n\nrisk: retry_safety (priority P3)\npurpose: Confirm a POST to the GET-only email action link is refused (405) rather than applying an action, so a prefetch or wrong-verb request can never move state behind the screen.\nrequirement: U-UI-11: the screen never shows a state the backend does not currently hold\nproduct principle: outcome_verification\nrationale: An action screen that could be actuated by an unintended verb would let a link preview mutate state; the surface must enforce the method and leave state untouched.\n\ngenerated at 2026-08-10T07:59:47+00:00 (stage=initial, wave 1)\nbecause of risk: An unintended request applies an action, desyncing the screen from real state (R1/R4).\nrepository HEAD 6e8127d, active unit U-UI-11, founder context 0cb51e5158467505\nacceptance criteria consulted: the exception detail screen names the next action and who owns it (weight 3): PENDING; the screen shows the evidence the exception was raised from (weight 2): PENDING; the screen never shows a state the backend does not currently hold (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/email/action",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "token": "garbage.cccc"
+          },
+          "body": null,
+          "expect_status": 405,
+          "expect_contains": [
+            "Method not allowed"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "state store unchanged and consistent after the refused verb",
+        "command": null,
+        "state_check": {
+          "name": "state store unchanged and consistent after the refused verb",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM workflow_runs r WHERE r.state <> (SELECT a.to_state FROM audit_events a WHERE a.tenant = r.tenant AND a.run_id = r.id ORDER BY a.id DESC LIMIT 1)\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "Method not allowed"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "Neyma action applied",
+      "APPLIED"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

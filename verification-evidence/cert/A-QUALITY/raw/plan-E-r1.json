@@ -1,0 +1,476 @@
+{
+  "run_id": "cert-E-r1",
+  "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+  "active_unit_id": "U-AUTHZ-2",
+  "generation_basis": {
+    "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+    "task_hash": "2d1dafa8b0f077f5",
+    "active_unit_id": "U-AUTHZ-2",
+    "acceptance_criteria": [
+      "a supervisor can release an operation (weight 3): PENDING",
+      "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+      "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+      "every refusal is recorded in the audit log (weight 2): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "A release requested without a valid signed credential (unauthenticated / non-supervisor stand-in) is not refused, or is refused but still advances/claims the operation, violating 'a non-supervisor is refused and no release occurs'.",
+      "risk_category": "authorization",
+      "severity": "P0",
+      "basis": "AC 'a non-supervisor is refused and no release occurs'; /actions/signed and /email/action are the only release entry points, guarded by signature verification in handle_signed_action_callback (action_callback.py:137-193).",
+      "covered_by": [
+        "AUTHZ-S2",
+        "AUTHZ-S3",
+        "AUTHZ-S5"
+      ]
+    },
+    {
+      "id": "R6",
+      "description": "Replaying an already-used release approval releases twice (no idempotency), producing a duplicate external effect.",
+      "risk_category": "idempotency",
+      "severity": "P1",
+      "basis": "claim_operation_action guards single-use (action_callback.py:535-552); a role-gated release must preserve that guard \u2014 unverifiable without a valid token.",
+      "covered_by": []
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "AUTHZ-S1",
+      "proposed_id": "",
+      "title": "Canonical schema materializes the audit substrate refusals depend on",
+      "purpose": "Confirm the database the product builds actually contains security_events and audit_events, the only tables where a refused release can be durably recorded. If either is absent, the 'every refusal is recorded' criterion is impossible regardless of handler logic.",
+      "risk_category": "missing_data",
+      "priority": "P1",
+      "rationale": "AC-4 (every refusal recorded) is only meaningful if a durable audit table exists in the canonical schema the release path writes to.",
+      "requirement_reference": "U-AUTHZ-2 AC 'every refusal is recorded in the audit log'",
+      "product_principle_reference": "obligation_visibility",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "command",
+          "name": "canonical schema table list",
+          "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print(sorted(r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")))\"",
+          "expect_exit_code": 0,
+          "expect_contains": [
+            "security_events",
+            "audit_events"
+          ],
+          "timeout_s": null,
+          "request": null,
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [],
+      "expected_observations": [
+        "security_events",
+        "audit_events"
+      ],
+      "forbidden_observations": [],
+      "cleanup": [],
+      "isolation_note": "Builds a throwaway schema in a fresh tempdir; touches no shared DB or port, so it cannot contaminate any other scenario.",
+      "isolation_key": "canonical-schema-probe-tempdir",
+      "generated_from": [],
+      "confidence": 0.6,
+      "provenance": {
+        "generated_at": "2026-08-10T20:36:53+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A refused release has nowhere to be recorded because the audit substrate is missing from the schema.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "c28620eb-1c44-4e52-a464-f010e01bd640",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "AUTHZ-S2",
+      "proposed_id": "",
+      "title": "Unauthenticated release request is refused and releases nothing",
+      "purpose": "A release POST carrying no signed credential (the stand-in for a caller with no supervisor authority) must be refused at the front door and must not start or claim any operation.",
+      "risk_category": "authorization",
+      "priority": "P0",
+      "rationale": "Directly probes 'a non-supervisor is refused and no release occurs' for the strongest non-supervisor: a caller presenting no authority at all.",
+      "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+      "product_principle_reference": "authority_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": "",
+            "headers": {},
+            "json_body": {},
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "system actor never released an operation",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='slack_operation_started' AND actor='system'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Missing action token"
+      ],
+      "forbidden_observations": [
+        "operating in the TMS",
+        "RUNNING"
+      ],
+      "cleanup": [],
+      "isolation_note": "A refused request creates at most an append-only system-actor row; the oracle counts started-operations by the system actor (an invariant zero), so appended refusal rows cannot make another scenario pass or fail.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:36:53+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "An operation is released for a caller who presented no valid authority.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "c28620eb-1c44-4e52-a464-f010e01bd640",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "AUTHZ-S3",
+      "proposed_id": "",
+      "title": "Forged release token is rejected and the operation is never started",
+      "purpose": "A release request bearing an unverifiable (forged) signed token must be rejected as unverifiable and must not advance any operation to a started/running state.",
+      "risk_category": "authorization",
+      "priority": "P0",
+      "rationale": "Exercises the refusal path for a caller who fakes authority; pairs the HTTP refusal with a persisted-state oracle that no release occurred, as AC-2 requires.",
+      "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+      "product_principle_reference": "evidence_clarity",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "POST",
+            "path": "/actions/signed",
+            "url": "",
+            "headers": {},
+            "json_body": {
+              "token": "forged.invalid.token"
+            },
+            "body": "",
+            "expect_status": 401,
+            "expect_contains": [
+              "could not be verified"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "no system-actor operation start after forged token",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='slack_operation_started' AND actor='system'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "could not be verified"
+      ],
+      "forbidden_observations": [
+        "operating in the TMS",
+        "RUNNING"
+      ],
+      "cleanup": [],
+      "isolation_note": "Refused request is non-mutating except for possible append-only audit rows; the oracle is an invariant-zero count unaffected by appends.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.5,
+      "provenance": {
+        "generated_at": "2026-08-10T20:36:53+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "A forged credential is accepted and the operation is released.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "c28620eb-1c44-4e52-a464-f010e01bd640",
+        "kind": "ephemeral"
+      }
+    },
+    {
+      "id": "AUTHZ-S5",
+      "proposed_id": "",
+      "title": "Email release link with no token fails closed",
+      "purpose": "The email-channel release action link must refuse an unauthenticated release identically to the JSON route, so authorization cannot be bypassed by switching channels.",
+      "risk_category": "authorization",
+      "priority": "P1",
+      "rationale": "AC-2 must hold on every release entry point; the GET /email/action link is a distinct code path (query-token, GET) from the POST JSON route and could regress independently.",
+      "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+      "product_principle_reference": "channel_consistency",
+      "mode": "backend",
+      "setup": [],
+      "service_refs": [],
+      "actions": [
+        {
+          "kind": "request",
+          "name": "",
+          "command": "",
+          "expect_exit_code": 0,
+          "expect_contains": [],
+          "timeout_s": null,
+          "request": {
+            "name": "",
+            "method": "GET",
+            "path": "/email/action",
+            "url": "",
+            "headers": {},
+            "json_body": null,
+            "body": "",
+            "expect_status": 400,
+            "expect_contains": [
+              "Missing action token"
+            ],
+            "timeout_s": 5.0
+          },
+          "requests": [],
+          "browser_steps": [],
+          "state_check": null,
+          "fixture_name": "",
+          "fixture_content": "",
+          "service": "",
+          "wait_ms": null
+        }
+      ],
+      "persisted_state_checks": [
+        {
+          "name": "system actor never released via email link",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='slack_operation_started' AND actor='system'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        }
+      ],
+      "expected_observations": [
+        "Missing action token"
+      ],
+      "forbidden_observations": [
+        "operating in the TMS",
+        "RUNNING"
+      ],
+      "cleanup": [],
+      "isolation_note": "Read-only refusal path; no removable state created.",
+      "isolation_key": "data/active_workspace/driver_probe/workflow.sqlite3",
+      "generated_from": [],
+      "confidence": 0.45,
+      "provenance": {
+        "generated_at": "2026-08-10T20:36:53+00:00",
+        "task_hash": "2d1dafa8b0f077f5",
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria_consulted": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "files_consulted": [
+          "backend_generic"
+        ],
+        "diff_files_consulted": [],
+        "prior_failures_consulted": [],
+        "generating_risk": "The email release link accepts an unauthenticated release that the JSON route would refuse.",
+        "source_failures": [],
+        "source_clusters": [],
+        "stage": "initial",
+        "wave": 1,
+        "model": "opus",
+        "session_id": "c28620eb-1c44-4e52-a464-f010e01bd640",
+        "kind": "ephemeral"
+      }
+    }
+  ],
+  "coverage_summary": {
+    "total_scenarios": 4,
+    "by_risk_category": {
+      "missing_data": 1,
+      "authorization": 3
+    },
+    "by_priority": {
+      "P1": 2,
+      "P0": 2
+    },
+    "uncovered_risks": [
+      "Replaying an already-used release approval releases twice (no idempotency), producing a duplicate external effect."
+    ]
+  },
+  "assumptions": [
+    "The local app at 127.0.0.1:8001 is the run_action_callback_server callback service (service_refs: callback) bound to the driver_probe workspace DB at data/active_workspace/driver_probe/workflow.sqlite3.",
+    "Release of an operation is realized through the signed-action / operation-approval intake in action_callback.py; there is no separate unsigned 'release' HTTP endpoint.",
+    "The server is running when request-based scenarios execute; if it is not, those scenarios will fail on connection rather than on product behavior.",
+    "'security_events' is the recording table for authorization refusals at the transport boundary and 'audit_events' for run-scoped decisions, per phase2_tenant_first.py.",
+    "A refused release never carries actor='system' into a 'slack_operation_started' event, making that count an invariant zero usable as a 'no release occurred' oracle."
+  ],
+  "unresolved_questions": [
+    "What is the concrete release contract the builder added? The task names an 'operator console' but the console in-repo (operator_console.py) is a static HTML page; the only live release path requires a Slack- or delivery-signed token. No release endpoint that takes a supervisor identity in a driveable form is visible.",
+    "How is 'supervisor' represented and checked? The canonical schema (schema.py, phase2_tenant_first.py) has no roles table or role column, and code today authorizes by Slack user/channel allowlist. Without a persisted role model, the supervisor/non-supervisor distinction (AC-1, AC-2) cannot be authoritatively evaluated.",
+    "AC-1 (a supervisor CAN release) is not verifiable with the approved commands: none of them can mint a valid signed release token, and run_action_callback_server hardwires operation_router=None so the approval path is inert/unreachable. A signed-token fixture or a supervisor-authenticated release endpoint is needed to exercise the happy path.",
+    "AC-3 (cross-tenant supervisor cannot release another tenant's operation) is not exercisable: it requires two provisioned tenants each with a valid supervisor release token. Note workflow.py:906 documents that release_operation_commit is NOT tenant-qualified \u2014 this should be reviewed as a likely cross-tenant defect.",
+    "Does a refused release on the /actions/signed and /email/action routes actually write to security_events/audit_events? Those handlers (handle_signed_action_callback) return 401/400 but appear NOT to record, unlike the Slack operation-approval route \u2014 a probable AC-4 gap that needs a token-minting fixture to confirm end to end.",
+    "Is a before/after audit-log delta observable? With single approved sqlite commands and no ability to snapshot-then-compare, 'a NEW refusal row was written by THIS request' cannot be asserted precisely; only invariant properties (e.g. system actor never starts an operation) are robust."
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:30:53+00:00",
+      "basis": {
+        "task": "Add role-based authorization to the operator console so only a supervisor can release an operation.",
+        "task_hash": "2d1dafa8b0f077f5",
+        "active_unit_id": "U-AUTHZ-2",
+        "acceptance_criteria": [
+          "a supervisor can release an operation (weight 3): PENDING",
+          "a non-supervisor is refused and no release occurs (weight 3): PENDING",
+          "a supervisor of one tenant cannot release another tenant's operation (weight 3): PENDING",
+          "every refusal is recorded in the audit log (weight 2): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 4,
+      "accepted_ids": [
+        "AUTHZ-S1",
+        "AUTHZ-S2",
+        "AUTHZ-S3",
+        "AUTHZ-S5"
+      ],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": ""
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}

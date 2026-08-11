@@ -41,7 +41,7 @@ from .scenario_plan import (
     Priority,
     RiskCategory,
 )
-from .scenarios import Scenario
+from .scenarios import Scenario, _join_url
 
 #: Loopback hosts a generated request may address. A scenario that wants to talk
 #: to anything else is trying to produce an external effect, which is refused
@@ -78,6 +78,21 @@ _SECRET_MATERIAL: tuple[re.Pattern[str], ...] = (
         r"\$\{?(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GITHUB_TOKEN|GH_TOKEN"
         r"|[A-Z0-9_]*(?:_SECRET|_TOKEN|_PASSWORD|_API_KEY|_CREDENTIALS))\b"
     ),
+)
+
+#: What a generated fixture may be. An allowlist of *data* extensions, because
+#: the fixture's path is substituted into an approved command after validation
+#: has finished, and the approved commands in this repository are interpreters:
+#: ``python -m pytest … /abs/fixtures/x.py`` runs the model's file at collection
+#: with the driver's full authority. Inspecting the content for "code" is the
+#: wrong instrument — the payload is ordinary Python and there is nothing
+#: suspicious to match. Making a fixture inert by construction is.
+#:
+#: Deliberately absent: ``.py``, ``.sh``, ``.js``, ``.rb``, ``.pl``, ``.ini``,
+#: ``.cfg``, ``.pth``, ``.toml`` and anything else an interpreter executes,
+#: imports, collects or reads as configuration.
+FIXTURE_DATA_EXTENSIONS: frozenset[str] = frozenset(
+    {".json", ".jsonl", ".ndjson", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".xml"}
 )
 
 #: Upper bounds on anything a scenario can ask the executor to wait for. A
@@ -536,12 +551,22 @@ def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> l
             reasons.append(f"request timeout {request.timeout_s}s is outside 1..{MAX_TIMEOUT_S}s")
 
     # -- browser: relative or loopback navigation only ---------------------
+    #    An allowlist, and the same resolution the executor performs. A
+    #    denylist here was strictly *wider* than what the executor treated as
+    #    absolute, which is the one direction that cannot be tolerated.
     for action in generated.actions:
         for step in action.browser_steps:
-            if step.goto and step.goto.startswith(("http://", "https://")):
-                problem = _local_url_problem(step.goto, context.local_hosts)
-                if problem:
-                    reasons.append(f"unsupported external navigation: {problem}")
+            if step.goto is None:
+                continue
+            target, problem = resolve_browser_target(
+                app_url=context.app_url, goto=step.goto
+            )
+            if problem:
+                reasons.append(f"unsupported external navigation: {problem}")
+                continue
+            problem = _local_url_problem(target, context.local_hosts)
+            if problem:
+                reasons.append(f"unsupported external navigation: {problem}")
 
     # -- services: only what the base scenario declared --------------------
     unknown = sorted(set(generated.service_refs) - context.declared_services)
@@ -557,7 +582,7 @@ def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> l
                     "does not declare in service_refs"
                 )
 
-    # -- fixtures: a name, never a path ------------------------------------
+    # -- fixtures: a name, never a path, and always data --------------------
     for action in generated.actions:
         if action.kind != "fixture":
             continue
@@ -566,6 +591,17 @@ def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> l
             reasons.append(
                 f"fixture name {name!r} must be a bare filename; fixtures are written "
                 "into the run's evidence directory and nowhere else"
+            )
+            continue
+        suffix = Path(name).suffix.casefold()
+        if suffix not in FIXTURE_DATA_EXTENSIONS:
+            reasons.append(
+                f"fixture name {name!r} must end in one of "
+                f"{', '.join(sorted(FIXTURE_DATA_EXTENSIONS))}. A fixture is data the "
+                "product reads; its path is substituted into an approved command, and an "
+                "approved command here is an interpreter, so a fixture an interpreter "
+                "would execute, import or collect is model-authored code with the "
+                "driver's own authority."
             )
 
     # -- bounded waits and timeouts ----------------------------------------
@@ -632,8 +668,17 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
             "duplicate: this exercises the same situation with the same expectations as "
             "coverage that already exists, and adds nothing"
         )
-    if generated.id in context.existing_ids:
-        reasons.append(f"scenario id {generated.id!r} is already used in this run")
+    # Compared the way the filesystem compares them, and against permanent
+    # scenario names as well as generated ids. An exact duplicate was already
+    # refused here; one differing only in case was two scenarios in memory and
+    # one evidence directory on disk, and the second silently overwrote the
+    # first's record while the gate credited both.
+    if identity_key(generated.id) in {identity_key(i) for i in context.existing_ids}:
+        reasons.append(
+            f"scenario id {generated.id!r} is already used in this run (ids are compared "
+            "the way the filesystem compares them, so two ids differing only in case are "
+            "one evidence directory and therefore one identity)"
+        )
 
     # -- regression scope ---------------------------------------------------
     if generated.risk_category is RiskCategory.REGRESSION:
@@ -771,6 +816,79 @@ def resolve_http_target(
     return app_url.rstrip("/") + "/" + path.lstrip("/"), ""
 
 
+def identity_key(scenario_id: str) -> str:
+    """The key two scenario identities collide on, as the filesystem sees it.
+
+    Identity was case-sensitive in memory and case-insensitive on disk, and
+    nothing reconciled the two: ``gen-AUTH-01`` and ``gen-auth-01`` were two
+    required scenarios everywhere in the suite, the plan and the gate, and one
+    directory on APFS and NTFS. Unicode is normalised for the same reason —
+    two spellings of the same character are one filename.
+    """
+    import unicodedata
+
+    return unicodedata.normalize("NFC", scenario_id or "").casefold()
+
+
+def resolve_browser_target(*, app_url: str, goto: str | None) -> tuple[str, str]:
+    """Resolve where a browser step would actually navigate.
+
+    Returns ``(target, problem)``. A non-empty problem means refuse; the target
+    is then empty and nothing may navigate.
+
+    This is the single place that decides a browser step's destination, and
+    both validation and the executor call it, so the string that was inspected
+    and the string that is dialled cannot differ. They did: validation screened
+    a ``goto`` only when it began ``http://`` or ``https://``, while the
+    executor treated anything beginning with the four letters ``http`` as
+    absolute. Every string in between — ``http:/host/x``, ``http:host/x``,
+    ``http:\\\\host\\\\x``, ``httpx://host/x`` — was inspected by nothing and
+    navigated to anyway, and Chromium's parser puts the authority back.
+
+    So the shape rule is an allowlist rather than a denylist: an absolute
+    ``http(s)://`` URL, or a path beginning with a single ``/``. Anything else
+    is refused rather than normalised, because normalising an escape into
+    something that looks safe hides what was asked for. Whether an absolute URL
+    is *permitted* — loopback only — is a separate question, asked by the
+    validator with the run's configured host set; this decides only where the
+    string points.
+    """
+    raw = goto or ""
+    control = _control_character_problem(raw)
+    if control:
+        return "", f"browser navigation target contains a control character: {control}"
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw, ""
+
+    if not raw:
+        return "", "a browser step names an empty navigation target"
+
+    if _HAS_SCHEME.match(raw):
+        return "", (
+            f"browser navigation target {raw[:80]!r} carries a URL scheme, so it would "
+            "replace the approved app_url. Navigation must be either an http:// or "
+            "https:// URL, or a path beginning with '/'."
+        )
+    if raw.startswith("//") or raw.startswith("\\\\") or raw.startswith("\\"):
+        return "", (
+            f"browser navigation target {raw[:80]!r} is scheme-relative, so it would "
+            "address another host. A relative navigation must begin with a single '/'."
+        )
+    if not raw.startswith("/"):
+        return "", (
+            f"browser navigation target {raw[:80]!r} is neither an http:// or https:// "
+            "URL nor a path beginning with '/', so where it would navigate cannot be "
+            "determined."
+        )
+    if not app_url:
+        return "", (
+            f"browser navigation {raw[:80]!r} is relative but no base scenario supplies "
+            "an app_url, so there is nothing local to address"
+        )
+    return _join_url(app_url, raw), ""
+
+
 def _local_url_problem(url: str, local_hosts: frozenset[str]) -> str:
     try:
         parsed = urlparse(url)
@@ -833,12 +951,15 @@ def _dedupe(reasons: Iterable[str]) -> list[str]:
 __all__ = [
     "ApprovedCommands",
     "DEFAULT_LOCAL_HOSTS",
+    "FIXTURE_DATA_EXTENSIONS",
     "Priority",
     "ValidationContext",
     "grounding_tokens_from",
+    "identity_key",
     "permanent_signatures",
     "plan_signatures",
     "principle_tokens_from",
+    "resolve_browser_target",
     "validate_plan",
     "validate_scenario",
 ]

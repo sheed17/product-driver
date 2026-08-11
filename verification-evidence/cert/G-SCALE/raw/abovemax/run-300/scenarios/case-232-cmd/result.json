@@ -1,0 +1,45 @@
+{
+  "scenario_name": "case-232-cmd",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:56:54+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 232",
+      "exit_code": 0,
+      "stdout": "item=232 approval_rows=0\n",
+      "stderr": "",
+      "duration_s": 0.05264516600436764,
+      "timed_out": false,
+      "cwd": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work"
+    }
+  ],
+  "http": [],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "probe 232: exit == 0",
+      "passed": true,
+      "detail": "got exit=0"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "probe 232: contains 'item=232'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-232-cmd",
+  "origin": "generated",
+  "run_id": "gscale-300",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:56:54+00:00"
+}

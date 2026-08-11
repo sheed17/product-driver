@@ -304,6 +304,17 @@ class Scenario(BaseModel):
         return step.kind
 
 
+#: What a handwritten scenario may be called. A permanent scenario's name is
+#: also its identity: ``_assemble_suite`` uses it verbatim as the suite id, and
+#: the evidence directory is derived from that id by folding everything outside
+#: this set to ``-``. ``approve twice`` and a generated ``approve-twice`` were
+#: therefore two required scenarios and one directory — the second overwrote the
+#: first's record while the acceptance gate credited both as verified. Closing
+#: it where the name is authored costs nothing: every scenario this repository
+#: ships already complies.
+PERMANENT_NAME = re.compile(r"[A-Za-z0-9._-]+")
+
+
 def load_scenario(path: str | Path) -> Scenario:
     """Parse a scenario YAML file."""
     p = Path(os.path.expanduser(str(path)))
@@ -312,7 +323,16 @@ def load_scenario(path: str | Path) -> Scenario:
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError(f"Scenario file must contain a mapping: {p}")
-    return Scenario(**raw)
+    scenario = Scenario(**raw)
+    if not PERMANENT_NAME.fullmatch(scenario.name):
+        raise ValueError(
+            f"{p}: scenario name {scenario.name!r} must be made only of letters, digits, "
+            "'.', '_' and '-'. A handwritten scenario's name is used verbatim as its "
+            "identity in the suite and as the name of its evidence directory, and "
+            "characters outside that set fold together — two names that fold to the same "
+            "directory are one piece of evidence and two claims about it."
+        )
+    return scenario
 
 
 # --------------------------------------------------------------------------
@@ -328,6 +348,7 @@ class ScenarioExecutor:
         repo: Path,
         run_config: ScenarioRunConfig,
         artifact_dir: Path,
+        approved_commands: Any = None,
     ) -> None:
         self.repo = Path(repo)
         self.cfg = run_config
@@ -336,6 +357,11 @@ class ScenarioExecutor:
         self.service_logs: dict[str, str] = {}
         #: fixture name -> absolute path, for ``{{fixture:NAME}}`` substitution.
         self._fixtures: dict[str, str] = {}
+        #: The set validation approved this run's commands against, when there
+        #: is one. Held so that a command whose text *changed* between
+        #: validation and execution can be judged again against the same rule
+        #: rather than trusted because an earlier, different string passed.
+        self.approved_commands = approved_commands
 
     async def execute(self, scenario: Scenario) -> ScenarioResult:
         result = ScenarioResult(scenario_name=scenario.name, mode=scenario.mode)
@@ -587,6 +613,24 @@ class ScenarioExecutor:
         fixtures_dir = self.artifact_dir / "fixtures"
         fixtures_dir.mkdir(parents=True, exist_ok=True)
         path = fixtures_dir / sanitize_filename(step.fixture_name)
+        # Belt. The destination is derived here rather than supplied, so this
+        # should be true by construction — which is exactly why it is worth
+        # asserting: the fixture path is the one value that later becomes an
+        # argument to a subprocess, and "should be true by construction" is
+        # what was believed about the validated command string too.
+        if not self._inside_fixtures_dir(str(path)):
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"fixture {step.fixture_name}",
+                    passed=False,
+                    detail=(
+                        f"the fixture would be written to {path}, which is outside this "
+                        f"run's fixture directory {fixtures_dir}"
+                    ),
+                )
+            )
+            return
         try:
             path.write_text(step.fixture_content, encoding="utf-8")
         except OSError as exc:
@@ -617,6 +661,51 @@ class ScenarioExecutor:
             text,
         )
 
+    def _inside_fixtures_dir(self, candidate: str) -> bool:
+        """Whether ``candidate`` resolves inside this run's fixture directory."""
+        fixtures_dir = (self.artifact_dir / "fixtures").resolve()
+        try:
+            resolved = Path(candidate).resolve()
+        except (OSError, ValueError):
+            return False
+        return resolved != fixtures_dir and fixtures_dir in resolved.parents
+
+    def _substitution_problem(self, original: str | None, command: str) -> str:
+        """Why the *executed* command may not run, or "".
+
+        The safety boundary judged one string; ``{{fixture:NAME}}`` expansion
+        then handed a different string to the subprocess. Everything that made
+        the first string safe — no shell composition, an approved prefix, an
+        argument tail a human would recognise — was established about text that
+        no longer exists by the time anything runs.
+
+        So when substitution changed the command, the command it became is put
+        back through the same rule. Two things are asked of it: every path a
+        placeholder expanded to must be one this run wrote into its own fixture
+        directory, and the resulting string must still be approved. A command
+        that was not substituted is untouched — it *is* the string validation
+        judged.
+        """
+        if command == (original or ""):
+            return ""
+
+        for value in self._fixtures.values():
+            if value in command and not self._inside_fixtures_dir(value):
+                return (
+                    f"a fixture placeholder expanded to {value!r}, which is outside this "
+                    "run's fixture directory"
+                )
+
+        if self.approved_commands is None:
+            return ""
+        ok, why = self.approved_commands.approves(command)
+        if ok:
+            return ""
+        return (
+            f"the command validation approved ({original!r}) is not the command that would "
+            f"have run ({command!r}), and what it became is not approved: {why}"
+        )
+
     @staticmethod
     def _assert_browser_text(result: ScenarioResult, obs: BrowserObservation) -> None:
         """Score what the browser sequence asked for, and whether it happened.
@@ -632,7 +721,30 @@ class ScenarioExecutor:
         that is not on the page is not a passing interaction, and a scenario
         whose every step blew up would otherwise finish with no assertions at
         all — which ``ScenarioResult.passed`` reads as success.
+
+        And underneath both, the floor: a browser session that never loaded a
+        page is scored as a failure whatever else it did or did not record.
+        Every oracle here is derived from something the page produced, so a
+        session that reached no page produces no oracles, and ``all([])`` is
+        ``True``. That is how a navigation timeout, and separately a missing
+        playwright install, each came back as a PASSED required scenario with
+        zero assertions and verified evidence. The floor does not depend on
+        anyone remembering to record a failure at each degraded exit; it asks
+        the one question those exits all have in common.
         """
+        if not obs.page_loaded:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target="browser session: the product's page was loaded",
+                    passed=False,
+                    detail=(
+                        "no page was ever successfully loaded in this browser session, so "
+                        "nothing about the product was observed"
+                        + (f" ({obs.steps[-1]})" if obs.steps else "")
+                    ),
+                )
+            )
         for failure in obs.step_failures:
             result.assertions.append(
                 AssertionResult(
@@ -666,6 +778,12 @@ class ScenarioExecutor:
         merged.url = obs.url or merged.url
         merged.title = obs.title or merged.title
         merged.visible_text = obs.visible_text or merged.visible_text
+        # Extended, not replaced. `visible_text` keeps meaning "the last page",
+        # which is what the evaluator and the failure excerpts show; the
+        # accumulated channel is what the scenario-level expectations search,
+        # because a `forbidden` string is forbidden *anywhere* the run looked.
+        merged.observed_texts.extend(obs.observed_texts)
+        merged.page_loaded = merged.page_loaded or obs.page_loaded
         merged.screenshots.extend(obs.screenshots)
         merged.console_errors.extend(obs.console_errors)
         merged.network_failures.extend(obs.network_failures)
@@ -680,6 +798,17 @@ class ScenarioExecutor:
         self, result: ScenarioResult, spec: CommandSpec, runner: ProcessRunner
     ) -> None:
         command = self._substitute(spec.run)
+        refusal = self._substitution_problem(spec.run, command)
+        if refusal:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{spec.name or spec.run}: runs the command that was approved",
+                    passed=False,
+                    detail=refusal,
+                )
+            )
+            return
         res = await runner.run(command, timeout_s=spec.timeout_s or self.cfg.command_timeout_s)
         result.commands.append(res)
         if spec.expect_exit_code is not None:
@@ -706,6 +835,17 @@ class ScenarioExecutor:
         self, result: ScenarioResult, check: StateCheckSpec, runner: ProcessRunner
     ) -> None:
         command = self._substitute(check.command)
+        refusal = self._substitution_problem(check.command, command)
+        if refusal:
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{check.name or check.command}: runs the command that was approved",
+                    passed=False,
+                    detail=refusal,
+                )
+            )
+            return
         res = await runner.run(command, timeout_s=check.timeout_s or self.cfg.command_timeout_s)
         result.commands.append(res)
         combined = f"{res.stdout}\n{res.stderr}"
@@ -793,6 +933,15 @@ class ScenarioExecutor:
 
     @staticmethod
     def _observed_text(result: ScenarioResult) -> str:
+        """Everything the run actually observed — which is what was promised.
+
+        The generator is told that ``expected_observations`` and
+        ``forbidden_observations`` are matched against everything the run
+        observed, including visible browser text. While the browser channel
+        held only the final page, that was not true: a traceback rendered on
+        the first of two screens was not in the haystack, so the product's
+        primary UI-quality oracle scored PASS against text it had never seen.
+        """
         parts: list[str] = []
         for group in (result.setup, result.commands, result.teardown):
             for r in group:
@@ -801,6 +950,7 @@ class ScenarioExecutor:
         for obs in result.http:
             parts.append(obs.body_text)
         if result.browser:
+            parts.extend(result.browser.observed_texts)
             parts.append(result.browser.visible_text)
             parts.extend(result.browser.console_errors)
         return "\n".join(p for p in parts if p)
@@ -823,9 +973,15 @@ class ScenarioExecutor:
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            return BrowserObservation(
-                steps=["playwright is not installed; run: pip install playwright && playwright install chromium"]
+            detail = (
+                "playwright is not installed; run: pip install playwright && "
+                "playwright install chromium"
             )
+            # Recorded structurally as well as narratively. `obs.steps` is
+            # narration and nothing scores it, so this exit used to hand back an
+            # observation that looked, to everything downstream, exactly like a
+            # browser session with nothing to report.
+            return BrowserObservation(steps=[detail], step_failures=[detail])
 
         from .evidence import sanitize_filename
 
@@ -867,7 +1023,12 @@ class ScenarioExecutor:
             try:
                 if scenario.app_url:
                     await page.goto(scenario.app_url, wait_until="domcontentloaded", timeout=30_000)
+                    # Only after goto *returns*. A navigation that raised
+                    # reached no page, and the whole point of this flag is that
+                    # nothing downstream has to infer that from narration.
+                    obs.page_loaded = True
                     obs.steps.append(f"opened {scenario.app_url}")
+                    await self._capture_text(page, obs)
                 if spec.initial_screenshot:
                     obs.screenshots.append(await self._shot(page, shots_dir, f"{prefix}01-initial"))
 
@@ -884,8 +1045,17 @@ class ScenarioExecutor:
                 obs.visible_text = redact(
                     await page.evaluate("() => document.body ? document.body.innerText : ''")
                 )
+                if obs.visible_text and obs.visible_text not in obs.observed_texts:
+                    obs.observed_texts.append(obs.visible_text)
             except Exception as exc:
-                obs.steps.append(f"ERROR: {type(exc).__name__}: {redact(str(exc))}")
+                detail = f"ERROR: {type(exc).__name__}: {redact(str(exc))}"
+                obs.steps.append(detail)
+                # Structural as well as narrative, for the same reason as the
+                # missing-playwright exit above: `_assert_browser_text` reads
+                # `step_failures`, and a session-level failure recorded only in
+                # `steps` produced a scenario with no assertions, which
+                # `ScenarioResult.passed` reads as a pass.
+                obs.step_failures.append(detail)
                 with contextlib.suppress(Exception):
                     obs.screenshots.append(await self._shot(page, shots_dir, "99-error"))
             finally:
@@ -910,9 +1080,22 @@ class ScenarioExecutor:
     ) -> None:
         try:
             if step.goto is not None:
-                target = step.goto if step.goto.startswith("http") else _join_url(app_url, step.goto)
+                # The same resolution the safety boundary used, not a second
+                # opinion. The executor previously treated anything starting
+                # with the four letters `http` as an absolute URL while the
+                # validator only inspected `http://` and `https://`, so
+                # `http:/host/x` was never checked and was still navigated to:
+                # Chromium's parser reconstitutes the authority and the
+                # approved app_url is replaced.
+                from .scenario_validation import resolve_browser_target
+
+                target, problem = resolve_browser_target(app_url=app_url, goto=step.goto)
+                if problem:
+                    raise ValueError(problem)
                 await page.goto(target, wait_until="domcontentloaded", timeout=30_000)
+                obs.page_loaded = True
                 obs.steps.append(f"goto {target}")
+                await self._capture_text(page, obs)
             if step.click is not None:
                 await page.click(step.click, timeout=15_000)
                 obs.steps.append(f"clicked {step.click}")
@@ -953,6 +1136,21 @@ class ScenarioExecutor:
                 obs.screenshots.append(
                     await self._shot(page, shots_dir, f"{prefix}{idx:02d}-failed")
                 )
+
+    @staticmethod
+    async def _capture_text(page: Any, obs: BrowserObservation) -> None:
+        """Record the page text as it is now, into the accumulating channel.
+
+        Called at every point the page changes. Capturing only once, after the
+        step loop, discarded every intermediate screen — including the one the
+        scenario navigated away from because of what it showed.
+        """
+        with contextlib.suppress(Exception):
+            text = redact(
+                await page.evaluate("() => document.body ? document.body.innerText : ''")
+            )
+            if text:
+                obs.observed_texts.append(text)
 
     @staticmethod
     async def _shot(page: Any, shots_dir: Path, label: str) -> str:

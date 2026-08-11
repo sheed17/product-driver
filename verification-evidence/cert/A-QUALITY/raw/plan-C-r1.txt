@@ -1,0 +1,52 @@
+GENERATED SCENARIO PLAN — run cert-C-r1
+task: Add a read-only search/filter view over shipments. It performs no writes.
+active unit: U-RO-3
+
+7 generated case(s)
+risk categories exercised: authorization, boundary, concurrency, happy_path, malformed_input, missing_data, safety_invariant
+
+IDENTIFIED RISKS:
+  [P1 missing_data] Search by an existing reference returns empty or the wrong shipment, so operators cannot find a load they know exists.  (covered by S2)
+  [P0 safety_invariant] The read-only view performs a write — inserting a row on a miss, updating a last-accessed field, or logging an audit row — violating the read-only guarantee.  (covered by S3)
+  [P1 authorization] A write HTTP verb against the search route is accepted instead of refused, giving the read-only view a mutation surface.  (covered by S4)
+  [P1 malformed_input] A crafted reference value (SQL metacharacters) either errors with a 500 dead-end or dumps every shipment, breaking both correctness and the safe read-only contract.  (covered by S5)
+
+SCENARIOS:
+  [P1 happy_path] S1: Search by an existing reference returns that shipment
+      purpose: Exercise the core promise: a reference that exists in the store is returned by the search view.
+      grounded in: U-RO-3: a search by reference returns the matching shipment
+      because: Search by a known-existing reference returns empty or the wrong shipment.
+  [P1 missing_data] S2: Filter with no matches returns a stated no-result, not a blank view
+      purpose: Search for a reference that cannot exist and confirm the view responds successfully rather than crashing or silently returning nothing.
+      grounded in: U-RO-3: a filter with no matches says so rather than showing nothing
+      because: A no-match filter renders blank or errors instead of stating there are no matches.
+  [P0 safety_invariant] S3: A miss does not insert a shipment (read-only on the empty path)
+      purpose: Confirm that searching a reference that does not exist leaves the store unchanged — no lazy insert-on-miss.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: The view writes (inserts) a placeholder row when a searched reference is absent.
+  [P1 authorization] S4: Write verbs against the search route are refused and mutate nothing
+      purpose: Attempt a POST carrying a probe reference against the shipments route and confirm it is rejected and no row appears.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: POST/PUT to the search route is accepted and persists data.
+  [P1 malformed_input] S5: Reference with SQL metacharacters is handled safely and writes nothing
+      purpose: Submit a reference containing SQL-injection metacharacters and confirm it neither errors, nor dumps all shipments as a match, nor persists anything.
+      grounded in: U-RO-3: a search by reference returns the matching shipment
+      because: A metacharacter reference triggers a 500 or returns the full shipment set as if it matched.
+  [P2 boundary] S6: Empty/blank reference filter does not dead-end
+      purpose: Submit a search with an empty reference value and confirm the view responds without a 500 rather than crashing on the boundary.
+      grounded in: U-RO-3: a filter with no matches says so rather than showing nothing
+      because: An empty reference parameter causes an unhandled error instead of a defined empty/all result.
+  [P2 concurrency] S7: Concurrent identical searches stay read-only and consistent
+      purpose: Fire several identical searches simultaneously and confirm the store is unchanged and still queryable, proving concurrent reads induce no write.
+      grounded in: U-RO-3: the view performs no write of any kind
+      because: Concurrent search requests race into a write path (cache-fill upsert or access log) that mutates the store.
+
+UNRESOLVED QUESTIONS:
+  - The exact HTTP route and query-parameter names for the search/filter view are not shown in the material given; scenarios assume GET /shipments?reference=<val> and ?q=<val>. If the real endpoint differs (e.g. /api/shipments/search), the request paths must be updated.
+  - The persisted store's table and column names are assumed to be a 'shipments' table with a 'reference' column, based on the domain. The approved schema-probe command lists canonical tables and should be used to confirm the real table/column before trusting the state-check oracles.
+  - Whether shipment records live in data/active_workspace/driver_probe/workflow.sqlite3 (the only sqlite target on the approved list) is unconfirmed; if shipments are stored elsewhere, no approved command can read them and the no-write oracle cannot be evaluated.
+  - The exact copy the view emits for a no-match filter (AC2) is not specified, so S2 asserts only a successful, non-crashing response and no write rather than matching a literal message. The founder/spec should provide the required empty-state text so 'says so rather than showing nothing' can be verified against a literal.
+  - The expected HTTP status for a disallowed write verb (S4) is assumed to be 405; it could legitimately be 404 or 403. The persisted-state check is the real oracle, but the expected status should be confirmed against the routing implementation.
+  - No seed reference value is confirmed; S1 assumes 'SHP-1001' exists. A guaranteed seed/fixture reference for the happy path should be supplied.
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

@@ -1,0 +1,21 @@
+PASS  containment: the fixture has no git remote — remotes=''
+PASS  containment: the service binds 127.0.0.1 only
+PASS  containment: standard library only — []
+PASS  containment: no credential anywhere in the fixture
+PASS  a green suite is not evidence: the repo's own tests pass on the defect — OK
+PASS  DEFECT A: revocation is not written to the durable store — carrier C-2 active=true
+decision C-2|L-2 allowed=false
+PASS  DEFECT A: a restart resurrects the revoked carrier's authority — 200 / load L-5 rate=222 set_by=C-2 changes=1
+decision C-2|L-5 allowed=true
+PASS  DEFECT B: a carrier that already acted keeps writing after revocation — 200 / load L-1 rate=9999 set_by=C-1 changes=2
+decision C-1|L-1 allowed=true
+PASS  the fresh-carrier refusal works, so the boundary is not simply absent — (403, {'error': 'carrier is not authorized', 'carrier': 'C-2'})
+PASS  the obvious fix keeps the repo's own suite green
+PASS  the obvious fix CLOSES defect A (store records the revocation) — carrier C-2 active=false
+decision C-2|L-2 allowed=false
+PASS  the obvious fix CLOSES defect A (restart no longer resurrects) — 403 / load L-5 rate=0 set_by=none changes=0
+decision C-2|L-5 allowed=false
+PASS  RESIDUAL: the obvious fix LEAVES defect B failing — 200 / load L-1 rate=9999 set_by=C-1 changes=2
+decision C-1|L-1 allowed=true
+
+13/13 checks passed

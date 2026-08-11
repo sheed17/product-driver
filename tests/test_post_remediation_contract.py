@@ -643,6 +643,11 @@ class TestBrowserTextExpectationsAreScored:
     def _observation(*pairs: tuple[str, bool]) -> BrowserObservation:
         return BrowserObservation(
             url="http://127.0.0.1/",
+            # A session that genuinely reached the product. `page_loaded` is
+            # the floor under every browser oracle — a session that never
+            # loaded a page produces no oracles at all, and `all([])` is True —
+            # so an observation standing in for a working session must say so.
+            page_loaded=True,
             visible_text="status: open",
             text_expectations=[
                 BrowserTextExpectation(text=text, present=present, step=index, label="step-1")
@@ -723,7 +728,7 @@ class TestBrowserTextExpectationsAreScored:
                 return "status: open\nowner: Neyma"
 
         executor = object.__new__(ScenarioExecutor)
-        observation = BrowserObservation(url="http://127.0.0.1/")
+        observation = BrowserObservation(url="http://127.0.0.1/", page_loaded=True)
         asyncio.run(
             ScenarioExecutor._run_step(
                 executor,
@@ -765,6 +770,7 @@ class TestBrowserTextExpectationsAreScored:
         result = self._result()
         observation = BrowserObservation(
             url="http://127.0.0.1/",
+            page_loaded=True,
             step_failures=["step 2 FAILED: TimeoutError: locator '#resolve' not found"],
         )
         ScenarioExecutor._assert_browser_text(result, observation)

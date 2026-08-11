@@ -1,0 +1,49 @@
+{
+  "scenario_name": "generated:ADJF-f3ctl",
+  "mode": "browser",
+  "started_at": "2026-08-10T20:28:06+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "",
+  "commands": [],
+  "http": [],
+  "browser": {
+    "url": "http://127.0.0.1:50364/boom",
+    "title": "",
+    "visible_text": "Traceback (most recent call last):\n  File \"app.py\", line 1, in handler\nRuntimeError: exception detail unavailable",
+    "screenshots": [
+      "out/f3ctl/scenarios/ADJF-f3ctl/screenshots/first-look-at-the-failing-screen-01-initial.png",
+      "out/f3ctl/scenarios/ADJF-f3ctl/screenshots/first-look-at-the-failing-screen-02-initial.png",
+      "out/f3ctl/scenarios/ADJF-f3ctl/screenshots/first-look-at-the-failing-screen-99-final.png"
+    ],
+    "console_errors": [],
+    "network_failures": [],
+    "trace_path": null,
+    "steps": [
+      "opened http://127.0.0.1:50364/",
+      "goto http://127.0.0.1:50364/boom"
+    ],
+    "text_expectations": [],
+    "step_failures": []
+  },
+  "assertions": [
+    {
+      "kind": "forbidden",
+      "target": "Traceback (most recent call last):",
+      "passed": false,
+      "detail": "present in observed output"
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [
+    "01. browser: first look at the failing screen"
+  ],
+  "fixtures_written": [],
+  "scenario_id": "ADJF-f3ctl",
+  "origin": "generated",
+  "run_id": "ADJF",
+  "iteration": 1,
+  "written_at": "2026-08-10T20:28:06+00:00"
+}

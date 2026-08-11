@@ -1,0 +1,45 @@
+{
+  "scenario_name": "case-004-cmd",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:56:18+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [
+    {
+      "command": "/Users/sammyfammy/neyma-product-driver/.venv/bin/python /Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work/probe.py 4",
+      "exit_code": 0,
+      "stdout": "item=4 approval_rows=0\n",
+      "stderr": "",
+      "duration_s": 0.06347029199969256,
+      "timed_out": false,
+      "cwd": "/Users/sammyfammy/neyma-product-driver/verification-evidence/cert/G-SCALE/work"
+    }
+  ],
+  "http": [],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "probe 4: exit == 0",
+      "passed": true,
+      "detail": "got exit=0"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "probe 4: contains 'item=4'",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-004-cmd",
+  "origin": "generated",
+  "run_id": "gscale-200gap",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:56:18+00:00"
+}

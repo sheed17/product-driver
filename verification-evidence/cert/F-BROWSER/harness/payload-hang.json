@@ -1,0 +1,49 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "the screen may never render at all",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    }
+  ],
+  "assumptions": [],
+  "unresolved_questions": [],
+  "scenarios": [
+    {
+      "id": "H01-app-never-renders",
+      "title": "the detail screen must render its status",
+      "purpose": "a screen that never renders cannot be said to state anything at all",
+      "risk_category": "ui_backend_disagreement",
+      "priority": "P0",
+      "rationale": "the only oracle is what the page shows",
+      "generating_risk": "the page may hang and never render",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "open the screen",
+          "browser_steps": [
+            {
+              "goto": "/",
+              "screenshot": "detail"
+            },
+            {
+              "expect_text": "status: open"
+            },
+            {
+              "expect_text": "Exception EX-1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

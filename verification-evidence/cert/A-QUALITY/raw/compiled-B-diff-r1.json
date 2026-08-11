@@ -1,0 +1,833 @@
+{
+  "U042-S1": {
+    "name": "generated:U042-S1",
+    "phase": "P3",
+    "description": "No external payment ever lands without a matching recorded approval\n\nrisk: safety_invariant (priority P0)\npurpose: Prove the governed write path has produced no completed external payment, and that no completed write exists that lacks a preceding recorded approval (queued intent) with the same approval_id.\nrequirement: U-042 AC: no payment effect occurs without a recorded approval\nproduct principle: success_without_verification\nrationale: U-042 ships dark and the deployed execution kernel is None, so the load-bearing invariant right now is that zero payment effects occur and none could occur without a recorded decision.\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: a payment could reach the adapter/ledger with no recorded approval behind it\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteCompleted' AND json_extract(payload_json,'$.state')='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type IN ('GovernedWriteCompleted','GovernedWriteEscalated') AND json_extract(payload_json,'$.approval_id') NOT IN (SELECT json_extract(payload_json,'$.approval_id') FROM security_events WHERE event_type='GovernedWriteIntentQueued')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no verified external payment landed",
+        "command": null,
+        "state_check": {
+          "name": "no verified external payment landed",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteCompleted' AND json_extract(payload_json,'$.state')='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "every completed write has a recorded approval",
+        "command": null,
+        "state_check": {
+          "name": "every completed write has a recorded approval",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type IN ('GovernedWriteCompleted','GovernedWriteEscalated') AND json_extract(payload_json,'$.approval_id') NOT IN (SELECT json_extract(payload_json,'$.approval_id') FROM security_events WHERE event_type='GovernedWriteIntentQueued')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S2": {
+    "name": "generated:U042-S2",
+    "phase": "P3",
+    "description": "Unauthenticated governed tap is refused and records no approval or write\n\nrisk: authorization (priority P0)\npurpose: Send a governed-write approval tap to /slack/actions without a valid Slack signature and confirm it is refused (401) and produces no queued intent and no completed write.\nrequirement: U-042 AC: an operator without approval authority is refused\nproduct principle: authority_clarity\nrationale: The only door to an invoice-write effect is the Slack-signed tap; an unsigned tap must be refused before any decision is recorded or any effect occurs.\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: an unauthenticated tap could advance the pipeline or cause a write\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-INTRUDER\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"probe-unsigned-042-token\"}]}"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "invalid Slack signature"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no verified external payment after unsigned tap",
+        "command": null,
+        "state_check": {
+          "name": "no verified external payment after unsigned tap",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteCompleted' AND json_extract(payload_json,'$.state')='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no queued intent named by the unsigned probe token",
+        "command": null,
+        "state_check": {
+          "name": "no queued intent named by the unsigned probe token",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "invalid Slack signature"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "GovernedWriteCompleted",
+      "VERIFIED"
+    ],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S3": {
+    "name": "generated:U042-S3",
+    "phase": "P3",
+    "description": "\"Paid exactly once\" is enforced by the database, not by hope\n\nrisk: idempotency (priority P0)\npurpose: Confirm the single-use decision claim and the effect ledger's commit-once/live-hold constraints exist structurally in the live workspace DB, so a replayed approval cannot record a second decision or reserve the same effect twice.\nrequirement: U-042 AC: an approved invoice is paid exactly once\nproduct principle: outcome_verification\nrationale: Single payment turns on a unique claim key plus a single-commitment ledger index; if either constraint is absent, a double-tap or retry can double-pay.\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: a duplicate approval could be claimed twice or commit the same effect twice\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('ix_effect_grants_commit_once','ix_effect_grants_live_hold')\"",
+          "contains": [
+            "2"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "single-use claim key is tenant-scoped and unique",
+        "command": null,
+        "state_check": {
+          "name": "single-use claim key is tenant-scoped and unique",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "ledger enforces one live commitment per effect",
+        "command": null,
+        "state_check": {
+          "name": "ledger enforces one live commitment per effect",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM sqlite_master WHERE type='index' AND name IN ('ix_effect_grants_commit_once','ix_effect_grants_live_hold')\"",
+          "contains": [
+            "2"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "PRIMARY KEY (tenant, action_id)"
+    ],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S4": {
+    "name": "generated:U042-S4",
+    "phase": "P3",
+    "description": "Approval and claim state is tenant-first, so another tenant cannot see or claim it\n\nrisk: cross_tenant (priority P0)\npurpose: Confirm the decision claim table, the audit/decision event table, and the effect ledger are keyed tenant-first in the live DB, so one tenant's queued invoice-write intent or single-use claim is neither visible nor claimable by another tenant.\nrequirement: U-042 AC: an invoice belonging to another tenant is never visible or approvable\nproduct principle: authority_clarity\nrationale: Tenant isolation for approvals is a structural property of the keys; a claim keyed on action_id alone would let one tenant's approval consume another's, and a non-tenant-first event key would leak decisions across tenants.\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: a cross-tenant read or claim of another tenant's invoice approval\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [],
+    "readiness": [],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='security_events'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "claim table is tenant-first",
+        "command": null,
+        "state_check": {
+          "name": "claim table is tenant-first",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "decision/audit events are tenant-first",
+        "command": null,
+        "state_check": {
+          "name": "decision/audit events are tenant-first",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='security_events'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "effect ledger carries a non-null tenant",
+        "command": null,
+        "state_check": {
+          "name": "effect ledger carries a non-null tenant",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='effect_grants'\"",
+          "contains": [
+            "tenant"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "PRIMARY KEY (tenant, action_id)",
+      "PRIMARY KEY (tenant, id)"
+    ],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S5": {
+    "name": "generated:U042-S5",
+    "phase": "P3",
+    "description": "Recorded approval / claim store survives a callback restart\n\nrisk: restart_recovery (priority P1)\npurpose: Restart the callback service and confirm the durable decision store (single-use claims + decision events) is intact and queryable afterward, and the server is live, so a restart neither wipes a recorded approval nor re-opens a consumed claim.\nrequirement: U-042 AC: approval survives a restart\nproduct principle: failure_recovery\nrationale: Approvals and single-use claims live in the on-disk SQLite file while the checkpoint handle is in-memory; a restart must preserve the durable decisions (and not reset a claim, which would allow re-consume).\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: a restart could drop a recorded approval or reset a single-use claim\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "restart_service",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "callback",
+        "wait_ms": null
+      },
+      {
+        "kind": "wait",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": 2000
+      },
+      {
+        "kind": "request",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": {
+          "name": "",
+          "method": "POST",
+          "path": "/slack/actions",
+          "url": null,
+          "headers": {},
+          "json_body": {
+            "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-PROBE\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"post-restart-probe\"}]}"
+          },
+          "body": null,
+          "expect_status": 401,
+          "expect_contains": [
+            "invalid Slack signature"
+          ],
+          "timeout_s": 5.0
+        },
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "",
+        "command": null,
+        "state_check": {
+          "name": "",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "durable claim store still present and tenant-first after restart",
+        "command": null,
+        "state_check": {
+          "name": "durable claim store still present and tenant-first after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT sql FROM sqlite_master WHERE type='table' AND name='operation_action_claims'\"",
+          "contains": [
+            "PRIMARY KEY (tenant, action_id)"
+          ],
+          "not_contains": [],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "decision events still queryable after restart",
+        "command": null,
+        "state_check": {
+          "name": "decision events still queryable after restart",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteCompleted' AND json_extract(payload_json,'$.state')='VERIFIED'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "invalid Slack signature"
+    ],
+    "expect_state": [],
+    "forbidden": [],
+    "teardown": [],
+    "env": {}
+  },
+  "U042-S6": {
+    "name": "generated:U042-S6",
+    "phase": "P3",
+    "description": "Two simultaneous unauthenticated taps never both cause an effect\n\nrisk: concurrency (priority P1)\npurpose: Fire two identical governed taps at /slack/actions simultaneously without a valid signature and confirm both are refused and no queued intent or completed write results from the race.\nrequirement: U-042 AC: an approved invoice is paid exactly once\nproduct principle: outcome_verification\nrationale: A double-click/retry race is the canonical way single-payment breaks; even at the authentication boundary two simultaneous taps must not both advance the pipeline or produce an effect.\n\ngenerated at 2026-08-10T20:45:56+00:00 (stage=initial, wave 1)\nbecause of risk: a concurrent double-tap could produce two decisions or two writes\nrepository HEAD 6e8127d, active unit U-042, founder context 0cb51e5158467505\nacceptance criteria consulted: an approved invoice is paid exactly once (weight 3): PENDING; no payment effect occurs without a recorded approval (weight 3): PENDING; an operator without approval authority is refused (weight 2): PENDING; approval survives a restart (weight 2): PENDING; an invoice belonging to another tenant is never visible or approvable (weight 3): PENDING",
+    "mode": "backend",
+    "setup": [],
+    "services": [
+      {
+        "name": "callback",
+        "command": ".venv/bin/python scripts/run_action_callback_server.py --host 127.0.0.1 --port 8001 --workspace data/active_workspace/driver_probe --db data/active_workspace/driver_probe/workflow.sqlite3",
+        "env": {}
+      }
+    ],
+    "readiness": [
+      {
+        "tcp": "127.0.0.1:8001"
+      }
+    ],
+    "app_url": "http://127.0.0.1:8001",
+    "requests": [],
+    "commands": [],
+    "fixtures": [],
+    "browser": null,
+    "steps": [
+      {
+        "kind": "parallel_requests",
+        "name": "",
+        "command": null,
+        "state_check": null,
+        "request": null,
+        "requests": [
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-RACE\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"race-probe-042\"}]}"
+            },
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "invalid Slack signature"
+            ],
+            "timeout_s": 5.0
+          },
+          {
+            "name": "",
+            "method": "POST",
+            "path": "/slack/actions",
+            "url": null,
+            "headers": {},
+            "json_body": {
+              "payload": "{\"type\":\"block_actions\",\"user\":{\"id\":\"U-RACE\"},\"channel\":{\"id\":\"C-PROBE\"},\"actions\":[{\"value\":\"race-probe-042\"}]}"
+            },
+            "body": null,
+            "expect_status": 401,
+            "expect_contains": [
+              "invalid Slack signature"
+            ],
+            "timeout_s": 5.0
+          }
+        ],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no completed write from the race",
+        "command": null,
+        "state_check": {
+          "name": "no completed write from the race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type IN ('GovernedWriteCompleted','GovernedWriteEscalated')\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      },
+      {
+        "kind": "state_check",
+        "name": "no queued intent from the race",
+        "command": null,
+        "state_check": {
+          "name": "no queued intent from the race",
+          "command": "sqlite3 data/active_workspace/driver_probe/workflow.sqlite3 \"SELECT count(*) FROM security_events WHERE event_type='GovernedWriteIntentQueued'\"",
+          "contains": [
+            "0"
+          ],
+          "not_contains": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "timeout_s": null
+        },
+        "request": null,
+        "requests": [],
+        "browser": null,
+        "fixture_name": "",
+        "fixture_content": "",
+        "service": "",
+        "wait_ms": null
+      }
+    ],
+    "expect_visible": [
+      "invalid Slack signature"
+    ],
+    "expect_state": [],
+    "forbidden": [
+      "GovernedWriteCompleted"
+    ],
+    "teardown": [],
+    "env": {}
+  }
+}

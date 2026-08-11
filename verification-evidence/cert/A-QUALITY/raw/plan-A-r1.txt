@@ -1,0 +1,51 @@
+GENERATED SCENARIO PLAN — run cert-A-r1
+task: Improve the exception detail screen so operators can understand the next action.
+active unit: U-UI-11
+
+5 generated case(s)
+risk categories exercised: concurrency, malformed_input, restart_recovery, retry_safety, safety_invariant
+identified but NOT exercised: The exception detail screen could display a workflow state that no longer matches the backend (e.g. after an action was applied through another channel), so an operator acts on a stale picture.; The evidence the exception was raised from may be missing, unlinked, or unrenderable on the screen.
+
+IDENTIFIED RISKS:
+  [P1 stale_state] The exception detail screen could display a workflow state that no longer matches the backend (e.g. after an action was applied through another channel), so an operator acts on a stale picture.  (NOT covered)
+  [P2 missing_data] The evidence the exception was raised from may be missing, unlinked, or unrenderable on the screen.  (NOT covered)
+  [P2 restart_recovery] After a service restart the screen could show empty or placeholder state rather than the real persisted backend state.  (covered by EX-05)
+
+SCENARIOS:
+  [P1 safety_invariant] EX-01: Backend state store is self-consistent: every run's current state is one the audit trail records
+      purpose: Establish the invariant that underpins AC-3: any screen faithfully reading workflow_runs.state shows a state the backend actually holds and has recorded a transition into.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: The screen could show a state the backend does not currently hold (R1).
+  [P1 malformed_input] EX-02: An unverifiable action link renders a REJECTED screen, never an APPLIED one, and moves no state
+      purpose: Exercise the served exception/action surface with a garbage token and confirm it never claims an applied state the backend does not hold.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: The screen reports success the backend never verified (R4), surfacing a state the backend does not hold (R1).
+  [P2 concurrency] EX-04: Two racing unverified action links never yield an applied state or corrupt the store
+      purpose: Race two garbage action submissions and confirm neither produces an APPLIED screen and the backend state store stays consistent (no partial/duplicate transition).
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: A race surfaces a state the backend does not hold (R1) / claims unverified success (R4).
+  [P2 restart_recovery] EX-05: After a callback restart the screen still reflects real persisted state, not an empty one
+      purpose: Restart the callback service and confirm the backend state persists and the served surface answers coherently rather than showing an empty/placeholder state.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: After restart the screen shows empty/placeholder state instead of real persisted state (R5).
+  [P3 retry_safety] EX-06: The action surface cannot be triggered by the wrong HTTP verb
+      purpose: Confirm a POST to the GET-only email action link is refused (405) rather than applying an action, so a prefetch or wrong-verb request can never move state behind the screen.
+      grounded in: U-UI-11: the screen never shows a state the backend does not currently hold
+      because: An unintended request applies an action, desyncing the screen from real state (R1/R4).
+
+ASSUMPTIONS:
+  - The 'callback' service serves http://127.0.0.1:8001 and reads the workspace DB at data/active_workspace/driver_probe/workflow.sqlite3 (the only approved sqlite target).
+  - workflow_runs.state reflects the backend's current state for a run, and audit_events.to_state records the state transitions; runs with an audit trail should have state equal to their latest to_state.
+  - The served HTML surface (_render_html) emits the literal strings 'Neyma action applied'/'APPLIED' on success and 'REJECTED' with a titled reason on rejection.
+
+UNRESOLVED QUESTIONS:
+  - The rich exception/packet detail screen (packet_page.py, operator_console.py) is static generated HTML, not served over HTTP; with the browser unavailable and no approved command that renders it, the ACs 'names the next action and who owns it' and 'shows the evidence the exception was raised from' cannot be directly exercised — only the backend state-integrity AC and the served callback error screen are reachable.
+  - No diff was available, so I could not confirm which artifact the builder changed for U-UI-11; scenarios assume the change is observable through the callback surface at 8001 and/or the workspace DB.
+  - No approved command can mint a valid signed action token, so a successful action -> post-action screen refresh (the positive UI-backend-consistency path) cannot be exercised; only rejection/degradation paths are reachable.
+  - packet_page.py renders state, actions, evidence and audit history but no explicit accountable-owner field was found — AC-1's 'who owns it' requirement may be unmet and needs a scenario that can actually read the rendered screen (browser or a render command) to verify.
+  - Is there any HTTP route that returns the exception DETAIL screen (state + next action + owner + evidence) as opposed to the action-result screen? If one exists but was not found, additional AC-1/AC-2 scenarios become possible.
+
+REJECTED PROPOSALS:
+  EX-03: unknown risk_category 'dead_end_error'
+
+This describes verified coverage, not exhaustive correctness. Situations nobody thought of are not covered by anything above.

@@ -1,0 +1,63 @@
+{
+  "scenario_name": "case-078-http",
+  "mode": "backend",
+  "started_at": "2026-08-10T07:57:03+00:00",
+  "setup": [],
+  "services_started": [],
+  "readiness_ok": true,
+  "readiness_detail": "all readiness checks passed",
+  "commands": [],
+  "http": [
+    {
+      "name": "read item 78",
+      "method": "GET",
+      "url": "http://127.0.0.1:8791/item/78",
+      "status": 200,
+      "error": null,
+      "body_text": "{\"item\": 78, \"label\": \"item-78\", \"owner\": \"tenant-a\", \"state\": \"open\"}",
+      "json_body": {
+        "item": 78,
+        "label": "item-78",
+        "owner": "tenant-a",
+        "state": "open"
+      },
+      "duration_s": 0.0006640829960815609
+    }
+  ],
+  "browser": null,
+  "assertions": [
+    {
+      "kind": "expect_state",
+      "target": "GET http://127.0.0.1:8791/item/78: status == 200",
+      "passed": true,
+      "detail": "got 200"
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/78: contains '\"item\": 78'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "expect_visible",
+      "target": "GET http://127.0.0.1:8791/item/78: contains '\"owner\": \"tenant-a\"'",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "kind": "forbidden",
+      "target": "tenant-b",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "teardown": [],
+  "error": null,
+  "steps_performed": [],
+  "fixtures_written": [],
+  "scenario_id": "case-078-http",
+  "origin": "generated",
+  "run_id": "gscale-500",
+  "iteration": 3,
+  "written_at": "2026-08-10T07:57:03+00:00"
+}

@@ -1,0 +1,1787 @@
+{
+  "aggregate": {
+    "runs": 15,
+    "proposed": 35,
+    "accepted": 34,
+    "useful": 26,
+    "useful_ignoring_U4": 31,
+    "acceptance_rate": 0.971,
+    "useful_rate_of_accepted": 0.765,
+    "zero_coverage_runs": [
+      "A-r2",
+      "A2-diff-r1",
+      "B-diff-r2",
+      "C-r2",
+      "D-r2",
+      "E-r2",
+      "F-r2",
+      "G-r2"
+    ],
+    "rejection_taxonomy": {
+      "invented-risk-category": 1
+    },
+    "vacuity_flag_counts": {
+      "V2:numeric-substring-trap": 41,
+      "V3:numeric-substring-oracle": 25,
+      "V6:near-vacuous-global-observation": 1
+    },
+    "bare_suite_prior_definition": 0,
+    "contains_broad_suite_command": 0,
+    "strict_grounded": 34,
+    "cited_requirement_names_absent_concepts": 31,
+    "scenarios_missing_a_TASK_CENTRAL_concept": 19,
+    "prior_grounded_definition": 34,
+    "effect_family_cases": 8,
+    "effect_family_with_state_oracle": 8,
+    "infrastructure": {
+      "waves_total": 18,
+      "waves_failed": 11,
+      "waves_empty_payload": 0,
+      "waves_zero_scenarios": 0,
+      "errors": [
+        {
+          "tag": "A-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "A2-diff-r1",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "A2-diff-r1",
+          "wave": 2,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "B-diff-r1",
+          "wave": 2,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "B-diff-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "B-diff-r2",
+          "wave": 2,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "C-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "D-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "E-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "F-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        },
+        {
+          "tag": "G-r2",
+          "wave": 1,
+          "error": "GenerationSessionError: the generator session ended in error (success)"
+        }
+      ]
+    }
+  },
+  "per_run": [
+    {
+      "tag": "A-r1",
+      "task_key": "A",
+      "inherited": true,
+      "elapsed_s": 340.8,
+      "proposed": 6,
+      "accepted": 5,
+      "USEFUL": 2,
+      "USEFUL_ignoring_U4": 5,
+      "rejected": 1,
+      "zero_coverage": false,
+      "rejection_reasons": {
+        "invented-risk-category": 1
+      },
+      "accepted_categories": [
+        "concurrency",
+        "malformed_input",
+        "restart_recovery",
+        "retry_safety",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [
+        "concurrency",
+        "restart_recovery",
+        "retry_safety"
+      ],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "GET /email/action",
+        "POST /email/action"
+      ],
+      "n_distinct_request_endpoints": 2,
+      "n_distinct_oracle_commands": 1,
+      "n_distinct_oracle_assertions": 1,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 5,
+      "prior_grounded_definition": 5,
+      "mechanically_scorable": 5,
+      "scenarios_with_vacuity_flag": 5,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 5,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 2,
+      "effect_family_with_state_oracle": 2,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "EX-01",
+          "title": "Backend state store is self-consistent: every run's current state is one the audit trail records",
+          "risk_category": "safety_invariant",
+          "priority": "P1",
+          "action_kinds": [
+            "state_check"
+          ],
+          "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+          "product_principle_reference": "inference_presented_as_fact",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')",
+            "V6:near-vacuous-global-observation('0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "currently"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "EX-02",
+          "title": "An unverifiable action link renders a REJECTED screen, never an APPLIED one, and moves no state",
+          "risk_category": "malformed_input",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+          "product_principle_reference": "success_without_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "currently"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "EX-04",
+          "title": "Two racing unverified action links never yield an applied state or corrupt the store",
+          "risk_category": "concurrency",
+          "priority": "P2",
+          "action_kinds": [
+            "parallel_requests"
+          ],
+          "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "currently"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": [
+            "U4 off-surface category concurrency"
+          ]
+        },
+        {
+          "id": "EX-05",
+          "title": "After a callback restart the screen still reflects real persisted state, not an empty one",
+          "risk_category": "restart_recovery",
+          "priority": "P2",
+          "action_kinds": [
+            "restart_service",
+            "wait",
+            "request"
+          ],
+          "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "currently"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": [
+            "U4 off-surface category restart_recovery"
+          ]
+        },
+        {
+          "id": "EX-06",
+          "title": "The action surface cannot be triggered by the wrong HTTP verb",
+          "risk_category": "retry_safety",
+          "priority": "P3",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-UI-11: the screen never shows a state the backend does not currently hold",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "backend",
+            "currently"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": [
+            "U4 off-surface category retry_safety"
+          ]
+        }
+      ],
+      "rejections_full": [
+        {
+          "id": "EX-03",
+          "title": "A missing-token exception screen degrades gracefully with a named problem, not a crash",
+          "reasons": [
+            "unknown risk_category 'dead_end_error'"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "A-r2",
+      "task_key": "A",
+      "inherited": true,
+      "elapsed_s": 2.1,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "A2-diff-r1",
+      "task_key": "A2",
+      "inherited": true,
+      "elapsed_s": 4.2,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)",
+        "generation wave 2 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "B-diff-r1",
+      "task_key": "B",
+      "inherited": true,
+      "elapsed_s": 382.9,
+      "proposed": 6,
+      "accepted": 6,
+      "USEFUL": 6,
+      "USEFUL_ignoring_U4": 6,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "authorization",
+        "concurrency",
+        "cross_tenant",
+        "idempotency",
+        "restart_recovery",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "POST /slack/actions"
+      ],
+      "n_distinct_request_endpoints": 1,
+      "n_distinct_oracle_commands": 8,
+      "n_distinct_oracle_assertions": 5,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 6,
+      "prior_grounded_definition": 6,
+      "mechanically_scorable": 6,
+      "scenarios_with_vacuity_flag": 5,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 5,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 3,
+      "effect_family_cases": 2,
+      "effect_family_with_state_oracle": 2,
+      "generation_problems": [
+        "generation wave 2 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [
+        {
+          "id": "U042-S1",
+          "title": "No external payment ever lands without a matching recorded approval",
+          "risk_category": "safety_invariant",
+          "priority": "P0",
+          "action_kinds": [
+            "state_check",
+            "state_check"
+          ],
+          "requirement_reference": "U-042 AC: no payment effect occurs without a recorded approval",
+          "product_principle_reference": "success_without_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V2:numeric-substring-trap(not_contains '2')",
+            "V2:numeric-substring-trap(not_contains '3')",
+            "V2:numeric-substring-trap(not_contains '4')",
+            "V2:numeric-substring-trap(not_contains '5')",
+            "V2:numeric-substring-trap(not_contains '6')",
+            "V2:numeric-substring-trap(not_contains '7')",
+            "V2:numeric-substring-trap(not_contains '8')",
+            "V2:numeric-substring-trap(not_contains '9')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "occurs"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "U042-S2",
+          "title": "Unauthenticated governed tap is refused and records no approval or write",
+          "risk_category": "authorization",
+          "priority": "P0",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-042 AC: an operator without approval authority is refused",
+          "product_principle_reference": "authority_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V2:numeric-substring-trap(not_contains '2')",
+            "V2:numeric-substring-trap(not_contains '3')",
+            "V2:numeric-substring-trap(not_contains '4')",
+            "V2:numeric-substring-trap(not_contains '5')",
+            "V2:numeric-substring-trap(not_contains '6')",
+            "V2:numeric-substring-trap(not_contains '7')",
+            "V2:numeric-substring-trap(not_contains '8')",
+            "V2:numeric-substring-trap(not_contains '9')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "authority",
+            "operator"
+          ],
+          "absent_terms_central_to_task": [
+            "authority"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "U042-S3",
+          "title": "\"Paid exactly once\" is enforced by the database, not by hope",
+          "risk_category": "idempotency",
+          "priority": "P0",
+          "action_kinds": [
+            "state_check",
+            "state_check"
+          ],
+          "requirement_reference": "U-042 AC: an approved invoice is paid exactly once",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '2')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "approved",
+            "invoice"
+          ],
+          "absent_terms_central_to_task": [
+            "approved",
+            "invoice"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "U042-S4",
+          "title": "Approval and claim state is tenant-first, so another tenant cannot see or claim it",
+          "risk_category": "cross_tenant",
+          "priority": "P0",
+          "action_kinds": [
+            "state_check",
+            "state_check"
+          ],
+          "requirement_reference": "U-042 AC: an invoice belonging to another tenant is never visible or approvable",
+          "product_principle_reference": "authority_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "approvable",
+            "belonging"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "U042-S5",
+          "title": "Recorded approval / claim store survives a callback restart",
+          "risk_category": "restart_recovery",
+          "priority": "P1",
+          "action_kinds": [
+            "state_check",
+            "restart_service",
+            "wait",
+            "request",
+            "state_check"
+          ],
+          "requirement_reference": "U-042 AC: approval survives a restart",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V2:numeric-substring-trap(not_contains '2')",
+            "V2:numeric-substring-trap(not_contains '3')",
+            "V2:numeric-substring-trap(not_contains '4')",
+            "V2:numeric-substring-trap(not_contains '5')",
+            "V2:numeric-substring-trap(not_contains '6')",
+            "V2:numeric-substring-trap(not_contains '7')",
+            "V2:numeric-substring-trap(not_contains '8')",
+            "V2:numeric-substring-trap(not_contains '9')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "U042-S6",
+          "title": "Two simultaneous unauthenticated taps never both cause an effect",
+          "risk_category": "concurrency",
+          "priority": "P1",
+          "action_kinds": [
+            "parallel_requests"
+          ],
+          "requirement_reference": "U-042 AC: an approved invoice is paid exactly once",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V2:numeric-substring-trap(not_contains '2')",
+            "V2:numeric-substring-trap(not_contains '3')",
+            "V2:numeric-substring-trap(not_contains '4')",
+            "V2:numeric-substring-trap(not_contains '5')",
+            "V2:numeric-substring-trap(not_contains '6')",
+            "V2:numeric-substring-trap(not_contains '7')",
+            "V2:numeric-substring-trap(not_contains '8')",
+            "V2:numeric-substring-trap(not_contains '9')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "approved",
+            "exactly",
+            "invoice"
+          ],
+          "absent_terms_central_to_task": [
+            "approved",
+            "exactly",
+            "invoice"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "B-diff-r2",
+      "task_key": "B",
+      "inherited": true,
+      "elapsed_s": 3.7,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)",
+        "generation wave 2 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "C-r1",
+      "task_key": "C",
+      "inherited": true,
+      "elapsed_s": 175.1,
+      "proposed": 7,
+      "accepted": 7,
+      "USEFUL": 7,
+      "USEFUL_ignoring_U4": 7,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "authorization",
+        "boundary",
+        "concurrency",
+        "happy_path",
+        "malformed_input",
+        "missing_data",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "GET /shipments",
+        "POST /shipments"
+      ],
+      "n_distinct_request_endpoints": 2,
+      "n_distinct_oracle_commands": 7,
+      "n_distinct_oracle_assertions": 4,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 7,
+      "prior_grounded_definition": 7,
+      "mechanically_scorable": 7,
+      "scenarios_with_vacuity_flag": 7,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 7,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 5,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "S1",
+          "title": "Search by an existing reference returns that shipment",
+          "risk_category": "happy_path",
+          "priority": "P1",
+          "action_kinds": [
+            "state_check",
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: a search by reference returns the matching shipment",
+          "product_principle_reference": "operational_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '2')",
+            "V3:numeric-substring-oracle(contains '1')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "matching"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S2",
+          "title": "Filter with no matches returns a stated no-result, not a blank view",
+          "risk_category": "missing_data",
+          "priority": "P1",
+          "action_kinds": [
+            "state_check",
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: a filter with no matches says so rather than showing nothing",
+          "product_principle_reference": "dead_end_error",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "showing"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S3",
+          "title": "A miss does not insert a shipment (read-only on the empty path)",
+          "risk_category": "safety_invariant",
+          "priority": "P0",
+          "action_kinds": [
+            "request",
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: the view performs no write of any kind",
+          "product_principle_reference": "tms_centrality",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "performs"
+          ],
+          "absent_terms_central_to_task": [
+            "performs"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S4",
+          "title": "Write verbs against the search route are refused and mutate nothing",
+          "risk_category": "authorization",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: the view performs no write of any kind",
+          "product_principle_reference": "authority_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "performs"
+          ],
+          "absent_terms_central_to_task": [
+            "performs"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S5",
+          "title": "Reference with SQL metacharacters is handled safely and writes nothing",
+          "risk_category": "malformed_input",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: a search by reference returns the matching shipment",
+          "product_principle_reference": "dead_end_error",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "matching",
+            "returns",
+            "search"
+          ],
+          "absent_terms_central_to_task": [
+            "search"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S6",
+          "title": "Empty/blank reference filter does not dead-end",
+          "risk_category": "boundary",
+          "priority": "P2",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-RO-3: a filter with no matches says so rather than showing nothing",
+          "product_principle_reference": "noise_control",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "matches",
+            "nothing",
+            "showing"
+          ],
+          "absent_terms_central_to_task": [
+            "nothing"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S7",
+          "title": "Concurrent identical searches stay read-only and consistent",
+          "risk_category": "concurrency",
+          "priority": "P2",
+          "action_kinds": [
+            "parallel_requests"
+          ],
+          "requirement_reference": "U-RO-3: the view performs no write of any kind",
+          "product_principle_reference": "tms_centrality",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V2:numeric-substring-trap(not_contains '1')",
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "performs"
+          ],
+          "absent_terms_central_to_task": [
+            "performs"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "C-r2",
+      "task_key": "C",
+      "inherited": true,
+      "elapsed_s": 1.9,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "D-r1",
+      "task_key": "D",
+      "inherited": true,
+      "elapsed_s": 494.5,
+      "proposed": 5,
+      "accepted": 5,
+      "USEFUL": 3,
+      "USEFUL_ignoring_U4": 4,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "crash_mid_workflow",
+        "idempotency",
+        "malformed_input",
+        "restart_recovery",
+        "safety_invariant"
+      ],
+      "off_topic_categories": [
+        "malformed_input"
+      ],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "GET /actions/signed",
+        "GET /neyma-does-not-exist",
+        "POST /actions/signed"
+      ],
+      "n_distinct_request_endpoints": 3,
+      "n_distinct_oracle_commands": 6,
+      "n_distinct_oracle_assertions": 7,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 5,
+      "prior_grounded_definition": 5,
+      "mechanically_scorable": 5,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 4,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 3,
+      "effect_family_cases": 3,
+      "effect_family_with_state_oracle": 3,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "S1-restart-survives",
+          "title": "Workflow state and process health survive a real callback restart",
+          "risk_category": "restart_recovery",
+          "priority": "P0",
+          "action_kinds": [
+            "state_check",
+            "restart_service",
+            "wait",
+            "request",
+            "state_check"
+          ],
+          "requirement_reference": "workflow state survives a process restart",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "survives"
+          ],
+          "absent_terms_central_to_task": [
+            "survives"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S2-durable-schema",
+          "title": "The durable store defines the state, audit, and effect-ledger tables",
+          "risk_category": "safety_invariant",
+          "priority": "P1",
+          "action_kinds": [
+            "command"
+          ],
+          "requirement_reference": "workflow state survives a process restart",
+          "product_principle_reference": "operational_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": false,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "process"
+          ],
+          "absent_terms_central_to_task": [
+            "process"
+          ],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": false,
+          "useful_failures": [
+            "U3 does not drive the product"
+          ]
+        },
+        {
+          "id": "S3-crash-no-partial",
+          "title": "Abrupt stop then restart leaves no partially applied workflow",
+          "risk_category": "crash_mid_workflow",
+          "priority": "P0",
+          "action_kinds": [
+            "stop_service",
+            "wait",
+            "start_service",
+            "wait",
+            "request"
+          ],
+          "requirement_reference": "a failed write leaves no partially applied workflow",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S4-replay-no-reexecute",
+          "title": "Restart-driven rebuild does not re-execute an effect",
+          "risk_category": "idempotency",
+          "priority": "P0",
+          "action_kinds": [
+            "state_check",
+            "restart_service",
+            "wait",
+            "state_check"
+          ],
+          "requirement_reference": "rebuilding state from history never re-executes an effect",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "executes"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S5-rejected-writes-no-partial",
+          "title": "Rejected/malformed requests create no partial workflow state",
+          "risk_category": "malformed_input",
+          "priority": "P1",
+          "action_kinds": [
+            "parallel_requests"
+          ],
+          "requirement_reference": "a failed write leaves no partially applied workflow",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "applied",
+            "leaves",
+            "partially"
+          ],
+          "absent_terms_central_to_task": [
+            "applied",
+            "leaves"
+          ],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": [
+            "U4 off-surface category malformed_input"
+          ]
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "D-r2",
+      "task_key": "D",
+      "inherited": true,
+      "elapsed_s": 2.6,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "E-r1",
+      "task_key": "E",
+      "inherited": true,
+      "elapsed_s": 360.6,
+      "proposed": 4,
+      "accepted": 4,
+      "USEFUL": 2,
+      "USEFUL_ignoring_U4": 2,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "authorization",
+        "missing_data"
+      ],
+      "off_topic_categories": [],
+      "redundant_shapes": 1,
+      "distinct_request_endpoints": [
+        "GET /email/action",
+        "POST /actions/signed"
+      ],
+      "n_distinct_request_endpoints": 2,
+      "n_distinct_oracle_commands": 1,
+      "n_distinct_oracle_assertions": 1,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 4,
+      "prior_grounded_definition": 4,
+      "mechanically_scorable": 4,
+      "scenarios_with_vacuity_flag": 3,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 4,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 2,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "AUTHZ-S1",
+          "title": "Canonical schema materializes the audit substrate refusals depend on",
+          "risk_category": "missing_data",
+          "priority": "P1",
+          "action_kinds": [
+            "command"
+          ],
+          "requirement_reference": "U-AUTHZ-2 AC 'every refusal is recorded in the audit log'",
+          "product_principle_reference": "obligation_visibility",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": false,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "authz"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": false,
+          "useful_failures": [
+            "U3 does not drive the product"
+          ]
+        },
+        {
+          "id": "AUTHZ-S2",
+          "title": "Unauthenticated release request is refused and releases nothing",
+          "risk_category": "authorization",
+          "priority": "P0",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+          "product_principle_reference": "authority_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "authz"
+          ],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "AUTHZ-S3",
+          "title": "Forged release token is rejected and the operation is never started",
+          "risk_category": "authorization",
+          "priority": "P0",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+          "product_principle_reference": "evidence_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "authz",
+            "occurs",
+            "refused",
+            "supervisor"
+          ],
+          "absent_terms_central_to_task": [
+            "supervisor"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "AUTHZ-S5",
+          "title": "Email release link with no token fails closed",
+          "risk_category": "authorization",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-AUTHZ-2 AC 'a non-supervisor is refused and no release occurs'",
+          "product_principle_reference": "channel_consistency",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "authz",
+            "occurs",
+            "refused",
+            "supervisor"
+          ],
+          "absent_terms_central_to_task": [
+            "supervisor"
+          ],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": false,
+          "useful_failures": [
+            "U5 duplicate shape"
+          ]
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "E-r2",
+      "task_key": "E",
+      "inherited": true,
+      "elapsed_s": 1.7,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "F-r1",
+      "task_key": "F",
+      "inherited": false,
+      "elapsed_s": 384.4,
+      "proposed": 4,
+      "accepted": 4,
+      "USEFUL": 3,
+      "USEFUL_ignoring_U4": 4,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "concurrency",
+        "malformed_input",
+        "missing_data",
+        "restart_recovery"
+      ],
+      "off_topic_categories": [
+        "malformed_input"
+      ],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "POST /actions/signed"
+      ],
+      "n_distinct_request_endpoints": 1,
+      "n_distinct_oracle_commands": 2,
+      "n_distinct_oracle_assertions": 2,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 4,
+      "prior_grounded_definition": 4,
+      "mechanically_scorable": 4,
+      "scenarios_with_vacuity_flag": 2,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 3,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 3,
+      "effect_family_cases": 1,
+      "effect_family_with_state_oracle": 1,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "S1",
+          "title": "Unverifiable action intake is recorded as rejected, never applied",
+          "risk_category": "malformed_input",
+          "priority": "P1",
+          "action_kinds": [
+            "request",
+            "state_check"
+          ],
+          "requirement_reference": "a send whose outcome is unconfirmed is recorded as unknown, never as delivered",
+          "product_principle_reference": "outcome_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "whose"
+          ],
+          "absent_terms_central_to_task": [
+            "whose"
+          ],
+          "USEFUL": false,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": [
+            "U4 off-surface category malformed_input"
+          ]
+        },
+        {
+          "id": "S2",
+          "title": "Missing token yields a recorded dead-end-free refusal, not a silent no-op",
+          "risk_category": "missing_data",
+          "priority": "P2",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "a transport outage leaves no notification silently dropped",
+          "product_principle_reference": "dead_end_error",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": false,
+          "vacuity_flags": [],
+          "cited_terms_absent_from_scenario": [
+            "leaves",
+            "notification",
+            "outage",
+            "transport"
+          ],
+          "absent_terms_central_to_task": [
+            "notification",
+            "transport"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S3",
+          "title": "Simultaneous identical retries are each recorded; none dropped, no crash",
+          "risk_category": "concurrency",
+          "priority": "P1",
+          "action_kinds": [
+            "parallel_requests",
+            "state_check"
+          ],
+          "requirement_reference": "a transport outage leaves no notification silently dropped",
+          "product_principle_reference": "repository_silent",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '1')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "leaves",
+            "notification",
+            "outage",
+            "silently",
+            "transport"
+          ],
+          "absent_terms_central_to_task": [
+            "notification",
+            "transport"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "S4",
+          "title": "Recorded outcomes survive a callback restart (durability)",
+          "risk_category": "restart_recovery",
+          "priority": "P2",
+          "action_kinds": [
+            "request",
+            "restart_service",
+            "wait",
+            "request",
+            "state_check"
+          ],
+          "requirement_reference": "U-DEL-7",
+          "product_principle_reference": "failure_recovery",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '1')"
+          ],
+          "cited_terms_absent_from_scenario": [],
+          "absent_terms_central_to_task": [],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "F-r2",
+      "task_key": "F",
+      "inherited": false,
+      "elapsed_s": 1.9,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    },
+    {
+      "tag": "G-r1",
+      "task_key": "G",
+      "inherited": false,
+      "elapsed_s": 517.9,
+      "proposed": 3,
+      "accepted": 3,
+      "USEFUL": 3,
+      "USEFUL_ignoring_U4": 3,
+      "rejected": 0,
+      "zero_coverage": false,
+      "rejection_reasons": {},
+      "accepted_categories": [
+        "malformed_input",
+        "missing_data"
+      ],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [
+        "GET /email/action",
+        "POST /actions/signed"
+      ],
+      "n_distinct_request_endpoints": 2,
+      "n_distinct_oracle_commands": 2,
+      "n_distinct_oracle_assertions": 1,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 3,
+      "prior_grounded_definition": 3,
+      "mechanically_scorable": 3,
+      "scenarios_with_vacuity_flag": 3,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 3,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 3,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [],
+      "scenarios": [
+        {
+          "id": "UEV4-W1-01",
+          "title": "Unverifiable signed action is refused with a stated reason, not a 500, and commits nothing",
+          "risk_category": "malformed_input",
+          "priority": "P0",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+          "product_principle_reference": "dead_end_error",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "document"
+          ],
+          "absent_terms_central_to_task": [
+            "document"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "UEV4-W1-02",
+          "title": "Missing action token yields a stated missing-input refusal, not a silent success",
+          "risk_category": "missing_data",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+          "product_principle_reference": "evidence_clarity",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "document",
+            "refused",
+            "unparseable"
+          ],
+          "absent_terms_central_to_task": [
+            "document",
+            "unparseable"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        },
+        {
+          "id": "UEV4-W1-03",
+          "title": "A non-parseable request body is refused cleanly and commits no effect",
+          "risk_category": "malformed_input",
+          "priority": "P1",
+          "action_kinds": [
+            "request"
+          ],
+          "requirement_reference": "U-EV-4 AC: an unparseable document is refused with a reason and changes no state",
+          "product_principle_reference": "success_without_verification",
+          "strict_requirement_grounded": true,
+          "strict_principle_grounded": true,
+          "grounding_note": "",
+          "bare_suite_prior_definition": false,
+          "contains_broad_suite_command": false,
+          "mechanically_scorable": true,
+          "inspects_persisted_state": true,
+          "vacuity_flags": [
+            "V3:numeric-substring-oracle(contains '0')"
+          ],
+          "cited_terms_absent_from_scenario": [
+            "document"
+          ],
+          "absent_terms_central_to_task": [
+            "document"
+          ],
+          "USEFUL": true,
+          "USEFUL_ignoring_U4": true,
+          "useful_failures": []
+        }
+      ],
+      "rejections_full": []
+    },
+    {
+      "tag": "G-r2",
+      "task_key": "G",
+      "inherited": false,
+      "elapsed_s": 2.0,
+      "proposed": 0,
+      "accepted": 0,
+      "USEFUL": 0,
+      "USEFUL_ignoring_U4": 0,
+      "rejected": 0,
+      "zero_coverage": true,
+      "rejection_reasons": {},
+      "accepted_categories": [],
+      "off_topic_categories": [],
+      "redundant_shapes": 0,
+      "distinct_request_endpoints": [],
+      "n_distinct_request_endpoints": 0,
+      "n_distinct_oracle_commands": 0,
+      "n_distinct_oracle_assertions": 0,
+      "bare_suite_prior_definition": 0,
+      "contains_broad_suite_command": 0,
+      "strict_grounded": 0,
+      "prior_grounded_definition": 0,
+      "mechanically_scorable": 0,
+      "scenarios_with_vacuity_flag": 0,
+      "scenarios_whose_cited_requirement_names_absent_concepts": 0,
+      "scenarios_missing_a_TASK_CENTRAL_concept": 0,
+      "effect_family_cases": 0,
+      "effect_family_with_state_oracle": 0,
+      "generation_problems": [
+        "generation wave 1 failed: GenerationSessionError: the generator session ended in error (success)"
+      ],
+      "scenarios": [],
+      "rejections_full": []
+    }
+  ]
+}

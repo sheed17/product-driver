@@ -1,0 +1,220 @@
+{
+  "control_distinct_ids": {
+    "suite_entries": [
+      "gen-clash-a",
+      "gen-clash-b"
+    ],
+    "assembly_conflicts": [],
+    "sanitized": {
+      "gen-clash-a": "gen-clash-a",
+      "gen-clash-b": "gen-clash-b"
+    },
+    "outcomes": [
+      {
+        "id": "gen-clash-a",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash-a"
+      },
+      {
+        "id": "gen-clash-b",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash-b"
+      }
+    ],
+    "directories_on_disk": [
+      "gen-clash-a",
+      "gen-clash-b"
+    ],
+    "result_json_on_disk": {
+      "gen-clash-a": {
+        "scenario_id": "gen-clash-a",
+        "passed": null
+      },
+      "gen-clash-b": {
+        "scenario_id": "gen-clash-b",
+        "passed": null
+      }
+    },
+    "gate": "VERIFIED",
+    "gate_required_total": 2,
+    "gate_required_passed": 2,
+    "gate_problems": [],
+    "gate_unverified": []
+  },
+  "exact_duplicate_id": {
+    "suite_entries": [
+      "gen-clash"
+    ],
+    "assembly_conflicts": [
+      "the generated scenario 'gen-clash' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+    ],
+    "sanitized": {
+      "gen-clash": "gen-clash"
+    },
+    "outcomes": [
+      {
+        "id": "gen-clash",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash"
+      }
+    ],
+    "directories_on_disk": [
+      "gen-clash"
+    ],
+    "result_json_on_disk": {
+      "gen-clash": {
+        "scenario_id": "gen-clash",
+        "passed": null
+      }
+    },
+    "gate": "NOT_VERIFIED",
+    "gate_required_total": 1,
+    "gate_required_passed": 1,
+    "gate_problems": [
+      "the generated scenario 'gen-clash' was not admitted to the suite: that id is already in use, so this scenario was never executed and nothing about it has been verified"
+    ],
+    "gate_unverified": []
+  },
+  "case_only_both_pass": {
+    "suite_entries": [
+      "gen-clash",
+      "Gen-Clash"
+    ],
+    "assembly_conflicts": [],
+    "sanitized": {
+      "gen-clash": "gen-clash",
+      "Gen-Clash": "Gen-Clash"
+    },
+    "outcomes": [
+      {
+        "id": "Gen-Clash",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/Gen-Clash"
+      },
+      {
+        "id": "gen-clash",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash"
+      }
+    ],
+    "directories_on_disk": [
+      "Gen-Clash"
+    ],
+    "result_json_on_disk": {
+      "Gen-Clash": {
+        "scenario_id": "gen-clash",
+        "passed": null
+      }
+    },
+    "gate": "VERIFIED",
+    "gate_required_total": 2,
+    "gate_required_passed": 2,
+    "gate_problems": [],
+    "gate_unverified": []
+  },
+  "case_only_asymmetric_first_fails": {
+    "suite_entries": [
+      "gen-clash",
+      "Gen-Clash"
+    ],
+    "assembly_conflicts": [],
+    "sanitized": {
+      "gen-clash": "gen-clash",
+      "Gen-Clash": "Gen-Clash"
+    },
+    "outcomes": [
+      {
+        "id": "Gen-Clash",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/Gen-Clash"
+      },
+      {
+        "id": "gen-clash",
+        "outcome": "FAILED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash"
+      }
+    ],
+    "directories_on_disk": [
+      "Gen-Clash"
+    ],
+    "result_json_on_disk": {
+      "Gen-Clash": {
+        "scenario_id": "gen-clash",
+        "passed": null
+      }
+    },
+    "gate": "NOT_VERIFIED",
+    "gate_required_total": 2,
+    "gate_required_passed": 1,
+    "gate_problems": [],
+    "gate_unverified": [
+      "gen-clash"
+    ]
+  },
+  "case_only_asymmetric_second_fails": {
+    "suite_entries": [
+      "gen-clash",
+      "Gen-Clash"
+    ],
+    "assembly_conflicts": [],
+    "sanitized": {
+      "gen-clash": "gen-clash",
+      "Gen-Clash": "Gen-Clash"
+    },
+    "outcomes": [
+      {
+        "id": "Gen-Clash",
+        "outcome": "FAILED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/Gen-Clash"
+      },
+      {
+        "id": "gen-clash",
+        "outcome": "PASSED",
+        "required": true,
+        "evidence_verified": true,
+        "evidence_problem": "",
+        "evidence_path": "<root>/scenarios/gen-clash"
+      }
+    ],
+    "directories_on_disk": [
+      "Gen-Clash"
+    ],
+    "result_json_on_disk": {
+      "Gen-Clash": {
+        "scenario_id": "gen-clash",
+        "passed": null
+      }
+    },
+    "gate": "NOT_VERIFIED",
+    "gate_required_total": 2,
+    "gate_required_passed": 1,
+    "gate_problems": [],
+    "gate_unverified": [
+      "Gen-Clash"
+    ]
+  }
+}

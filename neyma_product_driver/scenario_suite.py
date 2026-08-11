@@ -25,6 +25,7 @@ artifacts stay on disk under the run directory, exactly as they always have.
 from __future__ import annotations
 
 import json
+import os
 import time
 from enum import Enum
 from pathlib import Path
@@ -555,6 +556,12 @@ class SuiteExecutor:
         )
 
         budget_exhausted = False
+        #: casefolded evidence directory -> the scenario that claimed it. The
+        #: backstop under the identity rules: it observes the collision that
+        #: actually occurred rather than modelling the filesystem's equivalence
+        #: relation, so it still holds on a volume that folds something nobody
+        #: enumerated.
+        claimed_dirs: dict[str, str] = {}
         for entry in order:
             skip = self._skip_reason(entry, result, budget_exhausted)
             if skip:
@@ -575,6 +582,31 @@ class SuiteExecutor:
 
             self.emit(f"  → {entry.scenario_id} ({entry.origin.value})")
             artifact_dir = self.artifact_root / "scenarios" / sanitize_filename(entry.scenario_id)
+
+            occupant = self._directory_occupant(artifact_dir, entry.scenario_id, claimed_dirs)
+            if occupant:
+                problem = (
+                    f"{entry.scenario_id!r} was not executed: its evidence directory "
+                    f"{artifact_dir} is already occupied by {occupant!r}. Two scenarios "
+                    "the filesystem cannot tell apart cannot both show their evidence, "
+                    "and overwriting the first one's record would destroy the only proof "
+                    "of what it did."
+                )
+                self.emit(f"    evidence directory collision: {problem}")
+                result.assembly_problems.append(problem)
+                result.outcomes.append(self._blocked(entry, problem))
+                # The scenario that got there first cannot be trusted either:
+                # its identity is shared, so its record no longer identifies it
+                # uniquely. It keeps its evidence; it loses its verified stamp.
+                for earlier in result.outcomes:
+                    if earlier.scenario_id == occupant and earlier.evidence_verified:
+                        earlier.evidence_verified = False
+                        earlier.evidence_problem = problem
+                        if earlier.outcome is Outcome.PASSED:
+                            earlier.outcome = Outcome.BLOCKED
+                continue
+            claimed_dirs[self._directory_key(artifact_dir)] = entry.scenario_id
+
             artifact_dir.mkdir(parents=True, exist_ok=True)
             executor = self.make_executor(artifact_dir)
             scenario_result = await executor.execute(entry.scenario)
@@ -652,6 +684,60 @@ class SuiteExecutor:
         return ""
 
     @staticmethod
+    def _directory_key(artifact_dir: Path) -> str:
+        """How the filesystem is assumed to compare two directory names."""
+        return os.path.normcase(str(artifact_dir)).casefold()
+
+    def _directory_occupant(
+        self, artifact_dir: Path, scenario_id: str, claimed: dict[str, str]
+    ) -> str:
+        """Which *other* scenario already owns this evidence directory, or "".
+
+        Two questions, because they fail in different ways. The first is what
+        this suite has already used, which catches the collision inside one
+        run. The second is what is on disk: a record from this same run and
+        iteration written under another scenario's name, which catches a
+        collision the in-memory keys did not model.
+        """
+        already = claimed.get(self._directory_key(artifact_dir))
+        if already is not None and already != scenario_id:
+            return already
+
+        record_path = artifact_dir / CASE_RECORD_FILENAME
+        if not record_path.exists():
+            return ""
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        if not isinstance(record, dict):
+            return ""
+        if self.run_id and str(record.get("run_id", "")) != self.run_id:
+            return ""
+        if self.iteration and int(record.get("iteration", 0) or 0) != self.iteration:
+            return ""
+        other = str(record.get("scenario_id", ""))
+        return other if other and other != scenario_id else ""
+
+    @staticmethod
+    def _blocked(entry: SuiteEntry, reason: str) -> ScenarioOutcome:
+        """An entry that could not be executed at all, recorded as unverified."""
+        return ScenarioOutcome(
+            scenario_id=entry.scenario_id,
+            scenario_name=entry.scenario.name,
+            origin=entry.origin,
+            outcome=Outcome.BLOCKED,
+            priority=entry.priority,
+            risk_category=entry.risk_category.value if entry.risk_category else "",
+            required=entry.required,
+            error=reason,
+            generated_because=_because(entry),
+            requirement_reference=(
+                entry.generated.requirement_reference if entry.generated else ""
+            ),
+        )
+
+    @staticmethod
     def _skipped(entry: SuiteEntry, reason: str) -> ScenarioOutcome:
         return ScenarioOutcome(
             scenario_id=entry.scenario_id,
@@ -678,8 +764,15 @@ class SuiteExecutor:
         # "Blocked" is reserved for never having observed the product at all:
         # readiness failed, or setup failed before anything was exercised. A
         # scenario that ran and disagreed with expectations is a FAILURE.
-        never_observed = not result.readiness_ok or (
-            result.error is not None and not result.assertions
+        #
+        # A browser session that never loaded a page belongs in the first
+        # group, not the second. It did not disagree with the product; it never
+        # reached it. "The product was never observed" is the honest verdict,
+        # and it blocks acceptance exactly as a failure does.
+        never_observed = (
+            not result.readiness_ok
+            or (result.error is not None and not result.assertions)
+            or (result.browser is not None and not result.browser.page_loaded)
         )
         if never_observed:
             outcome = Outcome.BLOCKED
@@ -942,15 +1035,34 @@ def build_suite(
     generated: Iterable[tuple[GeneratedScenario, Scenario]] = (),
 ) -> ScenarioSuite:
     """Assemble a suite from permanent scenarios and compiled generated ones."""
+    from .scenario_validation import identity_key
+
     suite = ScenarioSuite()
+    #: identity key -> the id already holding it. Two ids that differ only in
+    #: case are two entries in memory and one evidence directory on disk, so
+    #: they are one identity here and the second is refused down the same
+    #: already-proven channel an exact duplicate takes.
+    admitted: dict[str, str] = {}
 
     def admit(entry: SuiteEntry, what: str) -> None:
+        key = identity_key(entry.scenario_id)
+        clash = admitted.get(key)
+        if clash is not None and clash != entry.scenario_id:
+            suite.assembly_conflicts.append(
+                f"{what} {entry.scenario_id!r} was not admitted to the suite: it is the "
+                f"same identity as {clash!r} once case is folded, and the two would share "
+                "one evidence directory, so this scenario was never executed and nothing "
+                "about it has been verified"
+            )
+            return
         if not suite.add(entry):
             suite.assembly_conflicts.append(
                 f"{what} {entry.scenario_id!r} was not admitted to the suite: that id is "
                 "already in use, so this scenario was never executed and nothing about it "
                 "has been verified"
             )
+            return
+        admitted[key] = entry.scenario_id
 
     for scenario_id, scenario in permanent:
         admit(

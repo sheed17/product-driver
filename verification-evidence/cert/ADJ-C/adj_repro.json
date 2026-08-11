@@ -1,0 +1,88 @@
+[
+  {
+    "case": "CG01-A  no planner + FAILED permanent scenario + ACCEPT evaluator",
+    "status": "ACCEPTED",
+    "exit_code": 0,
+    "scenario_passed": false,
+    "gate": "GATE NOT INVOKED (LoopResult.suite is None)",
+    "persisted": {
+      "status": "ACCEPTED",
+      "final_decision": "ACCEPT",
+      "accepted_dir_written": true
+    },
+    "coverage_section_printed": false
+  },
+  {
+    "case": "CG01-B  CONTROL: generation enabled, same FAILED permanent scenario",
+    "status": "MAX_ITERATIONS",
+    "exit_code": 12,
+    "gate": "NOT_VERIFIED",
+    "unverified": [
+      "backend_generic"
+    ],
+    "final_decision": "FIX",
+    "persisted": {
+      "status": "MAX_ITERATIONS",
+      "final_decision": "FIX",
+      "accepted_dir_written": false
+    },
+    "coverage_section_printed": true
+  },
+  {
+    "case": "CG01-C  _make_planner reachability",
+    "with_enabled_true": "ScenarioPlanner",
+    "with_enabled_false_and_no_flag": "None",
+    "shipped_config_has_scenario_generation_block": false
+  },
+  {
+    "case": "CG02-attack  audit=REQUIRES_INDEPENDENT_REVIEW blocks=True",
+    "status": "NEEDS_INDEPENDENT_REVIEW",
+    "exit_code": 14,
+    "final_decision": "ACCEPT",
+    "loopresult_suite_present": false,
+    "loopresult_protocol_present": false,
+    "suite_result_json_on_disk": true,
+    "gate_would_have_said": "NOT_VERIFIED (1 unverified: ['backend_generic'])",
+    "persisted": {
+      "status": "NEEDS_INDEPENDENT_REVIEW",
+      "final_decision": "ACCEPT",
+      "accepted_dir_written": false
+    },
+    "coverage_section_printed": false,
+    "outcome_says_evaluation_passed": true
+  },
+  {
+    "case": "CG02-control-verified  audit=VERIFIED blocks=False",
+    "status": "MAX_ITERATIONS",
+    "exit_code": 12,
+    "final_decision": "FIX",
+    "loopresult_suite_present": true,
+    "loopresult_protocol_present": false,
+    "suite_result_json_on_disk": true,
+    "gate_would_have_said": "NOT_VERIFIED (1 unverified: ['backend_generic'])",
+    "persisted": {
+      "status": "MAX_ITERATIONS",
+      "final_decision": "FIX",
+      "accepted_dir_written": false
+    },
+    "coverage_section_printed": true,
+    "outcome_says_evaluation_passed": false
+  },
+  {
+    "case": "CG02-control-contradicted  audit=CONTRADICTED blocks=True",
+    "status": "MAX_ITERATIONS",
+    "exit_code": 12,
+    "final_decision": "FIX",
+    "loopresult_suite_present": true,
+    "loopresult_protocol_present": false,
+    "suite_result_json_on_disk": true,
+    "gate_would_have_said": "NOT_VERIFIED (1 unverified: ['backend_generic'])",
+    "persisted": {
+      "status": "MAX_ITERATIONS",
+      "final_decision": "FIX",
+      "accepted_dir_written": false
+    },
+    "coverage_section_printed": true,
+    "outcome_says_evaluation_passed": false
+  }
+]

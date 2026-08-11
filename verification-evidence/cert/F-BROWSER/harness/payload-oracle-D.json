@@ -1,0 +1,59 @@
+{
+  "risks": [
+    {
+      "id": "R1",
+      "description": "a browser oracle may be executed and never scored",
+      "risk_category": "ui_backend_disagreement",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    },
+    {
+      "id": "R2",
+      "description": "a page-level network failure may never be scored",
+      "risk_category": "browser_network_error",
+      "severity": "P0",
+      "basis": "AC-UI-102"
+    }
+  ],
+  "assumptions": [],
+  "unresolved_questions": [],
+  "scenarios": [
+    {
+      "id": "O10-network-failure",
+      "title": "a page request that 500s and is swallowed by the page",
+      "purpose": "isolate exactly one browser oracle so its failure behaviour is provable",
+      "risk_category": "browser_network_error",
+      "priority": "P0",
+      "rationale": "one oracle per scenario, everything else satisfied",
+      "generating_risk": "a browser oracle that cannot fail makes a browser scenario decorative",
+      "requirement_reference": "AC-UI-102",
+      "product_principle_reference": "product rubric",
+      "mode": "browser",
+      "service_refs": [
+        "ui"
+      ],
+      "isolation_key": "store",
+      "actions": [
+        {
+          "kind": "browser",
+          "name": "drive the screen",
+          "browser_steps": [
+            {
+              "goto": "/"
+            },
+            {
+              "wait_ms": 800
+            },
+            {
+              "expect_text": "status: open"
+            }
+          ]
+        }
+      ],
+      "forbidden_observations": [
+        "HTTP 500",
+        "/boom"
+      ]
+    }
+  ]
+}

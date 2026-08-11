@@ -1,0 +1,522 @@
+[
+  {
+    "id": "A1a",
+    "attack": "suite planned 3 required scenarios, executor recorded NOTHING",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 3,
+    "required_passed": 0,
+    "executed": 0,
+    "unverified": [
+      "[NO RESULT] r1 \u2014 no result was recorded for this required scenario, so it cannot have been verified",
+      "[NO RESULT] r2 \u2014 no result was recorded for this required scenario, so it cannot have been verified",
+      "[NO RESULT] r3 \u2014 no result was recorded for this required scenario, so it cannot have been verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A1b",
+    "attack": "empty suite: no expected required ids, no outcomes at all",
+    "gate_status": "VERIFIED",
+    "required_total": 0,
+    "required_passed": 0,
+    "executed": 0,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A1c",
+    "attack": "suite result absent entirely (evaluate_gate(None), no problems)",
+    "gate_status": "VERIFIED",
+    "required_total": 0,
+    "required_passed": 0,
+    "executed": 0,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "N/A (precedence not invoked when suite_result is None)",
+    "acceptance_reached": null,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A2a",
+    "attack": "every required scenario SKIPPED",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 2,
+    "required_passed": 0,
+    "executed": 0,
+    "unverified": [
+      "[SKIPPED] r1 \u2014 the scenario did not run (dependency did not pass), so nothing was verified",
+      "[SKIPPED] r2 \u2014 the scenario did not run (dependency did not pass), so nothing was verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A2b",
+    "attack": "one required PASSED, one required SKIPPED (partial verification)",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 2,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [
+      "[SKIPPED] r2 \u2014 the scenario did not run (its prerequisite r9 did not pass), so nothing was verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A3",
+    "attack": "budget exhausted after the first scenario; the rest SKIPPED by the budget",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 3,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [
+      "[SKIPPED] r2 \u2014 the scenario did not run (the suite's 1800s execution budget was exhausted before this scenario ran), so nothing was verified",
+      "[SKIPPED] r3 \u2014 the scenario did not run (the suite's 1800s execution budget was exhausted before this scenario ran), so nothing was verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A4",
+    "attack": "browser scenarios planned, browser disabled => all skipped",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 2,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [
+      "[SKIPPED] gen-browser \u2014 the scenario did not run (this scenario needs a browser and browser support is disabled), so nothing was verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A5a",
+    "attack": "required scenario PASSED but its evidence does not resolve",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 0,
+    "executed": 1,
+    "unverified": [
+      "[PASSED] r1 \u2014 the cited evidence directory does not exist: /nope"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A5b",
+    "attack": "required scenario PASSED, evidence belongs to a different scenario",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 0,
+    "executed": 1,
+    "unverified": [
+      "[PASSED] r1 \u2014 the evidence at /x belongs to scenario 'other', not 'r1'"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A5c",
+    "attack": "required scenario PASSED with NO evidence path at all",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 0,
+    "executed": 1,
+    "unverified": [
+      "[PASSED] r1 \u2014 the scenario reported a pass but its evidence could not be confirmed"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A6a",
+    "attack": "everything that ran passed, but the generator wave errored",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [
+      "wave 1 failed: the model session died"
+    ],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A6b",
+    "attack": "generation problem that is only whitespace (blank-string smuggling)",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A7",
+    "attack": "every proposal rejected by validation; only the permanent scenario survives",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [
+      "[P0] idempotency \u2014 a duplicate approval pays twice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "generation_problems": [
+      "wave 1 proposed 6 scenario(s) and 0 were admitted: all rejected by validation"
+    ],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A8a",
+    "attack": "narrowed rerun: one required ran and passed, two never ran",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 3,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [
+      "[NO RESULT] r2 \u2014 no result was recorded for this required scenario, so it cannot have been verified",
+      "[NO RESULT] r3 \u2014 no result was recorded for this required scenario, so it cannot have been verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A8b",
+    "attack": "same narrowed run with full_run forcibly set True",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 3,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [
+      "[NO RESULT] r2 \u2014 no result was recorded for this required scenario, so it cannot have been verified",
+      "[NO RESULT] r3 \u2014 no result was recorded for this required scenario, so it cannot have been verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A8c",
+    "attack": "expected_required_ids erased so the gate has nothing to compare against",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9a",
+    "attack": "every executed scenario passed; a P0 risk has no scenario at all",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [
+      "[P0] idempotency \u2014 a duplicate approval pays twice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9b",
+    "attack": "same, but the risk is P1",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [
+      "[P1] partial_failure \u2014 approval does not survive a restart  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9c",
+    "attack": "P2 risk uncovered \u2014 must NOT block (false-refusal check)",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9d",
+    "attack": "P3 risk uncovered \u2014 must NOT block (false-refusal check)",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9e",
+    "attack": "model claims covered_by=[...] for a P0 risk with no passing scenario (can model-supplied coverage talk the gate out of a computed gap?)",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [
+      "[P0] idempotency \u2014 a duplicate approval pays twice  (no scenario exercising this risk was executed, so nothing about it has been verified)"
+    ],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9f",
+    "attack": "P0 risk whose only scenario FAILED",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 2,
+    "unverified": [],
+    "uncovered_risks": [
+      "[P0] idempotency \u2014 a duplicate approval pays twice  (1 scenario(s) exercised this risk and none established a pass with resolvable evidence (1 failed))"
+    ],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A9g",
+    "attack": "COVERAGE LAUNDERING: a P0 risk marked covered by one trivial P3 scenario that merely shares the risk_category tag",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 2,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A10",
+    "attack": "a required scenario was never admitted to the suite (id collision)",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [
+      "the generated scenario 'perm' was not admitted to the suite: that id is already in use, so this scenario was never executed"
+    ],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A11a",
+    "attack": "a failed + a skipped required scenario, full_run forced True",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 2,
+    "required_passed": 0,
+    "executed": 1,
+    "unverified": [
+      "[FAILED] r1 \u2014 the scenario failed: the invoice paid twice",
+      "[SKIPPED] r2 \u2014 the scenario did not run (never ran), so nothing was verified"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "FIX",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A11b",
+    "attack": "required failure with priority downgraded to P3 so blocking_failures() is empty",
+    "gate_status": "NOT_VERIFIED",
+    "required_total": 1,
+    "required_passed": 0,
+    "executed": 1,
+    "unverified": [
+      "[FAILED] r1 \u2014 the scenario failed: paid twice"
+    ],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "BLOCKED",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A12",
+    "attack": "two outcome records for the same required id: FAILED then PASSED",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 2,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": false,
+    "OUTCOME": "FALSE ACCEPTANCE"
+  },
+  {
+    "id": "A13a",
+    "attack": "CONTROL: permanent-only suite, passed with resolvable evidence, no risks",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 1,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A13b",
+    "attack": "CONTROL: permanent + P0 generated, all passed, all P0 risks covered",
+    "gate_status": "VERIFIED",
+    "required_total": 2,
+    "required_passed": 2,
+    "executed": 2,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A13c",
+    "attack": "CONTROL: a P2 GENERATED scenario failed; nothing required failed",
+    "gate_status": "VERIFIED",
+    "required_total": 1,
+    "required_passed": 1,
+    "executed": 2,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A13d",
+    "attack": "CONTROL: full green run with a widened selection_reason",
+    "gate_status": "VERIFIED",
+    "required_total": 3,
+    "required_passed": 3,
+    "executed": 3,
+    "unverified": [],
+    "uncovered_risks": [],
+    "generation_problems": [],
+    "final_decision_with_hostile_ACCEPT_evaluator": "ACCEPT",
+    "acceptance_reached": true,
+    "acceptance_expected": true,
+    "OUTCOME": "EXPECTED"
+  },
+  {
+    "id": "A14",
+    "attack": "a green suite must not upgrade an evaluator FIX into an ACCEPT",
+    "final_decision_with_hostile_ACCEPT_evaluator": "FIX",
+    "acceptance_reached": false,
+    "acceptance_expected": false,
+    "OUTCOME": "EXPECTED"
+  }
+]

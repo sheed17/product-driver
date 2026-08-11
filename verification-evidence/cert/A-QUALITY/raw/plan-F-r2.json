@@ -1,0 +1,72 @@
+{
+  "run_id": "cert-F-r2",
+  "task": "Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send whose outcome cannot be confirmed must be recorded as unknown rather than delivered.",
+  "active_unit_id": "U-DEL-7",
+  "generation_basis": {
+    "task": "Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send whose outcome cannot be confirmed must be recorded as unknown rather than delivered.",
+    "task_hash": "3d4af3d20c09e2f2",
+    "active_unit_id": "U-DEL-7",
+    "acceptance_criteria": [
+      "a confirmed send is recorded delivered exactly once (weight 3): PENDING",
+      "a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING",
+      "a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING",
+      "a transport outage leaves no notification silently dropped (weight 2): PENDING"
+    ],
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "6e8127d",
+    "diff_files": [],
+    "diff_stat": "",
+    "existing_scenarios": [
+      "backend_generic"
+    ],
+    "prior_failures": [],
+    "investigation_findings": [],
+    "evaluator_requests": []
+  },
+  "risks": [],
+  "scenarios": [],
+  "coverage_summary": {
+    "total_scenarios": 0,
+    "by_risk_category": {},
+    "by_priority": {},
+    "uncovered_risks": []
+  },
+  "assumptions": [],
+  "unresolved_questions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "stage": "initial",
+      "requested_at": "2026-08-10T20:46:15+00:00",
+      "basis": {
+        "task": "Make outbound delivery of an operator notification resilient when the transport partially fails. A send that times out after the message was actually posted must not produce a duplicate, and a send whose outcome cannot be confirmed must be recorded as unknown rather than delivered.",
+        "task_hash": "3d4af3d20c09e2f2",
+        "active_unit_id": "U-DEL-7",
+        "acceptance_criteria": [
+          "a confirmed send is recorded delivered exactly once (weight 3): PENDING",
+          "a send whose outcome is unconfirmed is recorded as unknown, never as delivered (weight 3): PENDING",
+          "a retry after an unknown outcome does not produce a second delivery (weight 3): PENDING",
+          "a transport outage leaves no notification silently dropped (weight 2): PENDING"
+        ],
+        "founder_context_version": "0cb51e5158467505",
+        "repository_head": "6e8127d",
+        "diff_files": [],
+        "diff_stat": "",
+        "existing_scenarios": [
+          "backend_generic"
+        ],
+        "prior_failures": [],
+        "investigation_findings": [],
+        "evaluator_requests": []
+      },
+      "proposed": 0,
+      "accepted_ids": [],
+      "rejected": [],
+      "budget_notes": [],
+      "reasoner_error": "GenerationSessionError: the generator session ended in error (success)"
+    }
+  ],
+  "observed_failure_ids": [],
+  "observed_cluster_ids": [],
+  "executed_scenario_ids": []
+}
