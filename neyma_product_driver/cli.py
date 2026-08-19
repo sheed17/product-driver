@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,13 @@ from .config import (
 )
 from .completion_auditor import AuditDecision, CompletionAuditor
 from .paths import RepositoryPathError
+from .policy import (
+    ChangeRisk,
+    assess_change_risk,
+    protocol_diagnostic_notes,
+    protocol_warrants_investigation,
+    requires_founder_authority,
+)
 from .context import (
     ContextProvenance,
     ContextResolutionError,
@@ -205,6 +213,17 @@ class LoopResult:
     #: suite ran. Carried so the closing report states what the gate decided
     #: instead of asserting an outcome nobody computed.
     gate: Any = None
+    #: How this run classified the change it made, and therefore what review it
+    #: earned. See :mod:`~neyma_product_driver.policy`.
+    risk: Any = None
+    #: Independent reviews this run launched on its own, in order.
+    reviews: list[Any] = field(default_factory=list)
+    #: Repository-protocol findings that were recorded rather than enforced,
+    #: because clearing them needed no founder authority.
+    protocol_diagnostics: list[str] = field(default_factory=list)
+    #: What this run changed in the target repository's authority documents,
+    #: from a snapshot taken before the first builder turn.
+    authority_report: dict[str, Any] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -228,22 +247,41 @@ async def run_control_loop(
     protocol_resolver: Any = None,
     investigator_factory: Any = None,
     planner: Any = None,
+    reviewer_factory: Any = None,
 ) -> LoopResult:
     """Drive builder → observe → evaluate → correct, bounded by max_iterations.
 
     The order is: builder claim → completion auditor → protocol resolver →
     scenario suite → product evaluator → combine. Repository authority is
-    re-read before every evaluator decision, so a phase or READY-unit change
-    mid-run is picked up rather than served from cache. Returns as soon as a
-    terminal decision is reached, the iteration budget is exhausted, or a stop
-    is requested.
+    re-read before every evaluator decision, so a change to what the repository
+    declares mid-run is picked up rather than served from cache. Returns as soon
+    as a terminal decision is reached, the iteration budget is exhausted, or a
+    stop is requested.
 
-    When ``planner`` is supplied, the run additionally generates verification
-    scenarios for this task and executes them alongside the permanent one:
-    an initial plan up front, a diff-aware refinement after each builder turn,
-    and a bounded adaptive expansion after failures. Without a planner the loop
-    behaves exactly as it always has — one scenario, one result — which is what
-    keeps every existing workflow and every existing test unchanged.
+    **What stops this loop, and what does not.** A run ends and asks the founder
+    for exactly four kinds of reason: the product evaluator raised a product or
+    authority question, the deterministic acceptance gate says the verification
+    never happened, an independent review still refuses after its budget is
+    spent, or clearing a repository-protocol state would require a history
+    rewrite, a remote mutation or a destructive operation. Everything else —
+    every commit-topology difference, every missing metadata commit, every
+    finalizer or receipt finding, every environmental oddity — is recorded,
+    reported, handed to the investigator, and the loop keeps building. See
+    :mod:`~neyma_product_driver.policy`, which holds that distinction in one
+    place so it cannot drift back into a precedence table.
+
+    **Review is proportional and automatic.** Ordinary work gets none. A change
+    touching a high-consequence product surface gets one focused read-only
+    review, launched by the driver rather than by the founder; a reviewer that
+    returns findings sends them straight back to the same builder as a grounded
+    correction, and only becomes a founder question once the review budget is
+    spent.
+
+    When ``planner`` is supplied — the default now — the run generates
+    verification scenarios for this task and executes them alongside the
+    permanent one: an initial plan up front, a diff-aware refinement after each
+    builder turn, and a bounded adaptive expansion after failures. Without a
+    planner the loop behaves exactly as it always has: one scenario, one result.
     """
     feedback_store = FounderFeedbackStore(store.run_dir)
     last_audit: dict[str, Any] = {"value": None}
@@ -252,6 +290,17 @@ async def run_control_loop(
     last_gate: dict[str, Any] = {"value": None}
     ledger = PromotionLedger(store.run_dir)
     defects = DefectMemory()
+    last_risk: dict[str, Any] = {"value": None}
+    reviews: list[Any] = []
+    protocol_diagnostics: list[str] = []
+    # Watched from before the first builder turn, so "what did this run change"
+    # is answerable. An edit that removes or softens a mandatory control makes
+    # the change high-consequence whatever else it did, and that is the one
+    # signal that must not depend on a file written after the run ends.
+    from .authority import AuthorityWatcher
+
+    authority_watcher = AuthorityWatcher(config.neyma_repo)
+    authority_watcher.snapshot()
 
     def _terminate(status: RunStatus, decision: EvaluatorDecision, record: IterationRecord) -> LoopResult:
         """The only way out of this loop.
@@ -276,23 +325,30 @@ async def run_control_loop(
             suite=last_suite["value"],
             promotion_candidates=ledger.load(),
             gate=last_gate["value"],
+            risk=last_risk["value"],
+            reviews=list(reviews),
+            protocol_diagnostics=list(protocol_diagnostics),
+            authority_report=authority_watcher.report(),
         )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
+    #
+    # A repository that declares an active unit scopes the work with it. One that
+    # does not is not in an error state, and it is not the driver's business to
+    # insist: the founder's task is the authority then. This used to terminate
+    # the run before the builder had been asked to do anything, which made a
+    # registry convention a precondition for all product work.
     active_unit_id = ""
     active_unit = None
     if repo_loader is not None:
-        try:
-            active_unit = repo_loader.resolve_active_unit()
-            active_unit_id = active_unit.unit_id
-        except ContextResolutionError as exc:
-            emit(f"  cannot resolve current authority: {exc}")
-            decision = EvaluatorDecision(
-                decision=Decision.BLOCKED,
-                summary=f"Cannot resolve Neyma's current authority: {exc}",
-                problems=[str(exc)],
+        active_unit = repo_loader.resolve_active_unit_optional()
+        active_unit_id = active_unit.unit_id
+        if not active_unit.is_declared:
+            emit("  the repository declares no active unit; the task is the authority")
+            emit(f"    ({active_unit.resolution_problem})")
+            protocol_diagnostics.append(
+                f"no active unit resolved: {active_unit.resolution_problem}"
             )
-            return _terminate(RunStatus.BLOCKED, decision, IterationRecord(iteration=0))
 
     # Stage 1 — plan verification from the requirements, before judging anything.
     scenario_summary = scenario.summary()
@@ -336,6 +392,26 @@ async def run_control_loop(
         # 2. read-only git snapshot
         record.git = git_snapshot(config.neyma_repo)
 
+        # 2a. classify what was actually changed. This decides how much
+        #     independent scrutiny the change earns later, and it is derived from
+        #     the diff rather than from what the task said it would do: a change
+        #     described as a UI tweak that moved an authorization check is a
+        #     high-consequence change, whatever the description claimed.
+        diff_files = changed_files(config.neyma_repo)
+        authority_changes = authority_watcher.changes()
+        risk = assess_change_risk(
+            task=state.task,
+            diff_files=diff_files,
+            diff_stat=record.git.diff_stat if record.git else "",
+            authority_findings=[f for c in authority_changes for f in c.findings],
+            meaningful_files=config.review.meaningful_change_files,
+            meaningful_lines=config.review.meaningful_change_lines,
+        )
+        last_risk["value"] = risk
+        record.notes.append(f"change risk: {risk.brief()}")
+        if risk.level is not ChangeRisk.ORDINARY:
+            emit(f"  change risk: {risk.brief()}")
+
         # 2b. Stage 2 — the diff decides what is now at risk. A task that read
         #     as UI-only but moved persistence or authorization earns
         #     verification of those, whatever the task said.
@@ -344,7 +420,7 @@ async def run_control_loop(
             planner.refine_for_diff(
                 task=state.task,
                 unit=active_unit,
-                diff_files=changed_files(config.neyma_repo),
+                diff_files=diff_files,
                 diff_stat=diff_stat(config.neyma_repo),
             )
 
@@ -352,13 +428,33 @@ async def run_control_loop(
         suite: ScenarioSuite | None = None
         suite_executor: SuiteExecutor | None = None
         if planner is None:
+            # One scenario, run as a one-entry suite. Not ceremony: the suite is
+            # what writes and verifies per-case evidence, and ``suite_result`` is
+            # what the authoritative gate below reads. While this branch produced
+            # no suite result, that gate was skipped entirely — a run without
+            # generated coverage could fail its required scenario, receive an
+            # ACCEPT from the evaluator, and be recorded as ACCEPTED. The
+            # scenario still runs exactly once and the loop downstream still sees
+            # the single result it has always seen.
             emit(f"→ running scenario '{scenario.name}' ({scenario.mode})...")
-            executor = make_executor(store.iteration_dir(iteration))
-            scenario_result = await executor.execute(scenario)
+            suite = build_suite(permanent=[(scenario.name, scenario)])
+            suite_executor = SuiteExecutor(
+                make_executor=make_executor,
+                artifact_root=store.iteration_dir(iteration),
+                browser_enabled=config.run.browser_enabled,
+                run_id=state.run_id,
+                iteration=iteration,
+                emit=lambda _m: None,
+            )
+            suite_result = await suite_executor.run(
+                suite, selection_reason="the selected scenario"
+            )
+            scenario_result = _primary_result(scenario, suite_executor, suite_result)
             record.scenario = scenario_result
-            suite_result = None
+            record.suite = suite_result.model_dump(mode="json")
+            last_suite["value"] = suite_result
             all_commands = list(scenario_result.commands)
-            service_logs = getattr(executor, "service_logs", {}) or {}
+            service_logs = suite_executor.service_logs
             emit(
                 f"  scenario {'PASSED' if scenario_result.passed else 'FAILED'}"
                 + (f" — {scenario_result.error}" if scenario_result.error else "")
@@ -442,23 +538,13 @@ async def run_control_loop(
         audit = None
         if auditor is not None:
             emit("→ auditing completion claims...")
-            try:
-                unit_now = repo_loader.resolve_active_unit() if repo_loader else None
-                audit = auditor.audit(
-                    record.builder_summary,
-                    unit=unit_now,
-                    run_commands=all_commands,
-                    evidence_dir=str(store.iteration_dir(iteration)),
-                )
-            except ContextResolutionError as exc:
-                emit(f"  cannot resolve current authority: {exc}")
-                decision = EvaluatorDecision(
-                    decision=Decision.BLOCKED,
-                    summary=f"Cannot resolve Neyma's current authority: {exc}",
-                    problems=[str(exc)],
-                )
-                return _terminate(RunStatus.BLOCKED, decision, record)
-
+            unit_now = repo_loader.resolve_active_unit_optional() if repo_loader else None
+            audit = auditor.audit(
+                record.builder_summary,
+                unit=unit_now,
+                run_commands=all_commands,
+                evidence_dir=str(store.iteration_dir(iteration)),
+            )
             last_audit["value"] = audit
             record.completion_audit = audit.model_dump(mode="json")
             store.save_completion_audit(iteration, record.completion_audit)
@@ -489,13 +575,32 @@ async def run_control_loop(
                 "|".join(sorted(p for p in it.decision.problems)) if it.decision else ""
                 for it in state.iterations
             ]
+            # The previous iteration's confidence, because this runs before the
+            # evaluator speaks. An evaluator that was unsure last time and is
+            # about to be asked the same question again is exactly when an
+            # open-ended probe is worth more than another correction.
+            previous_confidence = (
+                state.iterations[-1].decision.confidence
+                if state.iterations and state.iterations[-1].decision
+                else None
+            )
             triggered, reason = should_investigate(
                 builder_report=record.builder_summary,
                 audit=audit,
                 protocol=resolution,
                 scenario_passed=scenario_result.passed,
+                evaluator_confidence=previous_confidence,
                 prior_failures=prior,
+                suite_failed=(
+                    suite_result is not None and bool(suite_result.blocking_failures())
+                ),
             )
+            if not triggered:
+                # Protocol findings no longer stop the run, so something has to
+                # pick up the ones that describe a broken environment or a
+                # self-contradictory repository. This is that route: the founder
+                # asked not to perform this kind of machine debugging by hand.
+                triggered, reason = protocol_warrants_investigation(resolution)
             if triggered:
                 emit(f"→ investigating: {reason}")
                 try:
@@ -511,19 +616,32 @@ async def run_control_loop(
                 except Exception as exc:  # diagnosis must never break the loop
                     emit(f"  investigation error: {type(exc).__name__}: {redact(str(exc))}")
 
-        # 4. re-read repository authority — never reuse stale phase context
+        # 4. re-read repository authority — never reuse stale context
         repo_context = None
         if repo_loader is not None:
             try:
                 repo_context = repo_loader.load(topics=["product", "architecture", "acceptance"])
             except ContextResolutionError as exc:
-                emit(f"  cannot resolve current authority: {exc}")
-                decision = EvaluatorDecision(
-                    decision=Decision.BLOCKED,
-                    summary=f"Cannot resolve Neyma's current authority: {exc}",
-                    problems=[str(exc)],
-                )
-                return _terminate(RunStatus.BLOCKED, decision, record)
+                # The repository could not be read at all (an unparseable file,
+                # an unreadable tree). That is a fact about the environment, and
+                # the investigator's problem — not a reason to abandon a run that
+                # has already built and verified something. The evaluator simply
+                # judges without the repository layer and says so.
+                emit(f"  repository authority unreadable this iteration: {exc}")
+                record.notes.append(f"repository authority unreadable: {exc}")
+                protocol_diagnostics.append(f"repository authority unreadable: {exc}")
+            else:
+                # Authority is re-read every iteration, so a repository that
+                # becomes self-contradictory mid-run is noticed here. It no
+                # longer ends the run, so it has to be recorded, or a real
+                # contradiction would pass unremarked.
+                unit_now = repo_context.active_unit
+                if not unit_now.is_declared and unit_now.resolution_problem:
+                    note_text = f"active unit unresolvable: {unit_now.resolution_problem}"
+                    if note_text not in protocol_diagnostics:
+                        protocol_diagnostics.append(note_text)
+                        record.notes.append(note_text)
+                        emit(f"  {note_text}")
 
         # 5. evaluate observed behaviour against all three context layers
         emit("→ evaluating observed behaviour...")
@@ -585,16 +703,23 @@ async def run_control_loop(
                 evidence_paths=decision.evidence_paths,
             )
 
-        # 6a. combine, highest authority first: a repository-governance blocker
-        #     outranks every product judgement. A green targeted suite cannot
-        #     make an invalid commit topology valid.
+        # 6a. repository protocol: diagnostic, unless clearing it is the
+        #     founder's to authorize. The ordering this replaced put every
+        #     governance signal above the product judgement, so a commit-topology
+        #     difference or a stale receipt ended a run that had just
+        #     demonstrated working behaviour, and the founder relayed the finding
+        #     to a builder by hand. What survives is the part that is genuinely
+        #     not the driver's call: a repair that would rewrite history, touch a
+        #     remote, or destroy something.
         if resolution is not None:
-            terminal, decision = _apply_protocol_precedence(
-                resolution, decision, scenario.name, emit
-            )
+            terminal, decision = _apply_protocol_policy(resolution, decision, emit)
+            notes = protocol_diagnostic_notes(resolution)
+            for note_text in notes:
+                if note_text not in protocol_diagnostics:
+                    protocol_diagnostics.append(note_text)
+            record.notes.extend(notes)
             if terminal is not None:
                 record.decision = decision
-                record.notes.append(f"protocol resolver: {resolution.status.value}")
                 _print_decision(decision, emit)
                 return _terminate(terminal, decision, record)
 
@@ -632,11 +757,12 @@ async def run_control_loop(
         #     overrides an ACCEPT from the product evaluator.
         if audit is not None and audit.blocks_acceptance:
             if audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
-                if decision.decision is Decision.ACCEPT:
-                    emit("  product evaluation ACCEPTed, but independent review is required.")
-                    record.notes.append(audit.headline)
-                    return _terminate(RunStatus.NEEDS_INDEPENDENT_REVIEW, decision, record)
-                # Otherwise the evaluator's own verdict still routes below.
+                # Not a terminal state any more. The repository saying a
+                # criterion needs a session other than the implementing one is a
+                # true and useful fact; making the founder go and start that
+                # session by hand was the ceremony. It is folded into the
+                # proportional-review step below, which launches one itself.
+                record.notes.append(audit.headline)
             elif gate_overrode:
                 # The gate has already turned this into a FIX or a BLOCKED, so
                 # the branch below that would have rewritten an ACCEPT no longer
@@ -670,6 +796,85 @@ async def run_control_loop(
                     "or REQUIRES_INDEPENDENT_REVIEW.",
                     confidence=audit.confidence,
                 )
+
+        # 6d. proportional independent review — launched by the driver, not by
+        #     the founder. An ACCEPT on a change that touches a high-consequence
+        #     product surface earns one focused read-only review before it
+        #     stands. A reviewer that finds something does not end the run: its
+        #     findings go straight back to this same builder as a grounded
+        #     correction and the loop retests, which is the relay the founder was
+        #     performing by hand. Only a refusal that survives the correction
+        #     budget becomes a founder question, because at that point the
+        #     reviewer is describing a decision rather than a defect.
+        if decision.decision is Decision.ACCEPT and risk is not None:
+            uncovered = len(getattr(last_gate["value"], "uncovered_risks", []) or [])
+            wants_review = risk.warrants_independent_review(
+                iterations=iteration, uncovered_risks=uncovered
+            ) or (
+                audit is not None
+                and audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
+            )
+            if wants_review:
+                emit(f"→ independent review ({risk.brief()})...")
+                review = (
+                    await _run_independent_review(
+                        reviewer_factory=reviewer_factory,
+                        unit=active_unit,
+                        audit=audit,
+                        repository_context=(
+                            repo_context.render() if repo_context is not None else ""
+                        ),
+                        task=state.task,
+                        risk=risk,
+                        changed_files=diff_files,
+                        suite_result=suite_result,
+                        builder_report=record.builder_summary,
+                        evidence_dir=str(store.iteration_dir(iteration)),
+                        emit=emit,
+                    )
+                    if reviewer_factory is not None
+                    else None
+                )
+                if review is None:
+                    # A review that was required and did not happen is never an
+                    # ACCEPT. Say so and leave the documented manual route open.
+                    emit("  the required independent review did not produce a verdict.")
+                    record.notes.append(
+                        "independent review was required for this change and did not run"
+                    )
+                    return _terminate(RunStatus.NEEDS_INDEPENDENT_REVIEW, decision, record)
+
+                reviews.append(review)
+                record.independent_review = review.model_dump(mode="json")
+                store.save_independent_review(iteration, record.independent_review)
+                emit(f"  review verdict: {review.verdict} ({len(review.blockers)} blocker(s))")
+
+                refusals = [r for r in reviews if r.verdict != "SUPPORTED"]
+                if review.verdict != "SUPPORTED":
+                    if len(refusals) > max(0, config.review.max_automatic_reviews):
+                        emit("  the reviewer still refuses after correction; this is yours.")
+                        return _terminate(
+                            RunStatus.NEEDS_USER,
+                            EvaluatorDecision(
+                                decision=Decision.ASK_USER,
+                                summary=(
+                                    "Independent review refused this change again after the "
+                                    "builder corrected it. That is a product or authority "
+                                    "decision, not a defect the builder can be sent back to fix."
+                                ),
+                                problems=[
+                                    f"[{f.severity}] {f.finding}"
+                                    for r in refusals
+                                    for f in r.blockers
+                                ][:12]
+                                or [review.summary[:200]],
+                                observed_behavior=decision.observed_behavior,
+                                evidence_paths=decision.evidence_paths,
+                                confidence=0.8,
+                            ),
+                            record,
+                        )
+                    decision = _review_correction(review, decision, scenario.name, risk)
 
         record.decision = decision
         _print_decision(decision, emit)
@@ -1079,143 +1284,184 @@ def _suite_correction(suite_result: SuiteResult) -> str:
     return "\n".join(lines)
 
 
-def _apply_protocol_precedence(
-    resolution: Any,
+async def _run_independent_review(
+    *,
+    reviewer_factory: Any,
+    unit: Any,
+    audit: Any,
+    repository_context: str,
+    task: str,
+    risk: Any,
+    changed_files: Sequence[str],
+    suite_result: Any,
+    builder_report: str,
+    evidence_dir: str,
+    emit: Callable[[str], None],
+) -> Any:
+    """Launch one focused, read-only review. Returns ``None`` if it could not run.
+
+    A review that cannot be launched is never silently treated as a review that
+    passed — the caller keeps the ACCEPT only when a verdict actually came back,
+    and a failure here is reported rather than swallowed into a green result.
+    """
+    from .completion_auditor import CompletionAudit
+    from .context import ActiveUnit
+    from .reviewer import review_prompt
+
+    if audit is None:
+        # A run configured without an auditor still deserves the review its risk
+        # earned. An empty audit is the honest input here: it says "no completion
+        # claim was checked", rather than manufacturing one so the prompt has
+        # something to quote.
+        audit = CompletionAudit(
+            decision=AuditDecision.VERIFIED,
+            headline="no completion audit ran for this run",
+        )
+
+    prompt = review_prompt(
+        unit=unit if unit is not None else ActiveUnit.undeclared("no repository unit registry"),
+        audit=audit,
+        builder_report=builder_report,
+        evidence_dir=evidence_dir,
+        repository_context=repository_context,
+        task=task,
+        risk=risk,
+        changed_files=changed_files,
+        suite_summary=suite_result.summary_block() if suite_result is not None else "",
+    )
+    try:
+        async with reviewer_factory() as reviewer:
+            return await reviewer.review(prompt)
+    except Exception as exc:  # a reviewer that dies must not become an ACCEPT
+        emit(f"  independent review could not run: {type(exc).__name__}: {redact(str(exc))}")
+        return None
+
+
+def _review_correction(
+    review: Any,
     decision: EvaluatorDecision,
     scenario_name: str,
-    emit: Callable[[str], None],
-) -> tuple[RunStatus | None, EvaluatorDecision]:
-    """Apply repository governance to the product evaluator's verdict.
+    risk: Any,
+) -> EvaluatorDecision:
+    """Turn a reviewer's findings into a grounded correction for the same builder.
 
-    Precedence, highest first:
-
-        1. authority conflict
-        2. destructive-action approval required
-        3. repository deadlock
-        4. protocol violation           (an ACCEPT can never override one)
-        5. environmental blocker        (never a product failure, never a PASS)
-
-    Returns ``(terminal_status, decision)``. A terminal status ends the run;
-    ``None`` means the loop continues with the returned decision, which may
-    have been replaced.
+    This is the step that used to be the founder's: read the review, decide it
+    was actionable, and paste it into a builder session. Each finding already
+    carries an evidence path and the reasoning behind it, which is exactly what
+    the prompt-quality contract requires of a correction, so nothing has to be
+    invented to make it sendable.
     """
-    from .protocol_resolver import ProtocolStatus
-
-    status = resolution.status
-
-    if status is ProtocolStatus.BLOCKED_AUTHORITY:
-        emit("  repository protocol is self-contradictory; the driver cannot choose between rules.")
-        return RunStatus.BLOCKED, EvaluatorDecision(
-            decision=Decision.BLOCKED,
-            summary="Repository protocol authority is unresolvable: " + resolution.next_safe_action,
-            problems=[c.description for c in resolution.conflicts]
-            or [v.observed_state for v in resolution.violations],
-            evidence_paths=list(resolution.sources_read)[:12],
-            observed_behavior=decision.observed_behavior,
-        )
-
-    if status is ProtocolStatus.REQUIRES_APPROVAL:
-        primary = resolution.cause("PRIMARY")
-        emit("  repository governance requires an explicit human approval before anything else.")
-        return RunStatus.REQUIRES_APPROVAL, EvaluatorDecision(
-            decision=Decision.ASK_USER,
-            summary=(primary.summary if primary else "")
-            or "A repository-governance repair needs your approval.",
-            problems=[v.detail or v.observed_state for v in resolution.violations],
-            observed_behavior=decision.observed_behavior,
-            evidence_paths=list(resolution.sources_read)[:12],
-            confidence=0.9,
-        )
-
-    if status is ProtocolStatus.DEADLOCK:
-        emit("  repository governance is deadlocked; retrying the blocked gate cannot clear it.")
-        return RunStatus.BLOCKED, EvaluatorDecision(
-            decision=Decision.BLOCKED,
-            summary=resolution.deadlocks[0].root_cause if resolution.deadlocks else "deadlock",
-            problems=[resolution.blocker_chain()] if resolution.blocker_chain() else [],
-            observed_behavior=decision.observed_behavior,
-            evidence_paths=list(resolution.sources_read)[:12],
-        )
-
-    if status is ProtocolStatus.VIOLATION:
-        first = resolution.violations[0] if resolution.violations else None
-        if decision.decision is Decision.ACCEPT:
-            emit("  product evaluation ACCEPTed, but the repository protocol is violated.")
-            return None, EvaluatorDecision(
-                decision=Decision.FIX,
-                summary=f"Repository protocol violation: {first.detail if first else ''}",
-                problems=[v.render() for v in resolution.violations],
-                observed_behavior=decision.observed_behavior,
-                evidence_paths=[p for v in resolution.violations for p in v.evidence_paths][:12],
-                correction_prompt=_protocol_correction(resolution),
-                requirement_reference=(
-                    f"{first.rule_id} ({first.rule_citation})" if first else "repository protocol"
-                ),
-                product_principle_reference=(
-                    "a green targeted suite cannot make an invalid repository state valid"
-                ),
-                scenario=scenario_name,
-                observed_result=first.observed_state if first else resolution.current_graph,
-                expected_result=first.expected_state if first else resolution.expected_graph,
-                preserve=(
-                    "All implementation code, all commits, all receipts and every archival ref. "
-                    "Do not rewrite history and do not hand-edit derived status."
-                ),
-                retest=(
-                    "Re-run this driver's protocol resolver; it must report CONSISTENT before "
-                    "any finalizer or reviewer is launched."
-                ),
-                confidence=0.85,
-            )
-        # A product defect the evaluator found outranks a protocol violation for
-        # what to send the builder next, but the violation is still recorded.
-        decision.problems.extend(v.detail or v.observed_state for v in resolution.violations)
-        return None, decision
-
-    if status is ProtocolStatus.BLOCKED_ENVIRONMENT and decision.decision is Decision.ACCEPT:
-        emit("  an environmental gate failure cannot be counted as a pass.")
-        return RunStatus.BLOCKED, EvaluatorDecision(
-            decision=Decision.BLOCKED,
-            summary=(
-                "A required gate could not run for environmental reasons. This is not a product "
-                "failure — and it is not a PASS either."
-            ),
-            problems=[b.render() for b in resolution.environment_blockers],
-            observed_behavior=decision.observed_behavior,
-            evidence_paths=list(resolution.sources_read)[:12],
-        )
-
-    return None, decision
-
-
-def _protocol_correction(resolution: Any) -> str:
-    """A correction the builder may safely act on. Never a history rewrite."""
+    blockers = list(review.blockers) or list(review.findings)
     lines = [
-        "REPOSITORY PROTOCOL VIOLATION — the repository's own rules reject the current state.",
+        "INDEPENDENT REVIEW — a fresh read-only session reviewed this change and did "
+        "not support it.",
         "",
-        "CURRENT GRAPH:",
-        resolution.current_graph,
+        f"verdict: {review.verdict} (confidence {review.confidence:.2f})",
+        f"why this review happened: {risk.brief() if risk is not None else 'risk-based review'}",
         "",
-        "EXPECTED GRAPH:",
-        resolution.expected_graph,
+        review.summary.strip(),
         "",
-        "VIOLATIONS:",
+        "FINDINGS — each cites evidence the reviewer actually read:",
     ]
-    lines += [f"  {i}. {v.render()}" for i, v in enumerate(resolution.violations, 1)]
+    for finding in blockers:
+        lines.append(f"  [{finding.severity}] {finding.finding}")
+        lines.append(f"      evidence:  {finding.evidence_path}")
+        lines.append(f"      reasoning: {finding.reasoning}")
+    unresolved = [a for a in review.adjudications if a.ruling == "UPHELD"]
+    if unresolved:
+        lines += ["", "DISCREPANCIES THE REVIEWER UPHELD:"]
+        lines += [f"  - {a.discrepancy}\n      basis: {a.basis}" for a in unresolved]
     lines += [
         "",
-        "REQUIRED ACTION:",
-        f"  {resolution.next_safe_action}",
-        "",
-        "PROHIBITED:",
-        "  - rewriting history (reset, rebase, squash, amend, cherry-pick, force-update):",
-        "    those need explicit founder approval and are never yours to perform here",
-        "  - writing or editing derived status by hand",
-        "  - deleting or weakening any guard, test or receipt to obtain a green result",
-        "",
-        "If the only way forward is one of the prohibited operations, stop and say so.",
+        "Address the findings above. Do not delete, weaken or disable a test, guard or "
+        "control to clear one — a finding cleared that way is a defect with a passing "
+        "status. If a finding rests on a product decision the repository has not made, "
+        "say so plainly rather than choosing one.",
     ]
-    return "\n".join(lines)
+
+    return EvaluatorDecision(
+        decision=Decision.FIX,
+        summary=f"Independent review returned {review.verdict}: {review.summary[:200]}",
+        problems=[f"[{f.severity}] {f.finding}" for f in blockers][:12]
+        or [review.summary[:200]],
+        observed_behavior=decision.observed_behavior,
+        evidence_paths=[f.evidence_path for f in blockers if f.evidence_path][:12],
+        correction_prompt="\n".join(lines),
+        requirement_reference=(
+            "the independent review this change's risk classification required"
+        ),
+        product_principle_reference=(
+            "a change to a high-consequence surface is not finished because the session "
+            "that wrote it believes it is"
+        ),
+        scenario=scenario_name,
+        observed_result=review.summary[:2000],
+        expected_result=(
+            "Every blocking review finding is resolved in the product, with evidence, and "
+            "no guard or test was weakened to resolve it."
+        ),
+        preserve=(
+            "All behaviour the passing scenarios already demonstrate, every test, and "
+            "every guard."
+        ),
+        retest=(
+            "Re-run the scenario suite, then the review runs again against the corrected "
+            "state."
+        ),
+        confidence=max(0.6, float(getattr(review, "confidence", 0.8) or 0.8)),
+    )
+
+
+def _apply_protocol_policy(
+    resolution: Any,
+    decision: EvaluatorDecision,
+    emit: Callable[[str], None],
+) -> tuple[RunStatus | None, EvaluatorDecision]:
+    """Apply the repository's protocol findings to the product verdict.
+
+    One rule, replacing a six-level precedence table:
+
+        A protocol finding stops the run only when clearing it would need an
+        action the founder alone may authorize — a history rewrite, a change to
+        pushed or shared history, or a destructive operation.
+
+    Everything else is recorded and reported. That is not a relaxation of
+    safety; the operations that were ever dangerous are exactly the ones still
+    caught here, and the command guard refuses them independently whatever this
+    returns. What is given up is the driver's habit of treating a *process*
+    finding — a commit that carries status alongside content, a receipt that has
+    not been regenerated, a finalizer that has not run — as more authoritative
+    than a scenario suite that just watched the product work.
+
+    A finding the repository no longer states never reaches here at all: the
+    resolver only speaks where the repository states a rule.
+
+    Returns ``(terminal_status, decision)``; ``None`` means the loop continues.
+    """
+    verdict = requires_founder_authority(resolution)
+    if not verdict:
+        notes = protocol_diagnostic_notes(resolution)
+        if notes:
+            emit("  repository protocol findings (recorded, not blocking):")
+            for note_text in notes[:6]:
+                emit(f"    - {note_text}")
+        return None, decision
+
+    emit("  a repository repair needs your authority before it can proceed.")
+    for operation in verdict.operations[:6]:
+        emit(f"    - {operation}")
+    return RunStatus.REQUIRES_APPROVAL, EvaluatorDecision(
+        decision=Decision.ASK_USER,
+        summary=(
+            f"A repository-governance repair needs your approval: {verdict.reason}. "
+            "The implementation is not in question here."
+        ),
+        problems=list(verdict.operations)
+        or [str(getattr(resolution, "next_safe_action", "")) or "an authorized repair"],
+        observed_behavior=decision.observed_behavior,
+        evidence_paths=list(getattr(resolution, "sources_read", []) or [])[:12],
+        confidence=0.9,
+    )
 
 
 def _build_provenance(
@@ -1407,13 +1653,18 @@ async def cmd_run(args: argparse.Namespace) -> int:
     out(f"founder:  context version {founder.version} ({len(founder.category_ids)} rubric categories)")
 
     # Context layer B: repository authority, re-read before every decision.
+    #
+    # Reported, not required. A repository that declares an active unit gets its
+    # scope honoured; one that does not is built in against the founder's task.
+    # This used to exit 11 before the builder had done anything, which made the
+    # presence of a unit registry a precondition for all product work — and made
+    # every simplification of the target repository an outage here.
     repo_loader = RepositoryContextLoader(config.neyma_repo)
-    try:
-        unit = repo_loader.resolve_active_unit()
+    unit = repo_loader.resolve_active_unit_optional()
+    if unit.is_declared:
         out(f"unit:     {unit.unit_id} ({unit.status}) — {unit.name}")
-    except ContextResolutionError as exc:
-        error(f"BLOCKED — {exc}")
-        return 11
+    else:
+        note(f"unit:     none declared — the task is the authority ({unit.resolution_problem})")
 
     planner = _make_planner(config, args, store, scenario, founder, out)
     if planner is not None:
@@ -1480,6 +1731,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     auditor=CompletionAuditor(config.neyma_repo),
                     protocol_resolver=ProtocolResolver(config.neyma_repo),
                     planner=planner,
+                    reviewer_factory=_make_reviewer_factory(config, args),
                 )
     except KeyboardInterrupt:
         warn("\ninterrupted — saving state")
@@ -1492,10 +1744,34 @@ async def cmd_run(args: argparse.Namespace) -> int:
         store.save_state(state)
         return 1
 
-    _write_run_journal(store, state, config)
+    _write_run_journal(store, state, config, authority_report=result.authority_report)
+    _report_founder_summary(result, store, config)
     _report_coverage(result, store)
     _report_outcome(result, store)
     return _exit_code_for(result.status)
+
+
+def _make_reviewer_factory(config: DriverConfig, args: argparse.Namespace) -> Any:
+    """A callable the loop uses to launch one fresh, read-only reviewer.
+
+    Returns ``None`` when automatic review is switched off, which makes the loop
+    report that a review is warranted rather than quietly accepting without one.
+    The session it builds is the same one ``review`` has always launched: fresh,
+    never resuming the builder, Read/Grep/Glob only.
+    """
+    if getattr(args, "no_auto_review", False) or not config.review.automatic:
+        return None
+
+    def factory() -> Any:
+        from .reviewer import IndependentReviewerSession
+
+        return IndependentReviewerSession(
+            config.neyma_repo,
+            model=config.review.model or config.evaluator.model,
+            on_progress=lambda m: out(_indent(m)),
+        )
+
+    return factory
 
 
 def _permanent_scenarios(config: DriverConfig) -> list[Scenario]:
@@ -1526,13 +1802,20 @@ def _make_planner(
     founder: Any,
     emit: Callable[[str], None],
 ) -> Any:
-    """Build a ScenarioPlanner when this run asked for generated coverage.
+    """Build a ScenarioPlanner unless this run turned generated coverage off.
 
-    Off unless BOTH the configuration enables it and the run opts in, or the
-    run passes ``--auto-scenarios`` explicitly. Generating and executing
-    scenarios against a real product is not something a config default should
-    switch on behind someone's back.
+    On by default. Generating situations from the diff, the requirements and the
+    failures already seen is the strongest verification this driver has, and
+    making it opt-in meant the command anyone actually typed produced the
+    weakest run available. ``--no-auto-scenarios`` switches it off for a run
+    that has a concrete reason it cannot apply; ``--auto-scenarios`` remains
+    accepted so existing commands and scripts keep working.
+
+    Every budget in :class:`~neyma_product_driver.config.ScenarioGenerationConfig`
+    still applies, so the default run is bounded exactly as the opt-in run was.
     """
+    if bool(getattr(args, "no_auto_scenarios", False)):
+        return None
     requested = bool(getattr(args, "auto_scenarios", False))
     if not requested and not config.scenario_generation.enabled:
         return None
@@ -1588,11 +1871,9 @@ async def cmd_scenarios_plan(args: argparse.Namespace) -> int:
         error(f"founder context unusable: {exc}")
         return 2
 
-    try:
-        unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit()
-    except ContextResolutionError as exc:
-        error(f"BLOCKED — {exc}")
-        return 11
+    unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit_optional()
+    if not unit.is_declared:
+        note(f"no active unit declared — planning against the task ({unit.resolution_problem})")
 
     try:
         base = load_scenario(config.scenario_path(args.scenario))
@@ -1919,7 +2200,12 @@ def _journalled_commands(record: IterationRecord) -> list[tuple[CommandResult, s
     return out
 
 
-def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConfig) -> None:
+def _write_run_journal(
+    store: EvidenceStore,
+    state: RunState,
+    config: DriverConfig,
+    authority_report: dict[str, Any] | None = None,
+) -> None:
     """Persist journal.json and FOUNDER-SUMMARY.md for the run.
 
     Run-journal evidence is acceptance evidence, so a run that produces none
@@ -1940,6 +2226,12 @@ def _write_run_journal(store: EvidenceStore, state: RunState, config: DriverConf
             repo=str(config.neyma_repo),
         )
         journal.record_start(config.neyma_repo)
+        if authority_report:
+            # Computed by the control loop, which held the before-snapshot. The
+            # journal used to render an authority section that nothing ever
+            # populated, so "did any authority file change?" answered "no"
+            # whatever the run had done.
+            journal.record_authority(authority_report)
         for record in state.iterations:
             for command, source in _journalled_commands(record):
                 journal.record_command(
@@ -1987,6 +2279,238 @@ def _report_coverage(result: LoopResult, store: EvidenceStore) -> None:
     out(f"\nscenario plan: {store.run_dir / 'scenario-plan.json'}")
 
 
+def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: DriverConfig) -> None:
+    """The shipping report, written for the person paying for the product.
+
+    This is what the founder reads. It leads with whether the change can be
+    tried and whether it can be shipped, and it answers the questions actually
+    worth a founder's attention: what the product can do now, what was
+    exercised, what broke, what was fixed, what still fails, and what risk
+    remains. Repository and protocol mechanics appear only where they genuinely
+    block shipping — everything else that a run learns about the repository is
+    in ``journal.json`` for whoever wants it.
+
+    Every line is derived from what the run recorded. Where nothing was
+    recorded, this says so rather than producing a confident blank.
+    """
+    state = result.state
+    suite = result.suite
+    gate = result.gate
+    decision = result.final_decision
+
+    failures = list(suite.blocking_failures()) if suite is not None else []
+    passed = (
+        sum(1 for o in suite.outcomes if getattr(o.outcome, "value", "") == "PASSED")
+        if suite is not None
+        else 0
+    )
+    executed = len(suite.outcomes) if suite is not None else 0
+    verified = gate is not None and not gate.blocks_acceptance
+
+    commit = _last_local_commit(config.neyma_repo)
+    dirty = _tracked_dirty(config.neyma_repo)
+    shippable = (
+        result.status is RunStatus.ACCEPTED and verified and not failures and not dirty
+    )
+
+    header("READY TO SHIP" if shippable else "NOT READY TO SHIP")
+    out(
+        f"  behaviour verified:            "
+        f"{'yes — ' + gate.headline() if gate is not None else 'no acceptance gate ran'}"
+    )
+    out(f"  scenarios:                     {passed} passed, {len(failures)} failed, "
+        f"{max(0, executed - passed - len(failures))} not executed")
+    tests = _recorded_test_commands(state)
+    out(f"  tests run by the builder:      {tests or 'none recorded in this run'}")
+    unresolved = _unresolved_findings(result)
+    out(f"  unresolved material findings:  {len(unresolved)}")
+    for finding in unresolved[:6]:
+        out(f"      - {finding}")
+    out(f"  local commit:                  {commit or 'none created this run'}")
+    if dirty:
+        out(f"  uncommitted tracked changes:   {len(dirty.splitlines())} file(s)")
+    out(f"  founder action required:       {_founder_action(result, shippable, dirty)}")
+
+    header("FOR THE FOUNDER")
+    out("1. What can Neyma do now that it could not before?")
+    if decision is not None and decision.observed_behavior:
+        for observed in decision.observed_behavior[:6]:
+            out(f"     - {observed}")
+    elif decision is not None and decision.summary:
+        out(f"     {decision.summary}")
+    else:
+        out("     Nothing was recorded as newly working.")
+
+    out("\n2. What real workflow did you exercise?")
+    if suite is not None and suite.outcomes:
+        for outcome in suite.outcomes[:10]:
+            out(f"     - {outcome.scenario_name or outcome.scenario_id}")
+    else:
+        out(f"     - {state.scenario_name or '(none)'}")
+
+    out(f"\n3. How many scenarios did you run?   {executed}"
+        f" ({passed} passed, {len(failures)} failed)")
+
+    out("\n4. What failures did you discover?")
+    discovered = _discovered_failures(state)
+    for item in discovered[:10] or ["     None — nothing failed at any point in this run."]:
+        out(item if item.startswith("     ") else f"     - {item}")
+
+    out("\n5. What did the builder fix?")
+    fixes = [
+        record.decision.summary
+        for record in state.iterations
+        if record.decision is not None and record.decision.decision is Decision.FIX
+    ]
+    for fix in fixes[:10] or ["     No corrections were needed."]:
+        out(fix if fix.startswith("     ") else f"     - {fix}")
+
+    out("\n6. What still fails?")
+    for failure in [f.brief() for f in failures][:10] or ["     Nothing the suite exercised."]:
+        out(failure if failure.startswith("     ") else f"     - {failure}")
+
+    out("\n7. What consequential risks remain?")
+    risks = _remaining_risks(result)
+    for risk in risks[:10] or ["     None identified by this run."]:
+        out(risk if risk.startswith("     ") else f"     - {risk}")
+
+    out(f"\n8. Is it ready for you to try?      "
+        f"{'Yes.' if verified and not failures else 'Not yet — see 6 and 7.'}")
+    out(f"9. Is it ready to push or merge?    {_push_readiness(result, shippable, dirty, commit)}")
+
+    out("\n10. What should we build next?")
+    for suggestion in _next_steps(result)[:8] or ["     Nothing outstanding was recorded."]:
+        out(suggestion if suggestion.startswith("     ") else f"     - {suggestion}")
+
+    # Repository mechanics, only where they block. Everything else recorded is
+    # in journal.json; putting it here is what buried the product report.
+    if result.status is RunStatus.REQUIRES_APPROVAL:
+        header("THIS NEEDS YOUR AUTHORITY")
+        if decision is not None:
+            out(decision.summary)
+            for problem in decision.problems[:8]:
+                out(f"  - {problem}")
+    elif result.protocol_diagnostics:
+        note(
+            f"\n{len(result.protocol_diagnostics)} repository/protocol observation(s) were "
+            "recorded and did not block this run. They are in journal.json."
+        )
+
+    out(f"\nrun artifacts: {store.run_dir}")
+
+
+def _last_local_commit(repo: Path) -> str:
+    """The current HEAD, described. Read-only, and never assumes it is this run's."""
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--pretty=%h %s"],
+            cwd=str(repo), capture_output=True, text=True, timeout=20, check=False,
+        )
+        return redact(proc.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _recorded_test_commands(state: RunState) -> str:
+    """How many test commands this run's scenarios actually executed."""
+    total = 0
+    for record in state.iterations:
+        for command, _source in _journalled_commands(record):
+            if re.search(r"(?i)\b(?:pytest|unittest|npm (?:run )?test|go test|cargo test)\b",
+                         command.command or ""):
+                total += 1
+    return f"{total} test command(s)" if total else ""
+
+
+def _unresolved_findings(result: LoopResult) -> list[str]:
+    """Material findings nothing in this run resolved.
+
+    Blocking scenario failures, unverified required coverage, and any review
+    finding that was never followed by a supported review. Deliberately not
+    every note the run took: a founder reading "unresolved findings: 0" must be
+    able to trust that it means what it says.
+    """
+    findings: list[str] = []
+    if result.suite is not None:
+        findings += [f.brief() for f in result.suite.blocking_failures()]
+    if result.gate is not None and result.gate.blocks_acceptance:
+        findings += [c.brief() for c in result.gate.unverified]
+        findings += [r.brief() for r in result.gate.uncovered_risks]
+    if result.reviews and result.reviews[-1].verdict != "SUPPORTED":
+        findings += [f"[{f.severity}] {f.finding}" for f in result.reviews[-1].blockers]
+    return findings
+
+
+def _discovered_failures(state: RunState) -> list[str]:
+    """Everything that failed at any point, including what was later fixed."""
+    seen: list[str] = []
+    for record in state.iterations:
+        for outcome in (record.suite or {}).get("outcomes", []) or []:
+            if str(outcome.get("outcome", "")).upper() == "FAILED":
+                label = f"{outcome.get('scenario_name') or outcome.get('scenario_id')}"
+                detail = (outcome.get("error") or "").strip()
+                entry = f"iteration {record.iteration}: {label}" + (f" — {detail[:160]}" if detail else "")
+                if entry not in seen:
+                    seen.append(entry)
+    return seen
+
+
+def _remaining_risks(result: LoopResult) -> list[str]:
+    risks: list[str] = []
+    if result.risk is not None and getattr(result.risk, "surfaces", None):
+        risks.append(
+            f"this change touches {', '.join(result.risk.surfaces)} — "
+            + (
+                f"reviewed independently ({result.reviews[-1].verdict})"
+                if result.reviews
+                else "no independent review was run"
+            )
+        )
+    if result.gate is not None:
+        risks += [f"identified but never verified: {r.brief()}" for r in result.gate.uncovered_risks]
+    if result.risk is not None and getattr(result.risk, "weakened_controls", None):
+        risks += [f"a mandatory control was weakened: {w}" for w in result.risk.weakened_controls]
+    return risks
+
+
+def _next_steps(result: LoopResult) -> list[str]:
+    steps: list[str] = []
+    if result.suite is not None:
+        steps += [f"fix: {f.brief()}" for f in result.suite.blocking_failures()][:5]
+    if result.gate is not None:
+        steps += [f"verify: {r.brief()}" for r in result.gate.uncovered_risks][:5]
+    for candidate in result.promotion_candidates[:5]:
+        steps.append(
+            f"consider promoting {candidate.scenario_id} into the permanent suite "
+            f"({candidate.title})"
+        )
+    if result.final_decision is not None and result.final_decision.decision is Decision.ASK_USER:
+        steps.append(f"decide: {result.final_decision.summary}")
+    return steps
+
+
+def _founder_action(result: LoopResult, shippable: bool, dirty: str) -> str:
+    if result.status is RunStatus.REQUIRES_APPROVAL:
+        return "approve or refuse a repository repair that needs your authority"
+    if result.status is RunStatus.NEEDS_USER:
+        return "answer the product or authority question below"
+    if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
+        return "an independent review is warranted and none could be launched"
+    if shippable:
+        return "push / merge"
+    if dirty:
+        return "none yet — the work is not committed"
+    return "none yet — the run did not reach a verified acceptance"
+
+
+def _push_readiness(result: LoopResult, shippable: bool, dirty: str, commit: str) -> str:
+    if shippable:
+        return f"Yes — local commit {commit or '(none)'}; push and merge are yours to perform."
+    if result.status is RunStatus.ACCEPTED and dirty:
+        return "Not yet — the accepted work is still uncommitted in the working tree."
+    return "No — see the unresolved findings above."
+
+
 def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
     header("RESULT")
     d = result.final_decision
@@ -2011,11 +2535,17 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
         return
 
     if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
-        warn("IMPLEMENTED — AWAITING INDEPENDENT REVIEW\n")
+        warn("IMPLEMENTED — THE REQUIRED INDEPENDENT REVIEW DID NOT RUN\n")
         out(
-            "The implementation stands and the product evaluation reached ACCEPT, but the\n"
-            "repository requires criteria that this session may not award itself."
+            "The implementation stands and the product evaluation reached ACCEPT, but this\n"
+            "change touches a surface that requires one focused independent review, and no\n"
+            "review produced a verdict. The driver normally launches that review itself; it\n"
+            "reaches this state only when review was switched off, or the session failed."
         )
+        if result.risk is not None and result.risk.surfaces:
+            out("\nWhy a review is required here:")
+            for surface in result.risk.surfaces:
+                out(f"  - {surface}")
         # What the deterministic gate said, rather than an assertion nobody
         # computed. This text used to state flatly that "the product evaluation
         # passed" on a path that returned before the gate ran at all, so it
@@ -2037,8 +2567,7 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
                 for name in pending:
                     out(f"  - {name}")
         out(
-            "\nThis is neither a failure nor a completion. To authorize the transition\n"
-            "from implementer to independent reviewer, run:\n"
+            "\nThis is neither a failure nor a completion. To run the review by hand:\n"
             f"  python -m neyma_product_driver review --run {store.run_id}"
         )
         out(f"\nrun artifacts: {store.run_dir}")
@@ -2334,10 +2863,16 @@ async def cmd_doctor(args: argparse.Namespace) -> int:
         write_ok, write_detail = await _check_builder_write_capability(config.neyma_repo)
         check("builder can write (ignored scratch probe)", write_ok, write_detail)
 
-        try:
-            unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit()
-        except ContextResolutionError as exc:
-            check("exactly one READY unit resolvable", False, str(exc))
+        unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit_optional()
+        if not unit.is_declared:
+            # Not a failure. A repository is entitled to declare no unit; the
+            # driver then works to the founder's task. Reported so an operator
+            # who *expected* one can see that it is not being read.
+            check(
+                "active unit declared by the repository",
+                True,
+                f"none declared — the task is the authority ({unit.resolution_problem})",
+            )
         else:
             pending = [
                 c.get("criterion")
@@ -2589,7 +3124,17 @@ async def cmd_status(args: argparse.Namespace) -> int:
 
 
 async def cmd_evaluate(args: argparse.Namespace) -> int:
-    """Run the scenario and evaluate it once, without touching the builder."""
+    """Run the scenario and evaluate it once, without touching the builder.
+
+    The evaluator's verdict is a recommendation here exactly as it is in the
+    loop: what the scenario *measured* passes through the same authoritative
+    gate first. This command used to write whatever the evaluator said, so a
+    required scenario could fail, the evaluator could return ACCEPT, and
+    ACCEPTED was persisted and exited 0 — no gate had ever been consulted,
+    because the gate was only wired into the loop's suite branch. It runs the
+    selected scenario as a one-entry suite for that reason: the suite is what
+    writes and verifies per-case evidence, and the gate is what reads it.
+    """
     config = _config_from_args(args)
     problems = config.validate_repo()
     if problems:
@@ -2623,10 +3168,24 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
     out(f"scenario: {scenario.name} ({scenario.mode})")
     out(f"run:      {store.run_dir}")
 
-    executor = ScenarioExecutor(config.neyma_repo, config.run, store.iteration_dir(1))
+    suite = build_suite(permanent=[(scenario.name, scenario)])
+    executor = SuiteExecutor(
+        make_executor=lambda artifact_dir: ScenarioExecutor(
+            config.neyma_repo, config.run, artifact_dir
+        ),
+        artifact_root=store.iteration_dir(1),
+        browser_enabled=config.run.browser_enabled,
+        run_id=run_id,
+        iteration=1,
+        emit=out,
+    )
     out("→ running scenario...")
-    result = await executor.execute(scenario)
-    out(f"  scenario {'PASSED' if result.passed else 'FAILED'}")
+    suite_result = await executor.run(
+        suite, selection_reason="evaluate-only: the selected scenario"
+    )
+    result = _primary_result(scenario, executor, suite_result)
+    for line in suite_result.headline().splitlines():
+        out(f"  {line}")
 
     git = git_snapshot(config.neyma_repo)
 
@@ -2680,6 +3239,12 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
             problems=reasons,
         )
 
+    # What the suite measured outranks what the evaluator concluded, on exactly
+    # the terms the loop uses: the same gate, reading the same outcome records
+    # and the same per-case evidence. An ACCEPT survives only when every
+    # required scenario passed and can show its evidence.
+    decision = _apply_suite_precedence(suite_result, decision, scenario.name, out)
+
     record = IterationRecord(
         iteration=1,
         git=git,
@@ -2687,6 +3252,11 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
         decision=decision,
         evaluator_session_id=state.evaluator_session_id,
         context_provenance=provenance.model_dump(mode="json"),
+    )
+    record.suite = suite_result.model_dump(mode="json")
+    store.write_json(
+        store.iteration_dir(1).relative_to(store.run_dir) / "suite-result.json",
+        record.suite,
     )
     store.save_iteration(record)
     state.iterations.append(record)
@@ -2705,7 +3275,11 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
         out("\nSuggested correction prompt:\n")
         out(decision.correction_prompt)
     out(f"\nartifacts: {store.run_dir}")
-    return 0
+    # The exit code carries the same verdict the run state does. Returning 0
+    # whatever happened was the other half of the false accept: a caller that
+    # only checks the status of this process was told the certification
+    # succeeded even when the decision recorded beside it says otherwise.
+    return _exit_code_for(state.status)
 
 
 async def cmd_audit(args: argparse.Namespace) -> int:
@@ -2718,11 +3292,9 @@ async def cmd_audit(args: argparse.Namespace) -> int:
         return 2
 
     auditor = CompletionAuditor(config.neyma_repo)
-    try:
-        unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit()
-    except ContextResolutionError as exc:
-        error(f"BLOCKED — {exc}")
-        return 11
+    unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit_optional()
+    if not unit.is_declared:
+        note(f"no active unit declared ({unit.resolution_problem}); auditing the claims alone")
 
     report = ""
     if args.report:
@@ -3056,11 +3628,9 @@ async def cmd_review(args: argparse.Namespace) -> int:
         error(f"Run {store.run_id} has no readable state.")
         return 2
 
-    try:
-        unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit()
-    except ContextResolutionError as exc:
-        error(f"BLOCKED — {exc}")
-        return 11
+    unit = RepositoryContextLoader(config.neyma_repo).resolve_active_unit_optional()
+    if not unit.is_declared:
+        note(f"no active unit declared ({unit.resolution_problem}); reviewing the change itself")
 
     last = state.iterations[-1] if state.iterations else None
     builder_report = last.builder_summary if last else ""
@@ -3365,8 +3935,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--auto-scenarios",
         action="store_true",
         dest="auto_scenarios",
-        help="generate an adaptive verification suite for this task, alongside "
-        "--scenario. Off unless asked for.",
+        help="generate an adaptive verification suite for this task (now the "
+        "default; accepted so existing commands keep working)",
+    )
+    run_p.add_argument(
+        "--no-auto-scenarios",
+        action="store_true",
+        dest="no_auto_scenarios",
+        help="do not generate verification scenarios for this run",
+    )
+    run_p.add_argument(
+        "--no-auto-review",
+        action="store_true",
+        dest="no_auto_review",
+        help="do not launch an independent reviewer automatically, even for a "
+        "high-consequence change (the run reports that one is warranted instead)",
     )
     run_p.set_defaults(func=cmd_run)
 

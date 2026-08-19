@@ -31,20 +31,55 @@ orchestrator, no service.
                     │        ├─► EvaluatorSession ─────────────┼──► Claude Code session
                     │        │     read-only, structured JSON  │     (read-only: Read/Grep/Glob)
                     │        │                                 │
+                    │        ├─► acceptance gate  (deterministic)     │
+                    │        │                                 │
+                    │        ├─► IndependentReviewer ──────────┼──► fresh read-only session,
+                    │        │     only when the change's risk │     launched by the driver
+                    │        │     calls for it                │     when risk calls for it
+                    │        │                                 │
                     │        └─► ACCEPT / FIX / ASK_USER / BLOCKED
                     │                 │                        │
                     │                 └─ FIX → correction → same builder session
-                    │                                          │
+                    │                    (from the evaluator, the suite, or   │
+                    │                     the reviewer — all automatic)       │
                     │   runs/<run-id>/  evidence, state, resume│
                     └──────────────────────────────────────────┘
 ```
 
-The Neyma repository is the source of truth. The driver reads and operates it;
-it never weakens its authority, settings, hooks, safety controls, READY-unit
-selection, acceptance contracts or phase boundaries. Authority documents such as
-`CLAUDE.md` *may* be edited when a task legitimately requires it — but never
-silently, and never to remove a control that is blocking the run. See
-[Safety → Authority files](#authority-files).
+The Neyma repository is the source of truth, **as it exists now**. The driver
+reads and operates it; it never weakens its authority, settings, hooks or safety
+controls. Authority documents such as `CLAUDE.md` *may* be edited when a task
+legitimately requires it — but never silently, and never to remove a control that
+is blocking the run. See [Safety → Authority files](#authority-files).
+
+Crucially, the driver requires of the target repository only what the target
+repository currently states. Where it declares a unit registry, a commit
+protocol, a finalizer or a canonical-suite gate, those are read and honoured.
+Where it does not — or once it stops — the driver stops asking for them, with no
+change here. A repository simplifying its own process is not an outage.
+
+## What stops a run, and what does not
+
+This is the operating philosophy, and it is short.
+
+**A run stops and asks you** for: a product or authority question the evaluator
+raised; verification that did not happen (the acceptance gate); an independent
+review that still refuses after the builder corrected it; and a
+repository repair that would rewrite history, change pushed or shared history, or
+destroy something. Push, merge and deploy remain yours, always.
+
+**A run does not stop** for: a commit-shape difference, a missing metadata
+commit, a receipt the repository has not regenerated, a finalizer that has not
+run, contradictory protocol prose, a registry between units, or an environmental
+oddity. Those are recorded, reported, and handed to the investigator, and the
+product loop keeps going.
+
+The distinction lives in one module,
+[`policy.py`](neyma_product_driver/policy.py), so it cannot quietly grow back
+into a precedence table. It replaced a six-level ordering in which any
+repository-process finding outranked a scenario suite that had just watched the
+product work — which is how two days went into relaying findings between
+sessions by hand.
 
 ---
 
@@ -125,10 +160,25 @@ directory is writable, and that every scenario file parses.
 
 ```bash
 .venv/bin/python -m neyma_product_driver run \
-  --task "Finish the P3 mutation battery: prove each new guard fails against a
-          reintroduced defect, then restore it via the in-memory harness." \
+  --task "Show the accountable owner beside every open obligation on the load
+          list, and keep it correct after a restart." \
   --scenario backend_generic \
   --max-iterations 5
+```
+
+That is the whole normal invocation. Generated verification scenarios are on by
+default; an independent review is launched automatically if the change earns
+one; findings from the suite, the evaluator or the reviewer go back to the same
+builder without you relaying them. You are asked only at the boundaries listed
+in [What stops a run](#what-stops-a-run-and-what-does-not).
+
+Switches for the runs that need them:
+
+```bash
+--no-auto-scenarios   # skip generated coverage for this run
+--no-auto-review      # never launch a reviewer; report that one is warranted
+--browser             # enable browser verification
+--resume-run <id>     # continue a previous run, its plan and its builder session
 ```
 
 Other commands:
@@ -247,15 +297,16 @@ step form.
 
 ## Generated verification scenarios
 
-Normally you write the scenario. With `--auto-scenarios`, the driver also works
+Normally you write the scenario. By default the driver also works
 out **what situations this particular task should be tested for** — from the
 task, the active READY unit and its acceptance criteria, founder context, the
 diff the builder actually produced, the existing scenarios, and whatever has
 already failed in this run.
 
 ```bash
-python -m neyma_product_driver run --task "..." --auto-scenarios
-python -m neyma_product_driver run --task "..." --scenario my_slice --auto-scenarios
+python -m neyma_product_driver run --task "..."
+python -m neyma_product_driver run --task "..." --scenario my_slice
+python -m neyma_product_driver run --task "..." --no-auto-scenarios   # opt out
 
 python -m neyma_product_driver scenarios plan --task "..."            # plan only, runs nothing
 python -m neyma_product_driver scenarios plan --task "..." --json
@@ -264,9 +315,11 @@ python -m neyma_product_driver scenarios promotion-candidates --run <id>
 python -m neyma_product_driver scenarios promote --run <id> --scenario-id <id>
 ```
 
-`--scenario foo` alone is unchanged. `--scenario foo --auto-scenarios` runs foo
-as permanent regression coverage with generated coverage around it. Off unless
-asked for; see `scenario_generation` in `driver.config.example.yaml`.
+`--scenario foo --no-auto-scenarios` runs foo alone. `--scenario foo` runs foo
+as permanent regression coverage with generated coverage around it. On by
+default, and bounded by every budget in `scenario_generation` — see
+`driver.config.example.yaml`. Making it opt-in meant the command anyone actually
+typed produced the weakest run available.
 
 ### Three separable stages, and nothing skips one
 
@@ -431,10 +484,19 @@ run's test output.
 5. driver combines both
 ```
 
-`ACCEPT` requires **all** of: completion claims VERIFIED, required independent
-review complete, the scenario passing, the product evaluator returning ACCEPT,
-and the repository permitting completion. A product evaluator's ACCEPT never
-overrides a contradicted claim.
+`ACCEPT` requires **all** of: completion claims VERIFIED, the acceptance gate
+verified, any independent review this change's risk called for returning
+SUPPORTED, and the product evaluator returning ACCEPT. A product evaluator's
+ACCEPT never overrides a contradicted claim or a failed required scenario.
+
+**What it asks for follows the target repository.** The honesty checks are
+unconditional — a cited file that does not exist, a percentage the criteria do
+not support, a full-suite claim resting on targeted tests, a receipt that exists
+and says FAIL. The checks that demand a *ceremony artifact* are asked only while
+the repository still states the rule that makes that artifact mandatory, read
+fresh on every audit. Delete the finalizer protocol from the target repository
+and the auditor stops asking for a finalizer receipt, with no change here. Claim
+the finalizer ran when it did not, and it is still caught.
 
 The distinctions it enforces:
 
@@ -480,9 +542,12 @@ python -m neyma_product_driver audit --report /path/to/builder-report.md --json
 ### Implemented, awaiting review
 
 When the only outstanding criteria are ones a single session structurally cannot
-award itself, the run ends as **`IMPLEMENTED — AWAITING INDEPENDENT REVIEW`**.
-That is neither downgraded into failure nor upgraded into completion. The
-implementation stands; the acceptance does not.
+award itself, the driver launches that review **itself** — see
+[Review proportional to risk](#review-proportional-to-risk). A run ends as
+`IMPLEMENTED — THE REQUIRED INDEPENDENT REVIEW DID NOT RUN` only when review was
+switched off with `--no-auto-review` or the reviewer session failed. That is
+neither downgraded into failure nor upgraded into completion: the implementation
+stands; the acceptance does not.
 
 ### Honest rollback
 
@@ -493,18 +558,48 @@ weakening any acceptance guard to obtain a green result, forbids
 `git stash/restore/clean/checkout --`, and leaves criteria requiring an
 independent session PENDING.
 
-### Independent reviewer
+### Review proportional to risk
+
+A reviewer is a **fresh** Claude session that never resumes or inherits the
+builder conversation, is read-only (`Read`/`Grep`/`Glob` only, everything else
+denied), receives repository authority and actual evidence rather than
+conversation, returns findings each citing an evidence path, and **never writes
+a status file**. An unparseable reply degrades to `INSUFFICIENT_EVIDENCE`, never
+to a pass.
+
+What changed is **who starts it**. It used to be you, by hand, once per run,
+after reading a report and deciding it was warranted. Now the driver classifies
+what the builder actually changed and decides:
+
+| the change | what happens |
+|---|---|
+| **ordinary** — an edit, a refactor, a test, a fix | no review |
+| **meaningful** — large, and the run needed more than one pass or has an uncovered risk | one review |
+| **high consequence** — effect execution, payment or banking, approval authority, authentication, authorization, tenant isolation, secrets, destructive database operations, write-capable external integrations, outbound communication, claims/legal/compliance behaviour, or a weakened runtime safety invariant | one focused review, always |
+
+Classification is derived from the **diff**, not from what the task said it would
+do: a change described as a UI tweak that moved an authorization check is a
+high-consequence change. The bias is one-directional — an uncertain change earns
+a review rather than skipping one, because a false positive costs one bounded
+read-only session and a false negative ships an unreviewed change to one of
+those surfaces.
+
+A reviewer that returns findings **does not end the run**. Its findings become a
+grounded correction for the *same* builder — each already carries the evidence
+path and reasoning the prompt-quality contract requires — and the loop retests. A
+refusal that survives correction (`review.max_automatic_reviews`, default 1)
+becomes a founder question, because at that point the reviewer is describing a
+decision rather than a defect.
+
+The review is focused: the prompt names which surface triggered it, what the
+scenario suite already demonstrated, and which files moved, so one pass is spent
+on the question that earned it.
+
+You can still run one by hand at any time:
 
 ```bash
 python -m neyma_product_driver review --run <run-id>
 ```
-
-Launches a **fresh** Claude session that never resumes or inherits the builder
-conversation, is read-only (`Read`/`Grep`/`Glob` only, everything else denied),
-receives repository authority and actual evidence rather than conversation,
-returns findings each citing an evidence path, explicitly adjudicates every
-discrepancy the auditor raised, and **never writes a status file**. An
-unparseable reply degrades to `INSUFFICIENT_EVIDENCE`, never to a pass.
 
 The driver does not launch it automatically — it pauses and reports, because the
 transition from implementer to independent reviewer is yours to authorize.
@@ -584,16 +679,28 @@ the resulting graph and tree. A deviation from the approved plan is `BLOCKED`.
 ### Where it sits in the loop
 
 ```
-builder claim → completion auditor → protocol resolver → scenario runner
-              → product evaluator → combine
+builder claim → completion auditor → protocol resolver → scenario suite
+              → product evaluator → combine → proportional review
 ```
 
-Decision precedence: authority conflict → approval required → deadlock →
-contradicted completion claim → code/test findings → environmental blockers →
-independent-review requirement → product evaluation. A product-evaluator
-`ACCEPT` can never override a protocol violation, and a green targeted suite
-cannot make an invalid commit topology valid. The reviewer is not launched
-against a topology the repository forbids.
+**It is diagnostic, not a precedence layer.** Every status above is recorded,
+printed and — for a deadlock, an environmental blocker or contradictory
+authority — handed to the investigator, and the run continues. The one thing it
+still stops for is the repair itself: if the option the repository's own rules
+point at would rewrite history, change pushed or shared history, or destroy
+something, the run ends `REQUIRES_APPROVAL` and asks you. Where the repository
+offers both a safe repair and a destructive one, it has a safe repair, and
+nobody is asked.
+
+What survives, and outranks everything: **what the scenario suite measured**. A
+product-evaluator `ACCEPT` cannot stand over a failed required scenario, a
+partial suite, or an identified risk nothing verified. That is not ceremony —
+it is the difference between "the product works" and "someone said so".
+
+What was given up: the ordering in which a stale receipt, a commit that carried
+status alongside content, or a finalizer that had not run outranked a suite that
+had just watched the product behave correctly. Those findings are still
+computed, still reported, and no longer decide anything.
 
 ## The diagnostic investigator
 
@@ -670,9 +777,13 @@ builder → completion auditor → protocol resolver → investigator (when need
         → scenario runner → product evaluator → combined decision
 ```
 
-It is callable from any stage, and the loop invokes it on the documented triggers
-(a builder/test disagreement, an unproven environmental blocker, a repeated fix
-that changes nothing, low evaluator confidence, an unexplained BLOCKED). On a
+It is callable from any stage, and the loop invokes it on the documented triggers:
+a builder/test disagreement, a scenario suite that failed while the builder
+reported success, an unproven environmental blocker, a repeated fix that changes
+nothing, low evaluator confidence, and an unexplained BLOCKED. It also picks up
+what the protocol resolver no longer blocks on — an environmental gate failure, a
+deadlock, a self-contradictory repository — because those are exactly the
+machine debugging that should not land back on the founder. On a
 supported root cause — and only then, never under low confidence — it writes a
 grounded builder correction: the supported cause, the explanations already ruled
 out, the exact evidence, the smallest justified fix, what to preserve, targeted
@@ -982,6 +1093,32 @@ tree and working-tree state; the exact stop reason; and the next safe action.
 Questions 6 and 7 are the two that most often need action, so they are placed
 where they cannot be scrolled past.
 
+### The shipping report
+
+`journal.json` and `FOUNDER-SUMMARY.md` are the durable record. What the terminal
+prints when a run ends is written for the person paying for the product, and it
+leads with the only two questions that decide what happens next:
+
+```
+=== READY TO SHIP ===
+  behaviour verified:            yes — 9 of 9 required scenarios verified
+  scenarios:                     9 passed, 0 failed, 0 not executed
+  tests run by the builder:      4 test command(s)
+  unresolved material findings:  0
+  local commit:                  a1b2c3d show the accountable owner on the load list
+  founder action required:       push / merge
+```
+
+Then, in order: what Neyma can do now that it could not before, what workflow was
+exercised, how many scenarios ran, what failed, what the builder fixed, what
+still fails, what consequential risk remains, whether it is ready for you to try,
+whether it is ready to push or merge, and what to build next.
+
+Repository and protocol mechanics appear here **only where they block shipping**.
+Everything else the run learned about the repository is in `journal.json` for
+whoever wants it. Burying the product answer under commit topology is what made
+the reports unreadable.
+
 ---
 
 ## Tests
@@ -1036,7 +1173,15 @@ emptied so a repository secret cannot leak into a run.
 - The protocol resolver reads rules from normative sentences and from the
   implementations that enforce them. A rule stated only in a diagram, a table
   cell or an unusual phrasing may not be discovered — `protocol --sources` shows
-  exactly what was.
+  exactly what was. Since protocol findings are diagnostic rather than blocking,
+  an undiscovered rule now means a missing observation rather than a stalled run.
+- Change-risk classification reads file paths and the task text, not the diff
+  content. A high-consequence change inside a neutrally-named file, described
+  neutrally, is classified ordinary and gets no automatic review. The bias is set
+  the other way — an uncertain change earns a review — but the classifier cannot
+  see what the code does.
+- One automatic reviewer, sequentially. There is no panel and no second opinion
+  on the reviewer itself.
 - The driver control process never executes a git-history rewrite. The
   `approve` flow hands the plan back as commands, or as a prompt for a fresh
   builder session. A *builder* amendment is possible only through the

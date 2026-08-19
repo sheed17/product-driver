@@ -68,7 +68,13 @@ source of truth and take precedence over anything the harness says. Follow them.
 Harness expectations:
 
   - Work only inside this repository.
-  - Do NOT commit. Do NOT push. Do NOT create branches, tags, PRs or releases.
+  - Ordinary git is yours: status, diff, add, and a local commit when the work
+    is coherent. Follow this repository's own current rules about commits, and
+    only those — do not reconstruct a commit convention it no longer states, and
+    do not invent metadata commits or preservation refs nobody asked for.
+  - Do NOT push. Do NOT create branches for publication, tags, PRs or releases.
+    Do NOT rewrite history (reset --hard, rebase, amend a pushed commit,
+    filter-branch). Those are the founder's decisions.
   - Do NOT deploy, or make any external network mutation.
   - Do NOT weaken, disable, delete or edit hooks, settings, permissions or
     safety controls in order to make progress. If a control blocks you, stop and
@@ -92,7 +98,9 @@ def builder_task_prompt(
     unit_line = (
         f"\nThe repository's active READY unit is {active_unit}. Stay inside its scope.\n"
         if active_unit
-        else ""
+        else "\nThis repository declares no active work unit. The task above is the "
+        "authority; do not invent a unit id, a phase or acceptance criteria it does "
+        "not state.\n"
     )
     feedback_block = f"\n{founder_feedback.strip()}\n" if founder_feedback.strip() else ""
     return f"""\
@@ -108,6 +116,11 @@ product using this scenario:
 Make sure the scenario can actually run against what you build. If the scenario
 would fail for setup reasons rather than product reasons, say so explicitly in
 your RUNNABLE CHECKPOINT section.
+
+Ordinary git is yours: `git status`, `git diff`, `git add` and a local commit
+when the work is coherent. Do not push, do not touch a remote, and do not
+rewrite history. Follow this repository's own current rules about commits — and
+only those; do not reconstruct conventions it no longer states.
 """
 
 
@@ -130,8 +143,15 @@ using the product.
 {correction.strip()}
 
 Make the smallest correction that resolves the discrepancy above. Do not
-refactor unrelated code. Do not commit or push. End with an updated
-"RUNNABLE CHECKPOINT" section.
+refactor unrelated code.
+
+Ordinary git is yours: `git status`, `git diff`, `git add` and a local commit
+when the work is coherent. Do not push, do not touch a remote, and do not
+rewrite history — those are the founder's, and the harness refuses them anyway.
+Do not invent commit topology, metadata commits or preserve refs unless this
+repository's own current rules ask for them.
+
+End with an updated "RUNNABLE CHECKPOINT" section.
 """
 
 

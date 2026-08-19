@@ -318,25 +318,44 @@ class TestAcceptanceContract:
         )
         assert result.status is not RunStatus.ACCEPTED
 
-    def test_15_protocol_resolver_precedence_is_unchanged(self):
-        """Protocol still outranks everything, and the gate now precedes the audit.
+    def test_15_measurement_still_precedes_every_layer_that_judges_claims(self):
+        """The gate reads before the audit, and protocol no longer outranks either.
 
-        The second assertion here used to be the reverse — the audit's
-        ``blocks_acceptance`` test before ``_apply_suite_precedence``, because
-        the suite gate was "deliberately last". That is the ordering that let
-        the completion-audit branch record a terminal state and return before
-        the gate had ever been consulted: a required scenario could fail, the
-        run could stop, and no report anywhere said so. Measurement is not a
-        peer of the layers that judge claims, it is their input, so it goes
-        first. Protocol precedence, which outranks both, is unmoved.
+        Two orderings live here. The one that must not move: what the suite
+        *measured* is folded in before any layer that judges a *claim*, because
+        an ordering that ran the audit first let the audit reach a terminal state
+        and return before the gate had ever been consulted — a required scenario
+        could fail, the run could stop, and no report anywhere said so.
+
+        The one that deliberately changed: the protocol step used to be a
+        precedence layer above both, so a stale receipt or a commit-shape
+        difference ended a run that had just demonstrated working behaviour. It
+        is now a policy question with one answer — does clearing this need
+        founder authority — and everything else it finds is recorded.
         """
         import inspect
 
         from neyma_product_driver import cli
 
         source = inspect.getsource(cli.run_control_loop)
-        assert source.index("_apply_protocol_precedence") < source.index("_apply_suite_precedence")
+        assert "_apply_protocol_precedence" not in source, (
+            "the protocol precedence table is back"
+        )
+        assert source.index("_apply_protocol_policy") < source.index("_apply_suite_precedence")
         assert source.index("_apply_suite_precedence") < source.index("blocks_acceptance")
+
+    def test_15b_the_only_protocol_terminal_is_founder_authority(self):
+        """The policy has exactly one way to stop a run, and it is the safe one."""
+        import inspect
+
+        from neyma_product_driver import cli
+
+        source = inspect.getsource(cli._apply_protocol_policy)
+        terminals = [
+            line for line in source.splitlines() if "RunStatus." in line and "return" in line
+        ]
+        assert len(terminals) == 1, terminals
+        assert "REQUIRES_APPROVAL" in terminals[0]
 
 
 class TestConvenienceFlagsCannotOverrideTheGate:

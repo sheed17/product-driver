@@ -94,7 +94,11 @@ run:
 # author a new shell command. The approved set is derived from commands you
 # already wrote into scenarios/*.yaml, plus anything listed below.
 scenario_generation:
-  enabled: false
+  # On by default. Generating situations from the diff, the requirements and the
+  # failures already seen is the strongest verification here, and making it
+  # opt-in meant the command anyone actually typed produced the weakest run
+  # available. Switch it off for one run with --no-auto-scenarios.
+  enabled: true
 
   # Bounds. Generation stops at whichever is reached first.
   max_initial_scenarios: 12
@@ -130,7 +134,31 @@ scenario_generation:
   # Requests may only address these hosts. Loopback only, by design.
   local_http_hosts: ["127.0.0.1", "localhost", "::1"]
 
+# Independent review, launched by the driver rather than by you.
+#
+# Ordinary work — an edit, a refactor, a test, a fix — gets none. A large change
+# gets one when the run needed more than one pass or is carrying an unverified
+# risk. A change touching a high-consequence product surface (effect execution,
+# payment or banking, approval authority, authentication, authorization, tenant
+# isolation, secrets, destructive database operations, write-capable external
+# integrations, outbound communication, claims/legal/compliance behaviour, or a
+# weakened runtime safety invariant) always gets one focused review.
+#
+# A reviewer that returns findings does not stop the run: they go back to the
+# same builder as a grounded correction and the loop retests.
+review:
+  automatic: true
+  # How many refusals may be recycled into builder corrections before the
+  # refusal becomes YOUR decision. At 1, a run launches at most two reviews.
+  max_automatic_reviews: 1
+  # Above either threshold a change counts as large rather than ordinary.
+  meaningful_change_files: 10
+  meaningful_change_lines: 400
+  # Empty means "use the evaluator's model".
+  model: ""
+
 # Neyma is normally dirty mid-phase, so this defaults to true.
+
 allow_dirty_tree: true
 # Refuse to run unless the repo is on this branch. null = any branch.
 require_branch: null

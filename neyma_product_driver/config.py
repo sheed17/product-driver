@@ -135,17 +135,24 @@ class ScenarioRunConfig(BaseModel):
 class ScenarioGenerationConfig(BaseModel):
     """Dynamic scenario generation and adaptive verification.
 
-    **Off by default.** Turning it on changes what the driver executes against a
-    real product, which is not a change that should arrive with an upgrade. Every
-    bound below exists so that an enabled run stays finite and predictable: a
-    wave cannot propose unlimited scenarios, waves cannot recur forever, and the
-    whole suite cannot outgrow ``max_total_scenarios`` however many risks are
-    identified.
+    **On by default.** Generating situations from the diff, the requirements and
+    the failures a run has already seen is the driver's main advantage over
+    running one handwritten scenario, and requiring ``--auto-scenarios`` on every
+    invocation meant the default run was the weakest one available. It is
+    switched off per run with ``--no-auto-scenarios`` when there is a concrete
+    reason it cannot apply.
+
+    Every bound below exists so that an enabled run stays finite and predictable:
+    a wave cannot propose unlimited scenarios, waves cannot recur forever, and
+    the whole suite cannot outgrow ``max_total_scenarios`` however many risks are
+    identified. Making generation the default changes how much is verified; it
+    does not change what a generated scenario is allowed to do, which is still
+    bounded by the approved command set and the loopback-only host list.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
+    enabled: bool = True
 
     # -- budgets ----------------------------------------------------------
     max_initial_scenarios: int = 12
@@ -242,6 +249,52 @@ class ScenarioGenerationConfig(BaseModel):
         return v
 
 
+class ReviewPolicyConfig(BaseModel):
+    """When the driver spawns an independent reviewer on its own.
+
+    Review is proportional to risk, and the driver spawns it rather than the
+    founder. Ordinary work — an edit, a refactor, a test, a fix — gets none. A
+    large change gets one when the run's own history suggests it would help. A
+    change touching a high-consequence product surface always gets one. See
+    :mod:`~neyma_product_driver.policy` for what counts as high consequence.
+
+    A reviewer is read-only and bounded: ``max_automatic_reviews`` caps how many
+    times a refusal may be recycled into a builder correction, so a reviewer that
+    keeps refusing escalates to the founder instead of looping. A refusal that is
+    corrected is re-reviewed — a fix nobody looked at is not a reviewed change.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Whether the driver may launch a reviewer without being asked. Off means
+    #: the run reports that a review is warranted and stops, which is the old
+    #: behaviour.
+    automatic: bool = True
+    #: How many refusing reviews may be turned into builder corrections before
+    #: the refusal becomes a founder decision rather than another correction.
+    #: At the default of 1 a run launches at most two reviews: one that refuses
+    #: and is corrected, and one that judges the correction.
+    max_automatic_reviews: int = 1
+    #: Above either threshold, a change is MEANINGFUL rather than ordinary.
+    meaningful_change_files: int = 10
+    meaningful_change_lines: int = 400
+    #: Model for the reviewer session. Empty means "the evaluator's model".
+    model: str = ""
+
+    @field_validator("max_automatic_reviews")
+    @classmethod
+    def _bounded_reviews(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("max_automatic_reviews must be >= 0")
+        if v > 3:
+            raise ValueError(
+                "max_automatic_reviews must be <= 3: a reviewer that has refused three "
+                "times is describing a decision, not a defect, and that decision is the "
+                "founder's to make"
+            )
+        return v
+
+
 class DriverConfig(BaseModel):
     """Top-level configuration for a driver run."""
 
@@ -277,6 +330,7 @@ class DriverConfig(BaseModel):
     scenario_generation: ScenarioGenerationConfig = Field(
         default_factory=ScenarioGenerationConfig
     )
+    review: ReviewPolicyConfig = Field(default_factory=ReviewPolicyConfig)
 
     # Safety switches. All default to the conservative choice.
     allow_dirty_tree: bool = True  # Neyma is normally mid-phase and dirty.

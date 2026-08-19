@@ -48,6 +48,11 @@ class FakeUnit:
             {"criterion": "approval survives a restart", "weight": 2, "result": "PENDING"},
         ]
 
+    #: A declared unit, as the loop now asks. The undeclared case is exercised
+    #: against a real repository in tests/test_operating_policy.py.
+    is_declared = True
+    resolution_problem = ""
+
     def criteria_labels(self) -> list[str]:
         return [f"{c['criterion']} (weight {c['weight']}): {c['result']}" for c in self.acceptance_criteria]
 

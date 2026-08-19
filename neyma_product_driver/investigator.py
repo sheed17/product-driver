@@ -26,6 +26,7 @@ one is the only way forward, it stops and prints ASK FOUNDER.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -617,6 +618,7 @@ def should_investigate(
     scenario_passed: bool | None = None,
     evaluator_confidence: float | None = None,
     prior_failures: list[str] | None = None,
+    suite_failed: bool = False,
     explicit: bool = False,
 ) -> tuple[bool, str]:
     """Decide whether the situation warrants open-ended diagnosis.
@@ -669,7 +671,33 @@ def should_investigate(
     if builder_report and _asserts_unverified_environment(builder_report):
         return True, "the builder asserts an environmental blocker; confirm it directly"
 
+    # A scenario suite failed while the builder reported the work as finished.
+    # That is the plainest form of "tests contradict builder claims", and it was
+    # not a trigger: the auditor only sees it when the report makes a *claim* it
+    # recognises, so a confident narrative with no claim pattern in it passed
+    # through while the product was demonstrably failing.
+    if suite_failed and builder_report and _claims_success(builder_report):
+        return True, "the scenario suite failed while the builder reported success"
+
     return False, ""
+
+
+_SUCCESS_NARRATIVE = re.compile(
+    r"(?i)\b(?:all (?:tests|checks|scenarios) pass|everything (?:works|passes)|"
+    r"working as (?:expected|intended)|implementation is complete|done and verified|"
+    r"successfully implemented|no (?:remaining )?(?:issues|failures))\b"
+)
+
+
+def _claims_success(report: str) -> bool:
+    """True when a report asserts things are working, in prose rather than a claim.
+
+    Deliberately narrow. This does not try to understand the report; it looks for
+    the handful of phrasings that assert success outright, so that "the suite
+    failed and the builder says it works" can be recognised as the contradiction
+    it is.
+    """
+    return bool(_SUCCESS_NARRATIVE.search(report or ""))
 
 
 # --------------------------------------------------------------------------

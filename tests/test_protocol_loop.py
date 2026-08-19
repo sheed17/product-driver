@@ -3,13 +3,17 @@
 All Claude sessions are faked. Nothing here consumes real Claude usage, and
 nothing here touches the real Neyma repository.
 
-The precedence under test, highest first:
+What is under test is the one rule that replaced a five-level precedence table:
 
-    1. authority conflict
-    2. destructive-action approval required
-    3. repository deadlock
-    4. protocol violation      — an ACCEPT can never override one
-    5. environmental blocker   — never a product failure, never a PASS
+    a repository-protocol finding stops the run only when the repair the
+    repository's own rules point at would rewrite history, change pushed or
+    shared history, or destroy something.
+
+Everything else — a stale receipt, a commit-shape difference, contradictory
+protocol prose, an environmental gate failure — is recorded, reported, and
+handed to the investigator, while the product loop keeps going. The old table
+made every one of those outrank a scenario suite that had just watched the
+product work, and the founder then relayed each finding to a builder by hand.
 """
 
 from __future__ import annotations
@@ -118,48 +122,73 @@ async def run_loop(repo_root: Path, tmp_path: Path, evaluator: FakeEvaluator | N
 # --------------------------------------------------------------------------
 
 
-async def test_a_product_accept_cannot_override_a_protocol_violation(tmp_path: Path) -> None:
+async def test_a_stale_receipt_is_recorded_and_does_not_stop_the_product_loop(
+    tmp_path: Path,
+) -> None:
+    """A receipt the repository has not regenerated is the repository's business.
+
+    This asserted that the violation overrode the product verdict. The driver
+    runs its own scenario suite and holds its own acceptance gate; the target
+    repository's receipt being out of date says nothing about whether the
+    product works, and stopping here is what sent the founder off to re-run a
+    finalizer before any product question could be answered.
+    """
     repo = one_content_commit(tmp_path / "neyma")
     repo.write_suite_receipt(commit="0" * 40, tree="1" * 40)  # stale receipt
 
     result, _store = await run_loop(repo.root, tmp_path)
 
-    assert result.status is not RunStatus.ACCEPTED
-    assert result.final_decision.decision is not Decision.ACCEPT
-    assert "protocol violation" in result.final_decision.summary.lower()
+    assert result.status is RunStatus.ACCEPTED
+    assert result.protocol.status.value == "VIOLATION"
+    assert any("receipt" in note.lower() for note in result.protocol_diagnostics), (
+        "the stale receipt was neither enforced nor recorded — it simply vanished"
+    )
 
 
-async def test_a_deadlock_requiring_approval_stops_the_run_for_the_founder(tmp_path: Path) -> None:
+async def test_a_repair_needing_a_history_rewrite_still_stops_the_run(tmp_path: Path) -> None:
+    """The boundary that was never ceremony, on a real repository."""
     repo = p3_deadlock_repo(tmp_path / "neyma")
 
     result, _store = await run_loop(repo.root, tmp_path)
 
     assert result.status is RunStatus.REQUIRES_APPROVAL
     assert result.final_decision.decision is Decision.ASK_USER
-    assert "deadlock" in result.final_decision.summary
+    assert "rewrite" in result.final_decision.summary.lower()
     assert result.protocol.recommended_option.option_id == "A"
+    assert result.protocol.recommended_option.rewrites_history is True
 
 
-async def test_an_authority_conflict_blocks_before_anything_else(tmp_path: Path) -> None:
+async def test_an_authority_conflict_is_diagnosed_rather_than_terminal(tmp_path: Path) -> None:
+    """Contradictory protocol prose is a fact about the repository, not a wall.
+
+    The repository saying two incompatible things is worth knowing and worth
+    investigating. It is not a reason to refuse to build, and the safe repair the
+    resolver recommends here needs nobody's approval.
+    """
     repo = p3_deadlock_repo(tmp_path / "neyma")
     repo.write("docs/implementation/PROGRESS-PROTOCOL.md", CONFLICTING_PROTOCOL_MD)
 
     result, _store = await run_loop(repo.root, tmp_path)
 
-    assert result.status is RunStatus.BLOCKED
-    assert "authority is unresolvable" in result.final_decision.summary
-    assert result.final_decision.problems
+    assert result.status is not RunStatus.BLOCKED
+    assert result.protocol.status.value == "BLOCKED_AUTHORITY"
+    assert any("BLOCKED_AUTHORITY" in note for note in result.protocol_diagnostics)
 
 
-async def test_an_environmental_gate_failure_is_not_a_pass(tmp_path: Path) -> None:
+async def test_an_environmental_gate_failure_is_diagnosed_not_counted_as_a_pass(
+    tmp_path: Path,
+) -> None:
+    """It is still not a PASS — the product's own gate decides that, not this one."""
     repo = one_content_commit(tmp_path / "neyma")
     repo.write_gate_receipt(passed=False, error=TLS_ERROR)
 
     result, _store = await run_loop(repo.root, tmp_path)
 
-    assert result.status is RunStatus.BLOCKED
-    assert "not a product failure" in result.final_decision.summary
-    assert "and it is not a PASS" in result.final_decision.summary
+    assert result.status is not RunStatus.BLOCKED
+    assert result.protocol.status.value == "BLOCKED_ENVIRONMENT"
+    assert any("environment" in note.lower() for note in result.protocol_diagnostics)
+    # And the driver's own acceptance evidence is what the outcome rests on.
+    assert result.gate is not None
 
 
 async def test_a_consistent_repository_lets_the_product_verdict_stand(tmp_path: Path) -> None:
@@ -199,8 +228,12 @@ async def test_a_product_fix_survives_a_protocol_violation_and_records_it(tmp_pa
     first = result.state.iterations[0].decision
     assert first.decision is Decision.FIX
     assert "no owner rendered" in first.problems
-    assert any("stale receipt" in p for p in first.problems)
     assert first.correction_prompt.startswith("On the load list")
+    # The protocol finding is recorded beside the product defect, not mixed into
+    # the correction. A builder handed both chases the repository instead of the
+    # product, which is how a product-defect fix became a governance errand.
+    assert not any("receipt" in p.lower() for p in first.problems)
+    assert any("receipt" in note.lower() for note in result.state.iterations[0].notes)
 
 
 async def test_the_resolution_is_persisted_with_the_run(tmp_path: Path) -> None:

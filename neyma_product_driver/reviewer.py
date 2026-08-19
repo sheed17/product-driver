@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -186,14 +186,54 @@ def review_prompt(
     builder_report: str,
     evidence_dir: str,
     repository_context: str = "",
+    task: str = "",
+    risk: Any = None,
+    changed_files: Sequence[str] = (),
+    suite_summary: str = "",
 ) -> str:
-    """Build the reviewer's prompt from authority and evidence, not conversation."""
+    """Build the reviewer's prompt from authority and evidence, not conversation.
+
+    ``task``, ``risk``, ``changed_files`` and ``suite_summary`` make the review
+    *focused*: a reviewer told which high-consequence surface this change touched
+    and what the scenario suite already demonstrated spends its one pass on the
+    question that earned it, instead of re-deriving the situation from the
+    repository. Omitting them yields the original whole-state review.
+    """
     st = audit.observed_state
     parts: list[str] = [
         "=== INDEPENDENT REVIEW REQUEST ===",
         "",
         "You are reviewing work you did not perform. Adjudicate from evidence.",
-        "",
+        "",]
+    if task:
+        parts += ["--- WHAT THE PRODUCT OWNER ASKED FOR ---", task.strip()[:4000], ""]
+    if risk is not None and getattr(risk, "surfaces", None):
+        parts += [
+            "--- WHY THIS REVIEW WAS TRIGGERED (focus here first) ---",
+            f"This change was classified {getattr(getattr(risk, 'level', None), 'value', '?')} "
+            "because it touches:",
+            *(f"  - {surface}" for surface in risk.surfaces),
+            "",
+            "Those surfaces are where a defect reaches a customer, a payment, an",
+            "authorization boundary or a tenant wall. Spend this review on whether the",
+            "change is correct THERE. Ordinary code quality is not what you were called for.",
+            "",
+        ]
+    if changed_files:
+        parts += [
+            "--- FILES THIS RUN CHANGED ---",
+            *(f"  {name}" for name in list(changed_files)[:60]),
+            "",
+        ]
+    if suite_summary:
+        parts += [
+            "--- WHAT THE SCENARIO SUITE ALREADY DEMONSTRATED ---",
+            suite_summary[:4000],
+            "",
+            "Treat this as measurement you may verify, not as a conclusion you must accept.",
+            "",
+        ]
+    parts += [
         "--- REPOSITORY AUTHORITY ---",
         repository_context or unit.render(),
         "",

@@ -245,7 +245,17 @@ def test_identical_repository_state_is_not_re_parsed(tmp_path: Path) -> None:
     assert loader.loads == 1 and loader.cache_hits == 1
 
 
-def test_a_repository_becoming_contradictory_mid_run_fails_closed(tmp_path: Path) -> None:
+def test_a_repository_becoming_contradictory_mid_run_is_carried_not_raised(
+    tmp_path: Path,
+) -> None:
+    """The contradiction is real; whether it stops the world is a policy choice.
+
+    ``resolve_active_unit`` still fails closed for callers that require a
+    declared unit. ``load`` — what the control loop calls — carries the problem
+    on the unit instead, so a momentarily-inconsistent registry is diagnosed
+    rather than turned into a founder errand. What must never happen is a unit
+    being invented to paper over it.
+    """
     repo = _make_repo(tmp_path, [_unit("P3", "READY")])
     loader = RepositoryContextLoader(repo)
     assert loader.load().active_unit.unit_id == "P3"
@@ -254,7 +264,12 @@ def test_a_repository_becoming_contradictory_mid_run_fails_closed(tmp_path: Path
         yaml.safe_dump({"meta": {}, "units": [_unit("P3", "READY"), _unit("P4", "READY")]})
     )
     with pytest.raises(ContextResolutionError):
-        loader.load()
+        loader.resolve_active_unit()
+
+    unit = loader.load().active_unit
+    assert unit.is_declared is False
+    assert unit.unit_id == ""
+    assert "more than one READY unit" in unit.resolution_problem
 
 
 # --------------------------------------------------------------------------

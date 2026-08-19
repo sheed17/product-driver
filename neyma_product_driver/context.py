@@ -9,9 +9,13 @@ acceptance criteria, architecture, safety invariants and progress. This module
 *reads* those; it never caches them across a repository change and never keeps a
 second copy of them on disk.
 
-Fail-closed: if the active unit cannot be resolved unambiguously — no READY
-unit, more than one READY unit, an unreadable registry — loading raises
-:class:`ContextResolutionError`, which the control loop turns into BLOCKED.
+The repository is followed as it exists now. Where it declares a unit registry,
+that registry scopes the work; where it does not, the founder's task is the
+authority and no unit is invented. :meth:`RepositoryContextLoader.resolve_active_unit`
+still fails closed for callers that require a declared unit;
+:meth:`~RepositoryContextLoader.resolve_active_unit_optional` — what the control
+loop uses — returns a placeholder carrying the reason instead, so a repository
+that has retired its registry is a repository the driver can still build in.
 """
 
 from __future__ import annotations
@@ -222,6 +226,28 @@ class ActiveUnit:
     validation_blockers: Any = None
     dependencies: Any = None
 
+    #: Why no unit could be resolved, when this is the standing-in placeholder
+    #: rather than a unit the repository actually declares. Empty for a real
+    #: unit. Carried rather than raised, so a repository that has retired its
+    #: registry is a repository the driver can still build in.
+    resolution_problem: str = ""
+
+    @property
+    def is_declared(self) -> bool:
+        """True when the repository actually declares this unit."""
+        return not self.resolution_problem and bool(self.unit_id)
+
+    @classmethod
+    def undeclared(cls, problem: str) -> "ActiveUnit":
+        """The stand-in for a repository that names no active unit.
+
+        The founder's task is the authority then. This is not a degraded mode to
+        be apologised for: a repository is entitled to stop keeping a unit
+        registry, and a driver that refuses to work without one is enforcing a
+        convention its target has abandoned.
+        """
+        return cls(unit_id="", name="", status="", resolution_problem=problem)
+
     def criteria_labels(self) -> list[str]:
         out: list[str] = []
         for c in self.acceptance_criteria:
@@ -234,6 +260,13 @@ class ActiveUnit:
         return out
 
     def render(self, max_chars: int = 6000) -> str:
+        if not self.is_declared:
+            return (
+                "ACTIVE READY UNIT: none declared by the repository.\n"
+                f"reason: {self.resolution_problem or 'the repository declares no unit registry'}\n"
+                "The product owner's task is the authority for this run. Do not invent a "
+                "unit id, a phase, or acceptance criteria the repository does not state."
+            )
         parts = [
             f"ACTIVE READY UNIT: {self.unit_id} — {self.name}",
             f"status: {self.status}",
@@ -386,6 +419,27 @@ class RepositoryContextLoader:
             dependencies=u.get("dependencies"),
         )
 
+    def resolve_active_unit_optional(self) -> ActiveUnit:
+        """Resolve the active unit, or stand in for a repository that has none.
+
+        :meth:`resolve_active_unit` fails closed, and that was right while a unit
+        registry was a mandatory fixture of the target repository. It is not a
+        property of software development. A repository that retires its registry —
+        or that has not written one yet — is not in an error state, and a driver
+        that refuses to build anything until one appears has made a repository
+        convention outrank the product work it exists to do.
+
+        The distinction that still matters is kept: an *ambiguous* registry (two
+        units both marked READY, a file that will not parse) is a genuine
+        contradiction in the repository, and it is reported as one — as a
+        diagnostic the loop hands to the investigator, not as a full stop. What
+        is never done is inventing a unit the repository does not state.
+        """
+        try:
+            return self.resolve_active_unit()
+        except ContextResolutionError as exc:
+            return ActiveUnit.undeclared(str(exc))
+
     # -- loading -----------------------------------------------------------
 
     def load(self, topics: list[str] | None = None) -> RepositoryContext:
@@ -402,7 +456,7 @@ class RepositoryContextLoader:
             return self._cache[1]
 
         self.loads += 1
-        active_unit = self.resolve_active_unit()
+        active_unit = self.resolve_active_unit_optional()
 
         authority = _read(self.repo / CLAUDE_REL)
         current = _read(self.repo / CURRENT_REL)
@@ -413,7 +467,9 @@ class RepositoryContextLoader:
                 path = self.repo / rel
                 text = _read(path)
                 if text:
-                    topic_excerpts[rel] = select_sections(text, [topic, active_unit.unit_id], 4000)
+                    topic_excerpts[rel] = select_sections(
+                        text, [x for x in [topic, active_unit.unit_id] if x], 4000
+                    )
 
         ctx = RepositoryContext(
             head_commit=self._git("rev-parse", "--short", "HEAD"),
@@ -428,7 +484,9 @@ class RepositoryContextLoader:
                 7000,
             ),
             current_excerpt=select_sections(
-                current, ["status", "next", active_unit.unit_id, "ready"], 5000
+                current,
+                [t for t in ["status", "next", active_unit.unit_id, "ready"] if t],
+                5000,
             ),
             topic_excerpts=topic_excerpts,
             files_consulted=[str(p) for p in consulted if p.exists()],

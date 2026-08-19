@@ -23,6 +23,23 @@ The distinctions it enforces:
     content commit               != required status-metadata commit
     later phase READY            requires its blockers actually closed
 
+**What it requires follows the target repository.** The distinctions above are
+about *honesty*, and honesty checks are unconditional: a cited file that does
+not exist, a percentage the criteria do not support, a status surface that
+contradicts the registry, a full-suite claim resting on targeted tests. The
+checks that demand a *ceremony artifact* — a canonical-suite receipt, a
+finalizer receipt, a clean-clone receipt — are asked only when the repository
+still states the rule that makes that artifact mandatory, read fresh on every
+audit via :func:`~neyma_product_driver.protocol_sources.discover_protocol`. A
+repository that deletes its finalizer protocol stops being asked for a finalizer
+receipt, without a change here. The auditor never invents a requirement the
+repository has stopped stating; it only refuses to believe a claim the
+repository refutes.
+
+A repository that declares no unit registry at all is audited too: the
+registry-derived checks simply have nothing to say, and the honesty checks still
+run against the report.
+
 Nothing here writes to the Neyma repository.
 """
 
@@ -417,9 +434,33 @@ def primary_claim(claims: list[CompletionClaim]) -> CompletionClaim | None:
 class CompletionAuditor:
     """Independently verifies builder completion claims against the repository."""
 
-    def __init__(self, repo: Path) -> None:
+    def __init__(self, repo: Path, declared_rules: frozenset[str] | None = None) -> None:
         self.repo = Path(repo)
         self._loader = RepositoryContextLoader(self.repo)
+        #: Rule families the target repository currently states. ``None`` means
+        #: "read them from the repository on each audit", which is what every
+        #: ordinary caller wants: the requirement set then follows the repository
+        #: automatically. Tests pass an explicit set to describe a repository
+        #: without building one.
+        self._declared_rules = declared_rules
+
+    # -- what the repository still requires ---------------------------------
+
+    def declared_rules(self) -> frozenset[str]:
+        """Rule families the repository states right now, read fresh."""
+        if self._declared_rules is not None:
+            return self._declared_rules
+        from .policy import declared_rule_kinds
+        from .protocol_sources import discover_protocol
+
+        try:
+            return declared_rule_kinds(discover_protocol(self.repo))
+        except Exception:  # discovery must never break an audit
+            return frozenset()
+
+    def _requires(self, rule_kind: str) -> bool:
+        """True when the repository still states the rule behind an artifact."""
+        return rule_kind in self.declared_rules()
 
     # -- git ---------------------------------------------------------------
 
@@ -807,7 +848,11 @@ class CompletionAuditor:
     ) -> CompletionAudit:
         """Audit a builder report against the repository. Never raises."""
         if unit is None:
-            unit = self._loader.resolve_active_unit()
+            # Optional, not fail-closed: a repository that declares no unit
+            # registry still deserves to have its builder's claims checked. The
+            # registry-derived checks below simply find nothing to compare
+            # against, while every honesty check still runs.
+            unit = self._loader.resolve_active_unit_optional()
 
         claims = extract_claims(builder_report)
         state = self.observe(unit)
@@ -871,12 +916,24 @@ class CompletionAuditor:
                     f"{', '.join(state.progress.independent_pending)} still pending"
                 )
 
-        # 4. Full-suite claims must rest on a canonical-suite receipt.
+        # 4. Full-suite claims must rest on a canonical-suite receipt — when the
+        #    repository still says a canonical-suite gate exists. Where it does
+        #    not, demanding the receipt would be this driver enforcing a gate its
+        #    target has retired. The claim-versus-receipt checks below stay
+        #    unconditional: a receipt that exists and says FAIL refutes a claim
+        #    whatever the protocol says, and a full-suite claim resting on
+        #    targeted tests is a false statement, not a missing ceremony.
+        wants_canonical_suite = self._requires("CANONICAL_SUITE_GATE")
         if ClaimType.FULL_SUITE_PASSED in claim_types or ClaimType.PHASE_COMPLETE in claim_types:
             suite = state.receipt("suite")
             targeted = _targeted_only(run_commands or [])
             if suite is None or not suite.exists:
-                missing.append("canonical suite receipt (SUITE-RESULT.json)")
+                # Claimed outright, or implied by a completion claim while the
+                # repository still states a canonical-suite gate. A claim made
+                # with nothing behind it is unproven whatever the protocol says;
+                # only the *implied* requirement follows the repository.
+                if ClaimType.FULL_SUITE_PASSED in claim_types or wants_canonical_suite:
+                    missing.append("canonical suite receipt (SUITE-RESULT.json)")
             elif not suite.passed:
                 contradictions.append(
                     Contradiction(
@@ -913,11 +970,19 @@ class CompletionAuditor:
         contradictions += self._skip_contradictions(state)
 
         # 6. Finalizer / clean-clone claims need real, matching receipts.
-        for claim_type, receipt_name, human in (
-            (ClaimType.FINALIZER_RAN, "finalizer", "finalizer"),
-            (ClaimType.CLEAN_CLONE_PASSED, "clean_clone", "clean-clone gate"),
+        #
+        #    A claim about one of these is checked whenever it is MADE — saying
+        #    the finalizer ran when it did not is a false statement regardless of
+        #    protocol. What follows the repository is whether a *completion*
+        #    claim implies these artifacts must exist: that only holds while the
+        #    repository still states the rule that makes them mandatory.
+        for claim_type, receipt_name, human, rule_kind in (
+            (ClaimType.FINALIZER_RAN, "finalizer", "finalizer", "FINALIZER_OWNERSHIP"),
+            (ClaimType.CLEAN_CLONE_PASSED, "clean_clone", "clean-clone gate", "CLEAN_CLONE_GATE"),
         ):
-            if claim_type not in claim_types and ClaimType.PHASE_COMPLETE not in claim_types:
+            claimed = claim_type in claim_types
+            implied = ClaimType.PHASE_COMPLETE in claim_types and self._requires(rule_kind)
+            if not claimed and not implied:
                 continue
             receipt = state.receipt(receipt_name)
             if receipt is None or not receipt.exists:

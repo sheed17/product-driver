@@ -461,9 +461,34 @@ class OptimisticEvaluator:
         )
 
 
+class StubReviewer:
+    """A fresh read-only reviewer, stubbed. Never launches a Claude session."""
+
+    def __call__(self) -> "StubReviewer":
+        return self
+
+    async def __aenter__(self) -> "StubReviewer":
+        return self
+
+    async def __aexit__(self, *_exc) -> None:
+        return None
+
+    async def review(self, prompt: str):
+        from neyma_product_driver.reviewer import IndependentReview
+
+        return IndependentReview(
+            verdict="SUPPORTED",
+            summary="the double-payment defect is fixed and the evidence shows it",
+            confidence=0.9,
+        )
+
+
 class StubRepoLoader:
     def __init__(self) -> None:
         self.unit = FakeUnit()
+
+    def resolve_active_unit_optional(self) -> FakeUnit:
+        return self.resolve_active_unit()
 
     def resolve_active_unit(self) -> FakeUnit:
         return self.unit
@@ -539,6 +564,11 @@ async def test_generate_execute_learn_expand_rerun_then_accept(buggy_app, tmp_pa
         emit=lambda _m: None,
         repo_loader=StubRepoLoader(),
         planner=planner,
+        # Supervised invoice approval touches payment and approval authority, so
+        # the driver's review policy calls for one focused independent review
+        # before it accepts. A stub supplies the verdict; what this end-to-end
+        # test is exercising is the generation-and-verification loop around it.
+        reviewer_factory=StubReviewer(),
     )
 
     # --- 1-3. scenarios were generated, executed, and exposed the real defect
@@ -574,7 +604,10 @@ async def test_generate_execute_learn_expand_rerun_then_accept(buggy_app, tmp_pa
     assert final is not None
     assert final.full_run is True, "acceptance must rest on the full required set"
 
-    # --- 7. acceptance only after the evidence is actually green
+    # --- 7. acceptance only after the evidence is actually green, and after the
+    #        review this change's risk classification called for
+    assert result.risk.level.value == "HIGH_CONSEQUENCE", result.risk.brief()
+    assert [r.verdict for r in result.reviews] == ["SUPPORTED"]
     assert result.status is RunStatus.ACCEPTED
     assert final.everything_required_passed
     assert final.failed == 0 and final.blocked == 0

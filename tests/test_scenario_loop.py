@@ -81,6 +81,9 @@ class FakeRepoLoader:
     def resolve_active_unit(self) -> FakeUnit:
         return self.unit
 
+    def resolve_active_unit_optional(self) -> FakeUnit:
+        return self.unit
+
     def load(self, topics: list[str] | None = None) -> RepositoryContext:
         return RepositoryContext(
             head_commit="abc1234",
@@ -215,9 +218,16 @@ class TestExistingWorkflowsUnchanged:
 
         assert result.status is RunStatus.ACCEPTED
         assert log == ["backend_generic"]
-        assert result.suite is None
-        assert result.state.iterations[0].suite is None
         assert result.state.iterations[0].scenario is not None
+        # The guarantee is one execution of one scenario, and a loop that still
+        # reasons about a single scenario result. It is *not* the absence of a
+        # suite record: this branch used to produce none, and a run with no
+        # suite result was a run the authoritative gate never saw, so a failing
+        # required scenario could be accepted away. The one-entry suite is how
+        # the same gate now covers a planner-less run.
+        assert result.suite is not None
+        assert [o.scenario_id for o in result.suite.outcomes] == ["backend_generic"]
+        assert result.state.iterations[0].suite is not None
 
     @pytest.mark.asyncio
     async def test_a_handwritten_scenario_still_runs_unchanged_alongside_generated_ones(
@@ -416,9 +426,18 @@ class TestAcceptCannotOverrideAFailedScenario:
         assert result.final_decision.decision is Decision.FIX
 
 
-class TestPrecedenceOrderUnchanged:
+class TestProtocolIsDiagnosticNotPrecedence:
+    """What the repository's own governance may and may not stop.
+
+    This class asserted the reverse until the driver's operating philosophy
+    changed: a protocol status of any kind used to outrank the suite and end the
+    run, and the founder then relayed the finding to a builder by hand. A
+    process finding no longer outranks measured product behaviour. What still
+    stops a run is the narrow set of repairs only the founder may authorize.
+    """
+
     @pytest.mark.asyncio
-    async def test_a_protocol_violation_still_outranks_the_suite(self, loop_bits):
+    async def test_a_protocol_finding_does_not_bury_the_suite_result(self, loop_bits):
         from neyma_product_driver.protocol_resolver import ProtocolStatus
 
         config, store, state = loop_bits
@@ -448,9 +467,55 @@ class TestPrecedenceOrderUnchanged:
             planner=planner,
         )
 
-        # The governance blocker wins: BLOCKED, not the suite's FIX.
-        assert result.status is RunStatus.BLOCKED
-        assert "authority" in result.final_decision.summary.lower()
+        # The failing scenario is what the run is about, and it is what the run
+        # reports. The protocol finding is recorded alongside it, not instead.
+        assert result.status is not RunStatus.ACCEPTED
+        assert result.final_decision.decision is Decision.FIX
+        assert result.protocol_diagnostics
+        assert any("BLOCKED_AUTHORITY" in note for note in result.protocol_diagnostics)
+
+    @pytest.mark.asyncio
+    async def test_a_repair_needing_a_history_rewrite_still_stops_the_run(self, loop_bits):
+        """The boundary that was never ceremony."""
+        from neyma_product_driver.protocol_resolver import ProtocolStatus
+        from neyma_product_driver.remediation_planner import RemediationOption
+
+        config, store, state = loop_bits
+        config.max_iterations = 1
+
+        class RewriteResolver:
+            def resolve(self, run_commands=None):
+                from neyma_product_driver.protocol_resolver import ProtocolResolution
+
+                option = RemediationOption(
+                    option_id="A",
+                    title="consolidate the content commits",
+                    rewrites_history=True,
+                )
+                return ProtocolResolution(
+                    status=ProtocolStatus.VIOLATION,
+                    options=[option],
+                    recommended_option=option,
+                    next_safe_action="approve option A",
+                )
+
+        planner = make_planner(config, store, [raw_payload(raw_scenario("gen-dup"))])
+        result = await run_control_loop(
+            config=config,
+            scenario=base_scenario(),
+            store=store,
+            state=state,
+            builder=FakeBuilder(),
+            evaluator=FakeEvaluator([accept()]),
+            make_executor=lambda d: RecordingExecutor(d, {}, []),
+            emit=lambda _m: None,
+            repo_loader=FakeRepoLoader(),
+            protocol_resolver=RewriteResolver(),
+            planner=planner,
+        )
+
+        assert result.status is RunStatus.REQUIRES_APPROVAL
+        assert result.final_decision.decision is Decision.ASK_USER
 
 
 # --------------------------------------------------------------------------

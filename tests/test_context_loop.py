@@ -189,29 +189,51 @@ async def test_active_unit_reaches_both_prompts(bits) -> None:
     assert "ACTIVE READY UNIT: P3" in evaluator.prompts[0]
 
 
-async def test_two_ready_units_block_the_run_before_the_builder_works(bits, neyma: Path) -> None:
+async def test_two_ready_units_are_recorded_and_the_builder_is_told_nothing_false(
+    bits, neyma: Path
+) -> None:
+    """A contradictory registry no longer stops the product loop.
+
+    This asserted BLOCKED, and blocking here is what turned "the target
+    repository's registry is momentarily inconsistent" into a founder errand.
+    The contradiction is real and is recorded — what changes is that the run
+    keeps building, against the founder's task, having invented no unit.
+    """
     (neyma / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml").write_text(
         yaml.safe_dump({"meta": {}, "units": [_unit("P3", "READY"), _unit("P4", "READY")]})
     )
     builder = FakeBuilder()
-    result = await _run(bits, ScriptedEvaluator([]), builder)
+    result = await _run(
+        bits, ScriptedEvaluator([EvaluatorDecision(decision=Decision.ACCEPT, summary="ok")]), builder
+    )
 
-    assert result.status is RunStatus.BLOCKED
-    assert "more than one READY unit" in result.final_decision.summary
-    assert builder.prompts == [], "the builder was asked to work under unresolved authority"
+    assert result.status is not RunStatus.BLOCKED
+    assert builder.prompts, "the builder was never asked to do the work"
+    assert "P3" not in builder.prompts[0] and "P4" not in builder.prompts[0], (
+        "the builder was handed a unit the repository cannot actually identify"
+    )
+    assert any(
+        "more than one READY unit" in note for note in result.protocol_diagnostics
+    ), "the contradiction was not recorded anywhere"
 
 
-async def test_no_ready_unit_blocks_the_run(bits, neyma: Path) -> None:
+async def test_no_ready_unit_builds_against_the_task(bits, neyma: Path) -> None:
+    """A repository between units is not an error state."""
     (neyma / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml").write_text(
         yaml.safe_dump({"meta": {}, "units": [_unit("P3", "COMPLETE")]})
     )
-    result = await _run(bits, ScriptedEvaluator([]), FakeBuilder())
-    assert result.status is RunStatus.BLOCKED
-    assert "no READY unit" in result.final_decision.summary
+    builder = FakeBuilder()
+    result = await _run(
+        bits, ScriptedEvaluator([EvaluatorDecision(decision=Decision.ACCEPT, summary="ok")]), builder
+    )
+    assert result.status is RunStatus.ACCEPTED
+    assert "declares no active work unit" in builder.prompts[0]
 
 
-async def test_authority_becoming_contradictory_mid_run_blocks(bits, neyma: Path) -> None:
-    """Authority is re-read every iteration, so a mid-run contradiction stops it."""
+async def test_authority_becoming_contradictory_mid_run_is_recorded_not_fatal(
+    bits, neyma: Path
+) -> None:
+    """Authority is re-read every iteration; a mid-run contradiction is noted."""
     config, store, state, scenario, founder, loader, make_executor = bits
     registry = neyma / "docs" / "implementation" / "IMPLEMENTATION-REGISTRY.yaml"
 
@@ -222,11 +244,16 @@ async def test_authority_becoming_contradictory_mid_run_blocks(bits, neyma: Path
             )
             return await super().evaluate(prompt, timeout_s)
 
-    evaluator = BreakingEvaluator([grounded_fix(LONG_A), EvaluatorDecision(decision=Decision.ACCEPT, summary="ok")])
+    evaluator = BreakingEvaluator(
+        [grounded_fix(LONG_A), EvaluatorDecision(decision=Decision.ACCEPT, summary="ok")]
+    )
     result = await _run(bits, evaluator)
 
-    assert result.status is RunStatus.BLOCKED
-    assert "more than one READY unit" in result.final_decision.summary
+    assert result.status is not RunStatus.BLOCKED
+    assert evaluator.prompts, "the evaluator was never consulted"
+    assert any(
+        "more than one READY unit" in note for note in result.protocol_diagnostics
+    ), "a mid-run contradiction passed unremarked"
 
 
 async def test_stale_phase_context_is_not_reused_between_iterations(bits, neyma: Path) -> None:

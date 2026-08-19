@@ -644,15 +644,22 @@ def _review_state(repo: Path, status: dict[str, Any]) -> dict[str, Any]:
 
 def _decision_required(report: CalibrationReport) -> str:
     """Whether calibration found something only the founder can settle."""
-    if report.active_unit_error:
-        return (
-            "The repository does not name exactly one active unit "
-            f"({report.active_unit_error}). Resolve the registry before an "
-            "unattended run — the driver will not choose between candidates."
-        )
     if not report.registry_path:
-        return ("No implementation registry was found, so no unit, phase or "
-                "acceptance criteria could be derived.")
+        # Not a decision, and checked before the unit error it also produces. A
+        # repository is entitled to keep no implementation registry, and the
+        # driver then works to the task you give it. Reporting a founder
+        # decision here made "calibrate a repository that has simplified its
+        # process" look like a fault to be repaired before any work could start.
+        return ""
+    if report.active_unit_error:
+        # The registry exists and does not name exactly one active unit. A run
+        # will proceed against the task and record the contradiction; it is
+        # still worth telling you, because you probably expected a unit.
+        return (
+            "The registry does not name exactly one active unit "
+            f"({report.active_unit_error}). A run will proceed against the task "
+            "you give it and record this, but it will not choose between candidates."
+        )
     if report.open_risks and not report.next_eligible and not report.active_unit_id:
         return "Open risks remain and no unit is eligible; the next step is a founder call."
     return ""
