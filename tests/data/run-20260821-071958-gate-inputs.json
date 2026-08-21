@@ -1,0 +1,511 @@
+{
+  "_source": "runs/20260821-071958 \u2014 Neyma P6/M3 verification run, 2026-08-21",
+  "_note": "A distillate of that run's own artifacts: the risk register from scenario-plan.json and the outcome records from iteration-01/suite-result.json, copied verbatim. runs/ is not committed, so this is what keeps the regression.",
+  "risks": [
+    {
+      "id": "R1",
+      "description": "An adapter timeout AFTER the outside world may have been touched must resolve to UNKNOWN_OUTCOME with exactly one EffectAttempted and never to FAILED (which asserts positive non-occurrence). A timeout path that writes a second EffectAttempted, orphans one, or downgrades to FAILED would either double-touch the outside world or lie about non-occurrence.",
+      "risk_category": "timeout_after_effect",
+      "severity": "P0",
+      "basis": "machine 03-external-effect-grant EF-3u; task: 'timeout, crash or lost response -> UNKNOWN_OUTCOME', 'FAILED only when non-occurrence is positively known', 'exactly one EffectAttempted per logical effect'",
+      "covered_by": [
+        "S02"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "A process crash after EffectAttempted but before the adapter return must land in UNKNOWN_OUTCOME with no orphan and no second effect. A crash path that re-executes on recovery double-touches the outside world.",
+      "risk_category": "crash_mid_workflow",
+      "severity": "P0",
+      "basis": "fault vocab 'adapter-crash EF-3u the process dies after EffectAttempted, before the return'",
+      "covered_by": []
+    },
+    {
+      "id": "R2b",
+      "description": "Restart between mint and claim must leave zero leaked claims/effects; restart after the CAS must never re-execute the effect. A restart that re-runs the claim or the adapter breaks exactly-once.",
+      "risk_category": "restart_recovery",
+      "severity": "P0",
+      "basis": "fault vocab restart-before-claim/restart-after-claim \u00a736 'never re-execute'",
+      "covered_by": [
+        "S04"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "An approval withdrawn between mint and the claim CAS must make the CAS match zero rows so the adapter does absolutely nothing. If revalidation does not consume approval atomically at the CAS, a stale approval executes an unapproved external effect.",
+      "risk_category": "approval_required",
+      "severity": "P0",
+      "basis": "fault vocab 'approval-revoked-mid-claim EF-2r'; task: 'the claim revalidates expiry, brake and policy at the claim instant', 'minimum atomic approval-consumption seam at the claim CAS'",
+      "covered_by": [
+        "S05"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "A strict-order consumer must block on an unapplied F14 predecessor (order, not contiguity) rather than consuming out of order or treating an absent version as terminal. Getting this wrong applies effects against stale/incomplete aggregate state.",
+      "risk_category": "stale_state",
+      "severity": "P1",
+      "basis": "P6-D11 complete-stream behaviour; fault vocab predecessor-unapplied P6-D11 \u00a78 / F14",
+      "covered_by": [
+        "S06"
+      ]
+    },
+    {
+      "id": "R5",
+      "description": "A parked event must be able to leave the park via drain_handler_for; without it the only exit is M-26 expiry, stranding the obligation. M3 is the first strict consumer, so this closes here.",
+      "risk_category": "dependency_failure",
+      "severity": "P1",
+      "basis": "P6-D24; fault vocab 'park-and-drain P6-D24 the event parks and drain_handler_for is invoked'",
+      "covered_by": [
+        "S07",
+        "S12"
+      ]
+    },
+    {
+      "id": "R6",
+      "description": "The mutation axis must be a closed surface: a dimension value outside its stated range, and a real fault name applied to an incoherent case, must both exit 2 with a readable message and no traceback. A silent fallback or stack trace makes every passing generated run meaningless.",
+      "risk_category": "boundary",
+      "severity": "P1",
+      "basis": "task: 'a value outside the stated range must exit 2', 'An injected fault meaningless for a given case should exit 2 with a clear message', 'not a traceback, and never a silent fallback to none'",
+      "covered_by": [
+        "S08"
+      ]
+    },
+    {
+      "id": "R7",
+      "description": "The generator can only compose situations it can discover. If --list-cases omits a case or --list-dimensions omits a flag/fault, that behaviour is unreachable through the only interface a generated scenario can use.",
+      "risk_category": "missing_data",
+      "severity": "P1",
+      "basis": "task: '--list-dimensions must print all six flag names and every fault name'; 'a focused argument-only entry point is the only way it can compose new situations'",
+      "covered_by": [
+        "S09"
+      ]
+    },
+    {
+      "id": "R8",
+      "description": "M3 must ship dark: nothing under src/freight_recon may import external_effect, only probe_phase6_external_effect.py may under scripts, and the mutation battery must not import it. A stray import wires an unfinished engine into the live product.",
+      "risk_category": "safety_invariant",
+      "severity": "P0",
+      "basis": "task \u00a7Ship dark; Do-not: 'enable live production effects', 'M1 and M2 ship dark, and M3 ships dark too'",
+      "covered_by": [
+        "S10",
+        "p6_m3_external_effect: A brake or a policy bump arriving between mint and claim makes the CAS match zero rows; no timer moves UNKNOWN_OUTCOME; and an UNKNOWN_OUTCOME always has a named human owner."
+      ]
+    },
+    {
+      "id": "R11",
+      "description": "The effect_grants -> pipeline_instances FOREIGN KEY (the M2 seam) must hold so a grant cannot dangle off a non-existent pipeline instance. M2/M3 consistency driven through the probe must not contradict the durable referential integrity.",
+      "risk_category": "dependency_failure",
+      "severity": "P2",
+      "basis": "task Schema: 'FOREIGN KEYs, tenant-first, from effect_grants to checkpoint_witnesses and to pipeline_instances'",
+      "covered_by": [
+        "S07",
+        "S12"
+      ]
+    }
+  ],
+  "scenario_ids": [
+    "S01",
+    "S02",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S12"
+  ],
+  "waves_used": 1,
+  "wave_stages": [
+    "initial"
+  ],
+  "expected_required_ids": [
+    "p6_m3_external_effect",
+    "S01",
+    "S02",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10"
+  ],
+  "outcomes": [
+    {
+      "scenario_id": "p6_m3_external_effect",
+      "scenario_name": "p6_m3_external_effect",
+      "origin": "permanent",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/p6_m3_external_effect",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [
+        {
+          "risk_category": "persistence_failure",
+          "claim": "A pre-M3 database taken through the migration reaches the canonical effect shape, and a freshly created canonical database reports no readiness problems \u2014 so the outcome aspect has somewhere durable to record proof rather than a state name with nothing behind it.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it",
+            "a freshly created canonical database carries the effect layer, tenant-first",
+            "the outcome aspect has durable evidence columns, not just a state name"
+          ],
+          "observations": [
+            "A LEGACY DATABASE MIGRATES TO THE CANONICAL EFFECT SHAPE",
+            "problems: []"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "conflicting_evidence",
+          "claim": "A readback that conflicts, and a readback that returns nothing at all, both resolve to UNKNOWN_OUTCOME. Absence of signal is never read as proof the effect did not happen, and FAILED is only reached with proof of non-occurrence.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "A CONFLICTING READBACK IS UNKNOWN, NOT VERIFIED",
+            "BLIND IS NOT FAILED",
+            "FAILED REQUIRES PROOF OF NON-OCCURRENCE"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "retry_safety",
+          "claim": "Replaying the event stream mints no grant, claims nothing, writes no EffectAttempted and touches nothing outside; and a retry is a new grant rather than a second claim on the one already spent.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "replay: 0 grants, 0 claims, 0 EffectAttempted, 0 external effects",
+            "A RETRY IS A NEW GRANT, NEVER A RE-CLAIM"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "ambiguous_external_effect",
+          "claim": "One logical effect produces exactly one EffectAttempted and no orphan, so a lost adapter response cannot become a second touch of the outside world.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "EXACTLY ONE EffectAttempted",
+            "ADAPTER RETURNED"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "concurrency",
+          "claim": "The claim CAS admits exactly one winner under concurrent claimers, and that exclusion is a UNIQUE partial index in the database rather than a hope about a code path.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it",
+            "one winner is enforced at the claim instant by a UNIQUE partial index"
+          ],
+          "observations": [
+            "ONE WINNER, NEVER TWO",
+            "CREATE UNIQUE INDEX"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "idempotency",
+          "claim": "Redelivery of the consumed event produces no second claim and no second effect.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "REDELIVERY IS IDEMPOTENT"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "authorization",
+          "claim": "A mint requires a real checkpoint witness \u2014 enforced by FOREIGN KEY, not by convention \u2014 and forged, replayed and wrong-target claims are all refused.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it",
+            "a grant points at its witness and its attempt by FOREIGN KEY, not by convention"
+          ],
+          "observations": [
+            "MINT REQUIRES A REAL CHECKPOINT WITNESS",
+            "WRONG-TARGET CLAIM IS A CONFUSED-DEPUTY SEV-0",
+            "checkpoint_witnesses"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "cross_tenant",
+          "claim": "A mint never crosses a tenant, and isolation holds under concurrent claim pressure.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "A MINT NEVER CROSSES A TENANT",
+            "TENANT ISOLATION HOLDS UNDER CONCURRENT CLAIM PRESSURE"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "safety_invariant",
+          "claim": "A brake or a policy bump arriving between mint and claim makes the CAS match zero rows; no timer moves UNKNOWN_OUTCOME; and an UNKNOWN_OUTCOME always has a named human owner.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS",
+            "A POLICY BUMP BETWEEN MINT AND CLAIM MATCHES ZERO ROWS",
+            "NO TIMER MOVES UNKNOWN_OUTCOME",
+            "UNKNOWN_OUTCOME IS OWNED BY A NAMED HUMAN"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "unexpected_state_transition",
+          "claim": "The eight canonical states are a CHECK constraint, so a ninth state and a misspelled eighth are both uninsertable, and REVOKED stays distinct from EXPIRED_UNCLAIMED.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "the eight canonical states are a database constraint, and REVOKED is not EXPIRED_UNCLAIMED",
+            "drive the Effect Grant machine through a brokerage narrative, and attack it"
+          ],
+          "observations": [
+            "REVOKED IS NOT EXPIRED_UNCLAIMED",
+            "EXPIRED_UNCLAIMED IS ITS OWN TERMINAL STATE"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "malformed_input",
+          "claim": "An invented fault is refused with a non-zero exit and a readable message, so the mutation vocabulary is genuinely closed rather than accepting anything.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "an invented fault is refused, so the vocabulary is genuinely closed",
+            "the M3 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+          ],
+          "observations": [
+            "unknown fault"
+          ],
+          "established": true,
+          "reason": ""
+        },
+        {
+          "risk_category": "regression",
+          "claim": "The P3 kernel M3 mints from, the P4 boundary it executes through, the P5 transport it consumes and the M1/M2 transitions it co-commits with are all re-run against this change rather than assumed, and every M3 guard is proven capable of failing.",
+          "scenario_name": "p6_m3_external_effect",
+          "checks": [
+            "the P3 checkpoint kernel M3 mints from, unbroken",
+            "the P4 governed effect boundary M3 executes through, unbroken",
+            "the P5 transport, replay isolation and strict ordering M3 consumes, unbroken",
+            "M1 and M2, whose transitions M3 co-commits with, unbroken",
+            "the M3 mutation battery"
+          ],
+          "observations": [
+            "mutants caught"
+          ],
+          "established": true,
+          "reason": ""
+        }
+      ],
+      "requirement_reference": ""
+    },
+    {
+      "scenario_id": "S02",
+      "scenario_name": "generated:S02",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "timeout_after_effect",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S02-bbe97d17449c",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 03-external-effect-grant.machine.md EF-3u: timeout -> UNKNOWN_OUTCOME; exactly one EffectAttempted"
+    },
+    {
+      "scenario_id": "S04",
+      "scenario_name": "generated:S04",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "restart_recovery",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S04-3491f905b529",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 03-external-effect-grant.machine.md \u00a736: restart-before-claim / restart-after-claim, never re-execute"
+    },
+    {
+      "scenario_id": "S05",
+      "scenario_name": "generated:S05",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "approval_required",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S05-39a6c3d9fd98",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 03-external-effect-grant.machine.md EF-2r: approval revoked before CAS; minimum atomic approval-consumption seam"
+    },
+    {
+      "scenario_id": "S10",
+      "scenario_name": "generated:S10",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P0",
+      "risk_category": "safety_invariant",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S10-3d16e90141e8",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 task \u00a7Ship dark: nothing under src/freight_recon may import external_effect; only probe_phase6_external_effect.py may under scripts; the mutation battery must not import it"
+    },
+    {
+      "scenario_id": "S01",
+      "scenario_name": "generated:S01",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "happy_path",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S01-ac7438e86cb8",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 03-external-effect-grant.machine.md: positive-control readback matching approved fingerprint -> VERIFIED"
+    },
+    {
+      "scenario_id": "S06",
+      "scenario_name": "generated:S06",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "stale_state",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S06-3193b0ffb09a",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 P6-D11 \u00a78 / F14: strict per-aggregate ordering blocks on an unapplied predecessor"
+    },
+    {
+      "scenario_id": "S07",
+      "scenario_name": "generated:S07",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "dependency_failure",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S07-4fc42779a8a8",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 P6-D24: strict consumer must supply drain_handler_for for parked events"
+    },
+    {
+      "scenario_id": "S08",
+      "scenario_name": "generated:S08",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "boundary",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S08-33829b0e034a",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 task \u00a7mutation axis: values outside range and incoherent combinations must exit 2 with a readable message, never a traceback or silent fallback"
+    },
+    {
+      "scenario_id": "S09",
+      "scenario_name": "generated:S09",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P1",
+      "risk_category": "missing_data",
+      "required": true,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S09-7e0b7c84ed21",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 task \u00a7probe interface: --list-cases lists case names; --list-dimensions prints all six flag names and every fault name"
+    },
+    {
+      "scenario_id": "S12",
+      "scenario_name": "generated:S12",
+      "origin": "generated",
+      "outcome": "PASSED",
+      "priority": "P2",
+      "risk_category": "dependency_failure",
+      "required": false,
+      "evidence_path": "/Users/sammyfammy/neyma-product-driver/runs/20260821-071958/iteration-01/scenarios/S12-d30b6fedc77f",
+      "evidence_verified": true,
+      "evidence_problem": "",
+      "skip_reason": "",
+      "error": "",
+      "failed_assertions": [],
+      "risk_evidence": [],
+      "requirement_reference": "P6/M3 \u2014 task \u00a7Schema: FOREIGN KEYs, tenant-first, from effect_grants to checkpoint_witnesses and to pipeline_instances"
+    }
+  ],
+  "scenario_generation_budgets": {
+    "max_waves": 3,
+    "max_total_scenarios": 30,
+    "max_initial_scenarios": 12,
+    "max_adaptive_scenarios_per_wave": 8,
+    "max_scenarios_per_risk_category": 6
+  }
+}

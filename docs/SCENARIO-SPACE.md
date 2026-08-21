@@ -230,3 +230,41 @@ An honestly unclosable gap still blocks. That is the correct outcome, and the M3
 deliberately declares nothing for `restart_recovery` or `timeout_after_effect` — both are
 exercised inside the probe, neither prints a literal a claim can bind to — so a run naming
 either as blocking must generate a case for it.
+
+## The route a coverage-gap wave reaches
+
+Aiming the wave was not enough on its own, because for a while nothing could reach it.
+Stage 3 ran only after a `Decision.FIX`, and a run whose executed scenarios all passed
+while a P0 risk had no evidence produced a `Decision.BLOCKED` from
+`_apply_suite_precedence` — which the route terminated on immediately. The wave the
+planner was ready to run had no way to be launched, so a founder had to ask for the
+missing scenario by hand.
+
+That shape now closes itself. When the gate's verdict is *only* about coverage — every
+required scenario passed with resolvable evidence, nothing failed, no generation problem
+stands, and acceptance-blocking risks remain uncovered — the loop runs
+`_close_coverage_gaps` before the completion audit and before any reviewer is considered:
+
+1. the wave is aimed by the **gate's** uncovered set, mapped back to the plan's own
+   `IdentifiedRisk` entries so each proposal can cite a key. The evaluator's
+   `scenario_requests` are deliberately not passed; a targeted wave that also carries a
+   wishlist stops being targeted;
+2. the proposals are validated and compiled by the ordinary path, against the ordinary
+   approved command vocabulary. Nothing widens command authority to make a scenario
+   possible;
+3. the new cases execute, and their results are merged into the run's suite record with
+   `merge_suite_results` — which takes `expected_required_ids` from the *widened* suite and
+   recomputes `full_run`, so adding coverage can only add obligations;
+4. the same `evaluate_gate` decides again, from the new execution records. That is the only
+   way a risk leaves the uncovered list.
+
+If a generated case fails, that is an observation about the product: suite precedence turns
+it into a grounded FIX carrying the real failure, sent to the same builder session, and the
+loop retests. Coverage absence never becomes a fabricated correction.
+
+`BLOCKED` stays reachable and stays terminal for the reasons it should be: the generation
+budget is spent while a blocking risk is uncovered, the wave produces nothing runnable for
+the risk (the approved vocabulary cannot express it), generation itself failed, evidence
+cannot resolve, or a genuine product or authority decision is owed. Each closure round
+consumes one of the planner's bounded waves, so the loop is bounded by the budgets that
+already existed.

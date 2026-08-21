@@ -88,6 +88,7 @@ from .scenario_suite import (
     SuiteResult,
     build_failure_evidence,
     build_suite,
+    merge_suite_results,
     select_rerun,
 )
 
@@ -270,6 +271,16 @@ async def run_control_loop(
     reported, handed to the investigator, and the loop keeps building. See
     :mod:`~neyma_product_driver.policy`, which holds that distinction in one
     place so it cannot drift back into a precedence table.
+
+    **Missing coverage is generated, not escalated.** When the gate's only
+    refusal is that a risk this run identified has no passing scenario, the loop
+    generates one aimed at exactly that risk, executes it, and asks the same
+    gate again — before the audit and before any reviewer. An absence of
+    evidence is not a defect, so no correction is invented for it; a generated
+    case that then *fails* is a real observation and reaches the builder as a
+    grounded FIX. The gate refusal only becomes terminal once the generation
+    budget is spent, the approved vocabulary cannot express the risk, or the
+    wave produced nothing runnable.
 
     **Review is proportional and automatic.** Ordinary work gets none. A change
     touching a high-consequence product surface gets one focused read-only
@@ -791,6 +802,67 @@ async def run_control_loop(
             )
             gate_overrode = decision is not before_gate
 
+            # 6b-ii. A passing suite that still names an unverified blocking
+            #     risk is missing verification, not failing it. Stage 3 already
+            #     knows how to generate for a named gap, and the planner still
+            #     had waves left — but Stage 3 sat behind a Decision.FIX, and
+            #     this shape produced a Decision.BLOCKED that returned at the
+            #     route below. So a run that had identified a P0 risk, had the
+            #     budget to cover it, and had the vocabulary to express it,
+            #     stopped and asked the founder to request the scenario by hand.
+            #     Closure runs here, before the audit and the reviewer, so
+            #     everything downstream still sees a gate that has had its final
+            #     say on this iteration's evidence.
+            if (
+                planner is not None
+                and suite is not None
+                and suite_executor is not None
+                and _coverage_gap_only(last_gate["value"], suite_result)
+            ):
+                closure = await _close_coverage_gaps(
+                    planner=planner,
+                    suite=suite,
+                    suite_executor=suite_executor,
+                    suite_result=suite_result,
+                    verdict=last_gate["value"],
+                    accepted=before_gate,
+                    scenario=scenario,
+                    task=state.task,
+                    unit=active_unit,
+                    diff_files=diff_files,
+                    emit=emit,
+                )
+                if closure.decision is not None:
+                    suite = closure.suite
+                    suite_result = closure.suite_result
+                    last_suite["value"] = suite_result
+                    last_gate["value"] = closure.verdict
+                    previous_suite = suite_result
+                    decision = closure.decision
+                    gate_overrode = decision is not before_gate
+                    planner.note_executed(closure.executed_ids)
+                    _record_defects(defects, suite_result, suite_executor, iteration)
+                    for candidate in record_promotion_candidates(
+                        ledger=ledger,
+                        memory=defects,
+                        plan=planner.plan,
+                        outcomes=suite_result.outcomes,
+                        iteration=iteration,
+                    ):
+                        emit(
+                            f"  promotion candidate: {candidate.scenario_id} found a defect "
+                            f"in iteration {candidate.discovered_in_iteration} and now passes"
+                        )
+                    record.suite = suite_result.model_dump(mode="json")
+                    store.write_json(
+                        store.iteration_dir(iteration).relative_to(store.run_dir)
+                        / "suite-result.json",
+                        record.suite,
+                    )
+                    for line in suite_result.headline().splitlines():
+                        emit(f"  {line}")
+                record.notes.extend(closure.notes)
+
         # 6c. combine: a completion claim the repository does not support
         #     overrides an ACCEPT from the product evaluator.
         if audit is not None and audit.blocks_acceptance:
@@ -1031,6 +1103,203 @@ def _coverage_gap_briefs(planner: Any, suite_result: Any) -> list[str]:
         risk.brief()
         for risk in uncovered_required_risks(_identified_risks(planner), suite_result)
     ]
+
+
+def _coverage_gap_only(verdict: Any, suite_result: SuiteResult) -> bool:
+    """Is the *only* thing standing between this run and an acceptance a gap?
+
+    True when every required scenario that the suite set out to verify passed
+    with resolvable evidence, nothing failed, verification was actually
+    produced — and the run still names acceptance-blocking risks with no
+    scenario behind them. That is not a defect and not a failed verification; it
+    is verification that was never written, which is the one refusal a run can
+    answer by itself.
+
+    Generation problems are deliberately disqualifying. A wave that *errored*
+    leaves a permanent entry in the gate's problem list, so no amount of further
+    generation can reach VERIFIED; attempting closure there would spend the
+    remaining budget to arrive at the same refusal.
+    """
+    if verdict is None:
+        return False
+    return bool(
+        getattr(verdict, "uncovered_risks", None)
+        and not getattr(verdict, "unverified", None)
+        and not getattr(verdict, "generation_problems", None)
+        and not suite_result.blocking_failures()
+    )
+
+
+def _gap_risks(planner: Any, verdict: Any) -> list[Any]:
+    """The plan's own risk objects for the gate's uncovered set.
+
+    The *selection* is the gate's — computed from execution records, never from
+    anything a model wrote in prose — and this only recovers the full
+    ``IdentifiedRisk`` behind each one, because that is what carries the key a
+    generated scenario must cite. A gate entry with no matching register entry
+    is dropped rather than approximated: a wave aimed at a risk the plan cannot
+    name would produce scenarios nothing could validate.
+    """
+    register = _identified_risks(planner)
+    by_identity = {
+        (r.risk_category.value, r.description.strip()): r for r in register
+    }
+    out_risks: list[Any] = []
+    for gap in getattr(verdict, "uncovered_risks", []) or []:
+        found = by_identity.get((gap.risk_category, gap.description.strip()))
+        if found is not None and found not in out_risks:
+            out_risks.append(found)
+    return out_risks
+
+
+@dataclass
+class GapClosure:
+    """What one round of coverage-gap closure did to the run's evidence.
+
+    ``decision`` is ``None`` when nothing executed. That is the difference
+    between "the gate was asked again" and "there was nothing new to ask it
+    about", and it is why the caller keeps its existing decision rather than
+    recomputing an identical one and reporting the same refusal twice.
+    """
+
+    suite: ScenarioSuite
+    suite_result: SuiteResult
+    verdict: Any
+    decision: EvaluatorDecision | None = None
+    executed_ids: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    #: True once new coverage has actually been executed, so the suite record,
+    #: the gate verdict and the decision all moved.
+    ran: bool = False
+
+
+async def _close_coverage_gaps(
+    *,
+    planner: Any,
+    suite: ScenarioSuite,
+    suite_executor: SuiteExecutor,
+    suite_result: SuiteResult,
+    verdict: Any,
+    accepted: EvaluatorDecision,
+    scenario: Scenario,
+    task: str,
+    unit: Any,
+    diff_files: Sequence[str],
+    emit: Callable[[str], None],
+) -> GapClosure:
+    """Generate and execute the coverage a passing run is missing, then re-gate.
+
+    An acceptance-blocking risk with no scenario behind it says nothing about
+    whether the product is correct — only that nobody looked. Sending a builder
+    a correction for it would be inventing a defect out of an absence, and
+    ending the run makes the founder ask by hand for a scenario the driver
+    already knows it needs and already has the budget and the vocabulary to
+    write. So the run writes it: a wave aimed at exactly those risks, executed,
+    and then judged by the same deterministic gate as everything else.
+
+    Nothing here can make a risk look covered. The wave is aimed by the gate's
+    uncovered set rather than by the evaluator's prose; the generated cases are
+    validated and compiled by the same path as every other generated scenario,
+    against the same approved command vocabulary; and coverage is removed only
+    by :func:`evaluate_gate` recomputing from the new execution records. If a
+    generated case *fails*, that is a real observation about the product, and it
+    reaches the builder through the ordinary suite-precedence route as a
+    grounded FIX.
+
+    The loop ends — always — on one of: the gaps are closed, the generator has
+    no wave or scenario budget left, the wave produced nothing runnable for
+    those risks, or a generated case failed. Each round that continues consumes
+    one of the planner's bounded waves, so the bound is the run's existing one.
+    """
+    closure = GapClosure(suite=suite, suite_result=suite_result, verdict=verdict)
+
+    while True:
+        gaps = _gap_risks(planner, closure.verdict)
+        if not gaps:
+            break
+
+        if planner.budget_exhausted():
+            note = (
+                "the scenario-generation budget is spent, so no coverage could be "
+                f"generated for {len(gaps)} uncovered acceptance-blocking risk(s)"
+            )
+            closure.notes.append(note)
+            emit(f"  {note}")
+            break
+
+        emit(
+            f"→ closing coverage gaps: generating scenarios for {len(gaps)} identified "
+            "risk(s) with no evidence..."
+        )
+        for risk in gaps:
+            emit(f"    [{risk.severity.value} {risk.risk_category.value}] {risk.description}")
+
+        known = {s.id for s in planner.plan.scenarios}
+        # Failures and evaluator requests are deliberately absent. This wave
+        # answers the deterministic gap set and nothing else: an evaluator's
+        # prose about what else might be worth testing is not what is blocking
+        # the run, and letting it steer here is how a targeted wave becomes a
+        # general one that closes nothing.
+        planner.expand_after_failures(
+            task=task,
+            unit=unit,
+            failures=[],
+            diff_files=list(diff_files),
+            gaps=gaps,
+        )
+        fresh = [
+            model.id
+            for model in planner.plan.scenarios
+            if model.id not in known and model.id in planner.compiled
+        ]
+        if not fresh:
+            note = (
+                "the coverage-gap wave produced no runnable scenario for "
+                + "; ".join(f"[{r.severity.value} {r.risk_category.value}] {r.description}" for r in gaps)
+            )
+            closure.notes.append(note)
+            emit(f"  {note}")
+            break
+
+        emit(f"  generated {len(fresh)} coverage-gap scenario(s): {', '.join(fresh)}")
+        closure.suite = _assemble_suite(scenario, planner)
+        added = await suite_executor.run(
+            closure.suite,
+            only=fresh,
+            selection_reason=(
+                "coverage-gap scenarios for identified risks with no passing evidence"
+            ),
+        )
+        closure.ran = True
+        closure.suite_result = merge_suite_results(closure.suite_result, added, closure.suite)
+        closure.executed_ids += [
+            o.scenario_id for o in added.outcomes if o.outcome is not Outcome.SKIPPED
+        ]
+        closure.verdict = evaluate_gate(
+            closure.suite_result,
+            generation_problems=planner.generation_problems(),
+            risks=_identified_risks(planner),
+        )
+
+        if closure.suite_result.blocking_failures():
+            note = (
+                "a coverage-gap scenario failed; the run now has an observed defect to "
+                "correct rather than a gap to close"
+            )
+            closure.notes.append(note)
+            emit(f"  {note}")
+            break
+
+    if closure.ran:
+        closure.decision = _apply_suite_precedence(
+            closure.suite_result,
+            accepted,
+            scenario.name,
+            emit,
+            generation_problems=planner.generation_problems(),
+            risks=_identified_risks(planner),
+        )
+    return closure
 
 
 def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:

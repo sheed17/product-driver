@@ -1135,6 +1135,69 @@ def build_suite(
     return suite
 
 
+def merge_suite_results(
+    base: SuiteResult,
+    addition: SuiteResult,
+    suite: ScenarioSuite,
+) -> SuiteResult:
+    """One verification pass assembled from two executions of the same suite.
+
+    A run that generates coverage *after* its first execution has to execute it,
+    and re-running everything to learn one new answer costs the whole suite's
+    wall clock for no new information. So the new cases run on their own and the
+    two records are joined here into the single aggregate the acceptance gate
+    reads.
+
+    The join is deliberately conservative, because this is the one place where a
+    result could be made to look more complete than it is:
+
+    * ``expected_required_ids`` is taken from ``suite`` — the *widened* suite,
+      including the cases that were just generated. Adding coverage therefore
+      adds obligations; it cannot dilute them.
+    * ``full_run`` is recomputed as "every entry in the widened suite has an
+      outcome", never inherited. A narrowed second pass cannot turn a partial
+      record into a full one.
+    * A later outcome for the same scenario replaces the earlier one, since it
+      is the more recent observation of that case; nothing is dropped silently.
+    * Assembly problems accumulate, so a scenario that never entered the suite
+      stays visible in the merged record.
+
+    Clusters are concatenated rather than recomputed: each execution clusters
+    its own failures, and an id from ``addition`` that collides with one already
+    in ``base`` keeps the earlier record rather than overwriting it.
+    """
+    outcomes: list[ScenarioOutcome] = []
+    replaced = {o.scenario_id for o in addition.outcomes}
+    for outcome in base.outcomes:
+        if outcome.scenario_id not in replaced:
+            outcomes.append(outcome)
+    outcomes += list(addition.outcomes)
+
+    problems = list(base.assembly_problems)
+    problems += [p for p in addition.assembly_problems if p not in problems]
+
+    seen_clusters = {c.cluster_id for c in base.clusters}
+    clusters = list(base.clusters) + [
+        c for c in addition.clusters if c.cluster_id not in seen_clusters
+    ]
+
+    recorded = {o.scenario_id for o in outcomes}
+    return SuiteResult(
+        started_at=base.started_at,
+        duration_s=base.duration_s + addition.duration_s,
+        full_run=all(e.scenario_id in recorded for e in suite.entries),
+        selection_reason=(
+            f"{base.selection_reason}; then {addition.selection_reason}"
+            if addition.selection_reason
+            else base.selection_reason
+        ),
+        expected_required_ids=[e.scenario_id for e in suite.entries if e.required],
+        assembly_problems=problems,
+        outcomes=outcomes,
+        clusters=clusters,
+    )
+
+
 __all__ = [
     "Origin",
     "Outcome",
@@ -1144,5 +1207,6 @@ __all__ = [
     "SuiteExecutor",
     "SuiteResult",
     "build_suite",
+    "merge_suite_results",
     "select_rerun",
 ]

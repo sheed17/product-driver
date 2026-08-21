@@ -402,6 +402,7 @@ class ScenarioPlanner:
         investigation_findings: Sequence[str] = (),
         evaluator_requests: Sequence[str] = (),
         diff_files: Sequence[str] | None = None,
+        gaps: Sequence[Any] | None = None,
     ) -> GeneratedScenarioPlan:
         """Stage 3 — respond to what happened: a failure, or a gap with no evidence.
 
@@ -420,8 +421,15 @@ class ScenarioPlanner:
         reason, while the wave's newly identified risks joined the register and
         widened the gap list. Three waves of that turned two known gaps into six
         without a single scenario being added.
+
+        ``gaps`` names the risks this wave is aimed at. The default — what the
+        *plan* still intends to exercise — is right before anything has run.
+        Once a suite has executed, the authority on what is uncovered is the
+        acceptance gate, which reads execution records rather than intent, and
+        the caller passes that set in so the wave is aimed at exactly the risks
+        that will otherwise block the run.
         """
-        gaps = self.plan.planned_gaps()
+        gaps = list(gaps) if gaps is not None else self.plan.planned_gaps()
         if not failures and not evaluator_requests and not gaps:
             return self.plan
         if not self.config.use_prior_failures:

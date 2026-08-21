@@ -33,6 +33,11 @@ orchestrator, no service.
                     │        │                                 │
                     │        ├─► acceptance gate  (deterministic)     │
                     │        │                                 │
+                    │        ├─► coverage-gap closure                   │
+                    │        │     a passing suite with an uncovered    │
+                    │        │     blocking risk generates and runs     │
+                    │        │     the missing scenario, then re-gates  │
+                    │        │                                 │
                     │        ├─► IndependentReviewer ──────────┼──► fresh read-only session,
                     │        │     only when the change's risk │     launched by the driver
                     │        │     calls for it                │     when risk calls for it
