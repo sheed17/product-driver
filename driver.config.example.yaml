@@ -129,8 +129,17 @@ scenario_generation:
   model: opus
   # Extra commands generated scenarios may run, beyond those already present in
   # your scenario files. Extra arguments are allowed; shell operators are not.
+  #
+  # A useful pattern, and the one the P6/M3 configuration uses: when a unit
+  # ships a probe with a focused `--case <name>` interface, the bare probe in the
+  # scenario file already approves every case (approval matches by prefix). What
+  # enumerating them here adds is VISIBILITY — the generation brief shows the
+  # generator the approved command strings and nothing else, so a case that is
+  # never written down is a situation the generator cannot choose to exercise.
+  # Listing them widens no boundary; it removes the guessing.
   approved_commands: []
   #   - ".venv/bin/python scripts/inspect_state.py"
+  #   - ".venv/bin/python scripts/probe_phase6_external_effect.py --case forged-capability"
   # Requests may only address these hosts. Loopback only, by design.
   local_http_hosts: ["127.0.0.1", "localhost", "::1"]
 

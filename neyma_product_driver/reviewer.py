@@ -207,6 +207,17 @@ def review_prompt(
         "",]
     if task:
         parts += ["--- WHAT THE PRODUCT OWNER ASKED FOR ---", task.strip()[:4000], ""]
+    if audit.scope is not None and audit.scope.is_nested:
+        parts += [
+            "--- THE SCOPE OF THIS REVIEW ---",
+            audit.scope.render(),
+            "",
+            f"Review {audit.scope.scope_id} against what {audit.scope.scope_id} owes. "
+            f"Do not withhold support because {audit.scope.parent_phase_id} is unfinished — "
+            "it is supposed to be. A finding about work this task was told not to do is "
+            "not a blocker on this task.",
+            "",
+        ]
     if risk is not None and getattr(risk, "surfaces", None):
         parts += [
             "--- WHY THIS REVIEW WAS TRIGGERED (focus here first) ---",

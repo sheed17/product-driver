@@ -204,13 +204,48 @@ class TestStagedGeneration:
         assert adaptive, "the adaptive wave produced nothing to check provenance on"
         assert all(s.provenance.source_failures == ["gen-refresh"] for s in adaptive)
 
-    def test_expansion_does_not_fire_without_failures_or_requests(self, tmp_path):
-        planner = make_planner(tmp_path, [raw_payload(), raw_payload(raw_scenario("gen-2"))])
+    def test_expansion_does_not_fire_with_nothing_to_respond_to(self, tmp_path):
+        """No failure, no request, and nothing named-and-uncovered: no wave."""
+        planner = make_planner(
+            tmp_path,
+            [
+                raw_payload(raw_scenario("gen-1")),
+                raw_payload(raw_scenario("gen-2")),
+            ],
+        )
         planner.plan_initial(task="t", unit=FakeUnit())
+        # The initial wave's own P0 idempotency risk is covered by gen-1, so
+        # there is no gap left for a further wave to close.
+        assert planner.plan.planned_gaps() == []
 
         planner.expand_after_failures(task="t", unit=FakeUnit(), failures=[])
 
         assert len(planner.plan.waves) == 1
+
+    def test_a_named_blocking_risk_with_no_coverage_is_itself_a_reason_to_generate(
+        self, tmp_path
+    ):
+        """The convergence fix, at the planner.
+
+        A wave that identifies a P0 risk and proposes nothing for it used to end
+        the matter: expansion fired only on a failure or an evaluator request,
+        so the gap the run had just named was carried to the acceptance gate
+        untouched and blocked there. Now the gap is itself the reason to
+        generate, and the wave runs under a stage whose citation requirement a
+        proposal can actually satisfy.
+        """
+        planner = make_planner(tmp_path, [raw_payload(), raw_payload(raw_scenario("gen-2"))])
+        planner.plan_initial(task="t", unit=FakeUnit())
+        gaps = planner.plan.planned_gaps()
+        assert [g.risk_category.value for g in gaps] == ["idempotency"]
+
+        planner.expand_after_failures(task="t", unit=FakeUnit(), failures=[])
+
+        assert len(planner.plan.waves) == 2
+        assert planner.plan.waves[1].stage == "coverage_gap"
+        brief = planner.reasoner.briefs[1].render()
+        assert "RISKS THIS RUN ALREADY IDENTIFIED THAT NOTHING YET EXERCISES" in brief
+        assert "approval may not be idempotent" in brief
 
     def test_investigation_findings_feed_generation_without_merging_the_two(self, tmp_path):
         planner = make_planner(tmp_path, [raw_payload(), raw_payload(raw_scenario("gen-2"))])

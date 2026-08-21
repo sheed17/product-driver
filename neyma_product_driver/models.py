@@ -220,6 +220,47 @@ class AssertionResult(BaseModel):
     detail: str = ""
 
 
+class RiskEvidence(BaseModel):
+    """One explicit, human-authored claim that a scenario verifies a risk.
+
+    A permanent scenario declares these in its ``verifies:`` block. The claim
+    names a risk *category*, states in prose what is being verified, and — this
+    is the load-bearing part — names the checks that must have run and passed
+    and/or the literal strings the product must have emitted. Nothing here is
+    inferred: a claim is established only when the named oracles were actually
+    executed and actually held.
+
+    ``established`` is computed by the executor from what happened, never
+    written by a model and never asserted by an evaluator. A claim whose named
+    check did not run, or whose literal observation never appeared, is recorded
+    with ``established=False`` and the reason, because "we declared this and it
+    did not happen" is a fact worth keeping rather than an absence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A ``RiskCategory`` value. Validated when the scenario is loaded.
+    risk_category: str
+    #: What a human says this claim verifies. Prose; never matched against
+    #: anything, and never on its own a reason to believe the claim.
+    claim: str = ""
+    scenario_name: str = ""
+    #: Named commands / state checks in the same scenario that had to pass.
+    checks: list[str] = Field(default_factory=list)
+    #: Literal strings that had to appear in what the run observed.
+    observations: list[str] = Field(default_factory=list)
+    #: True only when every named check executed with all of its own assertions
+    #: passing, and every literal observation was present.
+    established: bool = False
+    #: Why the claim was not established, when it was not.
+    reason: str = ""
+
+    def brief(self) -> str:
+        mark = "established" if self.established else "NOT established"
+        head = f"{self.risk_category}: {self.claim or '(no claim stated)'}"
+        return f"{head} — {mark}" + (f" ({self.reason})" if self.reason else "")
+
+
 class ScenarioResult(BaseModel):
     """Everything one scenario execution observed. Feeds the evaluator."""
 
@@ -247,6 +288,11 @@ class ScenarioResult(BaseModel):
     #: traced back to the plan entry that asked for it.
     scenario_id: str = ""
     origin: Literal["permanent", "generated"] = "permanent"
+    #: The scenario's declared risk claims, each resolved against what actually
+    #: happened. Empty for every scenario that declares none, and empty for any
+    #: execution that ended before the claims could be resolved — a scenario
+    #: whose setup failed verified nothing, and says so by having nothing here.
+    risk_evidence: list[RiskEvidence] = Field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -293,6 +339,13 @@ class IterationRecord(BaseModel):
     #: suite layer can evolve without a circular import.
     suite: dict[str, Any] | None = None
     completion_audit: dict[str, Any] | None = None
+    #: What this run was asked for, and the parent phase's recorded state, as
+    #: they stood in this iteration. Kept beside the audit rather than inside it
+    #: so a reader can see the scope even when no audit ran.
+    task_scope: dict[str, Any] | None = None
+    #: The two-level completion record: task result and parent-phase state, with
+    #: nothing that turns one into the other.
+    scoped_completion: dict[str, Any] | None = None
     protocol_resolution: dict[str, Any] | None = None
     investigation: dict[str, Any] | None = None
     independent_review: dict[str, Any] | None = None
@@ -329,6 +382,9 @@ class RunState(BaseModel):
     max_iterations: int = 5
     iterations: list[IterationRecord] = Field(default_factory=list)
     final_decision: EvaluatorDecision | None = None
+    #: The run's scope, resolved once from the product owner's task before the
+    #: builder is asked for anything.
+    task_scope: dict[str, Any] | None = None
     stop_requested: bool = False
     pid: int | None = None
 

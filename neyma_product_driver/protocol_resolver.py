@@ -460,7 +460,16 @@ class ProtocolResolver:
         # arrangement of recorded status and checked-out commit is legal. When it
         # says the state is illegal, that is a real violation reported in the
         # repository's own words — not the driver's paraphrase of it.
-        if topology.state.state is RepositoryState.ILLEGAL:
+        #
+        # FINALIZED / PRODUCING / BASELINE are *commit-topology* states: each one
+        # is defined by a status-metadata commit sitting a known distance above a
+        # content commit. A repository that states no commit topology has no such
+        # arrangement to be in, legally or otherwise, and reporting one as a
+        # blocker would be this driver enforcing a convention its target retired
+        # — while citing no rule at all, because there is none to cite. An
+        # unattributable blocker is worse than a missing one: it cannot be
+        # answered, and run 20260820-204803 spent eight iterations proving it.
+        if topology.state.state is RepositoryState.ILLEGAL and rule is not None:
             violations.append(
                 ProtocolViolation(
                     rule_id=rule.rule_id if rule is not None else "",

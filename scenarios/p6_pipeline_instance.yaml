@@ -1,0 +1,146 @@
+name: p6_pipeline_instance
+phase: "P6"
+mode: backend
+description: >
+  P6 M2: the Pipeline Instance — one durable ATTEMPT to get a Work Item's effect done. There is no
+  UI and no service (this phase ships dark by contract), so the product is exercised through its
+  real runtime, driven as a brokerage narrative: load 4471 is delivered and billable, the billing
+  sweep proposes the invoice twice, the rate moves after the human approved it, ops engages the
+  brake in the seconds between authorization and execution, and a second load's write times out so
+  that nobody can say whether the invoice went out. The hostile attempts are inline, because what
+  matters is not that the happy path works — it is what the machine REFUSES, whether a broker can
+  be billed twice, and what an operator is told when Neyma does not know what happened.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/pipeline_instance.py"
+  - "src/freight_recon/migrations/phase6_pipeline_instances.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE PRODUCT, DRIVEN. The narrative probe lives in the DRIVER, not in Neyma: M2 ships dark and
+  #    a guard asserts the product contains zero importers of `pipeline_instance.py`. A demo script
+  #    committed into the repository would be the first production caller of a capability that is
+  #    not supposed to have one.
+  - name: "drive the Pipeline Instance machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python ../neyma-product-driver/scenarios/p6_pipeline_instance_probe.py"
+    expect_exit_code: 0
+    timeout_s: 300
+
+  # 2. Tests are a signal, never the basis for acceptance.
+  - name: "the M2 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_pipeline_instance.py"
+    expect_exit_code: 0
+    timeout_s: 600
+
+  # 3. The M1 and P5 surfaces M2 builds on, re-run: this unit amended P5's strict-ordering trigger,
+  #    so P5's own certification has to survive the amendment rather than be assumed to.
+  - name: "M1 and the P5 transport, unbroken by M2"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase5_event_transport.py eval/tests/test_phase3_claim_cas.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 4. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M2 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_pipeline_instance.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+expect_state:
+  - name: "a freshly created canonical database carries the attempt layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    contains:
+      - "problems: []"
+      - "pipeline_instances"
+      - "work_items"
+
+  - name: "the Layer-1 reservation is a UNIQUE partial index over exactly the terminal set"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print(c.execute(\"select sql from sqlite_master where name='ix_pipeline_instances_live_reservation'\").fetchone()[0])"
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "WHERE state NOT IN"
+      - "'CLOSED','REJECTED','VOIDED','FAILED'"
+
+  - name: "an attempt points at its witness and its grant by FOREIGN KEY, not by convention"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print(sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(pipeline_instances)')}))"
+    contains:
+      - "checkpoint_witnesses"
+      - "effect_grants"
+      - "tenant_humans"
+      - "work_items"
+
+  - name: "M2 has no production caller — the dark posture, measured"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('.');
+      hits=[str(f) for f in list(root.glob('src/freight_recon/**/*.py'))+list(root.glob('scripts/**/*.py'))
+      if f.name!='pipeline_instance.py' and any(
+      (isinstance(n,ast.ImportFrom) and n.module and n.module.split('.')[-1]=='pipeline_instance')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='pipeline_instance' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text())))];
+      print('production importers of pipeline_instance:', hits)"
+    contains:
+      - "production importers of pipeline_instance: []"
+
+  - name: "the production GateRegistry population is still EMPTY (U8.1/P8 is unchanged)"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text())))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "ABSORBED onto the running attempt, not raced"
+  - "never both, never neither"
+  - "A BRAKE DOES NOT PAUSE AN AUTHORIZATION. IT KILLS IT."
+  - "NEEDS_VERIFICATION"
+  - "AT MOST ONE AUTHORIZATION PER LOGICAL EFFECT WAS EVER CLAIMED"
+  - "EVERY distinct hostile attempt is recorded, not just the first"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  - "### WRONG "
+  - "### MISS ###"
+  - "no such table"
+  # A claimed grant with no pipeline behind it, or two claims on one logical effect, is the
+  # double-effect failure this whole machine exists to prevent. Either would print here.
+  - "the ledger claimed while the pipeline did not"
+
+teardown: []

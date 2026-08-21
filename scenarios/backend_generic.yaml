@@ -27,7 +27,7 @@ setup:
 # ---------------------------------------------------------------------------
 fixtures:
   - "eval/golden_set/ground_truth.json"
-  - "pytest-canonical.ini"
+  - "pyproject.toml"
 
 # ---------------------------------------------------------------------------
 # 3. Long-running services.
@@ -55,12 +55,12 @@ app_url: ""
 # ---------------------------------------------------------------------------
 commands:
   - name: "focused suite for the slice under test"
-    run: ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py"
     expect_exit_code: 0
     timeout_s: 600
 
   - name: "checkpoint matrix — the 105-case merge-gating oracle"
-    run: ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_checkpoint_matrix.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_checkpoint_matrix.py"
     expect_exit_code: 0
     timeout_s: 900
 

@@ -337,6 +337,10 @@ class ValidationContext:
     #: failures were grouped into. An adaptive scenario may only cite these:
     #: they are the evidence it claims to be responding to.
     known_failure_ids: set[str] = field(default_factory=set)
+    #: The identified risks in this run's register, by key and by the id the
+    #: generator gave them. A coverage-gap scenario may only cite these: a case
+    #: claiming to close a gap the run never named is not closing a gap.
+    known_risk_ids: set[str] = field(default_factory=set)
     known_cluster_ids: set[str] = field(default_factory=set)
     declared_services: set[str] = field(default_factory=set)
     app_url: str = ""
@@ -415,7 +419,9 @@ def validate_scenario(
 
 #: The stages that may produce a scenario. Anything else is not a stage the
 #: planner runs, so a scenario claiming one did not come from this system.
-_KNOWN_STAGES = frozenset({"initial", "diff_refinement", "adaptive"})
+_KNOWN_STAGES = frozenset(
+    {"initial", "diff_refinement", "adaptive", "coverage_gap"}
+)
 
 
 def _check_provenance(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
@@ -468,6 +474,28 @@ def _check_provenance(generated: GeneratedScenario, context: ValidationContext) 
             "scenario states neither a generating risk nor a rationale, so the risk it "
             "was meant to cover cannot be recovered"
         )
+
+    # A coverage-gap scenario exists *because a named risk has no evidence*.
+    # The citation requirement is the same shape as the adaptive one and exists
+    # for the same reason: without it, "this closes a gap" is a label rather
+    # than a claim anyone can check. It is a different citation because the
+    # cause is different — and running these two stages as one is what produced
+    # a wave that could only ever be refused, since with nothing failed there
+    # was no failure any proposal could have named.
+    if provenance.stage == "coverage_gap":
+        cited = [r for r in provenance.source_risks if str(r).strip()]
+        if not cited:
+            reasons.append(
+                "coverage-gap scenario names no identified risk; a case generated to "
+                "close a gap must record which risk from this run's register it closes"
+            )
+        elif context.known_risk_ids:
+            unknown = sorted(set(cited) - context.known_risk_ids)
+            if unknown:
+                reasons.append(
+                    "coverage-gap scenario cites risk(s) this run never identified: "
+                    + ", ".join(unknown)
+                )
 
     # An adaptive scenario exists *because something failed*. If it cannot name
     # what, it is an ordinary proposal wearing an adaptive label, and the claim

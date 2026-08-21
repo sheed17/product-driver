@@ -218,6 +218,12 @@ class ActiveUnit:
     unit_id: str
     name: str = ""
     status: str = ""
+    #: The registry's own record of how far the unit has got, where it keeps one.
+    #: `status` is a selection ("this is the unit to work on"); this is progress
+    #: ("and it is under way"). A phase can be READY and IN_PROGRESS at once, and
+    #: reading the first as the second is how a phase in flight gets mistaken for
+    #: a phase that has not started.
+    execution_state: str = ""
     objective: str = ""
     acceptance_contract: str = ""
     acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
@@ -269,7 +275,8 @@ class ActiveUnit:
             )
         parts = [
             f"ACTIVE READY UNIT: {self.unit_id} — {self.name}",
-            f"status: {self.status}",
+            f"status: {self.status}"
+            + (f" (execution_state: {self.execution_state})" if self.execution_state else ""),
             f"objective: {self.objective}",
             f"acceptance_contract: {self.acceptance_contract}",
         ]
@@ -410,6 +417,7 @@ class RepositoryContextLoader:
             unit_id=unit_id,
             name=str(u.get("name") or ""),
             status=str(u.get("status") or ""),
+            execution_state=str(u.get("execution_state") or ""),
             objective=str(u.get("objective") or ""),
             acceptance_contract=_short(u.get("acceptance_contract") or ""),
             acceptance_criteria=[c for c in criteria if isinstance(c, dict)],

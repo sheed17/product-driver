@@ -34,7 +34,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, Sequence
 
 from .authority import AuthorityChange, render_authority_section
 from .models import redact
@@ -150,6 +150,53 @@ class RunJournal:
     founder_decision_required: str = ""
     incomplete: list[str] = field(default_factory=list)
 
+    # -- the grounded outcome, for the plain-terms summary ------------------
+    #
+    # Every one of these is copied from a record the run already produced: the
+    # run status, the deterministic acceptance gate's verdict, the evaluator's
+    # decision, the builder's own summaries, the reviews the driver launched.
+    # Nothing here is authored at render time, and nothing here is a judgement
+    # this module makes — :meth:`personal_summary` only reads them.
+
+    #: ``RunStatus`` value, as a string.
+    run_status: str = ""
+    #: ``GateStatus`` value: "VERIFIED", "NOT_VERIFIED", or "" when no gate ran.
+    gate_status: str = ""
+    gate_headline: str = ""
+    required_passed: int = 0
+    required_total: int = 0
+    #: ``UnverifiedCase.brief()`` for every required scenario that did not pass.
+    unverified: list[str] = field(default_factory=list)
+    #: ``UncoveredRisk.brief()`` for every acceptance-blocking risk with no
+    #: passing scenario behind it.
+    uncovered_risks: list[str] = field(default_factory=list)
+    #: ``CoveredRisk.brief()`` for every acceptance-blocking risk that WAS
+    #: verified, naming the scenario and the declared claim that verified it.
+    #: Recorded because a coverage claim nobody can trace is not evidence: a
+    #: reader must be able to check the positive half of the answer too.
+    covered_risks: list[str] = field(default_factory=list)
+    generation_problems: list[str] = field(default_factory=list)
+    #: What the evaluator recorded as observed — never what it predicted.
+    observed_behavior: list[str] = field(default_factory=list)
+    #: The builder's own summaries. Recorded AS CLAIMS and rendered as claims.
+    builder_claims: list[str] = field(default_factory=list)
+    #: One line per independent review this run launched on its own.
+    reviews: list[str] = field(default_factory=list)
+    #: The active unit's human-readable name and objective, from the registry.
+    active_unit_name: str = ""
+    active_unit_objective: str = ""
+    #: Why no unit could be resolved, when the registry declares none.
+    active_unit_problem: str = ""
+    #: What this run was asked to build, and the phase it sits inside. Recorded
+    #: so a reader is never left to infer that a unit accepted inside a phase
+    #: means the phase moved. It did not.
+    task_scope_id: str = ""
+    parent_phase_id: str = ""
+    parent_phase_state: str = ""
+    scope_is_nested: bool = False
+    scenario_name: str = ""
+    scenario_phase: str = ""
+
     started_at: str = field(default_factory=_now)
     ended_at: str = ""
 
@@ -247,7 +294,88 @@ class RunJournal:
         else:
             self.founder_decision_required = redact(founder_decision_required)
 
+    def record_outcome(
+        self,
+        *,
+        run_status: str = "",
+        gate: Any = None,
+        decision: Any = None,
+        builder_claims: Sequence[str] = (),
+        reviews: Sequence[str] = (),
+        unit: Any = None,
+        scenario_name: str = "",
+        scenario_phase: str = "",
+    ) -> None:
+        """Copy the run's final records in. Reads them; never interprets them.
+
+        ``gate`` is a :class:`~neyma_product_driver.scenario_gate.GateVerdict`
+        and ``decision`` an ``EvaluatorDecision``; both are duck-typed so the
+        journal keeps no import edge to either and a test can pass a stand-in.
+        """
+        self.run_status = str(getattr(run_status, "value", run_status) or "")
+        self.scenario_name = scenario_name or self.scenario_name
+        self.scenario_phase = scenario_phase or self.scenario_phase
+
+        if gate is not None:
+            status = getattr(gate, "status", "")
+            self.gate_status = str(getattr(status, "value", status) or "")
+            self.gate_headline = redact(str(getattr(gate, "headline", lambda: "")() or ""))
+            self.required_passed = int(getattr(gate, "required_passed", 0) or 0)
+            self.required_total = int(getattr(gate, "required_total", 0) or 0)
+            self.unverified = [
+                redact(case.brief()) for case in getattr(gate, "unverified", []) or []
+            ]
+            self.uncovered_risks = [
+                redact(risk.brief()) for risk in getattr(gate, "uncovered_risks", []) or []
+            ]
+            self.covered_risks = [
+                redact(risk.brief()) for risk in getattr(gate, "covered_risks", []) or []
+            ]
+            self.generation_problems = [
+                redact(str(p)) for p in getattr(gate, "generation_problems", []) or []
+            ]
+
+        if decision is not None:
+            self.observed_behavior = [
+                redact(str(o)) for o in getattr(decision, "observed_behavior", []) or []
+            ]
+
+        self.builder_claims = [redact(str(c))[:600] for c in builder_claims if str(c).strip()]
+        self.reviews = [redact(str(r))[:600] for r in reviews if str(r).strip()]
+
+        if unit is not None:
+            self.active_unit_id = str(getattr(unit, "unit_id", "") or "")
+            self.active_unit_status = str(getattr(unit, "status", "") or "")
+            self.active_unit_name = redact(str(getattr(unit, "name", "") or ""))
+            self.active_unit_objective = redact(str(getattr(unit, "objective", "") or ""))
+            self.active_unit_problem = redact(str(getattr(unit, "resolution_problem", "") or ""))
+
     # -- derived ----------------------------------------------------------
+
+    @property
+    def verification_established(self) -> bool:
+        """Whether this run may state that anything was PROVEN.
+
+        The single predicate the plain-terms summary asks, and it is deliberately
+        conjunctive. Any one of these being false means the burden of proof the
+        acceptance was supposed to rest on was not discharged:
+
+        * the run reached ACCEPTED;
+        * the deterministic scenario gate returned VERIFIED;
+        * no required scenario is unverified — which includes never having run;
+        * no acceptance-blocking risk the run itself named is uncovered;
+        * generation produced the coverage it set out to produce.
+
+        Nothing a model said appears here. A gate that never ran leaves
+        ``gate_status`` empty, and an empty gate status is not VERIFIED.
+        """
+        return (
+            self.run_status == "ACCEPTED"
+            and self.gate_status == "VERIFIED"
+            and not self.unverified
+            and not self.uncovered_risks
+            and not self.generation_problems
+        )
 
     @property
     def authority_changes_present(self) -> bool:
@@ -304,6 +432,22 @@ class RunJournal:
             "next_safe_action": self.next_safe_action,
             "founder_decision_required": self.founder_decision_required,
             "incomplete": list(self.incomplete),
+            "outcome": {
+                "run_status": self.run_status,
+                "gate_status": self.gate_status,
+                "gate_headline": self.gate_headline,
+                "required_passed": self.required_passed,
+                "required_total": self.required_total,
+                "unverified": list(self.unverified),
+                "uncovered_risks": list(self.uncovered_risks),
+                "covered_risks": list(self.covered_risks),
+                "generation_problems": list(self.generation_problems),
+                "observed_behavior": list(self.observed_behavior),
+                "builder_claims": list(self.builder_claims),
+                "reviews": list(self.reviews),
+                "scenario": {"name": self.scenario_name, "phase": self.scenario_phase},
+                "verification_established": self.verification_established,
+            },
         }
 
     # -- persistence ------------------------------------------------------
@@ -319,6 +463,249 @@ class RunJournal:
         (run_dir / SUMMARY_FILE).write_text(self.founder_summary(), encoding="utf-8")
         return path
 
+    # -- the plain-terms summary -----------------------------------------
+
+    #: The five upgrades this renderer exists to make structurally impossible.
+    #: Each is a sentence somebody would write by hand at the end of a long run,
+    #: and each is false. They are stated here because the defence against them
+    #: is that every clause below is rendered from a record, and a record that
+    #: does not exist renders as "not established" rather than as silence.
+    NEVER_UPGRADE: ClassVar[tuple[str, ...]] = (
+        "a builder claim is not a proven capability",
+        "a local implementation is not a production enablement",
+        "tests passing is not a product proof",
+        "dark code is not a live feature",
+        "an incomplete gate is not complete work",
+    )
+
+    def personal_summary(self) -> str:
+        """The eight plain-terms questions, rendered from the final records."""
+        return "\n".join(self.personal_summary_lines()) + "\n"
+
+    def personal_summary_lines(self) -> list[str]:
+        """The plain-terms section, deterministic and grounded.
+
+        Every claim below traces to something recorded: the deterministic
+        acceptance gate, the evaluator's observations, the file and commit
+        record, the repository's own unit registry. Where the run recorded
+        nothing, this says so — a confident blank is the failure mode this whole
+        section exists to prevent.
+
+        The rule the renderer follows, stated once: **a run may say something is
+        proven only when** :attr:`verification_established` **is true.** Below
+        that bar every answer is written in the language of what was attempted,
+        never of what was achieved.
+        """
+        proven = self.verification_established
+        lines: list[str] = [
+            "## PERSONAL SUMMARY — SIMPLE TERMS",
+            "",
+            (
+                "Everything here is read off this run's own records. "
+                if proven
+                else "Everything here is read off this run's own records, and this run did "
+                "**not** establish verification, so nothing below is stated as proven. "
+            )
+            + "Where a record is missing, this says so rather than filling the gap.",
+            "",
+        ]
+
+        # 1 ------------------------------------------------------------------
+        lines += ["### 1. What we just built or fixed", ""]
+        if self.file_changes:
+            counts: dict[str, int] = {}
+            for change in self.file_changes:
+                counts[change.change] = counts.get(change.change, 0) + 1
+            lines.append(
+                "- Files touched: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
+            )
+            for change in self.file_changes[:12]:
+                lines.append(f"    - {change.change}: {change.path}")
+            if len(self.file_changes) > 12:
+                lines.append(f"    - ... and {len(self.file_changes) - 12} more (section 2)")
+        else:
+            lines.append("- No file change was recorded in this run.")
+        if self.commits:
+            lines.append(f"- Local commits: {len(self.commits)} "
+                         "(local only — nothing was pushed anywhere)")
+        else:
+            lines.append("- No local commit was created.")
+        if self.builder_claims:
+            lines.append("- What the builder SAYS it did — a claim, not a finding:")
+            for claim in self.builder_claims[:3]:
+                lines.append(f"    - \"{_one_line(claim, 220)}\"")
+
+        # 2 ------------------------------------------------------------------
+        lines += ["", "### 2. Why this matters for Neyma", ""]
+        if self.active_unit_id:
+            lines.append(f"- This run worked on **{self.active_unit_id}**"
+                         + (f" — {self.active_unit_name}" if self.active_unit_name else "")
+                         + (f" ({self.active_unit_status})" if self.active_unit_status else ""))
+            if self.active_unit_objective:
+                lines.append(f"- The repository states its objective as: "
+                             f"{_one_line(self.active_unit_objective, 400)}")
+            else:
+                lines.append("- The repository's registry states no objective text for it.")
+        else:
+            lines.append(
+                "- The repository declared no active unit"
+                + (f" ({self.active_unit_problem})" if self.active_unit_problem else "")
+                + ", so the goal you gave is the only statement of why this mattered:"
+            )
+            lines.append(f"    - {_one_line(redact(self.task), 400) or '(no task recorded)'}")
+
+        # 3 ------------------------------------------------------------------
+        lines += ["", "### 3. What is actually proven true", ""]
+        if self.gate_status:
+            lines.append(f"- Acceptance gate: **{self.gate_status}** — "
+                         f"{self.required_passed}/{self.required_total} required scenario(s) "
+                         "passed with resolvable evidence.")
+        else:
+            lines.append("- **No acceptance gate ran**, so no scenario evidence was measured.")
+        if proven:
+            lines.append("- Every required scenario passed and could show its evidence, "
+                         "every acceptance-blocking risk this run named has a passing "
+                         "scenario behind it, and no verification failed to be produced.")
+            if self.scenario_results:
+                for record in self.scenario_results[:12]:
+                    if record.get("passed"):
+                        lines.append(f"    - PASSED: {record.get('name', '?')}")
+            for covered in self.covered_risks[:12]:
+                lines.append(f"    - RISK VERIFIED BY: {covered}")
+        else:
+            lines.append("- **Nothing is established as proven by this run.** What is missing:")
+            reasons = (
+                [f"unverified: {u}" for u in self.unverified[:8]]
+                + [f"uncovered risk: {r}" for r in self.uncovered_risks[:8]]
+                + [f"verification never produced: {p}" for p in self.generation_problems[:8]]
+            )
+            if not reasons:
+                reasons = [
+                    f"the run ended as {self.run_status or 'UNRECORDED'} rather than ACCEPTED"
+                    if self.run_status != "ACCEPTED"
+                    else "the acceptance gate did not return VERIFIED"
+                ]
+            lines.extend(f"    - {r}" for r in reasons)
+
+        # 4 ------------------------------------------------------------------
+        lines += ["", "### 4. What Neyma can safely do now that it could not before", ""]
+        if not proven:
+            lines.append("- **Nothing new.** This run did not establish verification, so no new "
+                         "capability may be claimed from it.")
+        elif self.observed_behavior:
+            for observed in self.observed_behavior[:8]:
+                lines.append(f"- {_one_line(observed, 300)}")
+            lines.append(
+                "- Scope of that sentence, exactly: this is behaviour **observed locally in "
+                "this repository, in this run**. It is not deployed, not enabled for any real "
+                "tenant, and no external effect was performed."
+            )
+        else:
+            lines.append("- The gate verified the required coverage, but the evaluator recorded "
+                         "no observed behaviour, so no new capability is stated here.")
+
+        # 5 ------------------------------------------------------------------
+        lines += ["", "### 5. What is still NOT built", ""]
+        outstanding = (
+            list(self.incomplete)
+            + [f"not verified — {u}" for u in self.unverified]
+            + [f"named as a risk and not covered — {r}" for r in self.uncovered_risks]
+            + [f"verification not produced — {p}" for p in self.generation_problems]
+        )
+        if outstanding:
+            lines.extend(f"- {item}" for item in outstanding[:15])
+            if len(outstanding) > 15:
+                lines.append(f"- ... and {len(outstanding) - 15} more")
+        else:
+            lines.append("- This run recorded nothing outstanding **within its own scope**.")
+        lines.append(
+            "- A run covers one unit. Everything the repository owes beyond this unit is "
+            "still owed, and this section is not a statement about it — "
+            "`docs/implementation/CURRENT.md` is."
+        )
+
+        # 6 ------------------------------------------------------------------
+        lines += ["", "### 6. Where Neyma is in the roadmap", ""]
+        start = self.start_identity
+        lines.append(
+            f"- As the repository recorded it at `{(start.head[:12] if start else '?') or '?'}` "
+            f"on `{start.branch if start else '?'}`:"
+        )
+        if self.active_unit_id:
+            lines.append(f"    - active unit: {self.active_unit_id} "
+                         f"({self.active_unit_status or 'status unrecorded'})")
+        else:
+            lines.append("    - the registry declared no active unit for this run")
+        if self.scope_is_nested and self.task_scope_id:
+            lines.append(
+                f"    - this run built **{self.task_scope_id}**, one unit inside "
+                f"**{self.parent_phase_id}**"
+            )
+            lines.append(
+                f"    - **{self.parent_phase_id} is "
+                f"{self.parent_phase_state or 'IN_PROGRESS'} and this run did not move it.** "
+                f"Accepting {self.task_scope_id} does not complete "
+                f"{self.parent_phase_id}, does not score one of its acceptance criteria, "
+                "does not unblock the phase after it, and enables nothing in production."
+            )
+        if self.scenario_name:
+            lines.append(f"    - verified against scenario `{self.scenario_name}`"
+                         + (f", phase {self.scenario_phase}" if self.scenario_phase else ""))
+        lines.append(
+            "- **This is a pointer, not the authority.** `docs/implementation/CURRENT.md` and "
+            "`docs/implementation/IMPLEMENTATION-REGISTRY.yaml` in the product repository are "
+            "the authority on phase position, and they move without this file moving."
+        )
+
+        # 7 ------------------------------------------------------------------
+        lines += ["", "### 7. The ONE exact next move", ""]
+        lines.append(f"- {self._next_move()}")
+
+        # 8 ------------------------------------------------------------------
+        lines += ["", "### 8. Founder decisions needed", ""]
+        if self.founder_decision_required:
+            lines.append(f"- **{self.founder_decision_required}**")
+        elif self.controls_weakened:
+            lines.append("- **A mandatory control was removed or weakened by this run.** "
+                         "Read section 6 of the detailed summary below before accepting it.")
+        else:
+            lines.append("- None.")
+
+        lines += [
+            "",
+            "> Written to a fixed rule: " + "; ".join(self.NEVER_UPGRADE) + ".",
+        ]
+        return lines
+
+    def _next_move(self) -> str:
+        """One line. Derived from status, never composed from several."""
+        if self.founder_decision_required:
+            return (
+                "Answer the decision in section 8 — the run stopped because only you can "
+                "authorize it."
+            )
+        if self.run_status == "REQUIRES_APPROVAL":
+            return (
+                "Read `protocol-resolution.json` in the run directory and approve or reject "
+                "the option it proposes; the run cannot continue without that."
+            )
+        if self.next_safe_action:
+            return _one_line(self.next_safe_action, 400)
+        if self.verification_established:
+            return (
+                "Read the diff yourself, then decide whether to commit and push it — the "
+                "driver stops before every remote action, by design."
+            )
+        if self.run_status in {"BLOCKED", "ERROR", "STOPPED"}:
+            return (
+                f"The run ended {self.run_status} and recorded no next safe action; read "
+                "`journal.json` and the last iteration's `decision.json` before re-running."
+            )
+        return (
+            "Re-read section 3, fix what is listed there, and run the same task again — "
+            "nothing this run produced is accepted."
+        )
+
     # -- the founder summary ---------------------------------------------
 
     def founder_summary(self) -> str:
@@ -333,6 +720,12 @@ class RunJournal:
             "",
             f"Run `{self.run_id or '(unnamed)'}`  ·  started {self.started_at}"
             f"{'  ·  ended ' + self.ended_at if self.ended_at else '  ·  (not finished)'}",
+            "",
+        ]
+        lines += self.personal_summary_lines()
+        lines += [
+            "",
+            "---",
             "",
             "## 1. What did the Driver work on?",
             "",
@@ -492,6 +885,13 @@ _EXTERNAL_MARKERS = (
     "outbound", "payment", "communication", "production", "container push",
     "package publish", "external service",
 )
+
+
+def _one_line(text: str, limit: int) -> str:
+    """Collapse to a single line and bound it. Multi-line prose in a bullet list
+    silently reflows into the surrounding markdown and reads as new claims."""
+    collapsed = " ".join(str(text or "").split())
+    return collapsed if len(collapsed) <= limit else collapsed[: limit - 1] + "…"
 
 
 def _is_external_boundary(reason: str) -> bool:

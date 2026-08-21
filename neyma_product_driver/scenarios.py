@@ -40,6 +40,7 @@ from .models import (
     BrowserObservation,
     BrowserTextExpectation,
     HttpObservation,
+    RiskEvidence,
     ScenarioResult,
     redact,
 )
@@ -204,6 +205,89 @@ class ScenarioStep(BaseModel):
         return self
 
 
+class RiskClaim(BaseModel):
+    """One explicit declaration: *this* scenario verifies *that* risk, by *these* oracles.
+
+    The mechanism exists because risk coverage was being decided by a label
+    match. A run identified "persistence_failure" as a P1 risk; the permanent
+    scenario migrated a legacy database and read the resulting schema back, and
+    passed; and the acceptance gate still reported the risk unverified, because
+    the only thing it could see was that no *generated* scenario carried the tag
+    ``persistence_failure``. Asking a builder to add coverage that already
+    existed was the only move left, and it did not converge.
+
+    So coverage becomes a statement a human writes down and a machine checks:
+
+    .. code-block:: yaml
+
+        verifies:
+          - risk_category: persistence_failure
+            claim: "a pre-M3 database migrates to the canonical effect shape"
+            checks: ["the M3 migration battery"]
+            observations: ["A LEGACY DATABASE MIGRATES TO THE CANONICAL EFFECT SHAPE"]
+
+    ``checks`` names commands or state checks *in this same scenario* — every
+    one must have executed and every assertion it produced must have passed.
+    ``observations`` are literal substrings, matched exactly as ``expect_visible``
+    is: against the output of the named ``checks`` when there are any, and
+    against everything the run observed when there are not. At least one of the
+    two is required: a claim with no oracle is an opinion, and this file has no
+    place to store opinions.
+
+    Nothing a model writes reaches here. Generated scenarios are compiled from
+    :class:`~neyma_product_driver.scenario_plan.GeneratedScenario`, which has no
+    field that could produce a ``RiskClaim``, and the suite discards any claim
+    arriving on a generated entry regardless.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A ``RiskCategory`` member. Anything else is a load-time error: an
+    #: unrecognised category would silently match no risk and the declaration
+    #: would read as coverage while providing none.
+    risk_category: str
+    #: What this claim asserts, in the author's words. Recorded and rendered so
+    #: the mapping is auditable; never matched against anything.
+    claim: str
+    checks: list[str] = Field(default_factory=list)
+    observations: list[str] = Field(default_factory=list)
+
+    @field_validator("checks", "observations", mode="before")
+    @classmethod
+    def _listify(cls, v: Any) -> Any:
+        return [v] if isinstance(v, str) else (v or [])
+
+    @field_validator("risk_category")
+    @classmethod
+    def _known_category(cls, v: str) -> str:
+        # Imported here rather than at module scope: scenario_plan imports this
+        # module, so the dependency only runs in this direction on demand.
+        from .scenario_plan import RiskCategory
+
+        value = (v or "").strip()
+        try:
+            RiskCategory(value)
+        except ValueError:
+            raise ValueError(
+                f"unknown risk_category {v!r} in a verifies: entry. It must be one of "
+                + ", ".join(sorted(c.value for c in RiskCategory))
+            ) from None
+        return value
+
+    @model_validator(mode="after")
+    def _has_an_oracle(self) -> "RiskClaim":
+        if not self.claim.strip():
+            raise ValueError("a verifies: entry must state the claim it makes")
+        if not self.checks and not self.observations:
+            raise ValueError(
+                f"the verifies: entry {self.claim!r} names neither a check nor an "
+                "observation, so nothing about it could pass or fail. Name the command "
+                "or state check that must pass, or the literal text the product must "
+                "emit."
+            )
+        return self
+
+
 class Scenario(BaseModel):
     """A full scenario definition."""
 
@@ -231,6 +315,12 @@ class Scenario(BaseModel):
     expect_visible: list[str] = Field(default_factory=list)
     expect_state: list[StateCheckSpec] = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list)
+
+    #: Explicit, human-authored risk coverage: which identified risk categories
+    #: this scenario verifies, and by which oracles. Empty for every scenario
+    #: that declares none — and a scenario that declares none simply covers no
+    #: risk category, which is the same fail-closed position as before.
+    verifies: list[RiskClaim] = Field(default_factory=list)
 
     teardown: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
@@ -262,6 +352,52 @@ class Scenario(BaseModel):
                 "silently interleaving them would make the observed sequence a guess"
             )
         return self
+
+    @model_validator(mode="after")
+    def _claims_name_real_checks(self) -> "Scenario":
+        """Every ``verifies: checks:`` name must be a check this scenario runs.
+
+        A name that matches nothing would produce a claim that can never be
+        established — which fails closed, but silently and for the wrong reason.
+        A reader would see a declaration and a permanent gap and have no way to
+        tell a typo from a genuine absence of evidence, so the typo is a
+        load-time error.
+        """
+        known = self.check_names()
+        for claim in self.verifies:
+            unknown = [name for name in claim.checks if name not in known]
+            if unknown:
+                raise ValueError(
+                    f"the verifies: entry {claim.claim!r} names check(s) this scenario does "
+                    f"not run: {', '.join(sorted(unknown))}. Named checks must match the "
+                    "`name:` of a command or state check in this same scenario"
+                    + (f" (available: {', '.join(sorted(known))})" if known else "")
+                )
+        return self
+
+    def check_names(self) -> set[str]:
+        """The names of every command and state check this scenario runs."""
+        names: set[str] = set()
+        for spec in self.commands:
+            if spec.name:
+                names.add(spec.name)
+        for check in self.expect_state:
+            if check.name:
+                names.add(check.name)
+        for step in self.steps:
+            if step.command is not None and step.command.name:
+                names.add(step.command.name)
+            if step.state_check is not None and step.state_check.name:
+                names.add(step.state_check.name)
+        return names
+
+    def declared_risk_categories(self) -> set[str]:
+        """Risk categories this scenario *claims* to verify.
+
+        A claim, never a result. What was actually established is decided by
+        execution and recorded on the :class:`ScenarioResult`.
+        """
+        return {claim.risk_category for claim in self.verifies}
 
     @property
     def uses_steps(self) -> bool:
@@ -362,9 +498,20 @@ class ScenarioExecutor:
         #: validation and execution can be judged again against the same rule
         #: rather than trusted because an earlier, different string passed.
         self.approved_commands = approved_commands
+        #: check name -> whether every assertion that check produced passed.
+        #: Populated as the run proceeds; a check that never ran is absent, and
+        #: absent is not "passed". This is what makes a ``verifies:`` claim a
+        #: statement about execution rather than about the scenario file.
+        self._check_outcomes: dict[str, bool] = {}
+        #: check name -> everything that check printed, so a claim's literal
+        #: observations are matched against the output of the check that is
+        #: supposed to produce them rather than against the whole run.
+        self._check_output: dict[str, str] = {}
 
     async def execute(self, scenario: Scenario) -> ScenarioResult:
         result = ScenarioResult(scenario_name=scenario.name, mode=scenario.mode)
+        self._check_outcomes = {}
+        self._check_output = {}
         runner = ProcessRunner(
             self.repo,
             default_timeout_s=self.cfg.command_timeout_s,
@@ -465,6 +612,13 @@ class ScenarioExecutor:
                         detail="" if needle not in haystack else "present in observed output",
                     )
                 )
+
+            # 10. resolve the scenario's declared risk claims against what was
+            #     actually observed. Deliberately last, and deliberately only on
+            #     the path where the product was exercised to completion: a run
+            #     that returned early verified nothing, and records no claim
+            #     rather than an unestablished one nobody asked for.
+            self._resolve_risk_claims(scenario, result, haystack)
 
             return await self._finish(result, scenario, runner, services)
 
@@ -794,6 +948,77 @@ class ScenarioExecutor:
 
     # -- shared observation recording -------------------------------------
 
+    def _record_check(
+        self, name: str, result: ScenarioResult, start: int, output: str = ""
+    ) -> None:
+        """Remember whether the named check established anything.
+
+        A check establishes something only when it produced at least one
+        assertion and every one of them passed. Zero assertions means the spec
+        stated no expectation, so it observed the product without judging it —
+        ``all([])`` is True and would have read as a pass, which is precisely
+        the "it ran, therefore it is covered" reasoning this must not do.
+        """
+        if not name:
+            return
+        produced = result.assertions[start:]
+        passed = bool(produced) and all(a.passed for a in produced)
+        # Two checks may share a name; the conjunction is the honest reading.
+        self._check_outcomes[name] = self._check_outcomes.get(name, True) and passed
+        self._check_output[name] = self._check_output.get(name, "") + "\n" + output
+
+    def _resolve_risk_claims(
+        self, scenario: Scenario, result: ScenarioResult, haystack: str
+    ) -> None:
+        """Decide, mechanically, which declared risk claims this run established.
+
+        Every input is something the run produced: which named checks ran, which
+        of their assertions passed, and the text the product actually emitted.
+        Nothing consults a model, and no field on this scenario can assert a
+        claim into existence — the claim names its oracles and the oracles
+        either held or they did not.
+        """
+        for claim in scenario.verifies:
+            problems: list[str] = []
+            for name in claim.checks:
+                state = self._check_outcomes.get(name)
+                if state is None:
+                    problems.append(f"the check {name!r} did not run")
+                elif not state:
+                    problems.append(f"the check {name!r} ran and did not pass")
+            # Scoped to the named checks when there are any: the check that is
+            # supposed to establish the claim is the one that must have emitted
+            # the text. Matching against the whole run would let one command's
+            # output satisfy a claim about another's.
+            observed = (
+                "\n".join(self._check_output.get(name, "") for name in claim.checks)
+                if claim.checks
+                else haystack
+            )
+            missing = [text for text in claim.observations if text not in observed]
+            if missing:
+                where = (
+                    f"in the output of {', '.join(repr(n) for n in claim.checks)}"
+                    if claim.checks
+                    else "anywhere in what this run observed"
+                )
+                problems.append(
+                    "the product never emitted "
+                    + ", ".join(repr(text) for text in missing)
+                    + f" {where}"
+                )
+            result.risk_evidence.append(
+                RiskEvidence(
+                    risk_category=claim.risk_category,
+                    claim=claim.claim,
+                    scenario_name=scenario.name,
+                    checks=list(claim.checks),
+                    observations=list(claim.observations),
+                    established=not problems,
+                    reason="; ".join(problems),
+                )
+            )
+
     async def _do_command(
         self, result: ScenarioResult, spec: CommandSpec, runner: ProcessRunner
     ) -> None:
@@ -811,6 +1036,7 @@ class ScenarioExecutor:
             return
         res = await runner.run(command, timeout_s=spec.timeout_s or self.cfg.command_timeout_s)
         result.commands.append(res)
+        start = len(result.assertions)
         if spec.expect_exit_code is not None:
             result.assertions.append(
                 AssertionResult(
@@ -830,6 +1056,7 @@ class ScenarioExecutor:
                     detail="" if needle in combined else "not found in output",
                 )
             )
+        self._record_check(spec.name, result, start, combined)
 
     async def _do_state_check(
         self, result: ScenarioResult, check: StateCheckSpec, runner: ProcessRunner
@@ -848,6 +1075,7 @@ class ScenarioExecutor:
             return
         res = await runner.run(command, timeout_s=check.timeout_s or self.cfg.command_timeout_s)
         result.commands.append(res)
+        start = len(result.assertions)
         combined = f"{res.stdout}\n{res.stderr}"
         for needle in check.contains:
             result.assertions.append(
@@ -867,6 +1095,7 @@ class ScenarioExecutor:
                     detail="" if needle not in combined else "unexpectedly present",
                 )
             )
+        self._record_check(check.name, result, start, combined)
 
     async def _do_request(
         self,

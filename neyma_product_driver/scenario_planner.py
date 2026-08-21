@@ -76,6 +76,15 @@ PROMOTION_FILENAME = "promotion-candidates.json"
 STAGE_INITIAL = "initial"
 STAGE_DIFF = "diff_refinement"
 STAGE_ADAPTIVE = "adaptive"
+#: A wave whose purpose is to close a *named coverage gap* rather than to
+#: respond to a failure. It exists because the two were one stage, and an
+#: adaptive scenario must name the observed failure that caused it — so a wave
+#: launched when nothing had failed (the evaluator asked for more verification,
+#: or a risk had no evidence) could only ever produce refusals, while still
+#: contributing newly identified risks to the register. Every wave of that shape
+#: made the run less acceptable and no more verified. A coverage-gap scenario
+#: cites the risk it closes instead, which is a citation the run can check.
+STAGE_COVERAGE_GAP = "coverage_gap"
 #: Recorded on a wave whose "generation" was the resume itself: scenarios the
 #: plan had committed to that can no longer be executed.
 STAGE_RESUME = "resume"
@@ -105,6 +114,41 @@ class PlanRestore:
 
     def __str__(self) -> str:  # the note is what callers used to receive
         return self.note
+
+
+def permanent_risk_coverage(
+    scenarios: Sequence[Scenario],
+) -> dict[str, list[str]]:
+    """Read the reviewed ``verifies:`` blocks off the permanent scenarios.
+
+    Returns risk category -> the claims that declare they verify it, each
+    labelled ``"<scenario>: <claim>"``. This is the planner's half of the same
+    fact the gate measures: what permanent coverage *intends* to verify.
+
+    It matters here for one reason. A wave that does not know a risk is already
+    covered asks for a scenario that duplicates the permanent case — which
+    validation then refuses as a duplicate, correctly — and the risk stays on
+    the uncovered list. That loop ran three times in one run and produced
+    nothing. Knowing what permanent coverage claims lets a wave be aimed at what
+    is genuinely missing.
+
+    Pass only the scenarios this run will actually EXECUTE. A claim made by a
+    scenario file that is never run is not coverage this run has planned, and
+    counting it would make the planner report fewer gaps than the gate will
+    find — which fails closed at the gate but leaves the generator un-aimed,
+    reintroducing the loop this exists to break.
+    """
+    coverage: dict[str, list[str]] = {}
+    seen: set[str] = set()
+    for scenario in scenarios:
+        if scenario is None or scenario.name in seen:
+            continue
+        seen.add(scenario.name)
+        for claim in scenario.verifies:
+            coverage.setdefault(claim.risk_category, []).append(
+                f"{scenario.name}: {claim.claim}"
+            )
+    return coverage
 
 
 # --------------------------------------------------------------------------
@@ -234,6 +278,14 @@ class ScenarioPlanner:
         self.emit = emit
 
         self.plan = GeneratedScenarioPlan()
+        # The base scenario alone: it is the only permanent scenario a run's
+        # suite executes (`_assemble_suite` puts it there and nothing else).
+        # `permanent_scenarios` is a wider set — it supplies the approved
+        # command vocabulary and the duplicate-signature index — and a claim
+        # from a file this run never runs is not coverage this run has.
+        self.plan.permanent_coverage = permanent_risk_coverage(
+            [base_scenario] if base_scenario else []
+        )
         self.approved_commands = ApprovedCommands.from_sources(
             scenarios=[*self.permanent_scenarios, *([base_scenario] if base_scenario else [])],
             configured=config.approved_commands,
@@ -351,8 +403,26 @@ class ScenarioPlanner:
         evaluator_requests: Sequence[str] = (),
         diff_files: Sequence[str] | None = None,
     ) -> GeneratedScenarioPlan:
-        """Stage 3 — a failure implies a family of situations worth exercising."""
-        if not failures and not evaluator_requests:
+        """Stage 3 — respond to what happened: a failure, or a gap with no evidence.
+
+        Two shapes, distinguished by whether anything actually failed, because
+        the two produce scenarios that must justify themselves differently.
+
+        With failures, this is the *adaptive* stage: one failing transition
+        suggests the family around it, and every case it produces must name the
+        observed failure that caused it.
+
+        Without failures — the evaluator asked for more verification, or a risk
+        the run identified still has no evidence — it is the *coverage gap*
+        stage, and a case must name the identified risk it closes instead.
+        Running that wave as "adaptive" is what broke: with nothing failed there
+        was no failure to cite, so every proposal was refused for the same
+        reason, while the wave's newly identified risks joined the register and
+        widened the gap list. Three waves of that turned two known gaps into six
+        without a single scenario being added.
+        """
+        gaps = self.plan.planned_gaps()
+        if not failures and not evaluator_requests and not gaps:
             return self.plan
         if not self.config.use_prior_failures:
             return self.plan
@@ -385,9 +455,10 @@ class ScenarioPlanner:
         )
         self._generate(
             basis,
-            stage=STAGE_ADAPTIVE,
+            stage=STAGE_ADAPTIVE if rendered else STAGE_COVERAGE_GAP,
             limit=self.config.max_adaptive_scenarios_per_wave,
             clusters=list(clusters),
+            gaps=gaps,
         )
         return self.plan
 
@@ -400,6 +471,7 @@ class ScenarioPlanner:
         stage: str,
         limit: int,
         clusters: Sequence[FailureCluster] = (),
+        gaps: Sequence[Any] | None = None,
     ) -> None:
         record = WaveRecord(wave=self._wave + 1, stage=stage, basis=basis)
 
@@ -441,9 +513,25 @@ class ScenarioPlanner:
             # a wave of browser scenarios that the run then skips — coverage
             # that was planned, reported, and never executed.
             browser_enabled=self.browser_enabled,
-            existing_coverage=[s.summary() for s in self.plan.scenarios],
+            existing_coverage=[s.summary() for s in self.plan.scenarios]
+            + [
+                f"permanent coverage claims {category}: {claim}"
+                for category, claims in sorted(self.plan.permanent_coverage.items())
+                for claim in claims
+            ],
             failure_clusters=[c.render() for c in clusters],
             product_principles=sorted(principle_tokens_from(self.founder)),
+            # What the run has named and nothing intends to exercise. Without
+            # this the generator proposed whatever looked interesting next,
+            # identified fresh risks while it was there, and left the previous
+            # wave's gaps exactly where they were.
+            uncovered_risks=[
+                f"{risk.label()} [{risk.severity.value} {risk.risk_category.value}] "
+                f"{risk.description}"
+                for risk in (
+                    gaps if gaps is not None else self.plan.planned_gaps()
+                )
+            ],
         )
 
         try:
@@ -514,8 +602,7 @@ class ScenarioPlanner:
             record.accepted_ids.append(scenario.id)
 
         # Risks are additive across waves; the plan keeps the union.
-        known = {r.description for r in self.plan.risks}
-        self.plan.risks += [r for r in parse_risks(payload) if r.description not in known]
+        self._merge_risks(parse_risks(payload))
         assumptions, questions = parse_notes(payload)
         self.plan.assumptions += [a for a in assumptions if a not in self.plan.assumptions]
         self.plan.unresolved_questions += [
@@ -588,14 +675,64 @@ class ScenarioPlanner:
             # outside this was not observed, so citing it is not provenance.
             known_failure_ids=set(self._observed_failure_ids),
             known_cluster_ids=set(self._observed_cluster_ids),
+            # What a coverage-gap scenario is allowed to claim it closes. Both
+            # spellings are accepted because both are shown in the brief; a risk
+            # this run never identified is in neither.
+            known_risk_ids={r.key for r in self.plan.risks}
+            | {r.id for r in self.plan.risks if r.id},
         )
 
+    def _merge_risks(self, incoming: Sequence[Any]) -> None:
+        """Add newly identified risks to the register, keeping identities distinct.
+
+        Two problems, both bookkeeping, both of which made the coverage
+        accounting wrong rather than merely untidy:
+
+        *Duplicate descriptions.* The same risk restated in a later wave is one
+        risk, and counting it twice inflated the gap list without adding
+        information. Deduplicated on the risk's own key.
+
+        *Colliding ids.* Every wave's generator numbers its list from ``R1``, so
+        a three-wave run held three unrelated risks all called ``R1``. Anything
+        keyed on the id — a citation, a report line, a reader — merged them. The
+        first keeps its id; a later collision is re-labelled with its wave, and
+        the original label is preserved in ``basis`` so nothing is lost.
+        """
+        seen_keys = {r.key for r in self.plan.risks}
+        taken_ids = {r.id for r in self.plan.risks if r.id}
+        for risk in incoming:
+            if risk.key in seen_keys:
+                continue
+            if risk.id and risk.id in taken_ids:
+                original = risk.id
+                risk.id = f"{original}-w{self._wave}"
+                suffix = f"(the generator called this {original} in wave {self._wave})"
+                risk.basis = f"{risk.basis} {suffix}".strip()
+            seen_keys.add(risk.key)
+            if risk.id:
+                taken_ids.add(risk.id)
+            self.plan.risks.append(risk)
+
     def _link_risks(self) -> None:
-        """Record which scenarios cover which identified risk."""
+        """Record what this plan *intends* to exercise for each identified risk.
+
+        Two sources, and both are declarations rather than results: a generated
+        scenario carrying the risk's category, and a permanent scenario whose
+        reviewed ``verifies:`` block names it. The second used to be invisible
+        here, so a risk that the permanent suite already exercised — and would
+        exercise again this run — was reported as uncovered, asked of a builder,
+        and reported as uncovered again after the builder added coverage that
+        already existed.
+
+        None of this is evidence. ``covered_by`` says what was planned; whether
+        any of it held is decided from execution records by
+        :func:`~neyma_product_driver.scenario_gate.risk_coverage`, which does not
+        read this field.
+        """
         for risk in self.plan.risks:
             risk.covered_by = [
                 s.id for s in self.plan.scenarios if s.risk_category is risk.risk_category
-            ]
+            ] + list(self.plan.permanent_coverage.get(risk.risk_category.value, []))
         self.plan.recompute_coverage()
 
     def _finish_wave(self, record: WaveRecord) -> None:
@@ -714,6 +851,14 @@ class ScenarioPlanner:
             return self._plan_is_unreadable(path, exc)
 
         self.plan = plan
+        # Recomputed, never restored. Permanent coverage is a fact about the
+        # scenario files as they are *now*, not about the plan as it was
+        # written: a claim added since (or removed since) must be reflected, and
+        # a plan written before this field existed must not resume believing
+        # the permanent suite covers nothing.
+        self.plan.permanent_coverage = permanent_risk_coverage(
+            [self.base_scenario] if self.base_scenario else []
+        )
         self._wave = max(
             max((w.wave for w in plan.waves), default=0), self._waves_recorded_on_disk()
         )

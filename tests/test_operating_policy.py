@@ -11,6 +11,7 @@ All Claude sessions are faked. Nothing here consumes real Claude usage.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -799,6 +800,65 @@ class TestTheShippingReport:
 
         assert "NOT READY TO SHIP" in printed
         assert "unresolved material findings:  0" not in printed
+
+
+# --------------------------------------------------------------------------
+# 10. The plain-terms summary is written from the run's own final records
+# --------------------------------------------------------------------------
+
+
+class TestThePlainTermsSummaryIsGrounded:
+    """End to end through the real loop, not against a hand-built journal.
+
+    ``_write_run_journal`` used to be handed only ``state``, which carries no
+    gate verdict and no evaluator decision — so ``FOUNDER-SUMMARY.md`` could
+    describe what a run *did* and never what it *established*. These two tests
+    are the difference, taken through ``run_control_loop`` so the wiring is
+    exercised rather than assumed.
+    """
+
+    async def _summary(self, loop_bits, *, passing: bool) -> str:
+        config, store, state, scenario, _make = loop_bits
+        from neyma_product_driver.cli import _write_run_journal
+
+        result = await run_control_loop(
+            config=config,
+            scenario=scenario,
+            store=store,
+            state=state,
+            builder=FakeBuilder(),
+            evaluator=FakeEvaluator([accept(), accept(), accept()]),
+            make_executor=lambda d: FakeExecutor(d, passing=passing),
+            emit=lambda _m: None,
+        )
+        _write_run_journal(store, state, config, result=result, scenario=scenario)
+        return (store.run_dir / "FOUNDER-SUMMARY.md").read_text(encoding="utf-8")
+
+    async def test_a_verified_run_says_what_it_proved_and_bounds_the_claim(self, loop_bits):
+        summary = await self._summary(loop_bits, passing=True)
+
+        assert "PERSONAL SUMMARY — SIMPLE TERMS" in summary
+        assert "Acceptance gate: **VERIFIED**" in summary
+        assert "Nothing is established as proven by this run." not in summary
+        # Verified never means shipped, deployed or enabled.
+        assert "not deployed, not enabled for any real tenant" in summary
+        assert "no external effect was performed" in summary
+
+    async def test_a_failing_run_claims_nothing_at_all(self, loop_bits):
+        summary = await self._summary(loop_bits, passing=False)
+
+        assert "Nothing is established as proven by this run." in summary
+        assert "**Nothing new.**" in summary
+        assert "### 7. The ONE exact next move" in summary
+
+    async def test_the_gate_verdict_reaches_the_machine_readable_journal_too(self, loop_bits):
+        await self._summary(loop_bits, passing=False)
+        _config, store, _state, _scenario, _make = loop_bits
+        data = json.loads((store.run_dir / "journal.json").read_text(encoding="utf-8"))
+
+        assert data["outcome"]["verification_established"] is False
+        assert data["outcome"]["gate_status"] in {"NOT_VERIFIED", ""}
+        assert "scenario_results" in data
 
 
 # --------------------------------------------------------------------------

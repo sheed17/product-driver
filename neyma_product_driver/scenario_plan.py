@@ -357,6 +357,11 @@ class ScenarioProvenance(BaseModel):
     #: Failure-cluster ids (``C01``…) this scenario answers, when the failures
     #: it responds to were grouped as sharing one cause.
     source_clusters: list[str] = Field(default_factory=list)
+    #: The identified risks this scenario was generated to close, by risk key.
+    #: A coverage-gap scenario exists because a named risk had no evidence, and
+    #: validation checks these against the run's own register — so a case
+    #: generated "to close a gap" cannot name a gap the run never identified.
+    source_risks: list[str] = Field(default_factory=list)
     #: Which stage produced it: initial, diff_refinement, adaptive.
     stage: str = ""
     wave: int = 0
@@ -591,6 +596,23 @@ class IdentifiedRisk(BaseModel):
     def covered(self) -> bool:
         return bool(self.covered_by)
 
+    @property
+    def key(self) -> str:
+        """A stable identity that does not depend on what the model called it.
+
+        ``id`` is whatever the generator wrote, and generators number each
+        wave's list from R1 — so a three-wave run holds three different risks
+        all called "R1". Anything keyed on ``id`` silently merges them, and a
+        scenario citing "R1" names one of three things. This is derived from the
+        risk itself, so it is unique to the risk and identical across resumes.
+        """
+        digest = hashlib.sha256(self.description.strip().encode("utf-8")).hexdigest()
+        return f"{self.risk_category.value}:{digest[:10]}"
+
+    def label(self) -> str:
+        """How this risk is named in a brief and cited by a scenario."""
+        return f"{self.id or self.key} ({self.key})"
+
 
 class GenerationBasis(BaseModel):
     """Exactly what the generator was shown. The plan's own provenance."""
@@ -682,6 +704,15 @@ class GeneratedScenarioPlan(BaseModel):
     #: Scenario ids the run has already executed, and promotion candidates, so a
     #: resumed run continues from what happened rather than from nothing.
     executed_scenario_ids: list[str] = Field(default_factory=list)
+    #: Risk category -> the permanent claims that declare they verify it, as
+    #: ``"<scenario name>: <claim>"``. Read from the permanent scenario files'
+    #: reviewed ``verifies:`` blocks and recorded here so the plan's own
+    #: coverage accounting matches the gate's, and so a wave is never asked to
+    #: generate a case duplicating coverage that already exists.
+    #:
+    #: A *planned* claim, never a result: whether the claim held is decided by
+    #: execution and by :mod:`~neyma_product_driver.scenario_gate`.
+    permanent_coverage: dict[str, list[str]] = Field(default_factory=dict)
 
     def by_id(self, scenario_id: str) -> GeneratedScenario | None:
         return next((s for s in self.scenarios if s.id == scenario_id), None)
@@ -698,15 +729,34 @@ class GeneratedScenarioPlan(BaseModel):
         for scenario in self.scenarios:
             by_cat[scenario.risk_category.value] = by_cat.get(scenario.risk_category.value, 0) + 1
             by_pri[scenario.priority.value] = by_pri.get(scenario.priority.value, 0) + 1
-        covered = {s.risk_category for s in self.scenarios}
+        covered = {s.risk_category.value for s in self.scenarios} | set(
+            self.permanent_coverage
+        )
         self.coverage_summary = CoverageSummary(
             total_scenarios=len(self.scenarios),
             by_risk_category=by_cat,
             by_priority=by_pri,
             uncovered_risks=[
-                r.description for r in self.risks if r.risk_category not in covered
+                r.description for r in self.risks if r.risk_category.value not in covered
             ],
         )
+
+    def planned_gaps(self) -> list["IdentifiedRisk"]:
+        """Acceptance-blocking risks nothing in this plan intends to exercise.
+
+        The generator's input, not the gate's output: this asks what the plan
+        *intends*, so a wave can be aimed at what is still missing instead of
+        wandering. What was actually verified is decided from execution records
+        by :func:`~neyma_product_driver.scenario_gate.risk_coverage`.
+        """
+        covered = {s.risk_category.value for s in self.scenarios} | set(
+            self.permanent_coverage
+        )
+        return [
+            r
+            for r in self.risks
+            if r.severity.blocks_acceptance and r.risk_category.value not in covered
+        ]
 
     def render(self) -> str:
         lines = [
@@ -851,6 +901,12 @@ def compile_to_scenario(
         forbidden=list(generated.forbidden_observations),
         teardown=[_check(c, "cleanup") for c in generated.cleanup],
         env=env,
+        # `verifies` is deliberately absent, and its absence is the rule. A
+        # ``verifies:`` claim is a human's reviewed statement that a scenario
+        # verifies a named risk; letting a generated scenario carry one would
+        # let a model declare its own coverage and have the acceptance gate
+        # believe it. There is no field on GeneratedScenario that could produce
+        # one, and there must not be.
     )
 
 

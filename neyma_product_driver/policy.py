@@ -462,10 +462,23 @@ def declared_rule_kinds(protocol: Any) -> frozenset[str]:
     require. A repository that deletes its finalizer protocol stops producing a
     FINALIZER_OWNERSHIP rule, and the auditor stops asking for a finalizer
     receipt — with no change here and no code that ever knew the rule's name.
+
+    "Currently" is doing real work in that sentence. A rule survives here only
+    if it is *active*: a statement inside a document that declares itself a
+    record of a past state, and a family a higher-authority document has since
+    retired, are both still discovered, still recorded and still reportable —
+    they simply stop being requirements. Otherwise a pass report describing the
+    finalizer it ran two phases ago would keep that finalizer mandatory forever,
+    which is the ceremony this driver exists to avoid re-imposing.
     """
     kinds: set[str] = set()
     for rule in getattr(protocol, "rules", None) or []:
         kind = getattr(getattr(rule, "kind", None), "value", None) or getattr(rule, "kind", "")
-        if kind:
-            kinds.add(str(kind))
+        if not kind:
+            continue
+        # `is_active` is absent on the lightweight rule stand-ins the tests use
+        # to describe a repository without building one; those are all active.
+        if not bool(getattr(rule, "is_active", True)):
+            continue
+        kinds.add(str(kind))
     return frozenset(kinds)

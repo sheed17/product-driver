@@ -94,7 +94,7 @@ def _review_auditor(blocks: bool = True):
     from neyma_product_driver.completion_auditor import AuditDecision, CompletionAudit
 
     class ReviewAuditor:
-        def audit(self, report, unit=None, run_commands=None, evidence_dir=""):
+        def audit(self, report, unit=None, run_commands=None, evidence_dir="", scope=None):
             return CompletionAudit(
                 decision=AuditDecision.REQUIRES_INDEPENDENT_REVIEW,
                 headline="independent review criteria are pending",

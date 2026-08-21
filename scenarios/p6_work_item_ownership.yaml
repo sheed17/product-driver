@@ -1,0 +1,118 @@
+name: p6_work_item_ownership
+phase: "P6"
+mode: backend
+description: >
+  P6-U1: the Work Item with structurally accountable human ownership. There is no UI and no service
+  — this phase ships dark by contract — so the product is exercised through its real runtime, driven
+  as a brokerage narrative: load 4471 is delivered, somebody owes the customer an invoice, that
+  obligation has a named human owner from the moment it exists, ownership moves only by a recorded
+  act, and the obligation closes only on a human decision that resolves. The hostile attempts are
+  inline, because what matters is not that the happy path works — it is what the machine REFUSES,
+  and whether the refusal tells an operator what to do about it.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/work_item.py"
+  - "src/freight_recon/migrations/phase6_work_items.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE PRODUCT, DRIVEN. The narrative probe lives in the DRIVER, not in Neyma: P6 ships dark and
+  #    a guard asserts the product contains zero importers of `work_item.py`. A demonstration script
+  #    committed into the repository would be the first production caller of a capability that is
+  #    not supposed to have one.
+  - name: "drive the Work Item machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python ../neyma-product-driver/scenarios/p6_work_item_probe.py"
+    expect_exit_code: 0
+    timeout_s: 300
+
+  # 2. Tests are a signal, never the basis for acceptance.
+  - name: "the P6 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py"
+    expect_exit_code: 0
+    timeout_s: 600
+
+  # 3. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the P6 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_work_item.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+requests: []
+
+expect_state:
+  # NOTE — this probe builds the database the way PRODUCTION does, and the first version did not.
+  # It opened a bare `sqlite3.connect` and asked for readiness, which correctly answered "PRAGMA
+  # foreign_keys is OFF: every tenant-consistent foreign key is decoration". That was the readiness
+  # oracle working, not a product defect: `create_canonical_schema` is DDL, and `WorkflowStore`
+  # calls `enable_and_verify_foreign_keys` — which issues the pragma OUTSIDE a transaction and reads
+  # it back, because SQLite silently ignores it inside one. The probe now does the same, so it
+  # measures the database a caller actually gets.
+  - name: "a freshly created canonical database carries the entity layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    contains:
+      - "problems: []"
+      - "tenant_humans"
+      - "work_items"
+
+  - name: "ownership is a foreign key, not a text column"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print([(r[2],r[3],r[4]) for r in c.execute('PRAGMA foreign_key_list(work_items)')])"
+    contains:
+      - "tenant_humans"
+      - "owner_id"
+
+  - name: "P6 has no production caller — the dark posture, measured"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('.');
+      hits=[str(f) for f in list(root.glob('src/freight_recon/**/*.py'))+list(root.glob('scripts/**/*.py'))
+      if f.name!='work_item.py' and any(
+      (isinstance(n,ast.ImportFrom) and n.module and n.module.split('.')[-1]=='work_item')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='work_item' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text())))];
+      print('production importers of work_item:', hits)"
+    contains:
+      - "production importers of work_item: []"
+
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "is not a recorded human of tenant"
+  - "billed is not paid"
+  - "durable timer, not a sweep"
+  - "still accountable for"
+  - "BYTE-IDENTICAL"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  - "### MISS ###"
+  - "no such table"
+  # P6 ships dark. A witness or a grant appearing anywhere in this run would mean the entity layer
+  # reached the effect kernel, which it structurally cannot.
+  - "checkpoint_witnesses: 1"
+  - "effect_grants: 1"
+
+teardown: []

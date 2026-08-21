@@ -57,6 +57,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .context import ActiveUnit, RepositoryContextLoader
 from .models import redact, utcnow
+from .task_scope import ScopedCompletion, TaskResult, TaskScope, scoped_completion
 
 # --------------------------------------------------------------------------
 # Repository locations
@@ -93,6 +94,13 @@ class ClaimType(str, Enum):
     PROGRESS_PERCENT = "PROGRESS_PERCENT"
     READY_ADVANCE = "READY_ADVANCE"
     COMMIT_STRUCTURE = "COMMIT_STRUCTURE"
+    #: A claim that work beyond this run's scope is now open — the next phase
+    #: unblocked, a later unit cleared to begin.
+    NEXT_PHASE_UNBLOCKED = "NEXT_PHASE_UNBLOCKED"
+    #: A claim that something is live, enabled, or in production. The most
+    #: consequential claim a build session can make, and the one a build session
+    #: is least able to establish.
+    LIVE_ENABLEMENT = "LIVE_ENABLEMENT"
 
 
 class AuditDecision(str, Enum):
@@ -232,6 +240,13 @@ class CompletionAudit(BaseModel):
     audited_at: str = Field(default_factory=utcnow)
     headline: str = ""
 
+    #: What this run was asked for, and the phase it sits inside. The audit is
+    #: against the first; the second is reported, never moved.
+    scope: TaskScope | None = None
+    #: The two-level completion record: task result and parent-phase state, side
+    #: by side, with no arithmetic between them.
+    completion: ScopedCompletion | None = None
+
     @property
     def blocks_acceptance(self) -> bool:
         return self.decision is not AuditDecision.VERIFIED
@@ -241,10 +256,14 @@ class CompletionAudit(BaseModel):
         st = self.observed_state
         impl = "PRESENT" if st.implementation_present else "NOT OBSERVED"
         missing = ", ".join(self.missing_evidence[:6]) if self.missing_evidence else "nothing"
-        lines = [
+        lines = []
+        if self.completion is not None:
+            lines += self.completion.summary_block().splitlines()
+        lines += [
             f"COMPLETION CLAIM: {self.decision.value}",
             f"IMPLEMENTATION STATE: {impl}",
             f"VERIFIED PROGRESS: {st.progress.percent:.0f}%"
+            + (f" of {st.active_unit_id}" if st.active_unit_id else "")
             + (
                 f"  (ceiling without independent review: "
                 f"{st.progress.self_awardable_ceiling_percent:.0f}%)"
@@ -258,6 +277,16 @@ class CompletionAudit(BaseModel):
 
     def next_safe_action(self) -> str:
         st = self.observed_state
+        scope = self.scope
+        if (
+            self.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
+            and scope is not None
+            and scope.is_nested
+        ):
+            return (
+                f"have a session that did not build {scope.scope_id} review it; "
+                f"{scope.parent_phase_id} stays {scope.phase_state_text} either way"
+            )
         if self.decision is AuditDecision.CONTRADICTED:
             return (
                 "restore the status documents to the highest evidence-supported state, "
@@ -338,12 +367,37 @@ _CLAIM_PATTERNS: list[tuple[ClaimType, re.Pattern[str]]] = [
         ClaimType.CRITERION_PASS,
         re.compile(r"\b(?:criterion|criteria)\b[^.\n]{0,60}\b(?:pass|passed|satisfied|met)\b", re.I),
     ),
+    (
+        ClaimType.NEXT_PHASE_UNBLOCKED,
+        re.compile(
+            rf"\b({_UNIT_RE})\b[^.\n]{{0,40}}\b(?:is\s+)?(?:now\s+)?"
+            r"(?:unblocked|no\s+longer\s+blocked|may\s+begin|can\s+begin|cleared\s+to\s+start)\b",
+            re.I,
+        ),
+    ),
+    (
+        ClaimType.NEXT_PHASE_UNBLOCKED,
+        re.compile(
+            r"\bthe\s+next\s+(?:phase|unit)\b[^.\n]{0,30}\b"
+            r"(?:is\s+)?(?:now\s+)?(?:unblocked|may\s+begin|can\s+begin|open)\b",
+            re.I,
+        ),
+    ),
+    (
+        ClaimType.LIVE_ENABLEMENT,
+        re.compile(
+            r"\b(?:enabled|live|in\s+production|production-ready|shipped\s+live|"
+            r"turned\s+on)\b[^.\n]{0,40}\b(?:traffic|production|customers?|tenants?)\b|"
+            r"\b(?:on|for)\s+live\s+traffic\b[^.\n]{0,30}\b(?:enabled|now)\b",
+            re.I,
+        ),
+    ),
 ]
 
 # Phrases that mean the builder is explicitly NOT claiming completion.
 _NEGATION_RE = re.compile(
-    r"\b(?:not|never|cannot|can't|isn't|is\s+not|won't|refuse|refusing|without|pending|"
-    r"awaiting|remains?|still)\b[^.\n]{0,40}$",
+    r"\b(?:no|not|never|none|zero|cannot|can't|isn't|is\s+not|won't|refuse|refusing|"
+    r"without|pending|awaiting|remains?|still|neither|nor)\b[^.\n]{0,40}$",
     re.I,
 )
 
@@ -359,12 +413,59 @@ _NEGATED_COMPLETION_RE = re.compile(
 )
 
 
+#: Claim families whose meaning inverts when the sentence around them is a
+#: denial. A count ("46 passed") does not invert, so counts are left out and
+#: judged on their own evidence.
+_NEGATION_SENSITIVE: frozenset[ClaimType] = frozenset(
+    {
+        ClaimType.PHASE_COMPLETE,
+        ClaimType.IMPLEMENTATION_COMPLETE,
+        ClaimType.FULL_SUITE_PASSED,
+        ClaimType.FINALIZER_RAN,
+        ClaimType.CLEAN_CLONE_PASSED,
+        ClaimType.INDEPENDENT_REVIEW,
+        ClaimType.ADJUDICATION,
+        ClaimType.RISK_CONTAINED,
+        ClaimType.READY_ADVANCE,
+        ClaimType.CRITERION_PASS,
+        ClaimType.NEXT_PHASE_UNBLOCKED,
+        ClaimType.LIVE_ENABLEMENT,
+    }
+)
+
+_FENCE_RE = re.compile(r"```.*?```|~~~.*?~~~", re.S)
+_QUOTED_SPAN_RE = re.compile(r"\"[^\"\n]{0,400}\"|\u201c[^\u201d\n]{0,400}\u201d")
+
+
+def _mask_non_assertions(text: str) -> str:
+    """Blank out the parts of a report that quote rather than assert.
+
+    A report is not only its claims. It also contains the commands it ran, the
+    audit text it is answering, and the strings it searched for — and every one
+    of those can contain the exact words a claim is made of. Reading
+    ``grep -n "P6.*COMPLETE"`` as "the builder says P6 is COMPLETE" turns a
+    session that is being scrupulous into a session that is caught lying, and
+    then sends it a correction it cannot act on. That is not a hypothetical: it
+    is what happened, for eight consecutive iterations, in run 20260820-204803.
+
+    Fenced code and quoted spans are replaced with spaces so every offset the
+    caller computes still lines up with the original text. Inline backticks are
+    only stripped, not blanked: "`P6` is COMPLETE" is a real claim and must stay
+    one.
+    """
+    masked = _FENCE_RE.sub(lambda m: " " * len(m.group(0)), text)
+    masked = _QUOTED_SPAN_RE.sub(lambda m: " " * len(m.group(0)), masked)
+    return masked.replace("`", " ")
+
+
 def extract_claims(text: str, source: str = "builder report") -> list[CompletionClaim]:
     """Pull completion claims out of a builder report.
 
     Deliberately conservative about negation: "P3 is NOT complete" is not a
     completion claim, and an honest report that refuses self-adjudication should
-    produce no phase-completion claim at all.
+    produce no phase-completion claim at all. Equally conservative about
+    *mention*: a phrase inside a shell command, a quoted citation of the audit,
+    or a string the builder was searching for is not the builder asserting it.
     """
     if not text or not text.strip():
         return []
@@ -372,15 +473,27 @@ def extract_claims(text: str, source: str = "builder report") -> list[Completion
     claims: list[CompletionClaim] = []
     seen: set[tuple[str, str]] = set()
     evidence = _EVIDENCE_PATH_RE.findall(text)
+    scannable = _mask_non_assertions(text)
 
     for claim_type, pattern in _CLAIM_PATTERNS:
-        for match in pattern.finditer(text):
-            line_start = text.rfind("\n", 0, match.start()) + 1
-            prefix = text[line_start : match.start()]
+        for match in pattern.finditer(scannable):
+            line_start = scannable.rfind("\n", 0, match.start()) + 1
+            prefix = scannable[line_start : match.start()]
             if _NEGATION_RE.search(prefix):
                 continue
             # Negation inside the matched span, e.g. "P3 is not COMPLETE".
             if re.search(r"\b(?:not|never|isn't|is\s+not)\b", match.group(0), re.I):
+                continue
+            # Negation anywhere in the surrounding SENTENCE: "No status document
+            # claims P6 is complete", "P6 may not be recorded COMPLETE". The
+            # window stops at the sentence boundary in both directions — a
+            # report that honestly says what is unfinished in one paragraph must
+            # not have the next paragraph's claim silently discarded because the
+            # word "not" appeared eighty characters earlier.
+            before, after = _sentence_window(scannable, match.start(), match.end())
+            if claim_type in _NEGATION_SENSITIVE and any(
+                _NEGATED_COMPLETION_RE.search(chunk) for chunk in (match.group(0), before, after)
+            ):
                 continue
 
             value = ""
@@ -839,14 +952,44 @@ class CompletionAuditor:
 
     # -- the audit ---------------------------------------------------------
 
+    def unit_status(self, unit_id: str) -> str:
+        """The registry's recorded status for any unit, not only the active one.
+
+        A report that says "P0-P5 are COMPLETE" is making a claim about five
+        units the run is not building. Checking it against the *active* unit's
+        status turns a true statement into a contradiction; checking it against
+        its own unit's status is the only reading that can be right.
+        """
+        if not unit_id:
+            return ""
+        data = self._read_yaml(REGISTRY_REL)
+        if not isinstance(data, dict):
+            return ""
+        raw = data.get("units")
+        units = list(raw.values()) if isinstance(raw, dict) else list(raw or [])
+        wanted = unit_id.replace("-", "").upper()
+        for u in units:
+            if not isinstance(u, dict):
+                continue
+            if str(u.get("unit_id", "")).replace("-", "").upper() == wanted:
+                return str(u.get("status") or "")
+        return ""
+
     def audit(
         self,
         builder_report: str,
         unit: ActiveUnit | None = None,
         run_commands: list[Any] | None = None,
         evidence_dir: str | None = None,
+        scope: TaskScope | None = None,
     ) -> CompletionAudit:
-        """Audit a builder report against the repository. Never raises."""
+        """Audit a builder report against the repository. Never raises.
+
+        ``scope`` says what this run was asked for. Without one, the audit is
+        against the whole active phase, which is the strict reading and the
+        historical behaviour: a caller that does not say what it asked for gets
+        held to everything.
+        """
         if unit is None:
             # Optional, not fail-closed: a repository that declares no unit
             # registry still deserves to have its builder's claims checked. The
@@ -854,10 +997,26 @@ class CompletionAuditor:
             # against, while every honesty check still runs.
             unit = self._loader.resolve_active_unit_optional()
 
+        if scope is None:
+            scope = TaskScope(
+                scope_id=unit.unit_id,
+                parent_phase_id=unit.unit_id,
+                parent_phase_state=unit.status,
+                parent_phase_execution_state=getattr(unit, "execution_state", ""),
+                claims_phase_completion=True,
+                derivation=["no task scope supplied; audited against the whole active phase"],
+            )
+
         claims = extract_claims(builder_report)
         state = self.observe(unit)
         contradictions: list[Contradiction] = []
         missing: list[str] = []
+
+        # Whether the *phase* is what this run claims to have finished. Only
+        # then does the phase's own acceptance evidence become this run's bar.
+        # Everything below that reads "phase completion" asks this, not "did the
+        # word COMPLETE appear next to a phase id somewhere".
+        phase_scope = scope.requires_phase_acceptance
 
         # 1. Status surfaces disagreeing with the registry.
         contradictions += self.status_contradictions(unit, state)
@@ -878,6 +1037,39 @@ class CompletionAuditor:
 
         claim_types = {c.claim_type for c in claims}
 
+        # 2b. A completion claim about a unit is a claim about THAT unit. Split
+        #     them: one set is about the phase this run sits in, the rest are
+        #     about units the run is not building, and each is checked against
+        #     its own registry status. "P0-P5 are COMPLETE" is a true sentence
+        #     in a repository where they are, and reading it as a claim about
+        #     the active phase manufactures a contradiction out of an accurate
+        #     report.
+        parent = scope.parent_phase_id or unit.unit_id
+        phase_claims = [
+            c
+            for c in claims
+            if c.claim_type is ClaimType.PHASE_COMPLETE and _same_unit(c.claimed_value, parent)
+        ]
+        other_unit_claims = [
+            c
+            for c in claims
+            if c.claim_type is ClaimType.PHASE_COMPLETE and not _same_unit(c.claimed_value, parent)
+        ]
+        phase_completion_claimed = bool(phase_claims)
+
+        for claim in other_unit_claims:
+            other_id = claim.claimed_value
+            recorded = self.unit_status(other_id)
+            if recorded and recorded.upper() != "COMPLETE":
+                contradictions.append(
+                    Contradiction(
+                        what=f"{other_id} claimed COMPLETE while the registry says otherwise",
+                        claimed=f"{other_id} is COMPLETE",
+                        observed=f"registry records {other_id} as {recorded}",
+                        authority=REGISTRY_REL,
+                    )
+                )
+
         # 3. Phase completion against weighted criteria.
         #
         # When the ONLY outstanding criteria are the ones a single session
@@ -887,7 +1079,10 @@ class CompletionAuditor:
         # missing evidence rather than as a contradiction.
         awaiting_review_only = state.progress.only_independent_remains
 
-        if ClaimType.PHASE_COMPLETE in claim_types:
+        if phase_completion_claimed:
+            # Unconditional, whatever this run was asked for: saying the phase is
+            # COMPLETE when the registry says it is not is a false statement, and
+            # a narrow task is not a licence to make one.
             if unit.status != "COMPLETE" and not awaiting_review_only:
                 contradictions.append(
                     Contradiction(
@@ -923,8 +1118,8 @@ class CompletionAuditor:
         #    unconditional: a receipt that exists and says FAIL refutes a claim
         #    whatever the protocol says, and a full-suite claim resting on
         #    targeted tests is a false statement, not a missing ceremony.
-        wants_canonical_suite = self._requires("CANONICAL_SUITE_GATE")
-        if ClaimType.FULL_SUITE_PASSED in claim_types or ClaimType.PHASE_COMPLETE in claim_types:
+        wants_canonical_suite = self._requires("CANONICAL_SUITE_GATE") and phase_scope
+        if ClaimType.FULL_SUITE_PASSED in claim_types or phase_completion_claimed:
             suite = state.receipt("suite")
             targeted = _targeted_only(run_commands or [])
             if suite is None or not suite.exists:
@@ -981,7 +1176,7 @@ class CompletionAuditor:
             (ClaimType.CLEAN_CLONE_PASSED, "clean_clone", "clean-clone gate", "CLEAN_CLONE_GATE"),
         ):
             claimed = claim_type in claim_types
-            implied = ClaimType.PHASE_COMPLETE in claim_types and self._requires(rule_kind)
+            implied = phase_completion_claimed and phase_scope and self._requires(rule_kind)
             if not claimed and not implied:
                 continue
             receipt = state.receipt(receipt_name)
@@ -1086,7 +1281,7 @@ class CompletionAuditor:
                 )
 
         # 10. Commit structure: uncommitted work cannot be a validated final tree.
-        if ClaimType.PHASE_COMPLETE in claim_types and (state.dirty_file_count or state.untracked_count):
+        if phase_completion_claimed and (state.dirty_file_count or state.untracked_count):
             contradictions.append(
                 Contradiction(
                     what="completion claimed on an uncommitted tree",
@@ -1100,11 +1295,29 @@ class CompletionAuditor:
             )
 
         # Missing evidence for a completion claim, independent of contradictions.
-        if ClaimType.PHASE_COMPLETE in claim_types:
+        if phase_completion_claimed and phase_scope:
             for name in state.progress.independent_pending:
                 missing.append(f"{name} (requires a session other than the implementing one)")
 
-        decision, headline, confidence = self._decide(claims, state, contradictions, missing)
+        # 11. Scope overreach. A run asked for one unit inside a phase may not
+        #     report the phase forward, score its criteria, open the next phase,
+        #     or turn anything on. These are checked as claims about REACH,
+        #     separately from whether each claim happens to be true: a build
+        #     session is not the authority that opens the next phase even when
+        #     the next phase is genuinely ready.
+        contradictions += self._scope_overreach(claims, scope, state)
+
+        review_outstanding = self._task_review_outstanding(scope)
+
+        decision, headline, confidence = self._decide(
+            claims,
+            state,
+            contradictions,
+            missing,
+            scope=scope,
+            phase_completion_claimed=phase_completion_claimed,
+            review_outstanding=review_outstanding,
+        )
 
         audit = CompletionAudit(
             decision=decision,
@@ -1116,9 +1329,96 @@ class CompletionAuditor:
             evidence_paths=_dedupe(state.files_consulted + ([evidence_dir] if evidence_dir else [])),
             confidence=confidence,
             headline=headline,
+            scope=scope,
+        )
+        audit.completion = scoped_completion(
+            scope,
+            _task_result_for(decision),
+            evidence=list(audit.evidence_paths),
+            outstanding=(
+                _dedupe([c.what for c in contradictions] + audit.missing_evidence + review_outstanding)
+            ),
+            # The only route to a phase acceptance: the task claimed the phase,
+            # the registry records it COMPLETE, and the audit found nothing
+            # against it. A task-scope run cannot reach this line with True.
+            phase_accepted=(
+                decision is AuditDecision.VERIFIED
+                and scope.requires_phase_acceptance
+                and unit.status.upper() == "COMPLETE"
+            ),
         )
         audit.correction_prompt = self.build_correction(audit, unit)
         return audit
+
+    # -- scope ------------------------------------------------------------
+
+    def _scope_overreach(
+        self, claims: list[CompletionClaim], scope: TaskScope, state: ObservedState
+    ) -> list[Contradiction]:
+        """Claims that reach past what this run was asked to do."""
+        if not scope.is_nested:
+            return []
+        found: list[Contradiction] = []
+        types = {c.claim_type for c in claims}
+        reach = (
+            (
+                ClaimType.NEXT_PHASE_UNBLOCKED,
+                "a later phase declared unblocked by the session that built one unit",
+                "the next phase is unblocked",
+            ),
+            (
+                ClaimType.CRITERION_PASS,
+                "a phase acceptance criterion claimed by a task-scope run",
+                "an acceptance criterion is satisfied",
+            ),
+            (
+                ClaimType.ADJUDICATION,
+                "phase adjudication claimed by a task-scope run",
+                "adjudication is complete",
+            ),
+            (
+                ClaimType.LIVE_ENABLEMENT,
+                "live or production enablement claimed by a task-scope run",
+                "the capability is enabled",
+            ),
+        )
+        for claim_type, what, claimed in reach:
+            if claim_type not in types:
+                continue
+            found.append(
+                Contradiction(
+                    what=what,
+                    claimed=claimed,
+                    observed=(
+                        f"this run was asked for {scope.scope_id} only; "
+                        f"{scope.parent_phase_id} is recorded "
+                        f"{scope.phase_state_text} and accepting "
+                        f"{scope.scope_id} does not move it"
+                    ),
+                    authority=REGISTRY_REL,
+                )
+            )
+        return found
+
+    def _task_review_outstanding(self, scope: TaskScope) -> list[str]:
+        """What review the repository still owes this scoped task, if any.
+
+        Asked of the repository, not of this driver's habits: a repository that
+        states an independent-review rule gets one, and a repository that states
+        none is not given one it never asked for. The rule survives every
+        retirement mechanism by construction — a review requirement protects
+        something rather than produces an artifact — so this is the one demand a
+        target repository cannot delete by simplifying its process.
+        """
+        if not scope.is_nested or not self._requires("INDEPENDENT_REVIEW"):
+            return []
+        candidates, not_independent = self.independent_review_artifacts(scope.parent_phase_id)
+        usable = [c for c in candidates if _mentions_scope(c, scope)]
+        if usable and not not_independent:
+            return []
+        return [
+            f"an independent review of {scope.scope_id} by a session that did not build it"
+        ]
 
     def _skip_contradictions(self, state: ObservedState) -> list[Contradiction]:
         """A dirty-tree finalization failure must not read as an ordinary skip."""
@@ -1177,12 +1477,43 @@ class CompletionAuditor:
         state: ObservedState,
         contradictions: list[Contradiction],
         missing: list[str],
+        *,
+        scope: TaskScope | None = None,
+        phase_completion_claimed: bool = False,
+        review_outstanding: list[str] | None = None,
     ) -> tuple[AuditDecision, str, float]:
         if contradictions:
             return (
                 AuditDecision.CONTRADICTED,
                 "The repository contradicts the builder's completion claims.",
                 0.9,
+            )
+
+        # A run asked for one unit inside a phase is judged on that unit. The
+        # phase's weighted criteria describe twelve other units and a phase
+        # acceptance nobody has claimed; measuring this run against them is
+        # measuring it against work it was told not to do. What still has to
+        # hold: nothing missing, nothing contradicted, and the review the
+        # repository requires actually done.
+        if scope is not None and scope.is_nested:
+            if missing:
+                return (
+                    AuditDecision.UNPROVEN,
+                    f"{scope.scope_id} cannot be confirmed: required evidence is missing.",
+                    0.7,
+                )
+            if review_outstanding:
+                return (
+                    AuditDecision.REQUIRES_INDEPENDENT_REVIEW,
+                    f"{scope.scope_id} IMPLEMENTED — AWAITING INDEPENDENT REVIEW "
+                    f"({scope.parent_phase_id} stays {scope.phase_state_text})",
+                    0.85,
+                )
+            return (
+                AuditDecision.VERIFIED,
+                f"{scope.scope_id} is supported by the repository; "
+                f"{scope.parent_phase_id} remains {scope.phase_state_text}.",
+                0.85,
             )
 
         completion_claimed = any(
@@ -1238,17 +1569,38 @@ class CompletionAuditor:
             return ""
 
         st = audit.observed_state
+        scope = audit.scope
         lines: list[str] = [
             "COMPLETION-CLAIM AUDIT — the repository does not support the claims made.",
             "",
-            f"Active unit: {unit.unit_id} (registry status: {unit.status})",
-            f"Verified progress from weighted criteria: {st.progress.percent:.0f}% "
-            f"(the builder's reported figure was not used)",
         ]
-        if st.progress.independent_pending:
-            lines.append(
-                f"Criteria that cannot be self-awarded: {', '.join(st.progress.independent_pending)}"
-            )
+        if scope is not None and scope.is_nested:
+            lines += [
+                f"This run was asked for: {scope.scope_id}",
+                f"Parent phase: {scope.parent_phase_id} — recorded "
+                f"{scope.phase_state_text}"
+                + (
+                    f" / {scope.parent_phase_execution_state}"
+                    if scope.parent_phase_execution_state
+                    else ""
+                ),
+                "",
+                f"{scope.parent_phase_id}'s phase acceptance is NOT this run's bar and is NOT "
+                f"what is being asked of you. Do not produce phase-level evidence, do not "
+                f"score a {scope.parent_phase_id} criterion, and do not edit a status surface "
+                f"to move {scope.parent_phase_id}. What follows is about {scope.scope_id}.",
+            ]
+        else:
+            lines += [
+                f"Active unit: {unit.unit_id} (registry status: {unit.status})",
+                f"Verified progress from weighted criteria: {st.progress.percent:.0f}% "
+                f"(the builder's reported figure was not used)",
+            ]
+            if st.progress.independent_pending:
+                lines.append(
+                    "Criteria that cannot be self-awarded: "
+                    + ", ".join(st.progress.independent_pending)
+                )
 
         if audit.contradictions:
             lines += ["", "CONTRADICTIONS FOUND:"]
@@ -1258,7 +1610,21 @@ class CompletionAuditor:
             lines += ["", "MISSING EVIDENCE:"]
             lines += [f"  - {m}" for m in audit.missing_evidence]
 
-        if audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
+        if audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW and (
+            scope is not None and scope.is_nested
+        ):
+            lines += [
+                "",
+                "REQUIRED ACTION — record the scoped state, then stop:",
+                f"  1. Record {scope.scope_id} as IMPLEMENTED and AWAITING REVIEW. Its",
+                "     implementation may stand; its acceptance does not, and the review must",
+                "     come from a session that did not write it.",
+                f"  2. Leave {scope.parent_phase_id} exactly where the registry has it. This",
+                f"     task does not complete {scope.parent_phase_id}, does not score one of",
+                "     its criteria, and does not unblock anything after it.",
+                "  3. State plainly what remains and who must do it.",
+            ]
+        elif audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
             lines += [
                 "",
                 "REQUIRED ACTION — honest status, then stop:",
@@ -1299,6 +1665,55 @@ class CompletionAuditor:
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
+
+
+_SENTENCE_BREAK = re.compile(r"[.!?;]\s|\n")
+
+
+def _sentence_window(text: str, start: int, end: int) -> tuple[str, str]:
+    """The text before and after a span, cut at the nearest sentence boundary."""
+    before = text[max(0, start - 220) : start]
+    parts = _SENTENCE_BREAK.split(before)
+    before = parts[-1] if parts else before
+
+    after = text[end : end + 140]
+    match = _SENTENCE_BREAK.search(after)
+    after = after[: match.start()] if match else after
+    return before.replace("\n", " "), after.replace("\n", " ")
+
+
+def _same_unit(a: str, b: str) -> bool:
+    """Two unit ids naming the same unit. P-6 and P6 are the same phase."""
+    norm = lambda v: re.sub(r"[^A-Z0-9]", "", (v or "").upper())  # noqa: E731
+    return bool(norm(a)) and norm(a) == norm(b)
+
+
+def _mentions_scope(rel_path: str, scope: TaskScope) -> bool:
+    """Whether a review artifact names the unit this run built.
+
+    A phase-wide review document is not a review of this unit, and a review of
+    the previous unit is not one either. Both are matched by the same filename
+    glob, so the unit's own identifiers have to appear in the name.
+    """
+    name = rel_path.rsplit("/", 1)[-1].lower()
+    tokens = [
+        t.lower()
+        for t in (scope.scope_id.replace("/", "-"), scope.repository_unit_id)
+        if t
+    ]
+    nested = scope.scope_id.split("/")[-1].lower() if "/" in scope.scope_id else ""
+    if nested:
+        tokens.append(nested)
+    return any(re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", name) for t in tokens)
+
+
+def _task_result_for(decision: AuditDecision) -> TaskResult:
+    return {
+        AuditDecision.VERIFIED: TaskResult.VERIFIED,
+        AuditDecision.CONTRADICTED: TaskResult.CONTRADICTED,
+        AuditDecision.UNPROVEN: TaskResult.UNPROVEN,
+        AuditDecision.REQUIRES_INDEPENDENT_REVIEW: TaskResult.AWAITING_INDEPENDENT_REVIEW,
+    }[decision]
 
 
 def _is_quoted(text: str, start: int, end: int) -> bool:

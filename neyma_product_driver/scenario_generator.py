@@ -48,6 +48,17 @@ from .scenario_plan import (
 # --------------------------------------------------------------------------
 
 
+#: How many approved commands the brief lists. A bound, not a boundary: what may
+#: RUN is decided by :mod:`~neyma_product_driver.scenario_validation`, and this
+#: number changes nothing there. It exists only because a brief has to end.
+#:
+#: It was 60, and the approved set reached 62 the moment a per-case verification
+#: probe was enumerated — so the tail of one unit's operating vocabulary stopped
+#: reaching the generator, with no record that it had. Raised well clear of any
+#: realistic set, and a truncation now says so in the brief itself.
+MAX_RENDERED_COMMANDS = 250
+
+
 class GenerationBrief:
     """Everything the generator is shown, and nothing that presumes an answer.
 
@@ -70,6 +81,7 @@ class GenerationBrief:
         existing_coverage: list[str] | None = None,
         failure_clusters: list[str] | None = None,
         product_principles: list[str] | None = None,
+        uncovered_risks: list[str] | None = None,
     ) -> None:
         self.stage = stage
         self.wave = wave
@@ -82,6 +94,11 @@ class GenerationBrief:
         self.existing_coverage = existing_coverage or []
         self.failure_clusters = failure_clusters or []
         self.product_principles = product_principles or []
+        #: Risks this run has already identified that nothing intends to
+        #: exercise. Shown so a wave can be aimed at them: a generator that is
+        #: told only what is already covered proposes whatever looks interesting
+        #: next, and the gaps it named an hour ago stay exactly where they were.
+        self.uncovered_risks = uncovered_risks or []
 
     def render(self) -> str:
         parts: list[str] = [
@@ -112,6 +129,25 @@ class GenerationBrief:
                 "",
                 "SITUATIONS ALREADY COVERED (do not repeat these):",
                 *(f"  - {c}" for c in self.existing_coverage[:60]),
+            ]
+        if self.uncovered_risks:
+            parts += [
+                "",
+                "RISKS THIS RUN ALREADY IDENTIFIED THAT NOTHING YET EXERCISES. These are "
+                "the gaps that will block acceptance. Closing them is this wave's first "
+                "job — before proposing anything new:",
+                *(f"  - {r}" for r in self.uncovered_risks[:40]),
+                "",
+                "For each scenario you propose to close one of these, set `source_risks` "
+                "to the risk key(s) shown in parentheses above. A scenario that cannot "
+                "name the identified risk it closes is refused at this stage, for the "
+                "same reason a case responding to a failure must name the failure.",
+                "",
+                "If a listed risk cannot be exercised with the approved commands "
+                "available to you, do NOT invent a command and do not propose a scenario "
+                "that only looks like coverage. Say so in `unresolved_questions` instead: "
+                "an honestly unclosable gap blocks acceptance, which is the correct "
+                "outcome, and a scenario that pretends to close it is worse than the gap.",
             ]
         if self.basis.prior_failures:
             parts += [
@@ -162,7 +198,22 @@ class GenerationBrief:
             "APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, "
             "optionally with extra arguments; anything else is rejected):",
         ]
-        parts += [f"  - {c}" for c in self.available_commands[:60]] or ["  (none)"]
+        shown = self.available_commands[:MAX_RENDERED_COMMANDS]
+        parts += [f"  - {c}" for c in shown] or ["  (none)"]
+        withheld = len(self.available_commands) - len(shown)
+        if withheld:
+            # SAID, not swallowed. This list is the generator's entire operating
+            # vocabulary, and truncating it silently does not narrow what may
+            # run — validation is unchanged — it narrows what can be PROPOSED,
+            # invisibly. The previous bound was 60 and the approved set had
+            # grown past it, so the tail of a per-case probe vocabulary was
+            # being withheld from the generator with nothing recorded anywhere.
+            parts.append(
+                f"  ... and {withheld} further approved command(s) NOT LISTED HERE. They are "
+                "approved and executable; this brief simply could not fit them. If the "
+                "situation you want needs a command you cannot see, say so in `purpose` "
+                "rather than inventing one."
+            )
         parts += [
             "",
             "`setup` and `cleanup` are ALSO command lists, held to the same rule. They "
@@ -431,6 +482,14 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "description": "Alternative to source_failures: the failure cluster "
                         "id(s) (C01, C02 …) this scenario answers.",
                     },
+                    "source_risks": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Required for coverage-gap waves: the risk key(s) "
+                        "from RISKS THIS RUN ALREADY IDENTIFIED THAT NOTHING YET EXERCISES "
+                        "that this scenario closes. Copy the key exactly as shown; a key "
+                        "this run never identified is refused.",
+                    },
                 },
                 "required": [
                     "id",
@@ -647,6 +706,12 @@ def parse_scenarios(
                     ),
                     "source_clusters": _strings(
                         raw.get("source_clusters") or raw.get("caused_by_clusters")
+                    ),
+                    # Which identified risk this case closes. Checked against
+                    # the run's own register, so a coverage-gap case cannot
+                    # claim to close a gap the run never named.
+                    "source_risks": _strings(
+                        raw.get("source_risks") or raw.get("caused_by_risks")
                     ),
                 }
             ),

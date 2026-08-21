@@ -31,6 +31,7 @@ from .config import (
     load_config,
 )
 from .completion_auditor import AuditDecision, CompletionAuditor
+from .task_scope import resolve_task_scope
 from .paths import RepositoryPathError
 from .policy import (
     ChangeRisk,
@@ -350,6 +351,23 @@ async def run_control_loop(
                 f"no active unit resolved: {active_unit.resolution_problem}"
             )
 
+    # Resolve what this run was actually asked for, once, from the task the
+    # product owner wrote and the phase the repository declares. This is what
+    # separates "build one unit inside a phase" from "finish the phase", and it
+    # is read here — before the builder has said anything — so that nothing the
+    # builder writes can widen or narrow the bar it is held to.
+    task_scope = resolve_task_scope(state.task, active_unit, config.neyma_repo)
+    state.task_scope = task_scope.model_dump(mode="json")
+    store.write_json("task-scope.json", state.task_scope)
+    for line in task_scope.summary_block().splitlines():
+        emit(f"  {line}")
+    if task_scope.is_nested:
+        emit(
+            f"  accepting {task_scope.scope_id} will not complete "
+            f"{task_scope.parent_phase_id}, score one of its criteria, or unblock what "
+            "follows it."
+        )
+
     # Stage 1 — plan verification from the requirements, before judging anything.
     scenario_summary = scenario.summary()
     if planner is not None:
@@ -359,7 +377,11 @@ async def run_control_loop(
         scenario_summary = _summarize_verification(scenario, planner)
 
     next_prompt = builder_task_prompt(
-        state.task, scenario_summary, active_unit_id, feedback_store.render()
+        state.task,
+        scenario_summary,
+        active_unit_id,
+        feedback_store.render(),
+        scope=task_scope.render(),
     )
     prior_problems: list[str] = []
     sent_corrections: list[str] = []
@@ -539,12 +561,28 @@ async def run_control_loop(
         if auditor is not None:
             emit("→ auditing completion claims...")
             unit_now = repo_loader.resolve_active_unit_optional() if repo_loader else None
+            # The scope the phase state is read from is refreshed each round —
+            # the repository may have moved — but what the run was ASKED for
+            # never changes mid-run.
+            scope_now = task_scope.model_copy(
+                update={
+                    "parent_phase_state": getattr(unit_now, "status", "") or "",
+                    "parent_phase_execution_state": getattr(
+                        unit_now, "execution_state", ""
+                    )
+                    or "",
+                }
+            )
             audit = auditor.audit(
                 record.builder_summary,
                 unit=unit_now,
                 run_commands=all_commands,
                 evidence_dir=str(store.iteration_dir(iteration)),
+                scope=scope_now,
             )
+            record.task_scope = scope_now.model_dump(mode="json")
+            if audit.completion is not None:
+                record.scoped_completion = audit.completion.model_dump(mode="json")
             last_audit["value"] = audit
             record.completion_audit = audit.model_dump(mode="json")
             store.save_completion_audit(iteration, record.completion_audit)
@@ -915,8 +953,19 @@ async def run_control_loop(
                 if suite is not None and suite_executor is not None
                 else []
             )
-            if (failures or requests) and not planner.budget_exhausted():
-                emit("→ expanding verification around what failed...")
+            # A named risk with no coverage is as much a reason to generate as
+            # a failure is. It used to be neither: the wave only ran when
+            # something failed or the evaluator asked, so a run whose scenarios
+            # all passed while an identified P0 had no coverage generated
+            # nothing for it and blocked on the gap it had just refused to
+            # close.
+            gaps = planner.plan.planned_gaps()
+            if (failures or requests or gaps) and not planner.budget_exhausted():
+                emit(
+                    "→ expanding verification around what failed..."
+                    if failures
+                    else "→ generating coverage for identified risks that have none..."
+                )
                 planner.expand_after_failures(
                     task=state.task,
                     unit=active_unit,
@@ -926,7 +975,7 @@ async def run_control_loop(
                     evaluator_requests=requests,
                     diff_files=diff_now,
                 )
-            elif (failures or requests) and planner.budget_exhausted():
+            elif (failures or requests or gaps) and planner.budget_exhausted():
                 note = (
                     "scenario-generation budget is spent; no further situations were "
                     "generated for the remaining failures"
@@ -1744,7 +1793,15 @@ async def cmd_run(args: argparse.Namespace) -> int:
         store.save_state(state)
         return 1
 
-    _write_run_journal(store, state, config, authority_report=result.authority_report)
+    _write_run_journal(
+        store,
+        state,
+        config,
+        authority_report=result.authority_report,
+        result=result,
+        unit=unit,
+        scenario=scenario,
+    )
     _report_founder_summary(result, store, config)
     _report_coverage(result, store)
     _report_outcome(result, store)
@@ -2014,6 +2071,27 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
     verdict = evaluate_gate(result, risks=plan.risks)
     out("")
     out(verdict.summary_block())
+    # This replay deliberately runs the generated half of the suite and not the
+    # permanent base scenario, which can take hours. Any risk whose evidence
+    # lives in the base scenario's reviewed `verifies:` block therefore shows as
+    # a gap here — correctly, because that evidence was not produced in this
+    # execution — and saying so is the difference between a legible partial
+    # result and a misleading one.
+    withheld = sorted(
+        {
+            risk.risk_category
+            for risk in verdict.uncovered_risks
+            if risk.risk_category in base.declared_risk_categories()
+        }
+    )
+    if withheld:
+        out("")
+        out(
+            f"NOTE — {len(withheld)} of the gap(s) above are risks the base scenario "
+            f"{base.name!r} declares it verifies ({', '.join(withheld)}). This replay "
+            "did not run it, so that evidence was not produced. Run the full suite to "
+            "settle them; nothing here is a claim that they failed."
+        )
     out(f"\nevidence: {artifact_root}")
     return 20 if verdict.blocks_acceptance else 0
 
@@ -2200,11 +2278,130 @@ def _journalled_commands(record: IterationRecord) -> list[tuple[CommandResult, s
     return out
 
 
+def _journal_the_outcome(
+    journal: RunJournal,
+    state: RunState,
+    result: LoopResult | None,
+    unit: Any,
+    scenario: Scenario | None,
+) -> None:
+    """Hand the journal the run's FINAL records, so the plain-terms summary is
+    rendered from them rather than from what the terminal happened to print.
+
+    The founder summary used to be written from ``state`` alone, which holds no
+    gate verdict and no evaluator decision. It could therefore describe what a
+    run *did* and never what the run *established* — and a reader with only that
+    document in front of them had no way to tell an accepted run from one that
+    executed nothing. Everything copied here already exists as a record; none of
+    it is computed at render time.
+    """
+    if unit is not None:
+        journal.acceptance_criteria = [
+            str(c.get("id") or c.get("criterion") or c) if isinstance(c, dict) else str(c)
+            for c in (getattr(unit, "acceptance_criteria", None) or [])
+        ]
+
+    # What the run was asked for, beside the phase it sits inside. Copied from
+    # the record the loop wrote before the builder started, so the founder
+    # summary can never imply that accepting a unit moved its phase.
+    scope = getattr(state, "task_scope", None) or {}
+    if isinstance(scope, dict) and scope:
+        journal.task_scope_id = str(scope.get("scope_id") or "")
+        journal.parent_phase_id = str(scope.get("parent_phase_id") or "")
+        journal.parent_phase_state = str(
+            scope.get("parent_phase_execution_state")
+            or scope.get("parent_phase_state")
+            or ""
+        )
+        journal.scope_is_nested = (
+            scope.get("level") == "TASK" and not scope.get("claims_phase_completion", True)
+        )
+
+    if result is None:
+        journal.record_outcome(
+            run_status=getattr(state.status, "value", state.status),
+            unit=unit,
+            scenario_name=scenario.name if scenario else state.scenario_name,
+            scenario_phase=scenario.phase if scenario else "",
+        )
+        return
+
+    if result.suite is not None:
+        for outcome in result.suite.outcomes:
+            journal.record_scenario_result(
+                outcome.scenario_name or outcome.scenario_id,
+                passed=(
+                    getattr(outcome.outcome, "value", "") == "PASSED"
+                    and bool(outcome.evidence_verified)
+                ),
+                detail=outcome.brief() if hasattr(outcome, "brief") else "",
+            )
+
+    journal.record_outcome(
+        run_status=getattr(result.status, "value", result.status),
+        gate=result.gate,
+        decision=result.final_decision,
+        builder_claims=[r.builder_summary for r in state.iterations if r.builder_summary],
+        reviews=[
+            f"{getattr(r, 'verdict', '?')}: {len(getattr(r, 'blockers', []) or [])} blocker(s)"
+            for r in result.reviews
+        ],
+        unit=unit,
+        scenario_name=scenario.name if scenario else state.scenario_name,
+        scenario_phase=scenario.phase if scenario else "",
+    )
+
+    # Unresolved material findings are what "still NOT built" means for a run:
+    # blocking failures, unverified required coverage, and review blockers that
+    # were never answered by a supported review.
+    journal.incomplete = _unresolved_findings(result)
+
+    decision = result.final_decision
+    journal.record_stop(
+        reason=(decision.summary if decision is not None and decision.summary
+                else f"run ended {getattr(result.status, 'value', result.status)}"),
+        next_safe_action=_next_safe_action(result),
+        founder_decision_required=_founder_decision(result),
+    )
+
+
+def _next_safe_action(result: LoopResult) -> str:
+    """One line, chosen by status. Never a list of options dressed as one move."""
+    if result.status is RunStatus.REQUIRES_APPROVAL:
+        return ("Read protocol-resolution.json in the run directory, then run "
+                "`approve` or reject the option it proposes.")
+    if result.status is RunStatus.NEEDS_USER:
+        return "Answer the product or authority question the evaluator recorded, then resume."
+    if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
+        return ("Launch an independent review with `review --run <id>` — the change earned "
+                "one and the run could not launch it.")
+    if result.status is RunStatus.ACCEPTED and result.gate is not None and not result.gate.blocks_acceptance:
+        return ("Read the diff yourself, then decide whether to commit and push it — the "
+                "driver stops before every remote action, by design.")
+    return ""
+
+
+def _founder_decision(result: LoopResult) -> str:
+    """The decision only the founder may make, when the run recorded one."""
+    decision = result.final_decision
+    if result.status is RunStatus.REQUIRES_APPROVAL:
+        return ("A repository repair needs your authority before this run can finalize: "
+                + (decision.summary if decision is not None and decision.summary
+                   else "see protocol-resolution.json"))
+    if result.status is RunStatus.NEEDS_USER:
+        return (decision.summary if decision is not None and decision.summary
+                else "The run stopped for a product or authority question.")
+    return ""
+
+
 def _write_run_journal(
     store: EvidenceStore,
     state: RunState,
     config: DriverConfig,
     authority_report: dict[str, Any] | None = None,
+    result: LoopResult | None = None,
+    unit: Any = None,
+    scenario: Scenario | None = None,
 ) -> None:
     """Persist journal.json and FOUNDER-SUMMARY.md for the run.
 
@@ -2247,6 +2444,20 @@ def _write_run_journal(
                     f"iteration {record.iteration}",
                     record.git.branch or "",
                 )
+        try:
+            _journal_the_outcome(journal, state, result, unit, scenario)
+        except Exception as exc:
+            # Degrade the plain-terms section rather than destroying the whole
+            # journal with it. The failure direction is safe by construction:
+            # an outcome that could not be copied leaves `gate_status` empty,
+            # and an empty gate status is not VERIFIED — so the summary
+            # under-claims and says so, which is the only acceptable way for
+            # this to fail.
+            journal.incomplete.append(
+                "the run's final outcome could not be journalled "
+                f"({type(exc).__name__}: {redact(str(exc))}), so the plain-terms summary "
+                "below is missing the gate verdict and states nothing as proven"
+            )
         journal.record_end(config.neyma_repo)
         journal.save(store.run_dir)
     except Exception as exc:  # pragma: no cover - never fail a run on its own journal
@@ -3637,11 +3848,21 @@ async def cmd_review(args: argparse.Namespace) -> int:
     iteration = last.iteration if last else 1
 
     auditor = CompletionAuditor(config.neyma_repo)
-    audit = auditor.audit(builder_report, unit=unit, evidence_dir=str(store.iteration_dir(iteration)))
+    # The reviewer has to know what was asked for. Reviewing a one-unit build
+    # against a whole phase's bar is the same mistake as auditing it that way,
+    # and it costs the one reviewer whose independence cannot be spent twice.
+    review_scope = resolve_task_scope(state.task, unit, config.neyma_repo)
+    audit = auditor.audit(
+        builder_report,
+        unit=unit,
+        evidence_dir=str(store.iteration_dir(iteration)),
+        scope=review_scope,
+    )
 
     header("INDEPENDENT REVIEW")
     out(f"run:  {store.run_id}")
     out(f"unit: {unit.unit_id} ({unit.status})")
+    out(f"scope: {review_scope.describe()}")
     out(audit.summary_block())
 
     # Repository topology and authority must be valid first. Reviewing a state

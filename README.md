@@ -207,6 +207,143 @@ flags override it.
 
 ---
 
+## The local workflow, end to end
+
+The two repositories on this machine:
+
+| | |
+|---|---|
+| Product Driver | `/Users/sammyfammy/neyma-product-driver` |
+| Neyma | `/Users/sammyfammy/freight-logistics-operational-teammate` |
+
+`driver.config.yaml` already points at the second. Everything below runs from the
+**Product Driver** directory; the driver changes directory into Neyma itself.
+
+### 1. Check the machine
+
+```bash
+cd /Users/sammyfammy/neyma-product-driver
+.venv/bin/python -m neyma_product_driver doctor
+```
+
+Python version, `claude-agent-sdk`, the Claude Code CLI and its version,
+authentication, the Neyma repo path/branch/tree, Playwright and Chromium,
+required binaries, whether `ANTHROPIC_API_KEY` is set (it should not be —
+subscription billing is what you want), that `runs/` is writable, and that every
+scenario file parses. Fix anything it reports before going further.
+
+### 2. Check that the driver reads Neyma the way you do
+
+```bash
+.venv/bin/python -m neyma_product_driver calibrate
+```
+
+Strictly read-only: no Claude session, no file written, only inspection git
+commands. It reports the branch, HEAD, tree, working-tree state, the active
+implementation unit, phase state, checkpoint and review state, open risks,
+dependencies, the next eligible unit, and the acceptance criteria in force.
+Exit `0` clean, `2` if the repository cannot be read, `10` if a founder decision
+is required first.
+
+If what it prints does not match your understanding of where Neyma stands, stop.
+A driver that has mis-read the position will build the wrong thing very
+efficiently.
+
+### 3. Scenario planning preflight
+
+```bash
+.venv/bin/python -m neyma_product_driver scenarios plan \
+  --task "$(cat tasks/neyma_p6_m3.md)" \
+  --scenario p6_m3_external_effect
+```
+
+Generates the initial scenario plan and prints it. **Executes nothing** — no
+builder, no product, no commands. This is where you see which risks the
+generator named, which situations it proposes, and — importantly — which
+proposals were *refused* and why. Add `--json` for the machine-readable form.
+
+This consumes Claude usage (one planning session). It is worth it before a long
+run: a plan that has misunderstood the unit is visible here in a minute rather
+than an hour in.
+
+### 4. The actual M3 run
+
+```bash
+.venv/bin/python -m neyma_product_driver run \
+  --task "$(cat tasks/neyma_p6_m3.md)" \
+  --scenario p6_m3_external_effect
+```
+
+That is the whole invocation. `driver.config.yaml` supplies the repository, the
+iteration ceiling, the models and the M3 command vocabulary. From here the driver
+runs unattended: it reads Neyma's authority, drives the builder, inspects the
+real diff, generates adversarial scenarios from it, operates the implementation,
+reads persisted state, evaluates what it saw, sends grounded corrections back to
+**the same builder session**, grows neighbouring scenarios around failures,
+investigates what it cannot explain, and launches an independent review because
+M3 is a high-consequence surface. You are not a relay between any of those.
+
+Follow along in another terminal:
+
+```bash
+.venv/bin/python -m neyma_product_driver status
+.venv/bin/python -m neyma_product_driver stop     # halt before the next iteration
+```
+
+### 5. Resume after an interruption
+
+The builder's Claude session id is persisted, so a resumed run continues the same
+conversation rather than starting a new builder that has to rediscover the work:
+
+```bash
+.venv/bin/python -m neyma_product_driver status          # find the run id
+.venv/bin/python -m neyma_product_driver run \
+  --resume-run <run-id> \
+  --task "$(cat tasks/neyma_p6_m3.md)"
+```
+
+A resumed run also restores its scenario plan. If that plan exists on disk and
+cannot be read, the run **stops** rather than starting over at wave zero: a run
+that cannot say what it had already decided to verify has not verified it.
+
+### 6. What you read afterwards
+
+```
+runs/<run-id>/FOUNDER-SUMMARY.md
+```
+
+It opens with **PERSONAL SUMMARY — SIMPLE TERMS**: what was built, why it
+matters, what is actually proven, what Neyma can safely do now, what is still not
+built, where the roadmap stands, the one exact next move, and any decision that
+needs you. Then the detailed ten questions, then `journal.json` beside it for
+everything else.
+
+### 7. What happens after ACCEPT
+
+**Nothing leaves this machine.** An ACCEPT means: every required scenario passed
+with resolvable evidence, every acceptance-blocking risk the run named has a
+passing scenario behind it, and the independent review (if one was warranted)
+came back supported. It does **not** mean shipped.
+
+The driver **intentionally stops before every remote and deployment action**.
+`git push`, `gh pr create`, a merge, a deploy, a package publish, a container
+push — all of them are hard-denied at the builder's PreToolUse hook and none of
+them exist in the driver's own control process. What is waiting for you is a
+local commit (or an uncommitted working tree) in the Neyma repository.
+
+So, after an ACCEPT:
+
+```bash
+cd /Users/sammyfammy/freight-logistics-operational-teammate
+git log --oneline -3
+git diff HEAD~1                      # or `git status` if nothing was committed
+```
+
+Read it. Then push, open a PR or merge **yourself**. That boundary is not a
+missing feature, and turning it off is not a configuration option.
+
+---
+
 ## Pointing it at a Neyma scenario
 
 A scenario is YAML describing how to start the product, how to know it is ready,
@@ -230,7 +367,7 @@ readiness:
 app_url: "http://127.0.0.1:8000"
 
 commands:                     # CLI entry points, exit codes, stdout/stderr
-  - run: ".venv/bin/python -m pytest -c pytest-canonical.ini eval/tests/test_phase3_witness.py -q"
+  - run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py"
     expect_exit_code: 0
 requests:                     # real local HTTP calls
   - method: GET
@@ -320,6 +457,12 @@ as permanent regression coverage with generated coverage around it. On by
 default, and bounded by every budget in `scenario_generation` — see
 `driver.config.example.yaml`. Making it opt-in meant the command anyone actually
 typed produced the weakest run available.
+
+The intended long-term direction — progressive exploration of a behavioural possibility
+space with durable memory across runs, rather than "more tests for this task" — is recorded
+in [`docs/SCENARIO-SPACE.md`](docs/SCENARIO-SPACE.md), together with the six concrete gaps
+between the current implementation and it. Read that before extending this machinery: the
+within-run loop below is already the right shape and should not be redesigned.
 
 ### Three separable stages, and nothing skips one
 
@@ -469,6 +612,48 @@ version, repository HEAD and branch, active unit id and status, the acceptance
 criteria in force, every repository file consulted, every evidence file
 consulted, and the founder-feedback count.
 
+## Task scope, and the phase it does not complete
+
+A run has two things in view at once, and they are not the same thing:
+
+```
+task_scope:           P6/M3          the build unit this run was asked for
+task_result:          VERIFIED
+parent_phase:         P6
+parent_phase_state:   IN_PROGRESS    where the repository says the phase is
+```
+
+The scope is resolved **once, before the builder is asked for anything**, from
+the product owner's task text and the repository's own registry. It answers one
+question: *does this task claim to complete the parent phase, or not?*
+
+If it does not, the phase's acceptance contract is not this run's bar. A task
+asked to build one machine out of thirteen produces the evidence that machine
+owes and is judged on it — it is not measured against twelve units it was told
+not to write. If it does — "complete P6", "take P6 through phase acceptance" —
+every phase-level check applies exactly as before.
+
+Nothing about this is a relaxation, and the fail-closed directions are explicit:
+
+- **The default is the phase.** A task with no derivable nested unit is held to
+  the whole phase, which is the stricter reading.
+- **Scope comes from the request, never from the builder.** A builder cannot
+  narrow the bar it is held to by describing its work as a small unit, and
+  cannot widen its authority by describing it as a phase.
+- **A task result never moves a phase.** `parent_phase_state` is copied from the
+  repository; there is no arithmetic anywhere that turns one into the other.
+  Accepting a nested task explicitly does not complete the phase, does not score
+  a phase acceptance criterion, does not unblock the next phase, and enables
+  nothing in production — and the record says so in those words.
+- **Claiming otherwise is still contradicted.** A narrow scope is not a licence
+  to say something false about the phase, the next phase, or production.
+- **The review still binds.** A scoped task whose repository states an
+  independent-review rule cannot be accepted until that review runs and finds
+  nothing blocking.
+
+`task-scope.json` and `scoped-completion.json` are written per iteration, and
+the founder summary states the parent phase's position beside the task's.
+
 ## The completion auditor
 
 A builder saying something is done is a **claim**, not a fact. Before any
@@ -494,9 +679,22 @@ unconditional — a cited file that does not exist, a percentage the criteria do
 not support, a full-suite claim resting on targeted tests, a receipt that exists
 and says FAIL. The checks that demand a *ceremony artifact* are asked only while
 the repository still states the rule that makes that artifact mandatory, read
-fresh on every audit. Delete the finalizer protocol from the target repository
-and the auditor stops asking for a finalizer receipt, with no change here. Claim
-the finalizer ran when it did not, and it is still caught.
+fresh on every audit, and only of a run that actually claims the phase. Delete
+the finalizer protocol from the target repository and the auditor stops asking
+for a finalizer receipt, with no change here. Claim the finalizer ran when it
+did not, and it is still caught.
+
+"Still states" is read strictly, because a repository accumulates its own
+history. A rule inside a document that declares **itself** a record of a past
+state, and a rule family a higher-authority document has since **retired** in
+so many words ("there is no finalizer to run"), are both still discovered and
+still reported — they simply stop being requirements. A pass report describing
+the finalizer it ran two phases ago does not keep that finalizer mandatory
+forever. Two limits keep this from becoming a way to weaken anything:
+retirement can only remove a demand for a *process artifact*, never a
+prohibition, a review requirement or an approval requirement; and a retirement
+loses to any affirmative statement of the same family carried by a source of
+equal or higher authority.
 
 The distinctions it enforces:
 
@@ -592,8 +790,10 @@ becomes a founder question, because at that point the reviewer is describing a
 decision rather than a defect.
 
 The review is focused: the prompt names which surface triggered it, what the
-scenario suite already demonstrated, and which files moved, so one pass is spent
-on the question that earned it.
+scenario suite already demonstrated, which files moved, and — for a run scoped
+to one unit inside a phase — what that unit owes, so the reviewer does not
+withhold support because the phase around it is unfinished. It is supposed to
+be. One pass is spent on the question that earned it.
 
 You can still run one by hand at any time:
 
@@ -626,6 +826,14 @@ It classifies each commit since the authorized baseline by the files it actually
 changed — `BASELINE`, `CONTENT`, `REMEDIATION_CONTENT`, `REVIEW_EVIDENCE`,
 `METADATA_STATUS`, `FINALIZER_GENERATED`, `UNKNOWN` — never by its message, then
 compares the observed graph with the one the repository's own rule describes.
+
+Only a rule the repository states **now** produces a violation. A rule retired
+by higher authority, and a rule stated only inside a document that declares
+itself historical, stay visible in `--sources` and in the run record, and stop
+generating findings. A repository that states no commit topology has no legal
+arrangement of commits to be in, so no arrangement of them is a blocker — the
+resolver will not report one it cannot cite a rule for. History is worth
+reading; it does not get to legislate.
 
 ### Deadlocks, not "BLOCKED"
 
@@ -1077,7 +1285,50 @@ change with its recovery point; preservation refs and bundles; test and scenario
 results; denied operations; external-boundary attempts; the ending branch, HEAD,
 tree and working-tree state; the exact stop reason; and the next safe action.
 
-`FOUNDER-SUMMARY.md` answers, in order:
+`FOUNDER-SUMMARY.md` **opens with the plain-terms answer**, because that is the
+part worth reading in the two minutes after a run ends:
+
+```
+## PERSONAL SUMMARY — SIMPLE TERMS
+
+1. What we just built or fixed
+2. Why this matters for Neyma
+3. What is actually proven true
+4. What Neyma can safely do now that it could not before
+5. What is still NOT built
+6. Where Neyma is in the roadmap
+7. The ONE exact next move
+8. Founder decisions needed
+```
+
+Every clause is rendered deterministically from records the run already
+produced — the acceptance gate's verdict, the evaluator's observations, the file
+and commit record, the repository's own unit registry. Nothing in it is composed
+by a model at the end of a run, which is what makes the next paragraph
+enforceable rather than aspirational.
+
+**Five upgrades it cannot make.** A run may state that something is *proven*
+only when the run reached ACCEPTED, the deterministic gate returned VERIFIED, no
+required scenario is unverified, no acceptance-blocking risk the run named is
+uncovered, and generation produced the coverage it committed to. Below that bar,
+section 3 says nothing is established and section 4 says *nothing new* — however
+confident the builder was. Specifically, and tested in
+[`tests/test_m3_readiness.py`](tests/test_m3_readiness.py):
+
+| never | |
+|---|---|
+| a builder claim | → a proven capability |
+| a local implementation | → a production enablement |
+| tests passing | → a product proof |
+| dark code | → a live feature |
+| an incomplete gate | → complete work |
+
+A builder's own summary still appears — labelled as a claim, and never restated
+as a finding. And even a fully verified run says, in section 4, exactly what the
+verification's scope was: observed locally, in this repository, not deployed, not
+enabled for any real tenant, no external effect performed.
+
+Then the detailed record answers, in order:
 
 1. What did the Driver work on?
 2. What changed?

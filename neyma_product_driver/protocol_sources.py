@@ -95,6 +95,10 @@ class AuthorityLevel(str, Enum):
     DERIVED = "DERIVED"  # generated status; describes, does not legislate
     ADVISORY = "ADVISORY"
     UNKNOWN = "UNKNOWN"
+    #: A record of a past state. It is evidence of what was done, and it has no
+    #: standing to tell the present what to do. A document earns this only by
+    #: saying so about itself, in its own heading.
+    HISTORICAL = "HISTORICAL"
 
     @property
     def rank(self) -> int:
@@ -105,6 +109,7 @@ class AuthorityLevel(str, Enum):
             AuthorityLevel.DERIVED: 2,
             AuthorityLevel.ADVISORY: 1,
             AuthorityLevel.UNKNOWN: 0,
+            AuthorityLevel.HISTORICAL: -1,
         }[self]
 
 
@@ -179,6 +184,24 @@ class ProtocolRule(BaseModel):
     kind: RuleKind = RuleKind.UNKNOWN
     parameters: dict[str, Any] = Field(default_factory=dict)
     quote: str = ""
+
+    #: True when the source declared *itself* a record of a past state. The rule
+    #: is still recorded and still reported — history is worth seeing — but it
+    #: does not bind the present.
+    historical: bool = False
+    #: Why the source is historical, in the source's own words.
+    historical_reason: str = ""
+    #: True when a higher-authority source has since retired this rule family.
+    #: The statement stays visible; it stops being enforced.
+    retired: bool = False
+    #: Set on a *retirement statement* — the rule family it retires. A retirement
+    #: statement is not itself an affirmative rule of that family.
+    retires: str = ""
+
+    @property
+    def is_active(self) -> bool:
+        """True when the repository states this rule *now*, and means it."""
+        return not (self.historical or self.retired or self.retires)
 
     def cite(self) -> str:
         where = f" {self.source_lines_or_section}" if self.source_lines_or_section else ""
@@ -265,8 +288,36 @@ class DiscoveredProtocol:
     status_paths: list[str] = field(default_factory=list)
     receipt_paths: list[str] = field(default_factory=list)
 
-    def of_kind(self, kind: RuleKind) -> list[ProtocolRule]:
-        return [r for r in self.rules if r.kind is kind]
+    #: Rule families a higher-authority source has retired, mapped to the
+    #: statement that retired them. Read straight out of the repository: nothing
+    #: here knows which families a particular repository has retired.
+    retired_kinds: dict[str, ProtocolRule] = field(default_factory=dict)
+    #: Sources that declared themselves records of a past state, with the reason.
+    historical_sources: dict[str, str] = field(default_factory=dict)
+
+    def of_kind(self, kind: RuleKind, *, include_inactive: bool = False) -> list[ProtocolRule]:
+        """Rules of a family that the repository states *now*.
+
+        A rule from a self-declared historical document, and a rule a
+        higher-authority source has since retired, are both excluded: neither is
+        something the repository is currently asking for. Pass
+        ``include_inactive`` to see them anyway — a report should.
+        """
+        return [
+            r
+            for r in self.rules
+            if r.kind is kind and (include_inactive or r.is_active)
+        ]
+
+    def is_retired(self, kind: RuleKind) -> bool:
+        return kind.value in self.retired_kinds
+
+    def retirement(self, kind: RuleKind) -> ProtocolRule | None:
+        return self.retired_kinds.get(kind.value)
+
+    def active_kinds(self) -> set[str]:
+        """Every rule family the repository states now, by name."""
+        return {r.kind.value for r in self.rules if r.is_active and r.kind is not RuleKind.UNKNOWN}
 
     def effective(self, kind: RuleKind) -> ProtocolRule | None:
         """The highest-authority rule of a kind, or None when unstated.
@@ -510,6 +561,179 @@ _OWNED_DECL_RE = re.compile(
     r"(?:FILES|PATHS))\s*=\s*[\(\[](?P<body>.*?)[\)\]]",
     re.S | re.M,
 )
+
+
+# --------------------------------------------------------------------------
+# Historical sources, and retired rule families
+# --------------------------------------------------------------------------
+#
+# Two different ways a repository can stop asking for something, and both are
+# read out of the repository rather than assumed:
+#
+#   1. a document says of ITSELF that it records a past state and does not
+#      direct the present ("HISTORICAL — NOT CURRENT AUTHORITY");
+#   2. a higher-authority document says the PROCESS is gone ("there is no
+#      finalizer to run", "do not reintroduce committed suite receipts").
+#
+# Both require the repository to SAY it. A gate whose runner this driver cannot
+# find on disk is not thereby retired: the glob list here is a heuristic, the
+# repository may run its gate from CI or a Makefile, and inferring "I could not
+# find it, so you must not want it" would be exactly the guess this module
+# exists to avoid. Absence of evidence about a rule is not a repository saying
+# the rule is gone.
+#
+# Neither can weaken anything. A retirement may only remove the demand for a
+# *process artifact* — a receipt, a gate run, a commit shape. It may never
+# remove a prohibition, a review requirement, or an approval requirement:
+# those families are absent from RETIRABLE_KINDS, so no sentence anywhere can
+# retire them. And a retirement loses to any affirmative statement of the same
+# family carried by a source of equal or higher authority, so a repository that
+# both retires and still requires something keeps requiring it.
+
+#: The families a repository may retire: each one demands a ceremony artifact or
+#: a process step, and a repository is entitled to stop performing it. The
+#: families NOT here — INDEPENDENT_REVIEW, HISTORY_REWRITE_APPROVAL,
+#: MANUAL_STATUS_PROHIBITED, MANUAL_FINALIZATION_ALLOWED, UNKNOWN — protect
+#: something rather than produce something, and stay unretirable by
+#: construction.
+RETIRABLE_KINDS: frozenset[RuleKind] = frozenset(
+    {
+        RuleKind.COMMIT_TOPOLOGY,
+        RuleKind.FINALIZER_OWNERSHIP,
+        RuleKind.CANONICAL_SUITE_GATE,
+        RuleKind.CLEAN_CLONE_GATE,
+        RuleKind.RECEIPT_FRESHNESS,
+        RuleKind.STATUS_REALITY_GUARD,
+    }
+)
+
+_HISTORICAL_MARKER = re.compile(
+    r"\b(HISTORICAL|SUPERSEDED|OBSOLETE|ARCHIVED|DEPRECATED|PRE-RESET|RETIRED)\b", re.I
+)
+_NOT_AUTHORITY_MARKER = re.compile(
+    r"\bnot\s+(?:the\s+)?current\s+authority\b|\bnot\s+authoritative\b|"
+    r"\bnot\s+an?\s+authority\b|\bno\s+longer\s+authorit\w*\b|"
+    r"\bmust\s+not\s+direct\b|\bnot\s+roadmap\s+authority\b|\bnot\s+status\b",
+    re.I,
+)
+_HEADING_RE = re.compile(r"^\s*>?\s*#{1,6}\s+\S")
+
+#: How far into a document a self-declaration must appear to be a declaration
+#: about the document. A banner is at the top; a sentence on line 400 is prose.
+_HISTORICAL_HEADING_LINES = 40
+
+
+def _self_declared_historical(text: str) -> str:
+    """The heading in which a document declares itself a record of a past state.
+
+    Only a *heading*, and only near the top: a document that discusses other
+    documents' historicity in its body ("every phase review under docs/ is
+    historical evidence") is making a statement about them, not about itself,
+    and demoting it on that basis would silence the very file that said so.
+    """
+    for raw in text.splitlines()[:_HISTORICAL_HEADING_LINES]:
+        if not _HEADING_RE.match(raw):
+            continue
+        line = raw.strip()
+        if _HISTORICAL_MARKER.search(line) and _NOT_AUTHORITY_MARKER.search(line):
+            return line.lstrip("> #").strip()[:200]
+    return ""
+
+
+#: A sentence that says a process is gone. "There is no finalizer to run."
+_RETIREMENT_MARKER = re.compile(
+    r"\bthere\s+(?:is|are)\s+no\b|\bno\s+longer\b|\b(?:was|were|is|are)\s+removed\b|"
+    r"\bdo(?:es)?\s+not\s+reintroduce\b|\bmust\s+not\s+be\s+reintroduced\b|"
+    r"\bnothing\s+about\b|\bit\s+is\s+stale\b|\b(?:has|have)\s+been\s+retired\b|"
+    r"\b(?:is|are)\s+retired\b|\bno\s+(?:longer\s+)?required\b",
+    re.I,
+)
+
+#: What family a clause is ABOUT, with no normativity required. Retirement
+#: sentences are written in the negative ("there is no finalizer to run"), so the
+#: affirmative matchers — which look for "only", "must", "owns" — never fire on
+#: them. These identify the subject and nothing else.
+_KIND_SUBJECTS: tuple[tuple[RuleKind, re.Pattern[str]], ...] = (
+    (RuleKind.FINALIZER_OWNERSHIP, _rx(r"\bfinali[sz]\w*\b")),
+    (
+        RuleKind.CANONICAL_SUITE_GATE,
+        _rx(r"\bcanonical\s+suite\b|\bsuite\s+receipts?\b|\bSUITE-RESULT\b"),
+    ),
+    (RuleKind.CLEAN_CLONE_GATE, _rx(r"clean[-_\s]?clone")),
+    (
+        RuleKind.COMMIT_TOPOLOGY,
+        _rx(
+            r"\btwo[-\s]commit\b|\bcommit\s+(?:convention|topology|structure|sequence)\b|"
+            r"\bgit\s+topology\b|\bcontent\s*\+?\s*metadata\b|\bpreserve\s+refs?\b|"
+            r"\bmetadata\s+convention\b|\btopology\b"
+        ),
+    ),
+    (RuleKind.RECEIPT_FRESHNESS, _rx(r"\breceipts?\b")),
+    (RuleKind.STATUS_REALITY_GUARD, _rx(r"status[-_\s]realit")),
+)
+
+
+def _retired_kinds_in(statement: str) -> list[RuleKind]:
+    """Every retirable family a single sentence declares gone.
+
+    One sentence commonly retires several at once — "there is no finalizer to
+    run, no status receipt to hand-maintain, no two-commit convention" — so the
+    sentence is split into clauses and each clause is read for its subject.
+    """
+    text = re.sub(r"[*_`]{1,3}", "", statement)
+    marker = _RETIREMENT_MARKER.search(text)
+    if not marker:
+        return []
+
+    # The marker governs the whole sentence, not one clause of it. A directive
+    # heads its list ("Do not reintroduce A, B, or C"), a verdict trails it
+    # ("...that a receipt must be committed — it is stale"), and an existence
+    # denial distributes across it ("there is no A, no B, and no C"). Splitting
+    # into clauses is only how each subject is read separately.
+    clauses = [c for c in re.split(r",|;|\band\b|\bor\b|—|--", text) if c.strip()]
+    found: list[RuleKind] = []
+    for clause in clauses:
+        for kind, subject in _KIND_SUBJECTS:
+            if kind in RETIRABLE_KINDS and subject.search(clause) and kind not in found:
+                found.append(kind)
+    return found
+
+
+def _apply_retirements(
+    rules: list[ProtocolRule], candidates: list[ProtocolRule]
+) -> dict[str, ProtocolRule]:
+    """Retire a family only when nothing of equal authority still requires it.
+
+    The test is deliberately one-sided. A retirement carried by the repository's
+    canonical document silences a finalizer protocol stated only by a pass report
+    it has outranked. It does *not* silence a rule the same canonical document
+    states affirmatively somewhere else — a document that both drops a ceremony
+    and keeps a requirement keeps the requirement.
+    """
+    retired: dict[str, ProtocolRule] = {}
+    for candidate in candidates:
+        kind_value = candidate.retires
+        try:
+            kind = RuleKind(kind_value)
+        except ValueError:
+            continue
+        if kind not in RETIRABLE_KINDS:
+            continue
+        affirmative = [
+            r
+            for r in rules
+            if r.kind is kind and not r.historical and not r.retires
+        ]
+        if any(r.authority_level.rank >= candidate.authority_level.rank for r in affirmative):
+            continue
+        existing = retired.get(kind_value)
+        if existing is None or candidate.authority_level.rank > existing.authority_level.rank:
+            retired[kind_value] = candidate
+
+    for rule in rules:
+        if rule.kind.value in retired and not rule.retires:
+            rule.retired = True
+    return retired
 
 
 def _is_test_path(path: str) -> bool:
@@ -833,6 +1057,8 @@ def discover_protocol(repo: Path) -> DiscoveredProtocol:
             break
 
     rules: list[ProtocolRule] = []
+    retirement_candidates: list[ProtocolRule] = []
+    historical_sources: dict[str, str] = {}
     finalizer_owned: list[str] = []
     status_paths: list[str] = []
     receipt_paths: list[str] = []
@@ -842,28 +1068,65 @@ def discover_protocol(repo: Path) -> DiscoveredProtocol:
             text = _read(path)
             if not text:
                 continue
-            authority = _authority_for(category, path, repo, order)
+            rel_path = str(path.relative_to(repo)) if path.is_relative_to(repo) else str(path)
+            historical_reason = _self_declared_historical(text)
+            if historical_reason:
+                historical_sources[rel_path] = historical_reason
+            authority = (
+                AuthorityLevel.HISTORICAL
+                if historical_reason
+                else _authority_for(category, path, repo, order)
+            )
 
             for line_no, heading, statement in _statements(
                 text, markdown=path.suffix.lower() in (".md", ".markdown", "")
             ):
+                # Read for retirements first. A sentence that says a process is
+                # gone must not also be filed as that process's rule — "do not
+                # reintroduce committed suite receipts" is normative, and taken
+                # affirmatively it would be a canonical demand for the very
+                # receipt it forbids, outranking its own retirement.
+                retired_here: list[RuleKind] = []
+                if not historical_reason:
+                    retired_here = _retired_kinds_in(statement)
+                for kind in retired_here:
+                    retirement = _rule_from_statement(
+                        kind=kind,
+                        applies_to="retired_process",
+                        path=path,
+                        repo=repo,
+                        line_no=line_no,
+                        heading=heading,
+                        statement=statement,
+                        authority=authority,
+                    )
+                    retirement.rule_id = f"retired-{retirement.rule_id}"
+                    retirement.retires = kind.value
+                    retirement.allowed_states = []
+                    retirement.prohibited_states = []
+                    retirement_candidates.append(retirement)
+                    rules.append(retirement)
+
                 if not _NORMATIVE.search(statement):
                     continue
                 for matcher in _MATCHERS:
                     if not matcher.matches(statement):
                         continue
-                    rules.append(
-                        _rule_from_statement(
-                            kind=matcher.kind,
-                            applies_to=matcher.applies_to,
-                            path=path,
-                            repo=repo,
-                            line_no=line_no,
-                            heading=heading,
-                            statement=statement,
-                            authority=authority,
-                        )
+                    if matcher.kind in retired_here:
+                        continue
+                    rule = _rule_from_statement(
+                        kind=matcher.kind,
+                        applies_to=matcher.applies_to,
+                        path=path,
+                        repo=repo,
+                        line_no=line_no,
+                        heading=heading,
+                        statement=statement,
+                        authority=authority,
                     )
+                    rule.historical = bool(historical_reason)
+                    rule.historical_reason = historical_reason
+                    rules.append(rule)
 
             structural = _STRUCTURAL_RULES.get(category)
             if structural is not None:
@@ -875,11 +1138,17 @@ def discover_protocol(repo: Path) -> DiscoveredProtocol:
                         source_path=rel,
                         source_lines_or_section="(the implementation itself)",
                         description=template.format(path=rel),
-                        authority_level=AuthorityLevel.IMPLEMENTATION,
+                        authority_level=(
+                            AuthorityLevel.HISTORICAL
+                            if historical_reason
+                            else AuthorityLevel.IMPLEMENTATION
+                        ),
                         applies_to=applies_to,
                         kind=kind,
                         parameters={"implemented_at": rel},
                         quote=template.format(path=rel),
+                        historical=bool(historical_reason),
+                        historical_reason=historical_reason,
                     )
                 )
 
@@ -940,6 +1209,8 @@ def discover_protocol(repo: Path) -> DiscoveredProtocol:
         finalizer_owned_paths=finalizer_owned,
         status_paths=status_paths,
         receipt_paths=receipt_paths,
+        retired_kinds=_apply_retirements(rules, retirement_candidates),
+        historical_sources=historical_sources,
     )
     discovered.conflicts = detect_conflicts(discovered)
     return discovered

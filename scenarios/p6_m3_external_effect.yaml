@@ -1,0 +1,565 @@
+# P6 / M3 — External Effect / Effect Grant.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It exists to give the dynamic scenario
+# generator five things and nothing more:
+#
+#   1. deterministic basic M3 operation           (the probe, run whole)
+#   2. a safe approved M3 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--concurrency`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 entrypoints)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry
+# and the acceptance criteria; stage 2 refines them against the diff the builder actually
+# produced; stage 3 grows neighbours around whatever failed. None of that can author shell —
+# a generated case may only CHOOSE one of the approved commands below, optionally with an
+# argument tail, and decide when it runs and what must be observable afterwards.
+#
+# WHY ITEM 3 EXISTS, AND WHY IT IS NOT OPTIONAL HERE. M3 ships dark: no service, no HTTP
+# surface. The executor's only concurrency primitive is `parallel_requests`, which is HTTP —
+# so for this unit the generator has NO way to compose ordering, concurrency, timing, crash or
+# redelivery variation from the outside. Without a mutation axis inside the probe, the entire
+# M3 possibility space would be 29 fixed points and the staged generator would have nothing to
+# explore. The axis is a closed, bounded, argument-only vocabulary; the approval boundary is
+# unchanged, because a prefix match already permits argument tails and already refuses shell.
+# See docs/SCENARIO-SPACE.md for the general form of this gap.
+#
+# THE PYTEST INVOCATION IS DELIBERATELY PLAIN. `pytest-canonical.ini` no longer exists: the
+# 2026-08 engineering-process simplification collapsed it into `[tool.pytest.ini_options]` in
+# `pyproject.toml`, and CI now runs `python -m pytest -q -p no:cacheprovider`. Any scenario
+# still passing `-c pytest-canonical.ini` fails on a missing file rather than on the product.
+
+name: p6_m3_external_effect
+phase: "P6"
+mode: backend
+description: >
+  P6 M3: the Effect Grant — one `effect_grants` row, one machine, eight states, and the single
+  atomic CAS that is the only serialization point between a decision and the outside world.
+  There is no UI and no service (M3 ships dark by contract), so the product is exercised
+  through its real runtime as a brokerage narrative: load 4471's invoice is authorized at a
+  checkpoint, the capability to send it exists for a bounded time and exactly once, ops engages
+  the brake in the seconds between mint and claim, two workers claim simultaneously, a forged
+  handle and a replayed handle both arrive, the TMS write times out so nobody can say whether
+  the invoice went out, and the readback comes back blind. What matters is not that the happy
+  path works — it is what the machine REFUSES, whether a broker can be billed twice, and
+  whether "we do not know" is ever quietly allowed to become "it failed".
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M3 surface the builder must produce. A missing one is recorded as a failed assertion, so
+# a run against a repository where M3 does not exist yet cannot report a verified M3.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/external_effect.py"
+  - "src/freight_recon/migrations/phase6_external_effects.py"
+  - "eval/tests/test_phase6_external_effect.py"
+  - "scripts/probe_phase6_external_effect.py"
+  - "scripts/mutate_phase6_external_effect.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if
+  #    the builder ships a probe that cannot exercise one of the canonical risk families, this
+  #    command fails here rather than the family silently going unverified. It is also what
+  #    tells a reader of this file which `--case` values exist.
+  - name: "the M3 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # capability aspect — mint, claim, and the four ways a capability dies unused
+      - "witness-required-mint"
+      - "atomic-one-winner-claim"
+      - "concurrent-double-claim"
+      - "forged-capability"
+      - "replayed-capability"
+      - "wrong-target-capability"
+      - "tenant-mismatch"
+      - "expiry-unclaimed"
+      - "revocation-unclaimed"
+      - "brake-after-mint-before-claim"
+      - "policy-version-drift"
+      # outcome aspect — what actually happened out there, and what we can honestly say
+      - "exactly-once-effect-attempted"
+      - "adapter-return-attempted"
+      - "affirmative-non-occurrence-failed"
+      - "timeout-lost-response-unknown"
+      - "conflicting-readback"
+      - "blind-readback"
+      - "positive-control-verified"
+      - "unknown-never-timer-resolves"
+      - "authenticated-human-resolution"
+      - "deterministic-proof-resolution"
+      # the inherited obligations and the seams M3 is the first consumer of
+      - "replay-zero-external-effects"
+      - "d24-drain-handler-for"
+      - "complete-stream-strict-ordering"
+      - "f14-predecessor"
+      - "redelivery-idempotency"
+      - "tenant-isolation"
+      - "transactional-co-commit"
+      - "m2-m3-consistency"
+
+  # 2. THE MUTATION AXIS. A case list alone gives the generator 29 fixed points and no way to
+  #    vary them: it could choose WHICH situation, never HOW it is parameterised. These flags
+  #    are the difference between "run the forged-capability case" and "run it with four
+  #    actors racing the CAS, 40ms apart, while the adapter's response is lost, twice" — the
+  #    second is a situation nobody enumerated and the generator can reach it.
+  #
+  #    The vocabulary is CLOSED and BOUNDED on purpose. This is not fuzzing: an unknown fault
+  #    or an out-of-range value must be REFUSED (see command 3), every combination still has
+  #    to cite a requirement to survive validation, and `--seed` makes any discovered failure
+  #    reproducible — which is what lets it be promoted into permanent coverage later.
+  #
+  #    Costs nothing at the safety boundary: approval matches by PREFIX and refuses shell
+  #    composition in the tail, so every combination of these flags is already approved by the
+  #    single bare-probe entry in command 4. No new command is authored by anything.
+  - name: "the M3 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # the axes a situation can be varied along
+      - "--concurrency"      # how many actors race the claim CAS
+      - "--delay-ms"         # timing skew between those actors
+      - "--repeat"           # redelivery / retry pressure
+      - "--tenants"          # isolation pressure
+      - "--seed"             # deterministic interleaving; the same seed reproduces the failure
+      # the closed fault vocabulary, every member named by the canonical machine
+      - "adapter-timeout"            # EF-3u
+      - "adapter-crash"              # EF-3u
+      - "lost-response"              # EF-3u
+      - "brake-mid-claim"            # EF-2r / §30
+      - "policy-bump-mid-claim"      # §29
+      - "approval-revoked-mid-claim" # EF-2r
+      - "readback-conflicting"       # EF-4c
+      - "readback-unavailable"       # EF-4u
+      - "redeliver"                  # §19 idempotency
+      - "restart-before-claim"       # §36
+      - "restart-after-claim"        # §36 — never re-execute
+      - "predecessor-unapplied"      # P6-D11 §8 / F14
+      - "park-and-drain"             # P6-D24
+
+  # 3. THE NEGATIVE CONTROL FOR THAT VOCABULARY. A dimension set that accepts anything is
+  #    fuzzing wearing a closed-vocabulary costume. This proves the closure is real: an
+  #    invented fault is refused, with a non-zero exit and a readable message rather than a
+  #    stack trace (`Traceback` is in `forbidden`, so a crash here fails the whole scenario).
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py --case witness-required-mint --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. THE PRODUCT, DRIVEN. Run whole, this is the deterministic basic M3 operation. Run with
+  #    `--case <case>` it is the approved focused entry point a generated scenario composes
+  #    with — the bare form below is what makes every `--case` tail approvable, because the
+  #    approved set matches by prefix and refuses shell composition in the tail.
+  - name: "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M3 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M3 is the first real consumer of the P3 kernel, the P4 boundary and
+  #    the P5 transport, and the first co-committer with M2. Each of those can be broken from
+  #    inside M3, so each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M3 mints from, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M3 executes through, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P5 transport, replay isolation and strict ordering M3 consumes, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1 and M2, whose transitions M3 co-commits with, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M3 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "verified" proves nothing about a row.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because
+  # SQLite silently ignores the pragma inside one — that makes every tenant-consistent foreign
+  # key more than decoration. A probe that skips it measures a database no caller ever gets.
+  - name: "a freshly created canonical database carries the effect layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    contains:
+      - "problems: []"
+      - "effect_grants"
+      - "checkpoint_witnesses"
+      - "pipeline_instances"
+
+  # The eight states, structurally. Not a convention, not a Python enum nobody enforces — a
+  # CHECK constraint, so a ninth state and a misspelled eighth are both uninsertable. REVOKED
+  # and EXPIRED_UNCLAIMED are separately named because ADR-004 §3.2 keeps them distinct: one
+  # says somebody stopped this, the other says nobody used it.
+  - name: "the eight canonical states are a database constraint, and REVOKED is not EXPIRED_UNCLAIMED"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      sql=c.execute(\"select sql from sqlite_master where name='effect_grants'\").fetchone()[0];
+      import re; m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S);
+      print('state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(',')))"
+    contains:
+      - "'ATTEMPTED'"
+      - "'CLAIMED'"
+      - "'EXPIRED_UNCLAIMED'"
+      - "'FAILED'"
+      - "'GRANTED'"
+      - "'REVOKED'"
+      - "'UNKNOWN_OUTCOME'"
+      - "'VERIFIED'"
+
+  # The claim-instant exclusion. `UNIQUE(tenant, commit_key) WHERE state='CLAIMED'` is what
+  # makes "exactly one winner" a fact about the database rather than a hope about the code
+  # path. M3 may add to this; it may not relax it.
+  - name: "one winner is enforced at the claim instant by a UNIQUE partial index"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print(c.execute(\"select sql from sqlite_master where name='ix_effect_grants_commit_once'\").fetchone()[0])"
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "ON effect_grants (tenant, commit_key)"
+      - "WHERE state = 'CLAIMED'"
+
+  # The outcome aspect needs somewhere to be honest. Every column named here is written by a
+  # transition in `03-external-effect-grant.machine.md` §14 — `attempted_at` (EF-3),
+  # `failure_proof` (EF-3f), `exposure` (EF-3u), `verified_at`/`health_signal` (EF-4),
+  # `reality_decision_ref` (EF-5). Without them FAILED and VERIFIED are assertions with no
+  # evidence behind them, which is exactly the failure mode M3 exists to make impossible.
+  - name: "the outcome aspect has durable evidence columns, not just a state name"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('effect_grants columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(effect_grants)')))"
+    contains:
+      - "'attempted_at'"
+      - "'claimed_at'"
+      - "'exposure'"
+      - "'failure_proof'"
+      - "'health_signal'"
+      - "'reality_decision_ref'"
+      - "'unknown_reason'"
+      - "'verification_outcome'"
+      - "'verified_at'"
+
+  # "Mint requires real checkpoint authority" is decoration while `checkpoint_id` is a text
+  # column: any string satisfies it. A FOREIGN KEY is the version of that sentence a database
+  # enforces. Same argument M1 made for `owner_id` and M2 made for its witness and grant.
+  - name: "a grant points at its witness and its attempt by FOREIGN KEY, not by convention"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('effect_grants foreign keys ->', sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(effect_grants)')}))"
+    contains:
+      - "checkpoint_witnesses"
+      - "pipeline_instances"
+
+  # THE DARK POSTURE, MEASURED — and measured the way Neyma's own guard measures it. The
+  # authoritative sweep in `test_phase6_pipeline_instance.py` walks `src/freight_recon/**`,
+  # because that is the production package; `scripts/` is developer tooling that ships to
+  # nobody. Two separate assertions rather than one glob over both, because a single glob
+  # cannot tell the deterministic verification probe from a real caller, and the version of
+  # this check that could not tell them apart would have to be relaxed to let the probe exist
+  # at all. Naming the permitted exception keeps the assertion strict where it matters.
+  - name: "M3 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      hits=sorted(str(f) for f in root.rglob('*.py')
+      if f.name!='external_effect.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='external_effect')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='external_effect' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production importers of external_effect:', hits)"
+    contains:
+      - "production importers of external_effect: []"
+
+  - name: "the only thing outside the package that reaches M3 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='external_effect')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='external_effect' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching external_effect:', hits)"
+    contains:
+      - "scripts reaching external_effect: ['probe_phase6_external_effect.py']"
+
+  # P8 has not happened. If M3 has taught something other than the checkpoint to mint a gate
+  # decision, a second effect authority now exists and the whole argument is over.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+# ---------------------------------------------------------------------------
+# WHICH IDENTIFIED RISKS THIS SCENARIO VERIFIES, AND BY WHAT.
+#
+# Read by the acceptance gate. A run's generator names the risks it thinks could
+# realistically fail; the gate then asks, for each acceptance-blocking one,
+# whether any executed scenario actually verified it. Before this block existed
+# the only answer it could see was "does some GENERATED scenario carry that
+# category tag?" — so this file could migrate a legacy database, read the schema
+# back, prove exactly-once effect and prove replay touches nothing, pass, and
+# count for nothing against a `persistence_failure`, `conflicting_evidence` or
+# `retry_safety` risk. The only move left was to ask the builder for coverage
+# that already existed, which does not converge and did not.
+#
+# WHAT AN ENTRY MEANS, EXACTLY. It is a claim by a human, checked by the
+# machine:
+#
+#   risk_category  one of the closed RiskCategory values. Anything else is a
+#                  load-time error, not a silently-inert declaration.
+#   claim          what is being verified, in words. Recorded and rendered so a
+#                  reader can audit the mapping. NEVER matched against anything,
+#                  and never on its own a reason to believe the claim.
+#   checks         `name:` of commands / state checks IN THIS FILE. Each must
+#                  have executed, and every assertion it produced must have
+#                  passed. A name that matches nothing is a load-time error.
+#   observations   LITERAL substrings the named checks must have printed. Exact
+#                  substring test, same as `expect_visible`; nothing interprets
+#                  them.
+#
+# The claim counts for acceptance only when all of that held AND the scenario as
+# a whole PASSED with resolvable evidence. A skipped, failed or evidence-less
+# run establishes nothing here.
+#
+# WHAT IS DELIBERATELY NOT DECLARED. `restart_recovery` and `timeout_after_effect`
+# are exercised inside the probe but print no literal this file can bind a claim
+# to, so nothing is declared for them and a run that identifies either as a
+# blocking risk must generate a case for it or block. That absence is the point:
+# this block is an inventory of oracles, not a list of categories to wave
+# through.
+verifies:
+  - risk_category: persistence_failure
+    claim: >-
+      A pre-M3 database taken through the migration reaches the canonical effect shape, and a
+      freshly created canonical database reports no readiness problems — so the outcome aspect
+      has somewhere durable to record proof rather than a state name with nothing behind it.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the effect layer, tenant-first"
+      - "the outcome aspect has durable evidence columns, not just a state name"
+    observations:
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL EFFECT SHAPE"
+      - "problems: []"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      A readback that conflicts, and a readback that returns nothing at all, both resolve to
+      UNKNOWN_OUTCOME. Absence of signal is never read as proof the effect did not happen, and
+      FAILED is only reached with proof of non-occurrence.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "A CONFLICTING READBACK IS UNKNOWN, NOT VERIFIED"
+      - "BLIND IS NOT FAILED"
+      - "FAILED REQUIRES PROOF OF NON-OCCURRENCE"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replaying the event stream mints no grant, claims nothing, writes no EffectAttempted and
+      touches nothing outside; and a retry is a new grant rather than a second claim on the
+      one already spent.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "replay: 0 grants, 0 claims, 0 EffectAttempted, 0 external effects"
+      - "A RETRY IS A NEW GRANT, NEVER A RE-CLAIM"
+
+  - risk_category: ambiguous_external_effect
+    claim: >-
+      One logical effect produces exactly one EffectAttempted and no orphan, so a lost adapter
+      response cannot become a second touch of the outside world.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "EXACTLY ONE EffectAttempted"
+      - "ADAPTER RETURNED"
+
+  - risk_category: concurrency
+    claim: >-
+      The claim CAS admits exactly one winner under concurrent claimers, and that exclusion is
+      a UNIQUE partial index in the database rather than a hope about a code path.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+      - "one winner is enforced at the claim instant by a UNIQUE partial index"
+    observations:
+      - "ONE WINNER, NEVER TWO"
+      - "CREATE UNIQUE INDEX"
+
+  - risk_category: idempotency
+    claim: >-
+      Redelivery of the consumed event produces no second claim and no second effect.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "REDELIVERY IS IDEMPOTENT"
+
+  - risk_category: authorization
+    claim: >-
+      A mint requires a real checkpoint witness — enforced by FOREIGN KEY, not by convention —
+      and forged, replayed and wrong-target claims are all refused.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+      - "a grant points at its witness and its attempt by FOREIGN KEY, not by convention"
+    observations:
+      - "MINT REQUIRES A REAL CHECKPOINT WITNESS"
+      - "WRONG-TARGET CLAIM IS A CONFUSED-DEPUTY SEV-0"
+      - "checkpoint_witnesses"
+
+  - risk_category: cross_tenant
+    claim: >-
+      A mint never crosses a tenant, and isolation holds under concurrent claim pressure.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "A MINT NEVER CROSSES A TENANT"
+      - "TENANT ISOLATION HOLDS UNDER CONCURRENT CLAIM PRESSURE"
+
+  - risk_category: safety_invariant
+    claim: >-
+      A brake or a policy bump arriving between mint and claim makes the CAS match zero rows;
+      no timer moves UNKNOWN_OUTCOME; and an UNKNOWN_OUTCOME always has a named human owner.
+    checks:
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS"
+      - "A POLICY BUMP BETWEEN MINT AND CLAIM MATCHES ZERO ROWS"
+      - "NO TIMER MOVES UNKNOWN_OUTCOME"
+      - "UNKNOWN_OUTCOME IS OWNED BY A NAMED HUMAN"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The eight canonical states are a CHECK constraint, so a ninth state and a misspelled
+      eighth are both uninsertable, and REVOKED stays distinct from EXPIRED_UNCLAIMED.
+    checks:
+      - "the eight canonical states are a database constraint, and REVOKED is not EXPIRED_UNCLAIMED"
+      - "drive the Effect Grant machine through a brokerage narrative, and attack it"
+    observations:
+      - "REVOKED IS NOT EXPIRED_UNCLAIMED"
+      - "EXPIRED_UNCLAIMED IS ITS OWN TERMINAL STATE"
+
+  - risk_category: malformed_input
+    claim: >-
+      An invented fault is refused with a non-zero exit and a readable message, so the
+      mutation vocabulary is genuinely closed rather than accepting anything.
+    checks:
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "the M3 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+
+  - risk_category: regression
+    claim: >-
+      The P3 kernel M3 mints from, the P4 boundary it executes through, the P5 transport it
+      consumes and the M1/M2 transitions it co-commits with are all re-run against this
+      change rather than assumed, and every M3 guard is proven capable of failing.
+    checks:
+      - "the P3 checkpoint kernel M3 mints from, unbroken"
+      - "the P4 governed effect boundary M3 executes through, unbroken"
+      - "the P5 transport, replay isolation and strict ordering M3 consumes, unbroken"
+      - "M1 and M2, whose transitions M3 co-commits with, unbroken"
+      - "the M3 mutation battery"
+    observations:
+      - "mutants caught"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with
+# `tasks/neyma_p6_m3.md`, which states them verbatim to the builder. They are matched as
+# substrings against everything observed — nothing interprets them.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "ZERO ROWS CLAIMED: THE ADAPTER DID NOTHING"
+  - "ONE WINNER, NEVER TWO"
+  - "EXACTLY ONE EffectAttempted"
+  - "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS"
+  - "FAILED REQUIRES PROOF OF NON-OCCURRENCE"
+  - "BLIND IS NOT FAILED"
+  - "NO TIMER MOVES UNKNOWN_OUTCOME"
+  - "UNKNOWN_OUTCOME IS OWNED BY A NAMED HUMAN"
+  - "REVOKED IS NOT EXPIRED_UNCLAIMED"
+  - "A RETRY IS A NEW GRANT, NEVER A RE-CLAIM"
+  - "replay: 0 grants, 0 claims, 0 EffectAttempted, 0 external effects"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M3 exists to prevent has
+  # just happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### DOUBLE CLAIM ###"
+  - "### DOUBLE EFFECT ###"
+  - "### FAILED WITHOUT PROOF ###"
+  - "### VERIFIED WITHOUT POSITIVE CONTROL ###"
+  - "### UNKNOWN_OUTCOME TIMER-RESOLVED ###"
+  - "### EXTERNAL EFFECT DURING REPLAY ###"
+  - "### ORPHAN EffectAttempted ###"
+  - "CrossTenantAccessAttempted"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6
+# work is largely untracked and those commands would destroy it irrecoverably.
+teardown: []

@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .evidence import sanitize_filename
 from .failure_clustering import FailureCluster, FailureRecord, cluster_failures
-from .models import ScenarioResult, redact, redact_obj, utcnow
+from .models import RiskEvidence, ScenarioResult, redact, redact_obj, utcnow
 from .scenario_plan import GeneratedScenario, Priority, RiskCategory, neighbours
 from .scenarios import Scenario
 
@@ -113,6 +113,21 @@ class ScenarioOutcome(BaseModel):
     #: Present only for generated scenarios: why this situation was exercised.
     generated_because: str = ""
     requirement_reference: str = ""
+    #: The scenario's declared risk claims, resolved against this execution.
+    #: Only permanent scenarios can carry these: they are written by hand in a
+    #: reviewed scenario file, and a generated scenario has no field able to
+    #: produce one. A risk is satisfied by an entry here only when the entry was
+    #: established AND this outcome itself passed with resolvable evidence.
+    risk_evidence: list[RiskEvidence] = Field(default_factory=list)
+
+    def established_risk_categories(self) -> set[str]:
+        """Risk categories this outcome actually established evidence for.
+
+        Deliberately does not consider ``outcome`` or ``evidence_verified``:
+        those are the gate's burden of proof and the gate applies them. This
+        answers only "which declared claims held".
+        """
+        return {e.risk_category for e in self.risk_evidence if e.established}
 
     @property
     def blocks_acceptance(self) -> bool:
@@ -205,6 +220,10 @@ class SuiteResult(BaseModel):
     def permanent_failures(self) -> list[ScenarioOutcome]:
         return [f for f in self.failures() if f.origin is Origin.PERMANENT]
 
+    def declared_risk_evidence(self) -> list[tuple["ScenarioOutcome", RiskEvidence]]:
+        """Every declared risk claim this suite resolved, in execution order."""
+        return [(o, e) for o in self.outcomes for e in o.risk_evidence]
+
     def coverage_by_risk_category(self) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
         for outcome in self.outcomes:
@@ -273,6 +292,14 @@ class SuiteResult(BaseModel):
         coverage = self.coverage_by_risk_category()
         if coverage:
             lines.append("risk categories exercised: " + ", ".join(sorted(coverage)))
+        declared = self.declared_risk_evidence()
+        if declared:
+            lines.append("")
+            lines.append(
+                "DECLARED RISK EVIDENCE — permanent coverage that names the risk it "
+                "verifies and the oracle that verifies it:"
+            )
+            lines += [f"  {o.scenario_id}: {e.brief()}" for o, e in declared]
 
         skipped = [o for o in self.outcomes if o.outcome is Outcome.SKIPPED]
         if skipped:
@@ -796,6 +823,14 @@ class SuiteExecutor:
             evidence_path=str(artifact_dir),
             generated_because=_because(entry),
             requirement_reference=entry.generated.requirement_reference if entry.generated else "",
+            # Belt and braces. A generated scenario is compiled from a model
+            # that has no field capable of expressing a risk claim, so this list
+            # is already empty for one — and it stays empty here regardless, so
+            # that "a model cannot manufacture risk coverage" is enforced at the
+            # boundary rather than inferred from the compiler's field list.
+            risk_evidence=(
+                [] if entry.origin is Origin.GENERATED else list(result.risk_evidence)
+            ),
         )
 
 

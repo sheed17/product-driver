@@ -31,6 +31,7 @@ from neyma_product_driver.models import (
     IterationRecord,
     ScenarioResult,
 )
+from neyma_product_driver import scenario_gate
 from neyma_product_driver.prompts import evaluator_prompt
 from neyma_product_driver.run_journal import JOURNAL_FILE, SUMMARY_FILE
 from neyma_product_driver.scenario_gate import (
@@ -393,7 +394,17 @@ class TestUncoveredRisksReachAcceptance:
         first = [g.brief() for g in uncovered_required_risks(risks, result)]
         for _ in range(5):
             assert [g.brief() for g in uncovered_required_risks(risks, result)] == first
-        source = inspect.getsource(uncovered_required_risks)
+        # The whole resolution path, not just the entry point: a wrapper that
+        # consults nothing is worth nothing if what it delegates to does.
+        source = "".join(
+            inspect.getsource(fn)
+            for fn in (
+                uncovered_required_risks,
+                scenario_gate.risk_coverage,
+                scenario_gate._satisfying_outcome,
+                scenario_gate._gap_reason,
+            )
+        )
         for forbidden in ("Claude", "reasoner", "propose", "prompt", "evaluator"):
             assert forbidden not in source, forbidden
 

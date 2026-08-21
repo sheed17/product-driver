@@ -842,7 +842,7 @@ class TestAuditorPrecedenceUnchanged:
         config.max_iterations = 1
 
         class ContradictingAuditor:
-            def audit(self, report, unit=None, run_commands=None, evidence_dir=""):
+            def audit(self, report, unit=None, run_commands=None, evidence_dir="", scope=None):
                 return CompletionAudit(
                     decision=AuditDecision.CONTRADICTED,
                     headline="the registry does not support the claimed completion",

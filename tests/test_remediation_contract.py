@@ -295,7 +295,7 @@ class TestAcceptanceContract:
         config, store, state = loop_bits
 
         class ContradictingAuditor:
-            def audit(self, report, unit=None, run_commands=None, evidence_dir=""):
+            def audit(self, report, unit=None, run_commands=None, evidence_dir="", scope=None):
                 from neyma_product_driver.completion_auditor import CompletionAudit
 
                 return CompletionAudit(

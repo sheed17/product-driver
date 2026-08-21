@@ -211,6 +211,12 @@ class EvidenceStore:
         if record.context_provenance:
             self.write_json(rel / "context-provenance.json", record.context_provenance)
 
+        if record.task_scope:
+            self.write_json(rel / "task-scope.json", record.task_scope)
+
+        if record.scoped_completion:
+            self.write_json(rel / "scoped-completion.json", record.scoped_completion)
+
         if record.completion_audit:
             self.write_json(rel / "completion-audit.json", record.completion_audit)
 

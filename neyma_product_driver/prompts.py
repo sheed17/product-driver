@@ -93,8 +93,13 @@ Harness expectations:
 
 
 def builder_task_prompt(
-    task: str, scenario_summary: str, active_unit: str = "", founder_feedback: str = ""
+    task: str,
+    scenario_summary: str,
+    active_unit: str = "",
+    founder_feedback: str = "",
+    scope: str = "",
 ) -> str:
+    scope_block = f"\n{scope.strip()}\n" if scope.strip() else ""
     unit_line = (
         f"\nThe repository's active READY unit is {active_unit}. Stay inside its scope.\n"
         if active_unit
@@ -107,7 +112,7 @@ def builder_task_prompt(
 TASK FROM THE PRODUCT OWNER
 
 {task.strip()}
-{unit_line}{feedback_block}
+{scope_block}{unit_line}{feedback_block}
 After you implement this, the product-driver harness will operate the real
 product using this scenario:
 
