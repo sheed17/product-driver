@@ -982,6 +982,7 @@ class CompletionAuditor:
         run_commands: list[Any] | None = None,
         evidence_dir: str | None = None,
         scope: TaskScope | None = None,
+        satisfying_review: Any = None,
     ) -> CompletionAudit:
         """Audit a builder report against the repository. Never raises.
 
@@ -989,6 +990,13 @@ class CompletionAuditor:
         against the whole active phase, which is the strict reading and the
         historical behaviour: a caller that does not say what it asked for gets
         held to everything.
+
+        ``satisfying_review`` is an independent review the *run* obtained —
+        a :class:`~neyma_product_driver.review_cycle.ReviewRecord` — offered as
+        evidence that the review this task owes has actually happened. It is
+        checked, not believed: see :meth:`_task_review_outstanding`. Passing a
+        review that does not hold changes nothing, so a caller cannot clear a
+        review requirement by handing over the wrong review.
         """
         if unit is None:
             # Optional, not fail-closed: a repository that declares no unit
@@ -1307,7 +1315,9 @@ class CompletionAuditor:
         #     the next phase is genuinely ready.
         contradictions += self._scope_overreach(claims, scope, state)
 
-        review_outstanding = self._task_review_outstanding(scope)
+        review_outstanding = self._task_review_outstanding(
+            scope, satisfying_review=satisfying_review
+        )
 
         decision, headline, confidence = self._decide(
             claims,
@@ -1400,7 +1410,9 @@ class CompletionAuditor:
             )
         return found
 
-    def _task_review_outstanding(self, scope: TaskScope) -> list[str]:
+    def _task_review_outstanding(
+        self, scope: TaskScope, satisfying_review: Any = None
+    ) -> list[str]:
         """What review the repository still owes this scoped task, if any.
 
         Asked of the repository, not of this driver's habits: a repository that
@@ -1409,9 +1421,21 @@ class CompletionAuditor:
         retirement mechanism by construction — a review requirement protects
         something rather than produces an artifact — so this is the one demand a
         target repository cannot delete by simplifying its process.
+
+        Two things can discharge it. A review *document* the repository holds
+        that names this unit, which is how a repository records a review taken
+        outside this driver. Or a review this run itself obtained — but only one
+        that survives :meth:`ReviewRecord.satisfies`: SUPPORTED, from a session
+        that is not the builder's, and bound to the exact repository state being
+        audited. A review of an earlier tree discharges nothing, which is what
+        stops "the reviewer supported it before the fix" from ever closing this.
         """
         if not scope.is_nested or not self._requires("INDEPENDENT_REVIEW"):
             return []
+
+        if self._review_discharges(scope, satisfying_review):
+            return []
+
         candidates, not_independent = self.independent_review_artifacts(scope.parent_phase_id)
         usable = [c for c in candidates if _mentions_scope(c, scope)]
         if usable and not not_independent:
@@ -1419,6 +1443,31 @@ class CompletionAuditor:
         return [
             f"an independent review of {scope.scope_id} by a session that did not build it"
         ]
+
+    def _review_discharges(self, scope: TaskScope, record: Any) -> bool:
+        """Whether this run's own review can stand as the review this task owes.
+
+        Deliberately re-derives the current fingerprint rather than trusting the
+        caller's: the audit is about the repository as it is *now*, and a record
+        carrying a fingerprint captured before the last edit would otherwise
+        discharge a requirement against a tree nobody reviewed.
+        """
+        if record is None:
+            return False
+        try:
+            from .review_cycle import capture_fingerprint
+
+            if not record.satisfies(capture_fingerprint(self.repo)):
+                return False
+        except Exception:  # a review that cannot be checked discharges nothing
+            return False
+
+        # The review has to be about this unit. A review of the phase, or of the
+        # previous unit, is matched by nothing here.
+        review_scope = str(getattr(record, "scope_id", "") or "")
+        return not review_scope or _same_unit(
+            review_scope.replace("/", ""), (scope.scope_id or "").replace("/", "")
+        )
 
     def _skip_contradictions(self, state: ObservedState) -> list[Contradiction]:
         """A dirty-tree finalization failure must not read as an ordinary skip."""

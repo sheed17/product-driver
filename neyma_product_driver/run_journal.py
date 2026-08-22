@@ -182,6 +182,46 @@ class RunJournal:
     builder_claims: list[str] = field(default_factory=list)
     #: One line per independent review this run launched on its own.
     reviews: list[str] = field(default_factory=list)
+
+    # -- the independent review, in the detail a founder has to be able to
+    #    check without opening a JSON file --------------------------------
+    #
+    # Every one of these is copied from a record the run produced. The two that
+    # matter most are the last two: whether the reviewer re-ran verification
+    # itself rather than reading Product Driver's captured output, and whether a
+    # later code change retired a review that had already said yes.
+
+    #: Whether the scoped task owed an independent review at all.
+    review_required: bool = False
+    #: Why, in the repository's or the risk classifier's own words.
+    review_required_reasons: list[str] = field(default_factory=list)
+    #: Where the requirement was read from.
+    review_required_sources: list[str] = field(default_factory=list)
+    #: True when the driver launched the review itself, with no founder relay.
+    review_ran_automatically: bool = False
+    review_verdict: str = ""
+    review_confidence: float = 0.0
+    #: True only when the reviewer said it reproduced runtime evidence AND the
+    #: reviewer boundary recorded a command it was allowed to run.
+    review_reproduced_evidence: bool = False
+    #: The reviewer's own session id, and the builder's, so independence is
+    #: checkable from this file alone.
+    reviewer_session_id: str = ""
+    #: The exact repository identity the satisfying review was performed
+    #: against: HEAD, tree and working-tree digest.
+    reviewed_head: str = ""
+    reviewed_tree: str = ""
+    reviewed_identity: str = ""
+    #: Commands the reviewer executed itself, and ones the boundary refused.
+    review_commands_run: list[str] = field(default_factory=list)
+    review_commands_refused: list[str] = field(default_factory=list)
+    review_findings: list[str] = field(default_factory=list)
+    #: One line per review a later code change retired.
+    review_invalidations: list[str] = field(default_factory=list)
+    #: Whether a surviving review actually discharged the requirement.
+    review_satisfied_scope: bool = False
+    #: What stopped a review concluding, when one did not.
+    review_blocked_on: str = ""
     #: The active unit's human-readable name and objective, from the registry.
     active_unit_name: str = ""
     active_unit_objective: str = ""
@@ -294,6 +334,87 @@ class RunJournal:
         else:
             self.founder_decision_required = redact(founder_decision_required)
 
+    def record_independent_review(
+        self,
+        *,
+        requirement: Any = None,
+        ledger: Any = None,
+        satisfying: Any = None,
+        reviews: Sequence[Any] = (),
+        automatic: bool = False,
+    ) -> None:
+        """Copy this run's review record in. Reads it; never interprets it.
+
+        The whole point of holding these separately from ``reviews`` — which is
+        one line per review — is that a founder reading the summary has to be
+        able to answer "was the review required, did it run by itself, what did
+        it say, and did it actually measure anything" without opening the run
+        directory. All four are facts the run recorded.
+
+        Everything is duck-typed: the journal keeps no import edge to the review
+        layer, and a test can pass a stand-in.
+        """
+        if requirement is not None:
+            self.review_required = bool(getattr(requirement, "required", False))
+            self.review_required_reasons = [
+                redact(str(r))[:400] for r in getattr(requirement, "reasons", []) or []
+            ]
+            self.review_required_sources = [
+                str(s) for s in getattr(requirement, "sources", []) or []
+            ]
+
+        if ledger is not None:
+            self.review_invalidations = [
+                redact(str(line))[:400]
+                for line in getattr(ledger, "invalidations", []) or []
+            ]
+
+        # The verdict reported is the LAST review taken, which is the only one
+        # that describes the implementation as it now stands. An earlier
+        # supported review over an implementation that has since changed is in
+        # `review_invalidations`, where it reads as what it is.
+        ordered = list(reviews) or [
+            record.review for record in getattr(ledger, "records", []) or []
+        ]
+        last = ordered[-1] if ordered else None
+        if last is not None:
+            self.review_ran_automatically = bool(automatic)
+            self.review_verdict = str(getattr(last, "verdict", "") or "")
+            self.review_confidence = float(getattr(last, "confidence", 0.0) or 0.0)
+            self.review_reproduced_evidence = bool(
+                getattr(last, "reproduced_runtime_evidence", False)
+            )
+            self.reviewer_session_id = str(getattr(last, "reviewer_session_id", "") or "")
+            self.review_commands_run = [
+                redact(str(c.get("command", "")))[:300]
+                for c in getattr(last, "commands_allowed", []) or []
+            ]
+            self.review_commands_refused = [
+                redact(f"{c.get('command', '')} — {c.get('reason', '')}")[:300]
+                for c in getattr(last, "commands_refused", []) or []
+            ]
+            self.review_findings = [
+                redact(
+                    f"[{getattr(f, 'severity', 'major')}] {getattr(f, 'finding', '')} "
+                    f"({getattr(f, 'evidence_path', '')})"
+                )[:400]
+                for f in getattr(last, "findings", []) or []
+            ]
+            blocked = getattr(last, "blocked_on", None)
+            kind = str(getattr(blocked, "kind", "") or "")
+            if kind and kind != "NONE":
+                self.review_blocked_on = redact(
+                    f"{kind}: {getattr(blocked, 'detail', '')} "
+                    f"{getattr(blocked, 'requested_action', '')}"
+                ).strip()[:600]
+
+        if satisfying is not None:
+            self.review_satisfied_scope = True
+            fingerprint = getattr(satisfying, "fingerprint", None)
+            self.reviewed_head = str(getattr(fingerprint, "head", "") or "")
+            self.reviewed_tree = str(getattr(fingerprint, "tree", "") or "")
+            self.reviewed_identity = str(getattr(fingerprint, "identity", "") or "")
+
     def record_outcome(
         self,
         *,
@@ -364,17 +485,26 @@ class RunJournal:
         * the deterministic scenario gate returned VERIFIED;
         * no required scenario is unverified — which includes never having run;
         * no acceptance-blocking risk the run itself named is uncovered;
-        * generation produced the coverage it set out to produce.
+        * generation produced the coverage it set out to produce;
+        * and, where an independent review was required, one actually happened,
+          supported the change, and was not retired by a later change to it.
 
         Nothing a model said appears here. A gate that never ran leaves
-        ``gate_status`` empty, and an empty gate status is not VERIFIED.
+        ``gate_status`` empty, and an empty gate status is not VERIFIED. A review
+        that never ran leaves ``review_verdict`` empty, and an empty verdict is
+        not SUPPORTED — so a required review that was skipped, failed to launch
+        or was invalidated cannot leave this returning True.
         """
+        review_ok = (not self.review_required) or (
+            self.review_verdict == "SUPPORTED" and self.review_satisfied_scope
+        )
         return (
             self.run_status == "ACCEPTED"
             and self.gate_status == "VERIFIED"
             and not self.unverified
             and not self.uncovered_risks
             and not self.generation_problems
+            and review_ok
         )
 
     @property
@@ -447,6 +577,28 @@ class RunJournal:
                 "reviews": list(self.reviews),
                 "scenario": {"name": self.scenario_name, "phase": self.scenario_phase},
                 "verification_established": self.verification_established,
+            },
+            "independent_review": {
+                "required": self.review_required,
+                "required_reasons": list(self.review_required_reasons),
+                "required_sources": list(self.review_required_sources),
+                "ran_automatically": self.review_ran_automatically,
+                "verdict": self.review_verdict,
+                "confidence": self.review_confidence,
+                "reviewer_reproduced_runtime_evidence": self.review_reproduced_evidence,
+                "reviewer_session_id": self.reviewer_session_id,
+                "builder_session_id": self.builder_session_id,
+                "reviewed": {
+                    "head": self.reviewed_head,
+                    "tree": self.reviewed_tree,
+                    "identity": self.reviewed_identity,
+                },
+                "commands_the_reviewer_ran": list(self.review_commands_run),
+                "commands_the_boundary_refused": list(self.review_commands_refused),
+                "findings": list(self.review_findings),
+                "invalidated_by_later_change": list(self.review_invalidations),
+                "satisfied_the_scoped_task": self.review_satisfied_scope,
+                "blocked_on": self.review_blocked_on,
             },
         }
 
@@ -605,7 +757,17 @@ class RunJournal:
                          "no observed behaviour, so no new capability is stated here.")
 
         # 5 ------------------------------------------------------------------
-        lines += ["", "### 5. What is still NOT built", ""]
+        #
+        # The section the M3 run could not have written. It answers, in order:
+        # was a review required, did it run without you relaying anything, what
+        # did it say, and did the reviewer actually measure anything itself —
+        # which is the question that separates a review from a re-reading of
+        # this harness's own output.
+        lines += ["", "### 5. Independent review", ""]
+        lines += self._review_lines()
+
+        # 6 ------------------------------------------------------------------
+        lines += ["", "### 6. What is still NOT built", ""]
         outstanding = (
             list(self.incomplete)
             + [f"not verified — {u}" for u in self.unverified]
@@ -624,8 +786,8 @@ class RunJournal:
             "`docs/implementation/CURRENT.md` is."
         )
 
-        # 6 ------------------------------------------------------------------
-        lines += ["", "### 6. Where Neyma is in the roadmap", ""]
+        # 7 ------------------------------------------------------------------
+        lines += ["", "### 7. Where Neyma is in the roadmap", ""]
         start = self.start_identity
         lines.append(
             f"- As the repository recorded it at `{(start.head[:12] if start else '?') or '?'}` "
@@ -657,12 +819,12 @@ class RunJournal:
             "the authority on phase position, and they move without this file moving."
         )
 
-        # 7 ------------------------------------------------------------------
-        lines += ["", "### 7. The ONE exact next move", ""]
+        # 8 ------------------------------------------------------------------
+        lines += ["", "### 8. The ONE exact next move", ""]
         lines.append(f"- {self._next_move()}")
 
-        # 8 ------------------------------------------------------------------
-        lines += ["", "### 8. Founder decisions needed", ""]
+        # 9 ------------------------------------------------------------------
+        lines += ["", "### 9. Founder decisions needed", ""]
         if self.founder_decision_required:
             lines.append(f"- **{self.founder_decision_required}**")
         elif self.controls_weakened:
@@ -675,6 +837,115 @@ class RunJournal:
             "",
             "> Written to a fixed rule: " + "; ".join(self.NEVER_UPGRADE) + ".",
         ]
+        return lines
+
+    def _review_lines(self) -> list[str]:
+        """Section 5, rendered from the review record. Never a confident blank.
+
+        Four questions, answered in order, each from a field the run wrote:
+        required, ran automatically, verdict, and — the one that decides how much
+        the verdict is worth — whether the reviewer reproduced runtime evidence
+        itself or read this harness's captured output.
+        """
+        if not self.review_required:
+            return [
+                "- **Required?** No. Neither this repository's authority nor what the "
+                "builder changed called for an independent review of this task.",
+                "- Nothing below is a claim that one happened.",
+            ]
+
+        lines = ["- **Required?** Yes."]
+        lines += [f"    - {reason}" for reason in self.review_required_reasons[:4]]
+        if self.review_required_sources:
+            lines.append(f"    - read from: {', '.join(self.review_required_sources[:4])}")
+
+        if not self.review_verdict:
+            lines.append(
+                "- **Ran automatically?** No — the review was required and no reviewer "
+                "produced a verdict. **This run is not accepted on the strength of a "
+                "review that did not happen.**"
+            )
+            return lines
+
+        lines.append(
+            "- **Ran automatically?** "
+            + (
+                "Yes — the driver launched it inside the run; you relayed nothing."
+                if self.review_ran_automatically
+                else "No — the verdict below came from somewhere other than this run's own "
+                "automatic review step."
+            )
+        )
+        lines.append(f"- **Verdict:** **{self.review_verdict}** "
+                     f"(confidence {self.review_confidence:.2f})")
+        if self.reviewer_session_id or self.builder_session_id:
+            lines.append(
+                f"    - reviewer session `{self.reviewer_session_id or '(unrecorded)'}`, "
+                f"builder session `{self.builder_session_id or '(unrecorded)'}` — "
+                + (
+                    "different sessions."
+                    if self.reviewer_session_id
+                    and self.reviewer_session_id != self.builder_session_id
+                    else "check these differ before relying on the verdict."
+                )
+            )
+        if self.reviewed_identity:
+            lines.append(
+                f"    - reviewed exactly `{self.reviewed_identity}` "
+                f"(HEAD {self.reviewed_head[:12] or '?'}, tree {self.reviewed_tree[:12] or '?'})"
+            )
+
+        if self.review_reproduced_evidence:
+            lines.append(
+                f"- **Did the reviewer reproduce runtime evidence itself?** **Yes** — it ran "
+                f"{len(self.review_commands_run)} verification command(s) in its own session "
+                "rather than reading this harness's captured output."
+            )
+            for command in self.review_commands_run[:8]:
+                lines.append(f"    - `{command}`")
+            if len(self.review_commands_run) > 8:
+                lines.append(f"    - ... and {len(self.review_commands_run) - 8} more")
+        else:
+            lines.append(
+                "- **Did the reviewer reproduce runtime evidence itself?** **No.** Its "
+                "verdict rests on records Product Driver collected. That is a weaker "
+                "review: the harness's own honesty is a premise of it rather than "
+                "something it checked."
+            )
+        if self.review_commands_refused:
+            lines.append(
+                f"    - the reviewer boundary refused {len(self.review_commands_refused)} "
+                "command(s); a refusal is a limit on the review, never a defect in the "
+                "product:"
+            )
+            for refused in self.review_commands_refused[:4]:
+                lines.append(f"        - {refused}")
+
+        if self.review_findings:
+            lines.append("- Findings the reviewer recorded:")
+            lines += [f"    - {finding}" for finding in self.review_findings[:8]]
+
+        if self.review_invalidations:
+            lines.append(
+                "- A later code change retired an earlier review, so it could not be "
+                "reused:"
+            )
+            lines += [f"    - {line}" for line in self.review_invalidations[:6]]
+
+        lines.append(
+            "- **Did it satisfy what this task owed?** "
+            + (
+                "Yes — a supported review of this exact implementation."
+                if self.review_satisfied_scope
+                else "No. The requirement is still outstanding."
+            )
+        )
+        if self.review_blocked_on:
+            lines.append(f"- Blocked on: {self.review_blocked_on}")
+        lines.append(
+            "- Scope of that sentence: an independent review of this **task**. It scores "
+            "no repository criterion, moves no phase, and enables nothing."
+        )
         return lines
 
     def _next_move(self) -> str:

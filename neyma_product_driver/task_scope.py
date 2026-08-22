@@ -117,6 +117,19 @@ class TaskScope(BaseModel):
     #: accepted. Only then is phase-level acceptance evidence this run's bar.
     claims_phase_completion: bool = True
 
+    #: True only when the task text ACTUALLY asked for the phase to be completed
+    #: or accepted — never when the phase bar was applied because no unit could
+    #: be derived.
+    #:
+    #: The distinction matters because ``claims_phase_completion`` is
+    #: deliberately the strict *default*: a task naming no unit gets held to the
+    #: phase, which is right for evidence and wrong for anything that reads the
+    #: flag as a statement about intent. A run that says "do it" is not at phase
+    #: acceptance, and demanding the phase's independent review of it — a review
+    #: of thirteen units, twelve of which do not exist — is a bar nothing can
+    #: clear. This field is what phase-level review asks instead.
+    phase_completion_requested: bool = False
+
     #: The id the repository gives this unit, when it names one (a checkpoint
     #: id, say). Corroboration, never a requirement: a repository is entitled to
     #: have work in flight that its registry has not yet named.
@@ -458,6 +471,7 @@ def resolve_task_scope(
         parent_phase_state=phase_status,
         parent_phase_execution_state=phase_execution,
         claims_phase_completion=True,
+        phase_completion_requested=claims_phase,
         derivation=derivation,
         evidence_paths=evidence,
     )

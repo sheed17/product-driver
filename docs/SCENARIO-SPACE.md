@@ -268,3 +268,102 @@ the risk (the approved vocabulary cannot express it), generation itself failed, 
 cannot resolve, or a genuine product or authority decision is owed. Each closure round
 consumes one of the planner's bounded waves, so the loop is bounded by the budgets that
 already existed.
+
+## Independent review as a step in the same loop (added 2026-08-22)
+
+The P6/M3 run exposed a gap on the other side of verification. Product Driver built M3,
+generated adversarial coverage for it, executed the suite, closed a coverage gap, audited
+the completion claim — and then stopped at `AWAITING_INDEPENDENT_REVIEW` and waited for a
+human to run a separate command. That relay is now a transition inside `run_control_loop`,
+and the parts of it that were load-bearing are recorded here so the next person does not
+re-derive them.
+
+### The review is aimed at the scoped task, not the phase
+
+`resolve_review_requirement` (in `review_cycle.py`) is asked once per iteration, fresh, and
+it asks the repository about **the unit this run was asked to build**. The two narrowings
+that make that work are not obvious and both are tested:
+
+* A phase's `independent_review` acceptance criterion describes what the *phase* owes at
+  phase acceptance. A nested unit inside it inherits none of it. Reading the criterion as
+  the unit's requirement demands a review of thirteen units, twelve of which do not exist.
+* `TaskScope.claims_phase_completion` is the strict **evidence** default — a task naming no
+  unit is held to the phase's bar — and it is not a statement of intent. A new field,
+  `phase_completion_requested`, is true only when the task text actually asked for the
+  phase to be completed or accepted, and that is what the phase-level trigger reads.
+
+The repository's own protocol rule binds where the task-scope machinery says a unit is
+being built, which is the same test `CompletionAuditor._task_review_outstanding` already
+applied. `INDEPENDENT_REVIEW` remains outside `RETIRABLE_KINDS`, so no sentence anywhere
+can retire it; a self-declared historical document mentioning it still binds nothing,
+because it is not current authority.
+
+### The reviewer can execute, under the vocabulary that already existed
+
+The same gap this document opens with — *the possibility space is bounded by what the
+approved command vocabulary can express* — turns out to bound the **reviewer** too. A
+reviewer that cannot run the probe can only re-read what the harness captured, and the
+harness's honesty is then a premise of the review that exists to check it. During the M3
+review that is exactly what happened.
+
+`reviewer_boundary.py` gives the reviewer a shell on the condition that a command is
+**both** an appropriate read-only verification action **and** already allowed by Product
+Driver policy. The second half is deliberately not a new allowlist: it is
+`classify_command` plus `ApprovedCommands` — the same vocabulary a generated scenario draws
+from, harvested from the same scenario files. A reviewer can run
+`scripts/probe_phase6_external_effect.py --case forged-capability` for precisely the reason
+a generated scenario can: a human wrote that entry down, and prefix matching permits an
+argument tail while refusing shell composition.
+
+Above both gates sits a floor that applies **however a command was approved**: no git
+mutation, no file mutation, no redirection, no network, no installer, no privilege change,
+no secret path, no composition. A repository that one day writes `git commit` into a
+scenario file must not thereby hand a reviewer the ability to commit.
+
+Enforcement is a `PreToolUse` hook, not a prompt instruction, and not the permission
+callback — a whole-tool `allowed_tools` entry shadows `can_use_tool`, so adding `Bash` to
+the allow list while relying on the callback would have handed the reviewer an
+unrestricted shell.
+
+### A review is evidence about one exact tree
+
+`TreeFingerprint` is HEAD, the HEAD tree, and a digest over the working tree on top of
+them. The third component is the one that does the work: the implementation under review is
+usually uncommitted, and the first two do not move when a builder corrects something
+without committing.
+
+The digest covers `git diff HEAD` and the **names** of untracked paths, not untracked
+content. That is a deliberate line: a run writes evidence, caches and artifacts into the
+tree constantly, and hashing all of it would retire every review for reasons that have
+nothing to do with the implementation — while a new untracked path is still a change of
+state worth noticing.
+
+`ReviewLedger.invalidate_stale` runs *before* the requirement is consulted, so a review of
+an older tree can never be mistaken for an answer, and the retirement is written into the
+run evidence rather than happening silently. `CompletionAuditor` re-derives the current
+fingerprint itself rather than trusting the record it is handed.
+
+### The four owners of a stuck review
+
+The routing in `route_review` exists because `NOT_SUPPORTED` and `INSUFFICIENT_EVIDENCE`
+are not two shades of one answer, and because a run that sends the second to the builder
+asks it to change working code to fix a measurement problem. The measurement problem
+survives; the loop does not converge. `blocked_on.kind` keeps them apart:
+
+| kind | owner |
+|---|---|
+| `PRODUCT_DEFECT` | the builder — a grounded correction, then a **new** reviewer |
+| `VERIFICATION_HARNESS` | **Product Driver** — fix the driver, never manufacture a Neyma change |
+| `REVIEWER_CAPABILITY` | the approved vocabulary, or an honest admission that this cannot be reviewed automatically |
+| `REPOSITORY_AUTHORITY` | the founder |
+| `EXTERNAL_ACTION` | the founder, with the exact requested action, and nothing fabricated in its place |
+
+A reviewer that reports insufficient evidence *without having used the execution it was
+given* is asked once more with the vocabulary spelled out. Once — a second identical answer
+is the answer, and the run fails closed.
+
+### What this does not change
+
+Nothing here scores a repository criterion, writes a status file, moves a phase, or pushes
+anything. The reviewer writes nothing at all. `scenarios promote` remains the only way a
+generated case becomes permanent, and it remains a human's decision.

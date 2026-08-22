@@ -38,15 +38,19 @@ orchestrator, no service.
                     │        │     blocking risk generates and runs     │
                     │        │     the missing scenario, then re-gates  │
                     │        │                                 │
-                    │        ├─► IndependentReviewer ──────────┼──► fresh read-only session,
-                    │        │     only when the change's risk │     launched by the driver
-                    │        │     calls for it                │     when risk calls for it
+                    │        ├─► IndependentReviewer ──────────┼──► FRESH session, launched by
+                    │        │     when the scoped task's      │     the run, never the builder's.
+                    │        │     authority requires one, or  │     Cannot write/commit/push/
+                    │        │     the change's risk earns it  │     deploy/read secrets — but
+                    │        │     bound to one exact tree     │     CAN re-run this repo's own
+                    │        │                                 │     tests, probes and batteries
                     │        │                                 │
                     │        └─► ACCEPT / FIX / ASK_USER / BLOCKED
                     │                 │                        │
                     │                 └─ FIX → correction → same builder session
                     │                    (from the evaluator, the suite, or   │
                     │                     the reviewer — all automatic)       │
+                    │                    → then a NEW reviewer for the new tree│
                     │   runs/<run-id>/  evidence, state, resume│
                     └──────────────────────────────────────────┘
 ```
@@ -69,15 +73,22 @@ This is the operating philosophy, and it is short.
 
 **A run stops and asks you** for: a product or authority question the evaluator
 raised; verification that did not happen (the acceptance gate); an independent
-review that still refuses after the builder corrected it; and a
-repository repair that would rewrite history, change pushed or shared history, or
-destroy something. Push, merge and deploy remain yours, always.
+review that still refuses after the builder corrected it, or that turns on a
+decision rather than a defect; an action outside this machine that a review
+genuinely needs; and a repository repair that would rewrite history, change
+pushed or shared history, or destroy something. Push, merge and deploy remain
+yours, always.
 
 **A run does not stop** for: a commit-shape difference, a missing metadata
 commit, a receipt the repository has not regenerated, a finalizer that has not
 run, contradictory protocol prose, a registry between units, or an environmental
 oddity. Those are recorded, reported, and handed to the investigator, and the
 product loop keeps going.
+
+**And it no longer stops to be handed a reviewer.** An independent review a task
+requires is taken inside the run, its findings go back to the same builder, and
+a *new* reviewer judges the correction — see
+[Independent review, inside the run](#independent-review-inside-the-run).
 
 The distinction lives in one module,
 [`policy.py`](neyma_product_driver/policy.py), so it cannot quietly grow back
@@ -181,7 +192,7 @@ Switches for the runs that need them:
 
 ```bash
 --no-auto-scenarios   # skip generated coverage for this run
---no-auto-review      # never launch a reviewer; report that one is warranted
+--no-auto-review      # do not take the required review inside the run; report it instead
 --browser             # enable browser verification
 --resume-run <id>     # continue a previous run, its plan and its builder session
 ```
@@ -195,7 +206,8 @@ python -m neyma_product_driver status      # latest run, or: status <run-id>
 python -m neyma_product_driver evaluate    # run a scenario + judge it once, no builder
 python -m neyma_product_driver stop        # halt before the next iteration
 python -m neyma_product_driver audit      # audit completion claims (no Claude session)
-python -m neyma_product_driver review --run <id>                     # independent reviewer
+python -m neyma_product_driver review --run <id>                     # look again by hand;
+                                                                     # a run no longer needs it
 python -m neyma_product_driver feedback --run <id> --message "..."   # founder direction
 python -m neyma_product_driver promote-feedback --run <id>           # make it durable
 ```
@@ -285,8 +297,14 @@ runs unattended: it reads Neyma's authority, drives the builder, inspects the
 real diff, generates adversarial scenarios from it, operates the implementation,
 reads persisted state, evaluates what it saw, sends grounded corrections back to
 **the same builder session**, grows neighbouring scenarios around failures,
-investigates what it cannot explain, and launches an independent review because
-M3 is a high-consequence surface. You are not a relay between any of those.
+investigates what it cannot explain, and — because the repository requires one
+for this unit — launches an independent review **inside the same run**, lets that
+reviewer re-run the M3 probe, suite and mutation battery for itself, routes any
+grounded finding back to the same builder, and takes a **new** reviewer for the
+corrected tree. You are not a relay between any of those.
+
+There is no second command to run afterwards. `review` still exists for looking
+again at a finished run by hand; an ordinary run does not need it.
 
 Follow along in another terminal:
 
@@ -318,17 +336,19 @@ runs/<run-id>/FOUNDER-SUMMARY.md
 ```
 
 It opens with **PERSONAL SUMMARY — SIMPLE TERMS**: what was built, why it
-matters, what is actually proven, what Neyma can safely do now, what is still not
-built, where the roadmap stands, the one exact next move, and any decision that
-needs you. Then the detailed ten questions, then `journal.json` beside it for
-everything else.
+matters, what is actually proven, what Neyma can safely do now, **the independent
+review — required, ran automatically, verdict, and whether the reviewer
+reproduced runtime evidence itself**, what is still not built, where the roadmap
+stands, the one exact next move, and any decision that needs you. Then the
+detailed ten questions, then `journal.json` beside it for everything else.
 
 ### 7. What happens after ACCEPT
 
 **Nothing leaves this machine.** An ACCEPT means: every required scenario passed
 with resolvable evidence, every acceptance-blocking risk the run named has a
-passing scenario behind it, and the independent review (if one was warranted)
-came back supported. It does **not** mean shipped.
+passing scenario behind it, and — where the scoped task required an independent
+review — a fresh session that did not build it supported **this exact tree**. It
+does **not** mean shipped.
 
 The driver **intentionally stops before every remote and deployment action**.
 `git push`, `gh pr create`, a merge, a deploy, a package publish, a container
@@ -745,10 +765,11 @@ python -m neyma_product_driver audit --report /path/to/builder-report.md --json
 ### Implemented, awaiting review
 
 When the only outstanding criteria are ones a single session structurally cannot
-award itself, the driver launches that review **itself** — see
-[Review proportional to risk](#review-proportional-to-risk). A run ends as
-`IMPLEMENTED — THE REQUIRED INDEPENDENT REVIEW DID NOT RUN` only when review was
-switched off with `--no-auto-review` or the reviewer session failed. That is
+award itself, the run launches that review **itself**, as a step inside its own
+loop — see [Independent review, inside the run](#independent-review-inside-the-run).
+A run ends as `IMPLEMENTED — THE REQUIRED INDEPENDENT REVIEW DID NOT RUN` only
+when review was switched off with `--no-auto-review`, the reviewer session
+failed, or the review that came back was not from an independent session. That is
 neither downgraded into failure nor upgraded into completion: the implementation
 stands; the acceptance does not.
 
@@ -761,53 +782,254 @@ weakening any acceptance guard to obtain a green result, forbids
 `git stash/restore/clean/checkout --`, and leaves criteria requiring an
 independent session PENDING.
 
-### Review proportional to risk
+### Independent review, inside the run
 
-A reviewer is a **fresh** Claude session that never resumes or inherits the
-builder conversation, is read-only (`Read`/`Grep`/`Glob` only, everything else
-denied), receives repository authority and actual evidence rather than
-conversation, returns findings each citing an evidence path, and **never writes
-a status file**. An unparseable reply degrades to `INSUFFICIENT_EVIDENCE`, never
-to a pass.
+**One command does the whole thing.**
 
-What changed is **who starts it**. It used to be you, by hand, once per run,
-after reading a report and deciding it was warranted. Now the driver classifies
-what the builder actually changed and decides:
+```bash
+python -m neyma_product_driver run --task "$(cat tasks/neyma_p6_m4.md)" --scenario p6_m4
+```
 
-| the change | what happens |
+and the run itself goes:
+
+```
+scope  →  build  →  deterministic tests / probes / mutations
+       →  generated adversarial scenarios  →  acceptance gate
+       →  coverage-gap closure  →  completion audit  →  protocol checks
+       →  REQUIRED INDEPENDENT REVIEW          (fresh session, launched here)
+       →  correction to the SAME builder if the reviewer found a real defect
+       →  re-verify  →  A NEW REVIEWER for the corrected tree
+       →  repeat until accepted, genuinely blocked, external action needed,
+          or the iteration budget is spent
+       →  scoped verdict
+```
+
+You are not in that loop. You were, and it cost a full round trip per review:
+the run stopped at `AWAITING_INDEPENDENT_REVIEW`, you ran a separate `review`
+command, read the verdict, decided whether to send it back, and started the
+driver again. Every one of those steps is now a transition inside the loop.
+
+**What still stops and asks you** is unchanged, and is listed under
+[what still requires you](#what-still-requires-you).
+
+#### When a review is required
+
+Asked of the repository, about **the scoped task** — never inferred from the
+phase around it. Four independent triggers, each recorded with the evidence it
+came from:
+
+| trigger | fires when |
+|---|---|
+| `REPOSITORY_AUTHORITY` | the repository's protocol states an active independent-review rule **and** this run is building a nested unit that rule governs |
+| `PHASE_ACCEPTANCE_CRITERION` | the task *actually asked* for the phase to be completed or accepted, and the phase's contract carries a criterion only an independent session may award |
+| `CHANGE_RISK` | the diff touches a high-consequence surface (always), or is large and the run needed more than one pass |
+| `COMPLETION_AUDIT` | the auditor found a claim only a session other than the implementing one can support |
+
+Two narrowings do real work here, and both are tested:
+
+* **A phase's review criterion does not bind a unit inside the phase.** P6 lists
+  an `independent_review` criterion because *P6* needs one at phase acceptance.
+  M3 is not P6. Reading the criterion as M3's requirement demands a review of
+  thirteen units, twelve of which have not been written.
+* **A run that merely failed to name a unit is not at phase acceptance.**
+  `claims_phase_completion` is the strict *evidence* default — a task naming no
+  unit is held to the phase's bar — and it is not a statement of intent.
+  `phase_completion_requested` is the one that says the task actually asked.
+
+A repository that states no review rule is not given one it never asked for, and
+a *historical* document mentioning review resurrects nothing: `INDEPENDENT_REVIEW`
+is unretirable by construction, but a self-declared record of a past state is
+still not current authority.
+
+The `CHANGE_RISK` trigger is the one that fires where the repository states no
+rule at all, and it reads the **diff**, not what the task said it would do — a
+change described as a UI tweak that moved an authorization check is a
+high-consequence change:
+
+| the change | what it earns |
 |---|---|
 | **ordinary** — an edit, a refactor, a test, a fix | no review |
-| **meaningful** — large, and the run needed more than one pass or has an uncovered risk | one review |
+| **meaningful** — large, and the run needed more than one pass or is carrying an uncovered risk | one review |
 | **high consequence** — effect execution, payment or banking, approval authority, authentication, authorization, tenant isolation, secrets, destructive database operations, write-capable external integrations, outbound communication, claims/legal/compliance behaviour, or a weakened runtime safety invariant | one focused review, always |
 
-Classification is derived from the **diff**, not from what the task said it would
-do: a change described as a UI tweak that moved an authorization check is a
-high-consequence change. The bias is one-directional — an uncertain change earns
-a review rather than skipping one, because a false positive costs one bounded
-read-only session and a false negative ships an unreviewed change to one of
-those surfaces.
+The bias is one-directional: an uncertain change earns a review rather than
+skipping one, because a false positive costs one bounded session and a false
+negative ships an unreviewed change to one of those surfaces.
 
-A reviewer that returns findings **does not end the run**. Its findings become a
-grounded correction for the *same* builder — each already carries the evidence
-path and reasoning the prompt-quality contract requires — and the loop retests. A
-refusal that survives correction (`review.max_automatic_reviews`, default 1)
-becomes a founder question, because at that point the reviewer is describing a
-decision rather than a defect.
+#### The review is focused, and it is fresh
 
-The review is focused: the prompt names which surface triggered it, what the
-scenario suite already demonstrated, which files moved, and — for a run scoped
-to one unit inside a phase — what that unit owes, so the reviewer does not
-withhold support because the phase around it is unfinished. It is supposed to
-be. One pass is spent on the question that earned it.
+The prompt names why the review was triggered, the exact repository state under
+review, which high-consequence surface it was called for, which files moved,
+what the scenario suite already demonstrated (as measurement to verify, never as
+a conclusion to accept), and — for a run scoped to one unit inside a phase —
+what *that unit* owes, so the reviewer does not withhold support because the
+phase around it is unfinished. It is supposed to be.
 
-You can still run one by hand at any time:
+The session itself is fresh by construction: `resume=None`,
+`continue_conversation=False`, `fork_session=False`, `setting_sources=[]`. It
+never inherits the builder conversation or the builder's project hooks and
+subagent lenses. An unparseable reply degrades to `INSUFFICIENT_EVIDENCE`, never
+to a pass, and a review carrying the builder's session id satisfies nothing.
+
+When a correction cycle brings a second reviewer, it is told what the first
+alleged — and told plainly that it was not there and is not bound by it — so the
+ground is not lost and not re-asserted.
+
+#### The reviewer can now verify, not just read
+
+This is the M3 lesson. A reviewer with no shell can only adjudicate the receipts
+this harness collected — so the harness's own honesty becomes an unexamined
+premise of the review that exists to examine it. During the M3 review the
+reviewer could not execute the probe, the suite or the mutation battery, and
+part of its support rested on Product Driver's captured output.
+
+The reviewer now gets a shell. A command runs only when it is **both**:
+
+1. **an appropriate read-only verification action**, and
+2. **already allowed by Product Driver policy.**
+
+Neither half is sufficient. (1) alone would let a reviewer run any read-only
+thing the guard has never heard of; (2) alone would let it do everything the
+*builder* may do, which is the whole point of the reviewer not being the builder.
+
+There is no second security model. Half (2) is
+[`classify_command`](neyma_product_driver/command_guard.py) — the same hard-block
+classifier the builder, the scenario executor and the generated-scenario
+validator all pass through — plus
+[`ApprovedCommands`](neyma_product_driver/scenario_validation.py), the
+human-authored vocabulary harvested from the repository's own scenario files. A
+reviewer may run this repository's probe *because a human wrote that probe into
+a scenario*, not because anything here has an opinion about probes.
+
+| the reviewer may | the reviewer may never |
+|---|---|
+| `git diff` / `show` / `log` / `status` / `rev-parse` / `ls-files` / `cat-file` / `blame` | write, create, edit, move or delete any file |
+| `grep`, `rg`, `ls`, `find`, `cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `jq` | commit, push, merge, rebase, reset, checkout, stash — any git state change |
+| `pytest` / `python -m pytest`, targeted or whole | deploy, publish, or reach a network at all |
+| every deterministic probe, battery and state check this repository declares in a scenario file | send mail / Slack / SMS, or cause any external-world effect |
+| | read a secret, credential, key or token |
+| | install software of any kind |
+| | compose with `;` `\|` `&` `>` `<` `$(…)` or backticks |
+
+The last row is why the head of a command is not the command: `git status; git
+push` has an allowed head. Composition outside quotes is refused so that *what
+ran is what was judged*.
+
+**Enforced, not requested.** The boundary is a `PreToolUse` hook, the same shape
+the builder uses. That is not stylistic: a whole-tool `allowed_tools` entry
+*shadows* `can_use_tool`, so adding `Bash` to the allow list while relying on the
+permission callback would have handed the reviewer an unrestricted shell. The
+hook fires whatever pre-approved the tool. Every decision — allowed or refused —
+is recorded in the run evidence, and **a refused command is a limit on the
+review, never a defect in the product**.
+
+`review.reviewer_can_execute: false` turns execution off. It is a deliberate
+downgrade, not a safety measure: the review still runs and reports
+`evidence_reproduced: false`, so the founder summary says which kind of review it
+was. It widens nothing.
+
+#### Claimed evidence is checked against the boundary
+
+`evidence_reproduced` is the reviewer's claim. The authoritative record is the
+boundary's, and the two are reconciled on the way out: a reviewer that answers
+`true` having run nothing is corrected **downward** to `false`. Nothing is ever
+corrected upward — a reviewer that says it ran nothing is believed.
+
+The founder summary therefore distinguishes:
+
+```
+reviewer-reproduced (7 verification command(s) executed by the reviewer itself)
+corroborated from Product Driver's captured records; not reviewer-reproduced
+```
+
+#### A review is evidence about one exact tree
+
+`SUPPORTED` is only ever true of the tree the reviewer read. So every review is
+bound to a **fingerprint**: HEAD, the HEAD tree, and a digest over the working
+tree on top of them — because the implementation under review is very often
+uncommitted, and the first two do not move when a builder corrects something
+without committing.
+
+Before the requirement is consulted, every review that no longer matches the
+current fingerprint is **retired**, and the retirement is written into the run
+evidence. A review satisfies the requirement only for its own fingerprint. The
+failure mode this makes structurally impossible:
+
+```
+reviewer finds issue → builder changes code → old review reused → ACCEPT
+```
+
+There is no path from "supported earlier" to "supported now". The completion
+auditor re-derives the current fingerprint itself rather than trusting the one it
+is handed, so a caller cannot clear a review requirement by passing a review of
+an earlier tree either.
+
+Independence is checked the same way: a review whose session id is the builder's
+satisfies nothing, whatever its verdict.
+
+#### Where each verdict goes
+
+`NOT_SUPPORTED` and `INSUFFICIENT_EVIDENCE` are not two shades of one answer. The
+first says the product is wrong; the second says the review could not tell.
+Sending the second back to the builder asks it to change working code to fix a
+*measurement* problem — the measurement problem survives, and the loop runs until
+its budget is gone. So they are routed apart:
+
+| the reviewer said | where it goes |
+|---|---|
+| `SUPPORTED` | the scoped requirement is satisfied; the loop continues toward acceptance, and the completion audit is re-asked so the scoped task result moves from `AWAITING_INDEPENDENT_REVIEW` to `VERIFIED` |
+| `NOT_SUPPORTED` with findings that cite evidence | a grounded correction to the **same builder**, then re-verification, then a **new** reviewer for the new tree |
+| `NOT_SUPPORTED` with nothing citable | you. A refusal a builder cannot act on is a disagreement, not a defect |
+| a refusal that survives the correction budget | you. At that point the reviewer is describing a decision |
+| `INSUFFICIENT_EVIDENCE`, capability unused | asked once more, with the vocabulary spelled out. Once — a second identical answer is the answer |
+| `INSUFFICIENT_EVIDENCE`, `blocked_on: VERIFICATION_HARNESS` | **BLOCKED**, naming Product Driver's own verification gap as the owner. Fix the driver, not the product |
+| `INSUFFICIENT_EVIDENCE`, `blocked_on: REVIEWER_CAPABILITY` | **BLOCKED**, naming the exact command that would have settled it |
+| `blocked_on: REPOSITORY_AUTHORITY` | you. Two authoritative sources disagree, or none answers the question |
+| `blocked_on: EXTERNAL_ACTION` | you, with the exact requested action. **Nothing is fabricated in its place** |
+
+`blocked_on.kind` is what keeps the five owners apart — product defect,
+verification-harness limitation, reviewer-capability limitation,
+repository-authority ambiguity, external action. Collapsing them is what turns
+"the harness cannot measure this" into an endless series of product corrections
+that fix nothing.
+
+#### What review still never does
+
+It scores no repository criterion, writes no status file, moves no phase, and
+enables nothing. Accepting a reviewed **task** leaves its parent phase exactly
+where the repository records it — see
+[Task scope, and the phase it does not complete](#task-scope-and-the-phase-it-does-not-complete).
+
+#### The manual command, still there
 
 ```bash
 python -m neyma_product_driver review --run <run-id>
 ```
 
-The driver does not launch it automatically — it pauses and reports, because the
-transition from implementer to independent reviewer is yours to authorize.
+Still useful for looking again at a finished run with a reviewer that never saw
+it. It launches the same session with the same execution boundary, so an ad-hoc
+review is not a weaker one. It is **no longer required to finish an ordinary
+run**.
+
+### What still requires you
+
+Deliberately, and unchanged:
+
+* **push, and any remote publication.** The driver control process performs no
+  remote action, and the command guard refuses one from every session it starts.
+* **production or live-effect enablement.** Local behaviour observed in this
+  repository is never a production enablement.
+* **genuine product-authority decisions** — a question the repository's own
+  documents do not answer, or two of them answering differently.
+* **external credentials, partner data, and third-party evidence.**
+* **a repository repair that would rewrite history, touch a remote, or destroy
+  something** (`REQUIRES_APPROVAL`).
+* **CI that can only run after a push.** If a repository contract genuinely
+  requires it, the run reports that exact external boundary. It does not push to
+  reach it and it does not fabricate the receipt on the other side of it.
+
+**An independent review that can be completed locally is no longer one of
+these.**
 
 ## The protocol resolver
 
@@ -1124,14 +1346,21 @@ boundary where consequences leave this machine.
 
 ### Who may do what
 
-Four different actors get confused constantly, so they are named separately.
+Five different actors get confused constantly, so they are named separately.
 
 | | may do | may never do |
 |---|---|---|
 | **A. Driver control process** (this repo's Python) | read the repo, start local services, drive a browser, write run artifacts, create preservation refs and bundles | commit, push, merge, tag, deploy, publish, or execute a history rewrite — it runs no mutating git command against the target repo at all |
 | **B. Builder Claude session** | create/edit/rename/delete ordinary files, refactor broadly, add and modify tests, run pytest/linters/scripts/local services, use local test databases, inspect git, `git add`, **create local commits**, run repository-authorized finalizers, research public docs | push, force-push, mutate a remote, rewrite history without a preservation-backed authorization, read secrets, cause external/production/customer effects, install system-wide, change machine security, write outside the approved roots |
+| **B′. Independent reviewer session** | read any non-secret file, grep, inspect the diff/tree/history, **re-run this repository's declared tests, probes and mutation batteries**, and the read-only verification vocabulary | *everything in B's "may do" column that changes anything*: write, create, edit, move or delete a file, `git add`, commit, checkout, restore, stash, push, merge, rebase, deploy, install, reach a network, read a secret, or compose shell |
 | **C. Target-repository authority** | Neyma's own `CLAUDE.md`, settings, hooks, skills and subagents are loaded via `setting_sources` and are **authoritative** over the driver's own allowances | — |
 | **D. Hard external boundaries** | — | never crossed by anything, regardless of task, config or repository authority |
+
+**B′ is strictly narrower than B, deliberately.** A reviewer that could do what
+the builder can do is not an independent check on the builder; it is a second
+builder. See
+[Independent review, inside the run](#independent-review-inside-the-run) for the
+two gates a reviewer command has to pass and why neither alone is enough.
 
 `allow_auto_commit` and `allow_auto_push` are rejected by config validation.
 They govern **A**, the control process. They say nothing about **B**: the
@@ -1140,9 +1369,11 @@ requires one, and the permission tests prove it can.
 
 ### Enforcement layers, honestly
 
-There is **no `can_use_tool` callback**. A whole-tool `allowed_tools` entry
-would shadow it, and unattended it could only ever be a place for the run to
-hang. Enforcement is:
+The builder session has **no `can_use_tool` callback**. A whole-tool
+`allowed_tools` entry would shadow it, and unattended it could only ever be a
+place for the run to hang. The reviewer session keeps one as a catch-all for
+tools outside its allow list, and relies on the same `PreToolUse` hook for
+everything inside it — for exactly the shadowing reason. Enforcement is:
 
 1. **`allowed_tools`** — the auto-approved working set, so ordinary work never
    pauses for an approval nobody is there to give.
@@ -1300,22 +1531,38 @@ part worth reading in the two minutes after a run ends:
 2. Why this matters for Neyma
 3. What is actually proven true
 4. What Neyma can safely do now that it could not before
-5. What is still NOT built
-6. Where Neyma is in the roadmap
-7. The ONE exact next move
-8. Founder decisions needed
+5. Independent review
+       - required?
+       - ran automatically?
+       - verdict?
+       - did the reviewer reproduce runtime evidence itself?
+6. What is still NOT built
+7. Where Neyma is in the roadmap
+8. The ONE exact next move
+9. Founder decisions needed
 ```
+
+Section 5 is the one the M3 run could not have written. Its fourth question is
+the one that decides how much the verdict is worth: a reviewer that re-ran the
+probe, the suite and the battery has checked something, and a reviewer that read
+this harness's captured output has taken the harness's honesty as a premise. The
+section says which, names the reviewer's session id beside the builder's, prints
+the exact tree that was reviewed, lists the commands the reviewer ran and the
+ones the boundary refused, and — when a later change retired a review that had
+already said yes — says that too.
 
 Every clause is rendered deterministically from records the run already
 produced — the acceptance gate's verdict, the evaluator's observations, the file
-and commit record, the repository's own unit registry. Nothing in it is composed
-by a model at the end of a run, which is what makes the next paragraph
-enforceable rather than aspirational.
+and commit record, the review ledger, the repository's own unit registry. Nothing
+in it is composed by a model at the end of a run, which is what makes the next
+paragraph enforceable rather than aspirational.
 
 **Five upgrades it cannot make.** A run may state that something is *proven*
 only when the run reached ACCEPTED, the deterministic gate returned VERIFIED, no
 required scenario is unverified, no acceptance-blocking risk the run named is
-uncovered, and generation produced the coverage it committed to. Below that bar,
+uncovered, generation produced the coverage it committed to, and — where an
+independent review was required — one actually happened, supported the change,
+and was not retired by a later change to it. Below that bar,
 section 3 says nothing is established and section 4 says *nothing new* — however
 confident the builder was. Specifically, and tested in
 [`tests/test_m3_readiness.py`](tests/test_m3_readiness.py):
@@ -1327,6 +1574,7 @@ confident the builder was. Specifically, and tested in
 | tests passing | → a product proof |
 | dark code | → a live feature |
 | an incomplete gate | → complete work |
+| a review of an earlier tree | → a review of this one |
 
 A builder's own summary still appears — labelled as a claim, and never restated
 as a finding. And even a fully verified run says, in section 4, exactly what the
@@ -1361,9 +1609,16 @@ leads with the only two questions that decide what happens next:
   scenarios:                     9 passed, 0 failed, 0 not executed
   tests run by the builder:      4 test command(s)
   unresolved material findings:  0
+  independent review:            required — SUPPORTED, satisfies this task
+                                 (reviewer-reproduced runtime evidence)
   local commit:                  a1b2c3d show the accountable owner on the load list
   founder action required:       push / merge
 ```
+
+The review line is never reassuring by omission: a task that owed a review and
+did not get one reads `REQUIRED — and no reviewer produced a verdict` in exactly
+the same place, and nothing that owes a review and lacks one is ever reported as
+shippable.
 
 Then, in order: what Neyma can do now that it could not before, what workflow was
 exercised, how many scenarios ran, what failed, what the builder fixed, what
@@ -1389,6 +1644,16 @@ end-to-end smoke test (`tests/test_smoke_e2e.py`) uses a fake builder, starts a
 real local HTTP app, opens it with a real Chromium, captures screenshots and a
 trace, produces a deterministic FIX, applies a fake correction, reruns, and ends
 in ACCEPT.
+
+`tests/test_integrated_review.py` holds the review proofs: a task owing no review
+still behaves as it did; a task owing one gets it without a founder relay; the
+reviewer is never the builder's session; it can re-run this repository's
+deterministic batteries and cannot write, `git add`, commit, push, merge, deploy,
+install, reach a network, read a secret or compose shell — by any route; a review
+of an older tree can never satisfy a newer one; a grounded refusal reaches the
+same builder and a *new* reviewer judges the correction; an unresolvable review
+fails closed and sends the builder nothing; an external action is reported rather
+than performed; and accepting a reviewed task still moves no phase.
 
 `tests/test_autonomy_boundaries.py` holds the permission and safety proofs:
 ordinary file work, broad refactors, pytest and repository scripts, local
@@ -1438,6 +1703,27 @@ emptied so a repository secret cannot leak into a run.
   see what the code does.
 - One automatic reviewer, sequentially. There is no panel and no second opinion
   on the reviewer itself.
+- A repository's independent-review rule is applied to every nested unit it
+  governs, not only to the units its sentence is really about. "A change that
+  touches an effect boundary needs one focused review" is honoured as *this unit
+  needs one*, because evaluating the condition would mean interpreting prose
+  against a diff. The bias is one-directional — an extra bounded review costs one
+  session; a skipped one ships an unreviewed effect boundary — but it does mean a
+  repository stating any review rule reviews every unit it builds.
+- The reviewer's verification power is exactly the approved scenario vocabulary
+  plus a fixed read-only set. A repository whose verification lives somewhere no
+  scenario file names it — a Makefile target, a CI-only step — cannot be
+  reproduced by a reviewer, and the honest answer there is
+  `blocked_on: REVIEWER_CAPABILITY` naming the command, which fails the run
+  closed. Widening it is a human writing the command down.
+- `evidence_reproduced` is checked against *whether* the boundary let a command
+  through, not against what the command showed. A reviewer that runs `git status`
+  and then reasons badly is recorded as having reproduced evidence.
+- The working-tree half of a review fingerprint hashes the tracked diff plus the
+  contents of untracked files, under a per-file (2 MB) and total (64 MB) budget.
+  A file past those budgets contributes its path and size instead of its bytes,
+  so a change *inside* a very large untracked file that leaves its size identical
+  would not retire a review.
 - The driver control process never executes a git-history rewrite. The
   `approve` flow hands the plan back as commands, or as a prompt for a fresh
   builder session. A *builder* amendment is possible only through the

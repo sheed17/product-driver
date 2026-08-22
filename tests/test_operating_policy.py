@@ -849,7 +849,7 @@ class TestThePlainTermsSummaryIsGrounded:
 
         assert "Nothing is established as proven by this run." in summary
         assert "**Nothing new.**" in summary
-        assert "### 7. The ONE exact next move" in summary
+        assert "### 8. The ONE exact next move" in summary
 
     async def test_the_gate_verdict_reaches_the_machine_readable_journal_too(self, loop_bits):
         await self._summary(loop_bits, passing=False)

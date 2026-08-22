@@ -281,6 +281,36 @@ class ReviewPolicyConfig(BaseModel):
     #: Model for the reviewer session. Empty means "the evaluator's model".
     model: str = ""
 
+    #: Whether the reviewer may execute deterministic verification itself.
+    #:
+    #: On by default, and the difference is not cosmetic. A reviewer with no
+    #: shell can only adjudicate the receipts this harness collected, so the
+    #: harness's own honesty becomes an unexamined premise of the review that
+    #: exists to examine it. Switching this off is a deliberate downgrade: the
+    #: review still runs, and it reports ``evidence_reproduced: false`` so the
+    #: founder summary says which kind of review it was.
+    #:
+    #: What it does NOT do is widen the reviewer. See
+    #: :mod:`~neyma_product_driver.reviewer_boundary`: a command must be both a
+    #: read-only verification action AND already allowed by Product Driver
+    #: policy, and file writes, commits, pushes, deploys, network calls, secret
+    #: reads and installs are refused whatever this is set to.
+    reviewer_can_execute: bool = True
+    #: How many commands one reviewer may run. A review that needs more than
+    #: this is describing a verification gap, not performing a verification.
+    reviewer_max_commands: int = 40
+    #: Extra command *heads* this repository's reviewers may treat as read-only
+    #: verification, beyond the built-in set. Written by a human, like the
+    #: scenario approved-command list — never inferred, never generated.
+    reviewer_extra_read_only: list[str] = Field(default_factory=list)
+
+    @field_validator("reviewer_max_commands")
+    @classmethod
+    def _bounded_commands(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("reviewer_max_commands must be >= 0")
+        return v
+
     @field_validator("max_automatic_reviews")
     @classmethod
     def _bounded_reviews(cls, v: int) -> int:

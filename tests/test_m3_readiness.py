@@ -650,10 +650,11 @@ class TestTheSummaryCannotUpgradeEvidence:
             "### 2. Why this matters for Neyma",
             "### 3. What is actually proven true",
             "### 4. What Neyma can safely do now that it could not before",
-            "### 5. What is still NOT built",
-            "### 6. Where Neyma is in the roadmap",
-            "### 7. The ONE exact next move",
-            "### 8. Founder decisions needed",
+            "### 5. Independent review",
+            "### 6. What is still NOT built",
+            "### 7. Where Neyma is in the roadmap",
+            "### 8. The ONE exact next move",
+            "### 9. Founder decisions needed",
         ):
             assert heading in summary, heading
         # It leads. A plain-terms answer under a page of git mechanics is not one.
@@ -665,13 +666,13 @@ class TestTheSummaryCannotUpgradeEvidence:
             _journal(run_status="BLOCKED", gate=_Gate("NOT_VERIFIED")),
             _journal(run_status="REQUIRES_APPROVAL", gate=_Gate("NOT_VERIFIED")),
         ):
-            block = journal.personal_summary().split("### 7. The ONE exact next move")[1]
-            block = block.split("### 8.")[0].strip()
+            block = journal.personal_summary().split("### 8. The ONE exact next move")[1]
+            block = block.split("### 9.")[0].strip()
             assert block.count("\n- ") == 0 and block.startswith("- "), block
 
     def test_no_founder_decision_says_none(self):
         journal = _journal(run_status="ACCEPTED", gate=_Gate("VERIFIED", passed=1, total=1))
-        block = journal.personal_summary().split("### 8. Founder decisions needed")[1]
+        block = journal.personal_summary().split("### 9. Founder decisions needed")[1]
         assert block.strip().startswith("- None.")
 
     def test_a_recorded_decision_is_not_swallowed(self):

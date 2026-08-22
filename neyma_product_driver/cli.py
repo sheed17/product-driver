@@ -63,6 +63,17 @@ from .models import (
 )
 from .protocol_resolver import ProtocolResolver, ProtocolStatus, approve_option
 from .remediation_planner import ApprovalStore, remediation_builder_prompt
+from .review_cycle import (
+    BlockerKind,
+    ReviewLedger,
+    ReviewRoute,
+    ReviewTrigger,
+    capture_fingerprint,
+    correction_lines,
+    resolve_review_requirement,
+    route_review,
+)
+from .reviewer_boundary import ReviewerCommandPolicy
 from .prompts import (
     builder_correction_prompt,
     builder_task_prompt,
@@ -220,6 +231,15 @@ class LoopResult:
     risk: Any = None
     #: Independent reviews this run launched on its own, in order.
     reviews: list[Any] = field(default_factory=list)
+    #: Whether this run's scoped task owed an independent review, and on whose
+    #: authority. See :mod:`~neyma_product_driver.review_cycle`.
+    review_requirement: Any = None
+    #: Every review, bound to the exact repository state it was performed
+    #: against, plus the record of which ones a later change retired.
+    review_ledger: Any = None
+    #: The review that actually satisfied the scoped task's requirement, if one
+    #: did. Never a review of a different tree — that is the ledger's job.
+    satisfying_review: Any = None
     #: Repository-protocol findings that were recorded rather than enforced,
     #: because clearing them needed no founder authority.
     protocol_diagnostics: list[str] = field(default_factory=list)
@@ -305,6 +325,13 @@ async def run_control_loop(
     last_risk: dict[str, Any] = {"value": None}
     reviews: list[Any] = []
     protocol_diagnostics: list[str] = []
+    # Every review this run takes, bound to the exact tree it was taken against.
+    # A correction changes the tree, the ledger retires the review that no longer
+    # describes it, and the next round has to take a new one. There is no path
+    # from "supported earlier" to "supported now".
+    review_ledger = ReviewLedger()
+    last_requirement: dict[str, Any] = {"value": None}
+    satisfying: dict[str, Any] = {"value": None}
     # Watched from before the first builder turn, so "what did this run change"
     # is answerable. An edit that removes or softens a mandatory control makes
     # the change high-consequence whatever else it did, and that is the one
@@ -339,6 +366,9 @@ async def run_control_loop(
             gate=last_gate["value"],
             risk=last_risk["value"],
             reviews=list(reviews),
+            review_requirement=last_requirement["value"],
+            review_ledger=review_ledger,
+            satisfying_review=satisfying["value"],
             protocol_diagnostics=list(protocol_diagnostics),
             authority_report=authority_watcher.report(),
         )
@@ -907,84 +937,83 @@ async def run_control_loop(
                     confidence=audit.confidence,
                 )
 
-        # 6d. proportional independent review — launched by the driver, not by
-        #     the founder. An ACCEPT on a change that touches a high-consequence
-        #     product surface earns one focused read-only review before it
-        #     stands. A reviewer that finds something does not end the run: its
-        #     findings go straight back to this same builder as a grounded
-        #     correction and the loop retests, which is the relay the founder was
-        #     performing by hand. Only a refusal that survives the correction
-        #     budget becomes a founder question, because at that point the
-        #     reviewer is describing a decision rather than a defect.
-        if decision.decision is Decision.ACCEPT and risk is not None:
-            uncovered = len(getattr(last_gate["value"], "uncovered_risks", []) or [])
-            wants_review = risk.warrants_independent_review(
-                iterations=iteration, uncovered_risks=uncovered
-            ) or (
-                audit is not None
-                and audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
+        # 6d. THE REQUIRED INDEPENDENT REVIEW, as a transition inside this loop.
+        #
+        #     This is the step the founder used to perform by hand: read the run
+        #     output, decide a review was owed, start a separate command, read
+        #     the verdict, decide whether to send it back, and start the driver
+        #     again. Every part of that is here now — including the part that
+        #     makes it safe, which is that a review is evidence about ONE exact
+        #     repository state and stops applying the moment the builder changes
+        #     it. See :mod:`~neyma_product_driver.review_cycle`.
+        #
+        #     What is still not here: scoring a repository criterion, writing a
+        #     status file, pushing, or deciding a product question. Those remain
+        #     the repository's and the founder's.
+        if decision.decision is Decision.ACCEPT:
+            step = await _independent_review_step(
+                config=config,
+                store=store,
+                state=state,
+                record=record,
+                iteration=iteration,
+                decision=decision,
+                scenario=scenario,
+                task_scope=task_scope,
+                unit=active_unit,
+                repo_context=repo_context,
+                audit=audit,
+                risk=risk,
+                gate=last_gate["value"],
+                suite_result=suite_result,
+                diff_files=diff_files,
+                ledger=review_ledger,
+                reviewer_factory=reviewer_factory,
+                builder_session_id=builder.session_id or "",
+                emit=emit,
             )
-            if wants_review:
-                emit(f"→ independent review ({risk.brief()})...")
-                review = (
-                    await _run_independent_review(
-                        reviewer_factory=reviewer_factory,
-                        unit=active_unit,
-                        audit=audit,
-                        repository_context=(
-                            repo_context.render() if repo_context is not None else ""
-                        ),
-                        task=state.task,
-                        risk=risk,
-                        changed_files=diff_files,
-                        suite_result=suite_result,
-                        builder_report=record.builder_summary,
-                        evidence_dir=str(store.iteration_dir(iteration)),
-                        emit=emit,
-                    )
-                    if reviewer_factory is not None
-                    else None
+            last_requirement["value"] = step.requirement
+            record.review_requirement = (
+                step.requirement.to_dict() if step.requirement is not None else None
+            )
+            record.notes.extend(step.notes)
+            reviews.extend(step.new_reviews)
+            if step.satisfied_by is not None:
+                satisfying["value"] = step.satisfied_by
+            decision = step.decision
+            if step.terminal is not None:
+                return _terminate(step.terminal, decision, record)
+
+            # A supported review changes what the completion audit is looking
+            # at: the one thing it said was outstanding has now happened. Re-ask
+            # it, so the scoped completion record this run carries out says
+            # VERIFIED rather than AWAITING INDEPENDENT REVIEW. The re-ask goes
+            # through the same auditor with the same inputs plus the review, and
+            # the auditor checks the review against the CURRENT tree itself —
+            # so this can only ever confirm, never assert.
+            if step.satisfied_by is not None and auditor is not None:
+                audit = auditor.audit(
+                    record.builder_summary,
+                    unit=(repo_loader.resolve_active_unit_optional() if repo_loader else active_unit),
+                    run_commands=all_commands,
+                    evidence_dir=str(store.iteration_dir(iteration)),
+                    scope=task_scope.model_copy(
+                        update={
+                            "parent_phase_state": getattr(active_unit, "status", "") or "",
+                            "parent_phase_execution_state": getattr(
+                                active_unit, "execution_state", ""
+                            )
+                            or "",
+                        }
+                    ),
+                    satisfying_review=step.satisfied_by,
                 )
-                if review is None:
-                    # A review that was required and did not happen is never an
-                    # ACCEPT. Say so and leave the documented manual route open.
-                    emit("  the required independent review did not produce a verdict.")
-                    record.notes.append(
-                        "independent review was required for this change and did not run"
-                    )
-                    return _terminate(RunStatus.NEEDS_INDEPENDENT_REVIEW, decision, record)
-
-                reviews.append(review)
-                record.independent_review = review.model_dump(mode="json")
-                store.save_independent_review(iteration, record.independent_review)
-                emit(f"  review verdict: {review.verdict} ({len(review.blockers)} blocker(s))")
-
-                refusals = [r for r in reviews if r.verdict != "SUPPORTED"]
-                if review.verdict != "SUPPORTED":
-                    if len(refusals) > max(0, config.review.max_automatic_reviews):
-                        emit("  the reviewer still refuses after correction; this is yours.")
-                        return _terminate(
-                            RunStatus.NEEDS_USER,
-                            EvaluatorDecision(
-                                decision=Decision.ASK_USER,
-                                summary=(
-                                    "Independent review refused this change again after the "
-                                    "builder corrected it. That is a product or authority "
-                                    "decision, not a defect the builder can be sent back to fix."
-                                ),
-                                problems=[
-                                    f"[{f.severity}] {f.finding}"
-                                    for r in refusals
-                                    for f in r.blockers
-                                ][:12]
-                                or [review.summary[:200]],
-                                observed_behavior=decision.observed_behavior,
-                                evidence_paths=decision.evidence_paths,
-                                confidence=0.8,
-                            ),
-                            record,
-                        )
-                    decision = _review_correction(review, decision, scenario.name, risk)
+                last_audit["value"] = audit
+                record.completion_audit = audit.model_dump(mode="json")
+                if audit.completion is not None:
+                    record.scoped_completion = audit.completion.model_dump(mode="json")
+                store.save_completion_audit(iteration, record.completion_audit)
+                emit(f"  after review: {audit.headline}")
 
         record.decision = decision
         _print_decision(decision, emit)
@@ -1602,6 +1631,405 @@ def _suite_correction(suite_result: SuiteResult) -> str:
     return "\n".join(lines)
 
 
+@dataclass
+class ReviewStepResult:
+    """What the review transition did to the run, and what it left behind."""
+
+    decision: EvaluatorDecision
+    #: Set when the run must stop here. ``None`` means the loop continues.
+    terminal: RunStatus | None = None
+    #: The review that actually discharged the requirement, if one did.
+    satisfied_by: Any = None
+    requirement: Any = None
+    new_reviews: list[Any] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def _reviewer_command_policy(config: DriverConfig, base: Scenario) -> Any:
+    """The commands one reviewer may run, assembled from human-authored sources.
+
+    The approved set is the repository's own scenario vocabulary — the probes,
+    batteries and suites a human wrote into a scenario file — so a reviewer can
+    re-run this repository's verification without anyone authoring a second
+    allowlist. See :mod:`~neyma_product_driver.reviewer_boundary` for what sits
+    above it.
+    """
+    if not config.review.reviewer_can_execute:
+        return None
+    return ReviewerCommandPolicy(
+        approved=_approved_commands(config, base),
+        max_commands=config.review.reviewer_max_commands,
+        extra_read_only=config.review.reviewer_extra_read_only,
+    )
+
+
+async def _independent_review_step(
+    *,
+    config: DriverConfig,
+    store: EvidenceStore,
+    state: RunState,
+    record: IterationRecord,
+    iteration: int,
+    decision: EvaluatorDecision,
+    scenario: Scenario,
+    task_scope: Any,
+    unit: Any,
+    repo_context: Any,
+    audit: Any,
+    risk: Any,
+    gate: Any,
+    suite_result: Any,
+    diff_files: Sequence[str],
+    ledger: Any,
+    reviewer_factory: Any,
+    builder_session_id: str,
+    emit: Callable[[str], None],
+) -> ReviewStepResult:
+    """Run the required independent review, and route what it says.
+
+    Called with an ACCEPT in hand. Returns the decision the loop should carry
+    forward — the same ACCEPT when the requirement is satisfied or there was
+    none, a grounded FIX when the reviewer found a real defect, or a terminal
+    status when the answer belongs to the founder or to nobody at all.
+
+    The order matters and is the same every time:
+
+    1. capture the exact repository state, and retire every review that no
+       longer describes it;
+    2. ask the repository, fresh, whether this *scoped task* owes a review;
+    3. if one is owed and no surviving review covers this state, take one;
+    4. route the verdict to whoever owns it.
+
+    Step 1 before step 2 is what makes the loop honest. Ask the requirement
+    first and a review of the previous tree is sitting there looking like an
+    answer.
+    """
+    requirement = None
+    fingerprint = capture_fingerprint(config.neyma_repo)
+
+    # 1. Retire what the last correction invalidated. Recorded out loud: a
+    #    review that stopped applying is a fact about this run, and the founder
+    #    summary says so rather than quietly taking another one.
+    retired = ledger.invalidate_stale(fingerprint)
+    for stale in retired:
+        emit(
+            f"  the independent review of {stale.fingerprint.identity} "
+            f"({stale.verdict}) no longer describes the implementation; "
+            "the code changed after it"
+        )
+    if retired:
+        store.write_json("independent-review-ledger.json", ledger.to_dict())
+
+    # 2. What does the repository require, of THIS task? Re-read every round —
+    #    the repository is above the driver, and a rule it states mid-run binds.
+    requirement = resolve_review_requirement(
+        config.neyma_repo,
+        task_scope,
+        unit=unit,
+        risk=risk,
+        audit_requires_review=(
+            audit is not None and audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
+        ),
+    )
+    # Risk-proportional review is a separate, additive reason: a change that
+    # touches a high-consequence surface earns one even where the repository
+    # states no rule at all. `resolve_review_requirement` records the mandatory
+    # half; this adds the discretionary half, which depends on how this run went.
+    if not requirement.required and risk is not None:
+        uncovered = len(getattr(gate, "uncovered_risks", []) or [])
+        if risk.warrants_independent_review(iterations=iteration, uncovered_risks=uncovered):
+            requirement.add(
+                ReviewTrigger.CHANGE_RISK,
+                f"this run classified the change {risk.brief()}, and a change of that size "
+                "that needed more than one pass or carries an unverified risk earns a "
+                "second opinion",
+            )
+
+    if not requirement.required:
+        return ReviewStepResult(decision=decision, requirement=requirement)
+
+    emit(f"→ independent review required: {requirement.brief()}")
+    for reason in requirement.reasons[:4]:
+        emit(f"    {reason}")
+    emit(f"  reviewing {fingerprint.describe()}")
+
+    # 3. Is there already a review OF THIS EXACT STATE? Only a supported one
+    #    from a session that is not the builder's, and only for this tree.
+    existing = ledger.satisfying(fingerprint)
+    if existing is not None:
+        emit("  a supported independent review of this exact state already stands.")
+        return ReviewStepResult(
+            decision=decision, requirement=requirement, satisfied_by=existing
+        )
+
+    if reviewer_factory is None:
+        emit("  the required independent review could not be launched.")
+        return ReviewStepResult(
+            decision=decision,
+            terminal=RunStatus.NEEDS_INDEPENDENT_REVIEW,
+            requirement=requirement,
+            notes=[
+                "independent review was required for this task and no reviewer could be "
+                "launched (automatic review is switched off, or no factory was supplied)"
+            ],
+        )
+
+    notes: list[str] = []
+    new_reviews: list[Any] = []
+    prior = ledger.records[-1].review if ledger.records else None
+    retried = False
+
+    while True:
+        review = await _run_independent_review(
+            reviewer_factory=reviewer_factory,
+            unit=unit,
+            audit=audit,
+            repository_context=(repo_context.render() if repo_context is not None else ""),
+            task=state.task,
+            risk=risk,
+            changed_files=diff_files,
+            suite_result=suite_result,
+            builder_report=record.builder_summary,
+            evidence_dir=str(store.iteration_dir(iteration)),
+            scope=task_scope,
+            requirement=requirement,
+            fingerprint=fingerprint,
+            builder_session_id=builder_session_id,
+            # The refusal a builder has just corrected, or the one this retry is
+            # answering. A fresh reviewer was not present for either, so it is
+            # told — and told plainly that it is not bound by it. Without this,
+            # every correction cycle re-litigates the same ground from zero and
+            # the earlier finding is simply lost.
+            prior_review=prior,
+            diff_stat=(record.git.diff_stat if record.git is not None else ""),
+            insist_on_execution=retried,
+            emit=emit,
+        )
+        if review is None:
+            emit("  the required independent review did not produce a verdict.")
+            return ReviewStepResult(
+                decision=decision,
+                terminal=RunStatus.NEEDS_INDEPENDENT_REVIEW,
+                requirement=requirement,
+                new_reviews=new_reviews,
+                notes=notes
+                + ["the required independent review session failed to return a verdict"],
+            )
+
+        entry = ledger.record(
+            review,
+            fingerprint,
+            iteration=iteration,
+            scope_id=task_scope.scope_id,
+            builder_session_id=builder_session_id,
+        )
+        new_reviews.append(review)
+        record.independent_review = review.model_dump(mode="json")
+        store.save_independent_review(iteration, record.independent_review)
+        # The run-level ledger, written every time it changes rather than at the
+        # end: which reviews were taken, of which trees, by which sessions, and
+        # which a later change retired. A run that dies mid-correction still
+        # leaves the record of what had been reviewed and what had not.
+        store.write_json("independent-review-ledger.json", ledger.to_dict())
+        emit(
+            f"  review verdict: {review.verdict} "
+            f"({len(review.blockers)} blocker(s)); {review.evidence_basis()}"
+        )
+        for refused in review.commands_refused[:4]:
+            emit(f"    reviewer command refused: {str(refused.get('command', ''))[:100]}")
+
+        if not entry.independent:
+            # Structural, not stylistic. A "review" from the builder's own
+            # session is not a second opinion, and it must never discharge a
+            # requirement whose entire content is that it came from elsewhere.
+            emit("  the review did not come from an independent session; it counts for nothing.")
+            return ReviewStepResult(
+                decision=decision,
+                terminal=RunStatus.NEEDS_INDEPENDENT_REVIEW,
+                requirement=requirement,
+                new_reviews=new_reviews,
+                notes=notes
+                + [
+                    "the review returned was not from a session independent of the builder, "
+                    "so the independent-review requirement is not satisfied"
+                ],
+            )
+
+        routing = route_review(
+            review,
+            refusals_so_far=len(ledger.refusals()),
+            correction_budget=config.review.max_automatic_reviews,
+            execution_available=bool(config.review.reviewer_can_execute),
+            execution_used=bool(review.commands_allowed),
+            retried_with_execution=retried,
+        )
+
+        if routing.route is ReviewRoute.RETRY_WITH_EXECUTION and not retried:
+            # It had the capability and did not use it. Ask once more, with the
+            # vocabulary spelled out and the earlier answer in front of it. Once
+            # — a second identical answer is the answer.
+            emit("  the reviewer did not run the verification it was allowed to run; asking once more.")
+            notes.append(
+                "the first review reported insufficient evidence without executing any "
+                "permitted verification; a second reviewer was asked to reproduce it"
+            )
+            prior, retried = review, True
+            continue
+
+        return _apply_review_routing(
+            routing=routing,
+            review=review,
+            entry=entry,
+            requirement=requirement,
+            decision=decision,
+            scenario=scenario,
+            new_reviews=new_reviews,
+            notes=notes,
+            emit=emit,
+        )
+
+
+def _apply_review_routing(
+    *,
+    routing: Any,
+    review: Any,
+    entry: Any,
+    requirement: Any,
+    decision: EvaluatorDecision,
+    scenario: Scenario,
+    new_reviews: list[Any],
+    notes: list[str],
+    emit: Callable[[str], None],
+) -> ReviewStepResult:
+    """Turn one routing decision into what the loop does next.
+
+    Split out from the step above so the five outcomes are readable side by
+    side. Every branch here is terminal or corrective; none of them can produce
+    an acceptance the review did not support.
+    """
+    if routing.route is ReviewRoute.SATISFIED:
+        emit("  independent review SUPPORTED this implementation.")
+        return ReviewStepResult(
+            decision=decision,
+            satisfied_by=entry,
+            requirement=requirement,
+            new_reviews=new_reviews,
+            notes=notes
+            + [
+                f"independent review satisfied {requirement.scope_id or 'this task'} at "
+                f"{entry.fingerprint.identity} ({review.evidence_basis()})"
+            ],
+        )
+
+    if routing.route is ReviewRoute.CORRECT_PRODUCT:
+        emit("  the reviewer found a grounded defect; sending it to the same builder.")
+        return ReviewStepResult(
+            decision=_review_correction(
+                review, decision, scenario.name, requirement, routing.grounded_findings
+            ),
+            requirement=requirement,
+            new_reviews=new_reviews,
+            notes=notes
+            + [f"independent review returned {review.verdict}; routed to the builder"],
+        )
+
+    if routing.route is ReviewRoute.EXTERNAL_ACTION:
+        emit("  the review needs an action outside this machine; stopping at that boundary.")
+        return ReviewStepResult(
+            decision=EvaluatorDecision(
+                decision=Decision.ASK_USER,
+                summary=(
+                    "The independent review cannot conclude without an action only you can "
+                    "perform. Nothing was fabricated in its place."
+                ),
+                problems=[
+                    routing.requested_action
+                    or routing.reason
+                    or "an external action the driver may not perform"
+                ],
+                observed_behavior=decision.observed_behavior,
+                evidence_paths=decision.evidence_paths,
+                confidence=0.9,
+            ),
+            terminal=RunStatus.NEEDS_USER,
+            requirement=requirement,
+            new_reviews=new_reviews,
+            notes=notes
+            + [
+                "the independent review requires an external action: "
+                + (routing.requested_action or routing.reason)
+            ],
+        )
+
+    if routing.route is ReviewRoute.FOUNDER_DECISION:
+        emit("  the reviewer is describing a decision rather than a defect; this is yours.")
+        return ReviewStepResult(
+            decision=EvaluatorDecision(
+                decision=Decision.ASK_USER,
+                summary=routing.reason
+                or (
+                    "Independent review will not support this change, and what it is "
+                    "raising is a product or authority decision rather than a defect the "
+                    "builder can be sent back to fix."
+                ),
+                problems=[
+                    f"[{getattr(f, 'severity', 'major')}] {getattr(f, 'finding', '')}"
+                    for f in routing.grounded_findings
+                ][:12]
+                or [str(getattr(review, "summary", ""))[:200]],
+                observed_behavior=decision.observed_behavior,
+                evidence_paths=[
+                    str(getattr(f, "evidence_path", ""))
+                    for f in routing.grounded_findings
+                    if getattr(f, "evidence_path", "")
+                ][:12]
+                or decision.evidence_paths,
+                confidence=0.8,
+            ),
+            terminal=RunStatus.NEEDS_USER,
+            requirement=requirement,
+            new_reviews=new_reviews,
+            notes=notes + [f"independent review escalated: {routing.reason[:300]}"],
+        )
+
+    # UNRESOLVED. Fail closed, with the exact reason and the owner named. This
+    # is deliberately NOT a correction: asking a builder to change working code
+    # because a measurement could not be taken changes nothing about the
+    # measurement, and the loop that does it does not converge.
+    owner = {
+        BlockerKind.VERIFICATION_HARNESS: (
+            "Product Driver's own verification capability — fix the driver, not the product"
+        ),
+        BlockerKind.REVIEWER_CAPABILITY: (
+            "the reviewer's read-only boundary — widen the approved verification "
+            "vocabulary if the command is genuinely safe, or accept that this cannot be "
+            "reviewed automatically"
+        ),
+        BlockerKind.REPOSITORY_AUTHORITY: "the repository's own authority",
+    }.get(routing.blocker, "unstated by the reviewer")
+    emit("  the review could not conclude, and no permitted verification resolves it.")
+    return ReviewStepResult(
+        decision=EvaluatorDecision(
+            decision=Decision.BLOCKED,
+            summary=(
+                "The required independent review could not reach a verdict, so this run "
+                "does not accept. No evidence was manufactured to close the gap."
+            ),
+            problems=[routing.reason[:400], f"owner: {owner}"],
+            observed_behavior=decision.observed_behavior,
+            evidence_paths=decision.evidence_paths,
+            confidence=0.85,
+        ),
+        terminal=RunStatus.BLOCKED,
+        requirement=requirement,
+        new_reviews=new_reviews,
+        notes=notes
+        + [
+            f"independent review unresolved ({routing.blocker.value}); owner: {owner}"
+        ],
+    )
+
+
 async def _run_independent_review(
     *,
     reviewer_factory: Any,
@@ -1615,12 +2043,24 @@ async def _run_independent_review(
     builder_report: str,
     evidence_dir: str,
     emit: Callable[[str], None],
+    scope: Any = None,
+    requirement: Any = None,
+    fingerprint: Any = None,
+    builder_session_id: str = "",
+    prior_review: Any = None,
+    diff_stat: str = "",
+    insist_on_execution: bool = False,
 ) -> Any:
-    """Launch one focused, read-only review. Returns ``None`` if it could not run.
+    """Launch one focused review. Returns ``None`` if it could not run.
 
     A review that cannot be launched is never silently treated as a review that
     passed — the caller keeps the ACCEPT only when a verdict actually came back,
     and a failure here is reported rather than swallowed into a green result.
+
+    ``fingerprint``, ``scope`` and ``builder_session_id`` are handed to the
+    session rather than to the prompt: they end up bound into the returned review
+    by the harness, so what the review is evidence about is recorded by the
+    machine and not by the model.
     """
     from .completion_auditor import CompletionAudit
     from .context import ActiveUnit
@@ -1636,19 +2076,48 @@ async def _run_independent_review(
             headline="no completion audit ran for this run",
         )
 
-    prompt = review_prompt(
-        unit=unit if unit is not None else ActiveUnit.undeclared("no repository unit registry"),
-        audit=audit,
-        builder_report=builder_report,
-        evidence_dir=evidence_dir,
-        repository_context=repository_context,
-        task=task,
-        risk=risk,
-        changed_files=changed_files,
-        suite_summary=suite_result.summary_block() if suite_result is not None else "",
-    )
+    reviewer_kwargs: dict[str, Any] = {
+        "fingerprint": fingerprint,
+        "scope_id": str(getattr(scope, "scope_id", "") or ""),
+        "builder_session_id": builder_session_id,
+    }
     try:
-        async with reviewer_factory() as reviewer:
+        session_cm = reviewer_factory(**reviewer_kwargs)
+    except TypeError:
+        # A factory that predates the binding arguments (every test fake does)
+        # still works; it simply produces a review with no fingerprint attached,
+        # which the ledger then treats as matching nothing.
+        session_cm = reviewer_factory()
+
+    try:
+        async with session_cm as reviewer:
+            prompt = review_prompt(
+                unit=unit if unit is not None else ActiveUnit.undeclared("no repository unit registry"),
+                audit=audit,
+                builder_report=builder_report,
+                evidence_dir=evidence_dir,
+                repository_context=repository_context,
+                task=task,
+                risk=risk,
+                changed_files=changed_files,
+                suite_summary=suite_result.summary_block() if suite_result is not None else "",
+                scope=scope,
+                requirement=requirement,
+                fingerprint=fingerprint,
+                policy=getattr(reviewer, "command_policy", None),
+                diff_stat=diff_stat,
+                prior_review=prior_review,
+            )
+            if insist_on_execution:
+                prompt += (
+                    "\n\n--- THIS IS THE SECOND ASK ---\n"
+                    "A previous reviewer returned INSUFFICIENT_EVIDENCE without executing "
+                    "any of the deterministic verification it was permitted to run. Run it "
+                    "before you answer. If, having run it, the evidence still does not "
+                    "settle the question, say exactly which command or file would and set "
+                    "`blocked_on` accordingly — that answer stops the run rather than "
+                    "accepting it, so it needs to be precise."
+                )
             return await reviewer.review(prompt)
     except Exception as exc:  # a reviewer that dies must not become an ACCEPT
         emit(f"  independent review could not run: {type(exc).__name__}: {redact(str(exc))}")
@@ -1659,7 +2128,8 @@ def _review_correction(
     review: Any,
     decision: EvaluatorDecision,
     scenario_name: str,
-    risk: Any,
+    requirement: Any = None,
+    findings: Sequence[Any] | None = None,
 ) -> EvaluatorDecision:
     """Turn a reviewer's findings into a grounded correction for the same builder.
 
@@ -1668,45 +2138,26 @@ def _review_correction(
     carries an evidence path and the reasoning behind it, which is exactly what
     the prompt-quality contract requires of a correction, so nothing has to be
     invented to make it sendable.
+
+    ``findings`` are the ones the router judged grounded. Only those are sent: a
+    refusal with nothing citable behind it never reaches a builder at all, it
+    goes to the founder, because turning an opinion into an automatic code change
+    is how a review loop stops converging.
     """
-    blockers = list(review.blockers) or list(review.findings)
-    lines = [
-        "INDEPENDENT REVIEW — a fresh read-only session reviewed this change and did "
-        "not support it.",
-        "",
-        f"verdict: {review.verdict} (confidence {review.confidence:.2f})",
-        f"why this review happened: {risk.brief() if risk is not None else 'risk-based review'}",
-        "",
-        review.summary.strip(),
-        "",
-        "FINDINGS — each cites evidence the reviewer actually read:",
-    ]
-    for finding in blockers:
-        lines.append(f"  [{finding.severity}] {finding.finding}")
-        lines.append(f"      evidence:  {finding.evidence_path}")
-        lines.append(f"      reasoning: {finding.reasoning}")
-    unresolved = [a for a in review.adjudications if a.ruling == "UPHELD"]
-    if unresolved:
-        lines += ["", "DISCREPANCIES THE REVIEWER UPHELD:"]
-        lines += [f"  - {a.discrepancy}\n      basis: {a.basis}" for a in unresolved]
-    lines += [
-        "",
-        "Address the findings above. Do not delete, weaken or disable a test, guard or "
-        "control to clear one — a finding cleared that way is a defect with a passing "
-        "status. If a finding rests on a product decision the repository has not made, "
-        "say so plainly rather than choosing one.",
-    ]
+    grounded = list(findings if findings is not None else review.blockers or review.findings)
+    lines = correction_lines(review, grounded, requirement)
 
     return EvaluatorDecision(
         decision=Decision.FIX,
         summary=f"Independent review returned {review.verdict}: {review.summary[:200]}",
-        problems=[f"[{f.severity}] {f.finding}" for f in blockers][:12]
+        problems=[f"[{f.severity}] {f.finding}" for f in grounded][:12]
         or [review.summary[:200]],
         observed_behavior=decision.observed_behavior,
-        evidence_paths=[f.evidence_path for f in blockers if f.evidence_path][:12],
+        evidence_paths=[f.evidence_path for f in grounded if f.evidence_path][:12],
         correction_prompt="\n".join(lines),
         requirement_reference=(
-            "the independent review this change's risk classification required"
+            (requirement.reasons[0][:300] if getattr(requirement, "reasons", None) else "")
+            or "the independent review this task's authority requires"
         ),
         product_principle_reference=(
             "a change to a high-consequence surface is not finished because the session "
@@ -1723,8 +2174,8 @@ def _review_correction(
             "every guard."
         ),
         retest=(
-            "Re-run the scenario suite, then the review runs again against the corrected "
-            "state."
+            "Re-run the scenario suite; a NEW independent reviewer then judges the "
+            "corrected state, because this review describes the state before it."
         ),
         confidence=max(0.6, float(getattr(review, "confidence", 0.8) or 0.8)),
     )
@@ -2049,7 +2500,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     auditor=CompletionAuditor(config.neyma_repo),
                     protocol_resolver=ProtocolResolver(config.neyma_repo),
                     planner=planner,
-                    reviewer_factory=_make_reviewer_factory(config, args),
+                    reviewer_factory=_make_reviewer_factory(config, args, scenario),
                 )
     except KeyboardInterrupt:
         warn("\ninterrupted — saving state")
@@ -2077,24 +2528,33 @@ async def cmd_run(args: argparse.Namespace) -> int:
     return _exit_code_for(result.status)
 
 
-def _make_reviewer_factory(config: DriverConfig, args: argparse.Namespace) -> Any:
-    """A callable the loop uses to launch one fresh, read-only reviewer.
+def _make_reviewer_factory(
+    config: DriverConfig, args: argparse.Namespace, scenario: Scenario | None = None
+) -> Any:
+    """A callable the loop uses to launch one fresh independent reviewer.
 
     Returns ``None`` when automatic review is switched off, which makes the loop
-    report that a review is warranted rather than quietly accepting without one.
-    The session it builds is the same one ``review`` has always launched: fresh,
-    never resuming the builder, Read/Grep/Glob only.
+    report that a review is required rather than quietly accepting without one.
+
+    Each call builds a NEW session and a NEW command policy. That is deliberate:
+    the policy carries the execution budget and the record of what this reviewer
+    actually ran, so sharing one across reviewers would let a second reviewer
+    inherit the first's spent budget and, worse, its evidence.
     """
     if getattr(args, "no_auto_review", False) or not config.review.automatic:
         return None
 
-    def factory() -> Any:
+    base = scenario if scenario is not None else Scenario(name="(none)")
+
+    def factory(**binding: Any) -> Any:
         from .reviewer import IndependentReviewerSession
 
         return IndependentReviewerSession(
             config.neyma_repo,
             model=config.review.model or config.evaluator.model,
             on_progress=lambda m: out(_indent(m)),
+            command_policy=_reviewer_command_policy(config, base),
+            **binding,
         )
 
     return factory
@@ -2606,6 +3066,17 @@ def _journal_the_outcome(
                 detail=outcome.brief() if hasattr(outcome, "brief") else "",
             )
 
+    # The review record, before the outcome, so a journal whose outcome copy
+    # fails still carries the answer to "was this reviewed, and did the reviewer
+    # measure anything itself".
+    journal.record_independent_review(
+        requirement=result.review_requirement,
+        ledger=result.review_ledger,
+        satisfying=result.satisfying_review,
+        reviews=result.reviews,
+        automatic=bool(result.reviews),
+    )
+
     journal.record_outcome(
         run_status=getattr(result.status, "value", result.status),
         gate=result.gate,
@@ -2642,8 +3113,9 @@ def _next_safe_action(result: LoopResult) -> str:
     if result.status is RunStatus.NEEDS_USER:
         return "Answer the product or authority question the evaluator recorded, then resume."
     if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
-        return ("Launch an independent review with `review --run <id>` — the change earned "
-                "one and the run could not launch it.")
+        return ("Re-run with automatic review enabled — this task requires an independent "
+                "review, the run normally takes one itself, and this one could not. "
+                "`review --run <id>` inspects it by hand if you would rather.")
     if result.status is RunStatus.ACCEPTED and result.gate is not None and not result.gate.blocks_acceptance:
         return ("Read the diff yourself, then decide whether to commit and push it — the "
                 "driver stops before every remote action, by design.")
@@ -2692,6 +3164,11 @@ def _write_run_journal(
             repo=str(config.neyma_repo),
         )
         journal.record_start(config.neyma_repo)
+        # Recorded so the review section can state, from this file alone, that
+        # the reviewer was not the builder. A field the journal has always had
+        # and nothing has ever populated is worse than no field.
+        journal.builder_session_id = str(getattr(state, "builder_session_id", "") or "")
+        journal.evaluator_session_id = str(getattr(state, "evaluator_session_id", "") or "")
         if authority_report:
             # Computed by the control loop, which held the before-snapshot. The
             # journal used to render an authority section that nothing ever
@@ -2789,8 +3266,19 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
 
     commit = _last_local_commit(config.neyma_repo)
     dirty = _tracked_dirty(config.neyma_repo)
+    # A required review that nothing satisfied is not a detail. Nothing that
+    # owes a review and does not have one is shippable, whatever the gate said.
+    review_ok = (
+        result.review_requirement is None
+        or not getattr(result.review_requirement, "required", False)
+        or result.satisfying_review is not None
+    )
     shippable = (
-        result.status is RunStatus.ACCEPTED and verified and not failures and not dirty
+        result.status is RunStatus.ACCEPTED
+        and verified
+        and review_ok
+        and not failures
+        and not dirty
     )
 
     header("READY TO SHIP" if shippable else "NOT READY TO SHIP")
@@ -2806,6 +3294,7 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     out(f"  unresolved material findings:  {len(unresolved)}")
     for finding in unresolved[:6]:
         out(f"      - {finding}")
+    out(f"  independent review:            {_review_headline(result)}")
     out(f"  local commit:                  {commit or 'none created this run'}")
     if dirty:
         out(f"  uncommitted tracked changes:   {len(dirty.splitlines())} file(s)")
@@ -2879,6 +3368,32 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     out(f"\nrun artifacts: {store.run_dir}")
 
 
+def _review_headline(result: LoopResult) -> str:
+    """One line: was a review required, did it run, what did it say, did it measure.
+
+    Rendered from the run's records. A required review that produced no verdict
+    says so in the same place a supported one would, so the line cannot be read
+    as reassurance by a reader who does not know what to look for.
+    """
+    requirement = result.review_requirement
+    if requirement is None or not getattr(requirement, "required", False):
+        return "not required for this task"
+    if not result.reviews:
+        return "REQUIRED — and no reviewer produced a verdict"
+    last = result.reviews[-1]
+    basis = (
+        "reviewer-reproduced runtime evidence"
+        if getattr(last, "reproduced_runtime_evidence", False)
+        else "corroborated from this run's records, not reviewer-reproduced"
+    )
+    satisfied = (
+        "satisfies this task"
+        if result.satisfying_review is not None
+        else "does NOT satisfy this task"
+    )
+    return f"required — {last.verdict}, {satisfied} ({basis})"
+
+
 def _last_local_commit(repo: Path) -> str:
     """The current HEAD, described. Read-only, and never assumes it is this run's."""
     try:
@@ -2918,6 +3433,17 @@ def _unresolved_findings(result: LoopResult) -> list[str]:
         findings += [r.brief() for r in result.gate.uncovered_risks]
     if result.reviews and result.reviews[-1].verdict != "SUPPORTED":
         findings += [f"[{f.severity}] {f.finding}" for f in result.reviews[-1].blockers]
+    requirement = result.review_requirement
+    if requirement is not None and getattr(requirement, "required", False):
+        if not result.reviews:
+            findings.append(
+                "an independent review is required for this task and none produced a verdict"
+            )
+        elif result.satisfying_review is None:
+            findings.append(
+                "the independent review this task requires is not satisfied: "
+                f"the last review returned {result.reviews[-1].verdict}"
+            )
     return findings
 
 
@@ -2975,7 +3501,7 @@ def _founder_action(result: LoopResult, shippable: bool, dirty: str) -> str:
     if result.status is RunStatus.NEEDS_USER:
         return "answer the product or authority question below"
     if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
-        return "an independent review is warranted and none could be launched"
+        return "this task requires an independent review and none could be taken"
     if shippable:
         return "push / merge"
     if dirty:
@@ -3018,11 +3544,19 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
         warn("IMPLEMENTED — THE REQUIRED INDEPENDENT REVIEW DID NOT RUN\n")
         out(
             "The implementation stands and the product evaluation reached ACCEPT, but this\n"
-            "change touches a surface that requires one focused independent review, and no\n"
-            "review produced a verdict. The driver normally launches that review itself; it\n"
-            "reaches this state only when review was switched off, or the session failed."
+            "task requires one focused independent review and none produced a usable\n"
+            "verdict. A run normally takes that review itself, as a step inside its own\n"
+            "loop; it reaches this state only when review was switched off, the reviewer\n"
+            "session failed, or what came back was not from an independent session."
         )
-        if result.risk is not None and result.risk.surfaces:
+        requirement = result.review_requirement
+        if requirement is not None and requirement.required:
+            out("\nWhy a review is required here:")
+            for reason in requirement.reasons[:6]:
+                out(f"  - {reason}")
+            if requirement.sources:
+                out(f"  read from: {', '.join(requirement.sources[:4])}")
+        elif result.risk is not None and result.risk.surfaces:
             out("\nWhy a review is required here:")
             for surface in result.risk.surfaces:
                 out(f"  - {surface}")
@@ -3047,7 +3581,8 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
                 for name in pending:
                     out(f"  - {name}")
         out(
-            "\nThis is neither a failure nor a completion. To run the review by hand:\n"
+            "\nThis is neither a failure nor a completion. Re-run with automatic review\n"
+            "enabled and the loop takes the review itself. To look at it by hand instead:\n"
             f"  python -m neyma_product_driver review --run {store.run_id}"
         )
         out(f"\nrun artifacts: {store.run_dir}")
@@ -3493,10 +4028,53 @@ async def cmd_doctor(args: argparse.Namespace) -> int:
         "generated scenarios are never written to scenarios/ by a run",
         fatal=False,
     )
+
     check(
         "generated scenarios run sequentially",
         generation.max_parallel == 1,
         "scenarios share services, ports and a workspace; isolation is not yet provable",
+        fatal=False,
+    )
+
+    out("\nIndependent review")
+    review = config.review
+    check(
+        "review is taken inside the run",
+        review.automatic,
+        "the run launches the review a scoped task requires; you relay nothing"
+        if review.automatic
+        else "OFF — a task that requires a review will stop at "
+        "NEEDS_INDEPENDENT_REVIEW instead of taking one",
+        fatal=False,
+    )
+    # The reviewer's own capability, reported beside the vocabulary it draws on,
+    # because "the reviewer can verify" and "there is something for it to run"
+    # are two different facts and only the pair is useful.
+    policy = _reviewer_command_policy(config, Scenario(name="(none)"))
+    check(
+        "the reviewer can reproduce runtime evidence itself",
+        policy is not None,
+        (
+            f"read-only verification plus {len(approved)} deterministic command(s) this "
+            f"repository declares; budget {review.reviewer_max_commands}"
+            if policy is not None
+            else "OFF — reviews will rest on records this harness collected rather than "
+            "on anything the reviewer reproduced"
+        ),
+        fatal=False,
+    )
+    check(
+        "the reviewer cannot change the product",
+        True,
+        "writes, git state changes, pushes, merges, deploys, installs, network and "
+        "secret reads are refused by a PreToolUse hook whatever else is configured",
+        fatal=False,
+    )
+    check(
+        "a review is bound to one exact tree",
+        True,
+        "HEAD + tree + working-tree digest; a later change retires it and a new "
+        "reviewer is taken",
         fatal=False,
     )
 
@@ -4083,7 +4661,17 @@ def _recorded_suite_gate(state: RunState) -> Any:
 
 
 async def cmd_review(args: argparse.Namespace) -> int:
-    """Launch a fresh, read-only independent reviewer. Explicitly human-authorized."""
+    """Launch a fresh independent reviewer over a finished run, by hand.
+
+    No longer part of the ordinary path: ``run`` takes the review a task
+    requires as a step inside its own loop, feeds the verdict back to the same
+    builder, and takes a new review of whatever comes out. This command remains
+    for the case it was always good for — looking again at a run that has
+    already ended, with a reviewer that never saw it.
+
+    It launches the same session the loop does, with the same execution
+    boundary, so an ad-hoc review is not a weaker one.
+    """
     config = _config_from_args(args)
     problems = config.validate_repo()
     if problems:
@@ -4173,11 +4761,31 @@ async def cmd_review(args: argparse.Namespace) -> int:
     if gate is not None:
         note(f"scenario gate: {gate.headline()}")
 
+    base_scenario = None
+    try:
+        base_scenario = load_scenario(config.scenario_path(state.scenario_name or None))
+    except Exception:
+        base_scenario = None
+    policy = _reviewer_command_policy(config, base_scenario or Scenario(name="(none)"))
+    fingerprint = capture_fingerprint(config.neyma_repo)
+
     note(
         "\nThis launches a FRESH Claude session. It does not resume or inherit the\n"
-        "builder conversation, it is read-only (Read/Grep/Glob only), and it will not\n"
-        "write any status file."
+        "builder conversation, it cannot write, commit, push, deploy or read a secret,\n"
+        "and it will not write any status file."
     )
+    if policy is not None:
+        note(
+            "It CAN re-run this repository's deterministic verification — its tests, "
+            "probes and\nbatteries — under the reviewer command boundary, so its verdict "
+            "need not rest on\nwhat Product Driver captured."
+        )
+    else:
+        note(
+            "Reviewer command execution is switched off, so this review will rest on "
+            "records\nrather than on anything it reproduced itself."
+        )
+    note(f"It will review exactly: {fingerprint.describe()}")
 
     if not args.yes:
         if not sys.stdin.isatty():
@@ -4190,20 +4798,37 @@ async def cmd_review(args: argparse.Namespace) -> int:
 
     from .reviewer import IndependentReviewerSession, review_prompt
 
-    prompt = review_prompt(
+    requirement = resolve_review_requirement(
+        config.neyma_repo,
+        review_scope,
         unit=unit,
-        audit=audit,
-        builder_report=builder_report,
-        evidence_dir=str(store.iteration_dir(iteration)),
+        audit_requires_review=(audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW),
     )
+    out(_indent(requirement.summary_block()))
 
     out("\n→ independent reviewer working...")
     async with IndependentReviewerSession(
         config.neyma_repo,
-        model=config.evaluator.model,
+        model=config.review.model or config.evaluator.model,
         on_progress=lambda m: out(_indent(m)),
+        command_policy=policy,
+        fingerprint=fingerprint,
+        scope_id=review_scope.scope_id,
+        builder_session_id=str(state.builder_session_id or ""),
     ) as reviewer:
-        review = await reviewer.review(prompt)
+        review = await reviewer.review(
+            review_prompt(
+                unit=unit,
+                audit=audit,
+                builder_report=builder_report,
+                evidence_dir=str(store.iteration_dir(iteration)),
+                task=state.task,
+                scope=review_scope,
+                requirement=requirement,
+                fingerprint=fingerprint,
+                policy=policy,
+            )
+        )
 
     store.save_independent_review(iteration, review.model_dump(mode="json"))
     if last is not None:
@@ -4215,6 +4840,15 @@ async def cmd_review(args: argparse.Namespace) -> int:
     colour = {"SUPPORTED": good, "NOT_SUPPORTED": error}.get(review.verdict, warn)
     colour(f"{review.verdict}  (confidence {review.confidence:.2f})")
     out(review.summary)
+    out(f"\nevidence: {review.evidence_basis()}")
+    for command in review.commands_allowed[:12]:
+        out(f"  ran:     {str(command.get('command', ''))[:150]}")
+    for command in review.commands_refused[:6]:
+        out(f"  REFUSED: {str(command.get('command', ''))[:110]} — {command.get('reason', '')}")
+    if review.blocked_on.blocking:
+        warn(f"\nblocked on {review.blocked_on.kind}: {review.blocked_on.detail}")
+        if review.blocked_on.requested_action:
+            out(f"  requested action: {review.blocked_on.requested_action}")
 
     if review.findings:
         out("\nFindings:")
@@ -4234,9 +4868,10 @@ async def cmd_review(args: argparse.Namespace) -> int:
             out(f"  {c.assessment:<18} {c.criterion}")
 
     note(
-        "\nThis review is advisory evidence. It does not mark any status file.\n"
-        "Recording an adjudication in the repository remains a human decision,\n"
-        "made under the repository's own rules."
+        "\nThis review is advisory evidence about the exact tree named above. It does not\n"
+        "mark any status file, and it stops describing the implementation the moment the\n"
+        "implementation changes. Recording an adjudication in the repository remains a\n"
+        "human decision, made under the repository's own rules."
     )
     out(f"\nsaved: {store.iteration_dir(iteration) / 'independent-review.json'}")
     return 0 if review.verdict == "SUPPORTED" else 20
@@ -4438,8 +5073,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-auto-review",
         action="store_true",
         dest="no_auto_review",
-        help="do not launch an independent reviewer automatically, even for a "
-        "high-consequence change (the run reports that one is warranted instead)",
+        help="do not take the independent review a task requires inside the run "
+        "(the run stops at NEEDS_INDEPENDENT_REVIEW and reports what was owed instead)",
     )
     run_p.set_defaults(func=cmd_run)
 

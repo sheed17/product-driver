@@ -143,18 +143,34 @@ scenario_generation:
   # Requests may only address these hosts. Loopback only, by design.
   local_http_hosts: ["127.0.0.1", "localhost", "::1"]
 
-# Independent review, launched by the driver rather than by you.
+# Independent review, taken inside the run rather than relayed through you.
 #
-# Ordinary work — an edit, a refactor, a test, a fix — gets none. A large change
-# gets one when the run needed more than one pass or is carrying an unverified
-# risk. A change touching a high-consequence product surface (effect execution,
-# payment or banking, approval authority, authentication, authorization, tenant
-# isolation, secrets, destructive database operations, write-capable external
-# integrations, outbound communication, claims/legal/compliance behaviour, or a
-# weakened runtime safety invariant) always gets one focused review.
+# WHEN ONE IS OWED. Four independent triggers, each recorded with the evidence
+# it came from:
+#   - the repository's protocol states an independent-review rule AND this run
+#     is building a nested unit that rule governs;
+#   - the task actually asked for the parent phase to be completed or accepted,
+#     and the phase's contract carries a criterion only an independent session
+#     may award;
+#   - the diff touches a high-consequence product surface (effect execution,
+#     payment or banking, approval authority, authentication, authorization,
+#     tenant isolation, secrets, destructive database operations, write-capable
+#     external integrations, outbound communication, claims/legal/compliance
+#     behaviour, or a weakened runtime safety invariant) — always; or it is
+#     large and the run needed more than one pass;
+#   - the completion audit found a claim only a session other than the
+#     implementing one can support.
 #
-# A reviewer that returns findings does not stop the run: they go back to the
-# same builder as a grounded correction and the loop retests.
+# A phase's review criterion does NOT bind a unit inside that phase, and a task
+# that merely named no unit is not at phase acceptance. Ordinary work — an edit,
+# a refactor, a test, a fix — still gets no review at all.
+#
+# WHAT HAPPENS TO THE VERDICT. Supported: the run continues toward acceptance.
+# A grounded defect: back to the same builder, then re-verified, then a NEW
+# reviewer for the corrected tree — a review is evidence about one exact tree
+# and stops applying the moment that tree changes. Anything the reviewer could
+# not determine fails closed with the owner named; it never becomes a product
+# change, and an external action is reported rather than performed.
 review:
   automatic: true
   # How many refusals may be recycled into builder corrections before the
@@ -165,6 +181,35 @@ review:
   meaningful_change_lines: 400
   # Empty means "use the evaluator's model".
   model: ""
+
+  # Whether the reviewer may execute deterministic verification itself.
+  #
+  # ON BY DEFAULT, and the difference is not cosmetic. A reviewer with no shell
+  # can only adjudicate the receipts this harness collected — so the harness's
+  # own honesty becomes an unexamined premise of the review that exists to
+  # examine it. With this on, the reviewer re-runs this repository's own tests,
+  # probes and mutation batteries, and the founder summary reports whether it
+  # actually did.
+  #
+  # It does NOT widen the reviewer. A command runs only when it is both an
+  # appropriate read-only verification action AND already allowed by Product
+  # Driver policy — the same command guard and the same human-authored scenario
+  # vocabulary a generated scenario draws from. Writing a file, `git add`,
+  # committing, pushing, merging, deploying, installing, reaching a network,
+  # reading a secret and composing shell are all refused whatever this is set
+  # to, and every refusal is recorded in the run evidence.
+  #
+  # Setting it false is a deliberate downgrade: the review still runs and
+  # reports evidence_reproduced: false.
+  reviewer_can_execute: true
+  # How many commands one reviewer may run. A review that needs more than this
+  # is describing a verification gap, not performing a verification.
+  reviewer_max_commands: 40
+  # Extra command HEADS this repository's reviewers may treat as read-only
+  # verification, beyond the built-in set (git read-only subcommands, grep/rg,
+  # ls/find, cat/head/tail, wc/sort/uniq/cut/diff/jq/stat, pytest). Written by a
+  # human, like the scenario approved-command list — never inferred.
+  reviewer_extra_read_only: []
 
 # Neyma is normally dirty mid-phase, so this defaults to true.
 

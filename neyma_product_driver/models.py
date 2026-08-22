@@ -349,6 +349,11 @@ class IterationRecord(BaseModel):
     protocol_resolution: dict[str, Any] | None = None
     investigation: dict[str, Any] | None = None
     independent_review: dict[str, Any] | None = None
+    #: Whether this iteration's scoped task owed an independent review, and on
+    #: whose authority. Recorded even when the answer is "none required", so a
+    #: reader can tell a task that needed no review from one whose review was
+    #: never resolved. See :mod:`~neyma_product_driver.review_cycle`.
+    review_requirement: dict[str, Any] | None = None
 
 
 class RunStatus(str, Enum):

@@ -494,10 +494,13 @@ class TestReviewStillFollowsTheGate:
         import inspect
 
         source = inspect.getsource(run_control_loop)
+        # Anchored on the call, not on a comment: the review step moved into
+        # `_independent_review_step` when review became a first-class transition,
+        # and the ordering guarantee is about where that call sits.
         assert (
             source.index("_close_coverage_gaps")
-            < source.index("proportional independent review")
-            < source.index("_run_independent_review")
+            < source.index("THE REQUIRED INDEPENDENT REVIEW")
+            < source.index("_independent_review_step")
         )
 
     async def test_the_reviewer_sees_a_verified_gate_when_it_does_run(self, loop_bits):
