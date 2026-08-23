@@ -854,15 +854,14 @@ def correction_lines(review: Any, findings: Sequence[Any], requirement: Any = No
     ]
     if requirement is not None and getattr(requirement, "reasons", None):
         lines.append(f"why this review happened: {requirement.reasons[0]}")
-    reproduced = bool(getattr(review, "evidence_reproduced", False))
-    ran = list(getattr(review, "commands_executed", []) or [])
-    lines.append(
-        "evidence: the reviewer re-ran "
-        f"{len(ran)} deterministic verification command(s) itself"
-        if reproduced and ran
-        else "evidence: the reviewer did not re-run verification itself; it read the "
-        "run's records"
-    )
+    # What the review's evidence actually rests on, in its own words. Never
+    # inferred here: `evidence_basis` is computed from the harness's own record
+    # of what each command produced and whether its named expectation held, so a
+    # builder is never told a finding was measured when it was read.
+    basis = getattr(review, "evidence_basis", None)
+    lines.append(f"evidence: {basis() if callable(basis) else 'not recorded'}")
+    for line in (getattr(review, "evidence_lines", None) or (lambda **_: []))(limit=6):
+        lines.append(f"  {line}")
     lines += ["", _WHITESPACE.sub(" ", str(getattr(review, "summary", "") or "")).strip(), ""]
     lines.append("FINDINGS — each cites evidence the reviewer actually read or produced:")
     for finding in findings:

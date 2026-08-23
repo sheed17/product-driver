@@ -49,6 +49,18 @@ Every decision — allowed or refused — is returned with the reason and the ba
 that produced it, so the run evidence can say which commands the reviewer ran
 itself and which it was refused.
 
+WHAT THIS MODULE DOES NOT ANSWER
+--------------------------------
+
+"May the reviewer run this?" is not "did what it ran establish anything?" This
+module answers only the first, and answering only the first is what let
+``evidence_reproduced`` mean "a command was launched" — true of ``git status``,
+and worth nothing. The second question needs the exit code and the output, which
+a ``PreToolUse`` decision structurally cannot see, measured against a named
+expectation. That lives in
+:mod:`~neyma_product_driver.reviewer_evidence`, and the observation half of
+:class:`ReviewerExecution` is where the two meet.
+
 Nothing in this module executes anything. It classifies; the reviewer session
 enforces.
 """
@@ -237,18 +249,52 @@ class ReviewerCommandVerdict:
 
 @dataclass
 class ReviewerExecution:
-    """One command the reviewer actually asked to run, and what happened."""
+    """One command the reviewer actually asked to run, and what happened.
+
+    Two halves, deliberately separate. The *decision* half — ``allowed``,
+    ``basis``, ``reason``, ``layer`` — is this module's business and is written
+    when the command is classified. The *observation* half is written afterwards,
+    from the reviewer session's ``PostToolUse`` hook, and says what the command
+    actually did.
+
+    Keeping them apart is the whole correction this record carries. "The
+    boundary allowed it" and "it ran and produced this" are different facts, and
+    a run that holds only the first one must not be able to say the second. An
+    execution whose ``observed`` is false is a command nobody watched: it may
+    have run, it may have been abandoned mid-turn, and this record says so
+    rather than assuming.
+    """
 
     command: str
     allowed: bool
     basis: str = ""
     reason: str = ""
     layer: str = ""
-    exit_code: int | None = None
-    #: True when the reviewer's own turn reported the command produced output.
-    #: The driver never re-runs the command to check; it records the request and
-    #: the decision, which is what the boundary is accountable for.
+    #: The SDK's own id for the tool use, so the observation below is joined to
+    #: THIS request rather than to another one with the same command text.
+    tool_use_id: str = ""
+
+    # -- what was observed afterwards, if anything was ---------------------
+
+    #: True once a PostToolUse observation was recorded for this request.
     observed: bool = False
+    #: True when that observation actually carried a readable tool result. A
+    #: hook that fired with a result this could not parse leaves this false, and
+    #: an unreadable result is an absence rather than a silent success.
+    response_seen: bool = False
+    #: The command string the tool was actually invoked with. Recorded next to
+    #: the requested one so "what ran" and "what was judged" can be compared.
+    command_executed: str = ""
+    exit_code: int | None = None
+    #: True when the exit code was read off the tool's success/failure rather
+    #: than reported outright. Carried through so nothing presents it as measured.
+    exit_code_inferred: bool = False
+    #: What the command produced, clipped. Redacted where it is persisted.
+    output: str = ""
+    #: The tool itself failed — timeout, interrupt, launch failure. Distinct
+    #: from a command that ran and exited non-zero.
+    execution_failed: bool = False
+    error_detail: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -257,7 +303,14 @@ class ReviewerExecution:
             "basis": self.basis,
             "reason": self.reason,
             "layer": self.layer,
+            "tool_use_id": self.tool_use_id,
+            "observed": self.observed,
+            "response_seen": self.response_seen,
+            "command_executed": self.command_executed,
             "exit_code": self.exit_code,
+            "exit_code_inferred": self.exit_code_inferred,
+            "execution_failed": self.execution_failed,
+            "error_detail": self.error_detail,
         }
 
     def brief(self) -> str:
@@ -286,6 +339,7 @@ class ReviewerCommandPolicy:
         approved: Any = None,
         max_commands: int = 40,
         extra_read_only: Sequence[str] = (),
+        declared: Any = None,
     ) -> None:
         self.approved = approved
         self.max_commands = max(0, int(max_commands))
@@ -293,6 +347,13 @@ class ReviewerCommandPolicy:
         self.extra_read_only = tuple(
             h.strip() for h in extra_read_only if str(h).strip()
         )
+        #: The repository's own deterministic oracles, keyed by command
+        #: (:class:`~neyma_product_driver.reviewer_evidence.DeclaredExpectations`).
+        #: Carried here because this is what already travels with a reviewer —
+        #: and it is READ BY NOBODY IN :meth:`decide`. It cannot widen or narrow
+        #: what a reviewer may run; it only says what a permitted command was
+        #: supposed to show.
+        self.declared = declared
         self.executions: list[ReviewerExecution] = []
 
     # -- reporting --------------------------------------------------------
@@ -305,16 +366,78 @@ class ReviewerCommandPolicy:
     def refused(self) -> list[ReviewerExecution]:
         return [e for e in self.executions if not e.allowed]
 
-    def record(self, command: str, verdict: ReviewerCommandVerdict) -> ReviewerExecution:
+    @property
+    def observed(self) -> list[ReviewerExecution]:
+        """Allowed commands whose result was actually seen."""
+        return [e for e in self.executions if e.allowed and e.observed]
+
+    def record(
+        self,
+        command: str,
+        verdict: ReviewerCommandVerdict,
+        *,
+        tool_use_id: str = "",
+    ) -> ReviewerExecution:
         entry = ReviewerExecution(
             command=command[:1000],
             allowed=verdict.allowed,
             basis=verdict.basis,
             reason=verdict.reason,
             layer=verdict.layer,
+            tool_use_id=str(tool_use_id or ""),
         )
         self.executions.append(entry)
         return entry
+
+    def observe(
+        self,
+        *,
+        tool_use_id: str = "",
+        command: str = "",
+        command_executed: str = "",
+        exit_code: int | None = None,
+        exit_code_inferred: bool = False,
+        output: str = "",
+        execution_failed: bool = False,
+        error_detail: str = "",
+        response_seen: bool = False,
+    ) -> ReviewerExecution | None:
+        """Attach what a permitted command actually produced. Never raises.
+
+        Joined by ``tool_use_id`` first, because two identical command strings in
+        one review are two different facts. The command-text fallback exists for
+        transports that do not surface an id, and it takes the most recent
+        matching request that has not been observed yet — never an earlier one,
+        which would let a second run's output stand in for a first one's.
+
+        An observation with nothing to join to is dropped rather than invented:
+        this method never creates an execution the boundary did not classify.
+        """
+        target: ReviewerExecution | None = None
+        if tool_use_id:
+            target = next(
+                (e for e in reversed(self.executions) if e.tool_use_id == tool_use_id), None
+            )
+        if target is None and command:
+            target = next(
+                (
+                    e
+                    for e in reversed(self.executions)
+                    if e.command == command[:1000] and not e.observed
+                ),
+                None,
+            )
+        if target is None:
+            return None
+        target.observed = True
+        target.response_seen = bool(response_seen)
+        target.command_executed = str(command_executed or "")[:1000]
+        target.exit_code = exit_code
+        target.exit_code_inferred = bool(exit_code_inferred)
+        target.output = str(output or "")
+        target.execution_failed = bool(execution_failed)
+        target.error_detail = str(error_detail or "")[:1000]
+        return target
 
     def vocabulary_block(self, limit: int = 24) -> str:
         """What the reviewer is told it may run. Rendered from the real set."""

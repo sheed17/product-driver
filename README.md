@@ -928,19 +928,65 @@ downgrade, not a safety measure: the review still runs and reports
 `evidence_reproduced: false`, so the founder summary says which kind of review it
 was. It widens nothing.
 
-#### Claimed evidence is checked against the boundary
+#### Claimed evidence is checked against what the command actually showed
 
-`evidence_reproduced` is the reviewer's claim. The authoritative record is the
-boundary's, and the two are reconciled on the way out: a reviewer that answers
-`true` having run nothing is corrected **downward** to `false`. Nothing is ever
-corrected upward — a reviewer that says it ran nothing is believed.
+`evidence_reproduced` is the reviewer's claim, and it used to be checked against
+one thing: whether the boundary let a command through. That is a fact about the
+boundary. It is satisfied by a reviewer that successfully runs `git status`, and
+it says nothing about whether the product works.
+
+It is now checked against three:
+
+1. **the request and the decision** — the boundary's own record;
+2. **the observation** — the exit code and the output, captured from the
+   reviewer's session by a `PostToolUse` hook, not read out of the reviewer's
+   prose;
+3. **a named deterministic expectation** — an oracle, in exactly the shape a
+   scenario already uses (`expect_exit_code`, required substrings, prohibited
+   substrings) — and whether the observation satisfied it.
+
+`evidence_reproduced: true` therefore means *the reviewer itself executed
+verification that exercises the product, and the observation satisfied a named
+expectation*. Where the repository already declares an oracle for a command —
+because a human wrote that command, with its assertions, into a scenario file —
+that human-authored oracle is the one applied, and the reviewer's own cannot
+lower it.
+
+Everything short of that keeps its own name, per command, in
+`reproduced_evidence`:
+
+| status | what happened |
+|---|---|
+| `RUNTIME_REPRODUCED` | ran the product; named expectation held |
+| `STRUCTURAL_VERIFIED` | read the repository; named expectation held. Real verification, not a demonstration that anything behaves |
+| `REVIEWER_INSPECTED` | ran, no expectation named; nothing decided by machine |
+| `EXPECTATION_FAILED` | ran; the observation contradicted the oracle |
+| `COMMAND_ERRORED` | did not complete, or exited non-zero with nothing expecting it to |
+| `OBSERVATION_MISSING` | allowed, but nothing observed what it produced |
+| `REFUSED` | the boundary refused it; it never ran |
+| `CORROBORATED` | not reviewer-executed at all; read from this harness's records |
+
+Correction is still only ever **downward**: a reviewer that says it measured
+nothing is believed, and a reviewer that says it measured something it did not is
+recorded as having claimed it (`claimed_evidence_reproduced`) next to what the
+run actually established.
 
 The founder summary therefore distinguishes:
 
 ```
-reviewer-reproduced (7 verification command(s) executed by the reviewer itself)
+reviewer-reproduced runtime evidence (2 command(s) executed by the reviewer whose
+    named expectation held)
+reviewer-verified structurally only (3 inspection(s) whose named expectation
+    held); the product itself was not re-run by the reviewer
+not reproduced: 1 reviewer command(s) ran without their named expectation holding
 corroborated from Product Driver's captured records; not reviewer-reproduced
 ```
+
+and names, individually, what was reproduced and what was only corroborated.
+
+A negative control is a first-class oracle: a probe whose point is that it must
+*fail* declares the non-zero exit code and the refusal string, and counts exactly
+as much as a passing one.
 
 #### A review is evidence about one exact tree
 
@@ -1716,9 +1762,23 @@ emptied so a repository secret cannot leak into a run.
   reproduced by a reviewer, and the honest answer there is
   `blocked_on: REVIEWER_CAPABILITY` naming the command, which fails the run
   closed. Widening it is a human writing the command down.
-- `evidence_reproduced` is checked against *whether* the boundary let a command
-  through, not against what the command showed. A reviewer that runs `git status`
-  and then reasons badly is recorded as having reproduced evidence.
+- `evidence_reproduced` is now bound to a named expectation satisfied by an
+  observed exit code and output, but where the repository declares no oracle for
+  a command, the expectation is one the *reviewer* named. That is checked against
+  what really happened — a reviewer cannot assert that its own expectation held —
+  but a reviewer that names a weak expectation gets a weak oracle. The strong
+  path is a command a human already wrote into a scenario file with its
+  assertions; that oracle is applied in preference to the reviewer's, and
+  widening it is a human writing more of them down.
+- Whether a command "exercises the product" is decided from its head: test
+  runners, `python`, and the deterministic commands a scenario declares are
+  runtime; `git`, `grep`, `ls` and friends are structural. A repository whose
+  product is exercised by something that looks like an inspection command would
+  be classified as structural, which understates rather than overstates.
+- Where the SDK reports no exit code for a command that did not fail, one is
+  inferred as `0` and marked `exit_code_inferred`. A tool result this cannot read
+  at all leaves the observation absent, which fails closed to
+  `OBSERVATION_MISSING` rather than to a satisfied expectation.
 - The working-tree half of a review fingerprint hashes the tracked diff plus the
   contents of untracked files, under a per-file (2 MB) and total (64 MB) budget.
   A file past those budgets contributes its path and size instead of its bytes,

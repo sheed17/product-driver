@@ -1653,13 +1653,23 @@ def _reviewer_command_policy(config: DriverConfig, base: Scenario) -> Any:
     re-run this repository's verification without anyone authoring a second
     allowlist. See :mod:`~neyma_product_driver.reviewer_boundary` for what sits
     above it.
+
+    ``declared`` comes from the same scenario files and is the *other* half of
+    what a human already wrote down: not just which commands may run, but what
+    each one must show. It is carried alongside the policy and read only when a
+    review's evidence is classified — it can neither widen nor narrow what the
+    reviewer is permitted to execute.
     """
     if not config.review.reviewer_can_execute:
         return None
+    from .reviewer_evidence import expectations_from_scenarios
+
+    scenarios = [*_permanent_scenarios(config), base]
     return ReviewerCommandPolicy(
         approved=_approved_commands(config, base),
         max_commands=config.review.reviewer_max_commands,
         extra_read_only=config.review.reviewer_extra_read_only,
+        declared=expectations_from_scenarios(scenarios),
     )
 
 
@@ -3381,11 +3391,15 @@ def _review_headline(result: LoopResult) -> str:
     if not result.reviews:
         return "REQUIRED — and no reviewer produced a verdict"
     last = result.reviews[-1]
-    basis = (
-        "reviewer-reproduced runtime evidence"
-        if getattr(last, "reproduced_runtime_evidence", False)
-        else "corroborated from this run's records, not reviewer-reproduced"
-    )
+    if getattr(last, "reproduced_runtime_evidence", False):
+        basis = "reviewer-reproduced runtime evidence"
+    elif getattr(last, "structurally_verified", False):
+        basis = (
+            "reviewer-verified structurally only; the product itself was not re-run by "
+            "the reviewer"
+        )
+    else:
+        basis = "corroborated from this run's records, not reviewer-reproduced"
     satisfied = (
         "satisfies this task"
         if result.satisfying_review is not None
@@ -4841,8 +4855,8 @@ async def cmd_review(args: argparse.Namespace) -> int:
     colour(f"{review.verdict}  (confidence {review.confidence:.2f})")
     out(review.summary)
     out(f"\nevidence: {review.evidence_basis()}")
-    for command in review.commands_allowed[:12]:
-        out(f"  ran:     {str(command.get('command', ''))[:150]}")
+    for line in review.evidence_lines():
+        out(f"  {line}")
     for command in review.commands_refused[:6]:
         out(f"  REFUSED: {str(command.get('command', ''))[:110]} — {command.get('reason', '')}")
     if review.blocked_on.blocking:

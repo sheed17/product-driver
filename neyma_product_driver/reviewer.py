@@ -27,6 +27,24 @@ which is enforced deterministically by a ``PreToolUse`` hook rather than by
 instructions in a prompt — the same enforcement shape the builder uses, for the
 same reason.
 
+WHAT ``evidence_reproduced`` MEANS, AND WHAT IT USED TO MEAN
+------------------------------------------------------------
+
+It used to mean "the reviewer said so, and the boundary allowed at least one
+command". That is a statement about the boundary. It is satisfied by a reviewer
+that runs ``git status``, and it says nothing whatever about whether the thing
+under review works.
+
+It now means: *the reviewer itself executed deterministic verification that
+exercises the product, and the observation satisfied a named expectation.* Three
+independent facts, each recorded per command in ``reproduced_evidence`` — what
+was requested, what actually ran and what it produced (captured by a
+``PostToolUse`` hook, not read out of the reviewer's prose), and the oracle it
+was measured against. Everything short of that keeps its own honest name:
+structural verification, reviewer inspection, a failed expectation, a refused
+command, or evidence corroborated from Product Driver's records. See
+:mod:`~neyma_product_driver.reviewer_evidence`.
+
 The driver launches this itself as a step inside the run loop. ``review`` on the
 command line remains available for an ad-hoc look at a finished run; it is no
 longer the way an ordinary run reaches its verdict.
@@ -61,6 +79,13 @@ from .reviewer_boundary import (
     REVIEWER_TOOLS,
     ReviewerCommandPolicy,
     classify_reviewer_tool,
+)
+from .reviewer_evidence import (
+    EvidenceExpectation,
+    EvidenceLedger,
+    EvidenceObservation,
+    classify_evidence,
+    observation_from_tool_response,
 )
 
 REVIEW_SCHEMA: dict[str, Any] = {
@@ -116,8 +141,11 @@ REVIEW_SCHEMA: dict[str, Any] = {
             "type": "boolean",
             "description": (
                 "True only if you executed deterministic verification yourself in this "
-                "session. False if every fact you relied on came from records the harness "
-                "collected."
+                "session AND a named expectation you declared for it actually held. "
+                "False if every fact you relied on came from records the harness "
+                "collected. The harness checks this against what your commands really "
+                "produced; claiming it without a satisfied expectation does not make it "
+                "true, it just makes your review say something false."
             ),
         },
         "commands_run": {
@@ -128,8 +156,50 @@ REVIEW_SCHEMA: dict[str, Any] = {
                     "command": {"type": "string"},
                     "purpose": {"type": "string"},
                     "what_it_showed": {"type": "string"},
+                    "expectation": {
+                        "type": "object",
+                        "description": (
+                            "The deterministic oracle for this command: what its output "
+                            "and exit code must be for the claim to hold. The harness "
+                            "checks it against what the command really produced."
+                        ),
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "What this expectation is about — the invariant, the "
+                                    "criterion, the probe case. Empty means you are not "
+                                    "asserting anything with this command."
+                                ),
+                            },
+                            "expect_exit_code": {
+                                "type": ["integer", "null"],
+                                "description": (
+                                    "The exit code that must be observed. Use a non-zero "
+                                    "value deliberately for a negative control. null "
+                                    "means the exit code is not part of the oracle."
+                                ),
+                            },
+                            "expect_contains": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Literal substrings the output must contain.",
+                            },
+                            "expect_absent": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Literal substrings the output must not contain.",
+                            },
+                        },
+                        "required": [
+                            "name",
+                            "expect_exit_code",
+                            "expect_contains",
+                            "expect_absent",
+                        ],
+                    },
                 },
-                "required": ["command", "purpose", "what_it_showed"],
+                "required": ["command", "purpose", "what_it_showed", "expectation"],
             },
         },
         "blocked_on": {
@@ -235,10 +305,31 @@ honestly; each one goes somewhere different:
                          exact action in `requested_action`. NEVER invent or
                          assume the result of one.
 
-SET `evidence_reproduced` TO TRUE ONLY IF YOU RAN VERIFICATION YOURSELF in this
-session. List every command you ran in `commands_run`, with what it showed. If
-you ran nothing, `evidence_reproduced` is false and `commands_run` is empty —
-say so rather than implying you measured something you read.
+REPRODUCED EVIDENCE IS NOT "I WAS ALLOWED TO RUN SOMETHING"
+
+List every command you ran in `commands_run`. For each one, declare the
+`expectation` BEFORE you rely on what you saw: a `name` for what the command is
+supposed to establish, and the deterministic assertions that decide it —
+`expect_exit_code`, `expect_contains`, `expect_absent`. This is the same shape
+of oracle this repository's own scenarios use, and it is checked by the harness
+against what your command actually produced. Your prose is not what decides it.
+
+  - A command that exercises the product — a test suite, a probe, a mutation
+    battery — with a satisfied expectation is REPRODUCED RUNTIME EVIDENCE.
+  - A command that reads the repository — `git status`, `git diff`, `grep`,
+    `ls` — with a satisfied expectation is STRUCTURAL verification. Real, and
+    not the same thing. It never makes `evidence_reproduced` true on its own.
+  - A command with no named expectation is an inspection. Say so; it establishes
+    nothing by machine.
+  - A negative control is a first-class oracle: if the point is that the command
+    must FAIL, declare the non-zero `expect_exit_code` or the error string and
+    it counts exactly as much as a passing one.
+
+SET `evidence_reproduced` TO TRUE ONLY IF at least one command you ran in this
+session exercised the product AND its named expectation held. If you ran
+nothing, `evidence_reproduced` is false and `commands_run` is empty — say so
+rather than implying you measured something you read. An expectation that failed
+is not a reason to hide it: record it, and let it inform your verdict.
 
 YOU DO NOT WRITE STATUS. Your output is findings and adjudications only. Marking
 the registry, CURRENT.md or BUILD-STATUS is not yours to do unless the
@@ -316,12 +407,34 @@ class ReviewFinding(BaseModel):
     reasoning: str = ""
 
 
+class ReviewCommandExpectation(BaseModel):
+    """The oracle a reviewer declares for one command it runs.
+
+    The reviewer chooses it; the harness decides whether it held. That
+    asymmetry is the point: a model naming what must be observed is judgement,
+    which is what a reviewer is for, and a model asserting that it *was*
+    observed is a claim, which is what this whole layer exists not to accept.
+
+    Same three assertion shapes a scenario uses — see
+    :class:`~neyma_product_driver.reviewer_evidence.EvidenceExpectation`.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = ""
+    expect_exit_code: int | None = None
+    expect_contains: list[str] = Field(default_factory=list)
+    expect_absent: list[str] = Field(default_factory=list)
+
+
 class ReviewCommand(BaseModel):
-    """One command the reviewer says it ran, and what it showed.
+    """One command the reviewer says it ran, what it expected, and what it showed.
 
     The reviewer's own account. The *authoritative* record of what it was
     permitted to run is the boundary's, recorded separately as
     ``executed_commands``; where the two disagree the boundary's is the fact.
+    ``what_it_showed`` is prose and decides nothing. ``expectation`` is the part
+    a machine can check, and the only part that can make evidence reproduced.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -329,6 +442,7 @@ class ReviewCommand(BaseModel):
     command: str = ""
     purpose: str = ""
     what_it_showed: str = ""
+    expectation: ReviewCommandExpectation = Field(default_factory=ReviewCommandExpectation)
 
 
 class ReviewBlocker(BaseModel):
@@ -379,9 +493,14 @@ class IndependentReview(BaseModel):
     # -- what the reviewer says about its own evidence ---------------------
 
     #: The reviewer's claim that it executed verification itself. Corrected
-    #: downward by the session when the boundary recorded no allowed command:
-    #: a reviewer cannot claim to have reproduced evidence it never ran.
+    #: downward by the session: a reviewer cannot claim to have reproduced
+    #: evidence it never ran, and it cannot claim to have reproduced evidence
+    #: whose named expectation did not hold. Never corrected upward — a reviewer
+    #: that says it measured nothing is believed.
     evidence_reproduced: bool = False
+    #: What the reviewer originally said, kept after the correction above so the
+    #: artifact records the disagreement rather than hiding it.
+    claimed_evidence_reproduced: bool = False
     #: The reviewer's own account of what it ran.
     commands_run: list[ReviewCommand] = Field(default_factory=list)
     #: What stopped it concluding, and therefore who owns the result.
@@ -392,6 +511,11 @@ class IndependentReview(BaseModel):
     #: Commands the reviewer asked to run, with the boundary's decision on each.
     #: Written by the session from its own hook, not by the model.
     executed_commands: list[dict[str, Any]] = Field(default_factory=list)
+    #: One record per command, joining the boundary's decision, the harness's
+    #: own observation of what the command produced, and the named expectation
+    #: it was supposed to satisfy. Written by the session, never by the model.
+    #: See :mod:`~neyma_product_driver.reviewer_evidence`.
+    reproduced_evidence: list[dict[str, Any]] = Field(default_factory=list)
     #: The exact repository state this review is evidence about.
     reviewed_fingerprint: dict[str, Any] = Field(default_factory=dict)
     #: The scoped task this review was asked to adjudicate.
@@ -413,32 +537,89 @@ class IndependentReview(BaseModel):
         return [c for c in self.executed_commands if not c.get("allowed")]
 
     @property
-    def reproduced_runtime_evidence(self) -> bool:
-        """Whether the reviewer really re-ran verification itself.
+    def evidence(self) -> EvidenceLedger:
+        """The per-command evidence record, rebuilt from what the session wrote."""
+        return EvidenceLedger.from_dicts(self.reproduced_evidence)
 
-        Both halves have to hold: the reviewer said it did, and the boundary
-        recorded at least one command it actually let through. A model that
-        answers ``true`` having run nothing is not evidence, and neither is a
-        command the boundary refused.
+    @property
+    def reproduced_runtime_evidence(self) -> bool:
+        """Whether the reviewer really established anything by running the product.
+
+        Three things have to hold, and each of them rules out a different way of
+        being wrong:
+
+        * the reviewer said it reproduced evidence — never corrected upward;
+        * the boundary recorded a command it actually let through — a refused
+          command measured nothing;
+        * and at least one of those commands **exercised the product** and its
+          **named expectation was satisfied by what the harness observed**.
+
+        The third is the one this property used to be missing. Without it,
+        launching ``git status`` successfully was indistinguishable from running
+        the probe and watching the invariant hold, and the founder summary said
+        the same sentence about both.
         """
-        return bool(self.evidence_reproduced and self.commands_allowed)
+        return bool(
+            self.evidence_reproduced
+            and self.commands_allowed
+            and self.evidence.reproduced_runtime_evidence
+        )
+
+    @property
+    def structurally_verified(self) -> bool:
+        """Whether the reviewer at least checked something deterministic itself."""
+        return bool(self.evidence.structurally_verified)
 
     def evidence_basis(self) -> str:
-        """One line: reproduced by the reviewer, or corroborated from records."""
+        """One line naming exactly what this review's evidence rests on."""
+        ledger = self.evidence
         if self.reproduced_runtime_evidence:
+            return ledger.basis()
+        if self.claimed_evidence_reproduced and not self.evidence_reproduced:
             return (
-                f"reviewer-reproduced ({len(self.commands_allowed)} verification "
-                "command(s) executed by the reviewer itself)"
+                "claimed reproduced, but "
+                + ledger.basis()
+                + " — the claim is not carried"
             )
-        if self.evidence_reproduced:
-            return (
-                "claimed reproduced, but the reviewer boundary recorded no command it "
-                "was allowed to run — treated as corroborated"
-            )
+        if ledger.records:
+            return ledger.basis()
         return "corroborated from Product Driver's captured records; not reviewer-reproduced"
+
+    def evidence_lines(self, limit: int = 12) -> list[str]:
+        """Per-command evidence, in the detail a reader needs to disbelieve it."""
+        return [record.brief() for record in list(self.evidence)[:limit]]
 
     def fingerprint(self) -> TreeFingerprint:
         return TreeFingerprint.from_dict(self.reviewed_fingerprint)
+
+
+def _declared_oracle_block(declared: Any, limit: int = 12) -> str:
+    """The oracles this repository already wrote down, for the reviewer to reuse.
+
+    A reviewer that reaches for the repository's own declared expectation is
+    verifying against a human's statement of what the command must show, rather
+    than against one it invented a moment ago. Where such an oracle exists it is
+    the one the harness applies, whatever the reviewer declares, so this block
+    exists so the reviewer is not surprised by that.
+    """
+    commands = list(getattr(declared, "commands", ()) or ())
+    if not commands:
+        return ""
+    lines = [
+        "--- EXPECTATIONS THIS REPOSITORY ALREADY DECLARES ---",
+        "A human wrote each of these commands into a scenario file together with what "
+        "it must show. Run one of these and its declared expectation is the oracle the "
+        "harness applies — you do not have to invent one, and yours will not override it:",
+    ]
+    for command in commands[:limit]:
+        expectation = declared.for_command(command)
+        if expectation is None:
+            continue
+        lines.append(f"  {command}")
+        lines.append(f"      must show: {expectation.describe()}")
+    if len(commands) > limit:
+        lines.append(f"  ... and {len(commands) - limit} more")
+    return "\n".join(lines)
 
 
 def review_prompt(
@@ -606,7 +787,17 @@ def review_prompt(
             "harness's own suite summary and receipts. Re-run what bears on the question "
             "you were called for before you rely on it. Then set `evidence_reproduced` "
             "and fill in `commands_run` from what you actually executed.",
+            "",
+            "For each command, declare its `expectation` — a name for what it establishes, "
+            "and the deterministic assertions that decide it. The harness compares that "
+            "expectation to the command's real exit code and output. A command with no "
+            "named expectation is recorded as an inspection and establishes nothing; a "
+            "command that reads the repository rather than running the product is recorded "
+            "as structural verification, not reproduced runtime evidence.",
         ]
+        declared_block = _declared_oracle_block(getattr(policy, "declared", None))
+        if declared_block:
+            parts += ["", declared_block]
     else:
         parts += [
             "",
@@ -710,7 +901,13 @@ class IndependentReviewerSession:
 
         if tool_name == "Bash" and self.command_policy is not None:
             command = str(tool_input.get("command", ""))
-            self.command_policy.record(command, verdict)
+            self.command_policy.record(
+                command,
+                verdict,
+                tool_use_id=str(
+                    tool_use_id or input_data.get("tool_use_id", "") or ""
+                ),
+            )
             if verdict.allowed:
                 self._on_progress(f"  [REVIEWER RAN] {command[:140]}")
             else:
@@ -732,6 +929,72 @@ class IndependentReviewerSession:
             }
         }
 
+    async def _post_tool_use_hook(
+        self, input_data: dict[str, Any], tool_use_id: str | None, context: Any
+    ) -> dict[str, Any]:
+        """Record what a permitted command actually produced.
+
+        This is the half the boundary structurally cannot supply. ``PreToolUse``
+        knows what was *asked for* and whether it was allowed; only ``PostToolUse``
+        knows the exit code and the output, and without those,
+        ``evidence_reproduced`` can only ever mean "a command was launched".
+
+        It observes and returns ``{}``. It never denies, never rewrites and never
+        influences the session — an observation hook that could change the run
+        would be a second enforcement layer nobody asked for.
+        """
+        return self._observe(input_data, tool_use_id)
+
+    async def _post_tool_use_failure_hook(
+        self, input_data: dict[str, Any], tool_use_id: str | None, context: Any
+    ) -> dict[str, Any]:
+        """The same, for a tool that did not complete at all.
+
+        A timeout, an interrupt or a launch failure is not a command that ran and
+        exited non-zero — a negative control legitimately does the latter — so it
+        is recorded as its own thing and can never satisfy an expectation.
+        """
+        return self._observe(
+            input_data,
+            tool_use_id,
+            failed=True,
+            error=str(input_data.get("error", "") or ""),
+        )
+
+    def _observe(
+        self,
+        input_data: dict[str, Any],
+        tool_use_id: str | None,
+        *,
+        failed: bool = False,
+        error: str = "",
+    ) -> dict[str, Any]:
+        if self.command_policy is None:
+            return {}
+        if str(input_data.get("tool_name", "")) != "Bash":
+            return {}
+        tool_input = input_data.get("tool_input") or {}
+        if not isinstance(tool_input, dict):
+            tool_input = {}
+        observation = observation_from_tool_response(
+            tool_input,
+            input_data.get("tool_response"),
+            execution_failed=failed,
+            error=error,
+        )
+        self.command_policy.observe(
+            tool_use_id=str(tool_use_id or input_data.get("tool_use_id", "") or ""),
+            command=str(tool_input.get("command", "") or ""),
+            command_executed=observation.command_executed,
+            exit_code=observation.exit_code,
+            exit_code_inferred=observation.exit_code_inferred,
+            output=redact(observation.output),
+            execution_failed=observation.execution_failed,
+            error_detail=redact(observation.error_detail),
+            response_seen=observation.response_seen,
+        )
+        return {}
+
     def _options(self) -> ClaudeAgentOptions:
         executes = self.command_policy is not None
         forbidden = list(REVIEWER_FORBIDDEN_TOOLS)
@@ -751,7 +1014,16 @@ class IndependentReviewerSession:
             # The hook is the enforcement layer: an allowed_tools entry shadows
             # can_use_tool, so Bash would otherwise be unrestricted. The callback
             # stays as the catch-all for everything not in the allow list.
-            hooks={"PreToolUse": [HookMatcher(hooks=[self._pre_tool_use_hook])]},
+            hooks={
+                "PreToolUse": [HookMatcher(hooks=[self._pre_tool_use_hook])],
+                # Observation, not enforcement. PreToolUse cannot see an exit
+                # code, and an exit code is half of what "the reviewer verified
+                # this" means.
+                "PostToolUse": [HookMatcher(hooks=[self._post_tool_use_hook])],
+                "PostToolUseFailure": [
+                    HookMatcher(hooks=[self._post_tool_use_failure_hook])
+                ],
+            },
             can_use_tool=self._can_use_tool,
             output_format={"type": "json_schema", "schema": REVIEW_SCHEMA},
             # No resume, no continue, no fork: a genuinely fresh session.
@@ -796,6 +1068,13 @@ class IndependentReviewerSession:
         reply, and ``evidence_reproduced`` is corrected downward when the two
         disagree. Nothing is ever corrected *upward*: a reviewer that says it ran
         nothing is believed.
+
+        The correction now has two limbs rather than one. The old limb — a
+        reviewer cannot have reproduced evidence with no command the boundary
+        allowed — was necessary and never sufficient: it proved a command was
+        *launched*, which is a fact about the boundary. The second limb is that
+        at least one launched command must have exercised the product and had a
+        named expectation satisfied by what the harness itself observed.
         """
         review.reviewer_session_id = review.reviewer_session_id or self.session_id
         review.executed_commands = [e.to_dict() for e in self.executions]
@@ -803,9 +1082,70 @@ class IndependentReviewerSession:
         review.review_scope_id = self.scope_id or review.review_scope_id
         if self.fingerprint is not None:
             review.reviewed_fingerprint = self.fingerprint.to_dict()
-        if review.evidence_reproduced and not review.commands_allowed:
+
+        review.claimed_evidence_reproduced = bool(review.evidence_reproduced)
+        review.reproduced_evidence = [e.to_dict() for e in self.evidence_for(review)]
+        if not (review.commands_allowed and review.evidence.reproduced_runtime_evidence):
             review.evidence_reproduced = False
         return review
+
+    def evidence_for(self, review: IndependentReview) -> list[Any]:
+        """Join every boundary decision to its observation and its oracle.
+
+        Three inputs, in decreasing order of how much they are trusted:
+
+        1. the boundary's own record of the request and the decision;
+        2. the harness's own observation of the exit code and output;
+        3. the expectation — the repository's, where a human declared one for
+           this command in a scenario file, and otherwise the reviewer's own.
+
+        (3) is the only input a model touches, and it is a statement of what
+        *must* be observed, checked against (2). The reviewer choosing the
+        expectation is the reviewer exercising judgement; the reviewer asserting
+        the expectation held is what this refuses to accept.
+        """
+        declared = getattr(self.command_policy, "declared", None)
+        by_command: dict[str, Any] = {}
+        for entry in review.commands_run:
+            command = str(getattr(entry, "command", "") or "").strip()
+            if command and command not in by_command:
+                by_command[command] = entry.expectation
+
+        records: list[Any] = []
+        for execution in self.executions:
+            expectation: EvidenceExpectation | None = None
+            if declared is not None:
+                expectation = declared.for_command(execution.command)
+            if expectation is None:
+                claimed = by_command.get(execution.command.strip())
+                if claimed is not None:
+                    expectation = EvidenceExpectation.from_any(
+                        claimed, source="reviewer-declared"
+                    )
+            observation = (
+                EvidenceObservation(
+                    command_executed=execution.command_executed,
+                    exit_code=execution.exit_code,
+                    exit_code_inferred=execution.exit_code_inferred,
+                    output=execution.output,
+                    execution_failed=execution.execution_failed,
+                    error_detail=execution.error_detail,
+                    response_seen=execution.response_seen,
+                )
+                if execution.observed
+                else None
+            )
+            records.append(
+                classify_evidence(
+                    command_requested=execution.command,
+                    allowed=execution.allowed,
+                    basis=execution.basis,
+                    refusal_reason=execution.reason,
+                    observation=observation,
+                    expectation=expectation,
+                )
+            )
+        return records
 
     async def _collect(self, prompt: str) -> IndependentReview:
         assert self._client is not None

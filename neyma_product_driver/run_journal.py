@@ -201,9 +201,23 @@ class RunJournal:
     review_ran_automatically: bool = False
     review_verdict: str = ""
     review_confidence: float = 0.0
-    #: True only when the reviewer said it reproduced runtime evidence AND the
-    #: reviewer boundary recorded a command it was allowed to run.
+    #: True only when the reviewer said it reproduced runtime evidence, the
+    #: boundary recorded a command it was allowed to run, AND at least one such
+    #: command exercised the product with a named expectation the harness saw
+    #: satisfied. "The boundary allowed something" is not this field.
     review_reproduced_evidence: bool = False
+    #: What the reviewer originally claimed, kept next to what was established
+    #: so an overclaim is visible rather than silently corrected away.
+    review_claimed_reproduced: bool = False
+    #: One line per piece of evidence: command, exit code, oracle, outcome.
+    review_evidence: list[str] = field(default_factory=list)
+    #: What the reviewer actually reproduced by running the product, and what it
+    #: only verified structurally, as separate lists. A founder reading "the
+    #: reviewer verified it" is entitled to know which of the two happened.
+    review_reproduced_items: list[str] = field(default_factory=list)
+    review_structural_items: list[str] = field(default_factory=list)
+    #: Commands that ran without their named expectation holding.
+    review_unmet_expectations: list[str] = field(default_factory=list)
     #: The reviewer's own session id, and the builder's, so independence is
     #: checkable from this file alone.
     reviewer_session_id: str = ""
@@ -384,6 +398,10 @@ class RunJournal:
             self.review_reproduced_evidence = bool(
                 getattr(last, "reproduced_runtime_evidence", False)
             )
+            self.review_claimed_reproduced = bool(
+                getattr(last, "claimed_evidence_reproduced", False)
+            )
+            self._record_review_evidence(last)
             self.reviewer_session_id = str(getattr(last, "reviewer_session_id", "") or "")
             self.review_commands_run = [
                 redact(str(c.get("command", "")))[:300]
@@ -414,6 +432,47 @@ class RunJournal:
             self.reviewed_head = str(getattr(fingerprint, "head", "") or "")
             self.reviewed_tree = str(getattr(fingerprint, "tree", "") or "")
             self.reviewed_identity = str(getattr(fingerprint, "identity", "") or "")
+
+    def _record_review_evidence(self, review: Any) -> None:
+        """Copy the review's per-command evidence in, sorted by what it proved.
+
+        Three separate lists rather than one, because the founder summary has to
+        be able to say "the reviewer ran the product and this held" and "the
+        reviewer read the tree and this held" in different sentences, and to name
+        anything that ran and did not hold. Duck-typed like everything else here:
+        a review object that carries no evidence record contributes nothing
+        rather than raising, and nothing is inferred to fill the gap.
+        """
+        records = list(getattr(review, "reproduced_evidence", []) or [])
+        if not records:
+            return
+
+        def line(record: dict[str, Any]) -> str:
+            expectation = record.get("expectation") or {}
+            oracle = str(expectation.get("name", "") or "") or "no named expectation"
+            exit_code = record.get("exit_code")
+            return redact(
+                f"[{record.get('status', '?')}] {record.get('command_requested', '')} "
+                f"(exit {exit_code if exit_code is not None else '?'}) "
+                f"— oracle: {oracle} — {record.get('detail', '')}"
+            )[:500]
+
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            status = str(record.get("status", "") or "")
+            rendered = line(record)
+            self.review_evidence.append(rendered)
+            if status == "RUNTIME_REPRODUCED":
+                self.review_reproduced_items.append(rendered)
+            elif status == "STRUCTURAL_VERIFIED":
+                self.review_structural_items.append(rendered)
+            elif status in {
+                "EXPECTATION_FAILED",
+                "COMMAND_ERRORED",
+                "OBSERVATION_MISSING",
+            }:
+                self.review_unmet_expectations.append(rendered)
 
     def record_outcome(
         self,
@@ -586,6 +645,18 @@ class RunJournal:
                 "verdict": self.review_verdict,
                 "confidence": self.review_confidence,
                 "reviewer_reproduced_runtime_evidence": self.review_reproduced_evidence,
+                # What the reviewer said about its own evidence, next to what the
+                # harness established. Equal in the ordinary case; where they
+                # differ, the difference is the record.
+                "reviewer_claimed_reproduced": self.review_claimed_reproduced,
+                "evidence": {
+                    "all": list(self.review_evidence),
+                    "reproduced_by_running_the_product": list(self.review_reproduced_items),
+                    "verified_structurally_only": list(self.review_structural_items),
+                    "ran_without_its_expectation_holding": list(
+                        self.review_unmet_expectations
+                    ),
+                },
                 "reviewer_session_id": self.reviewer_session_id,
                 "builder_session_id": self.builder_session_id,
                 "reviewed": {
@@ -844,8 +915,10 @@ class RunJournal:
 
         Four questions, answered in order, each from a field the run wrote:
         required, ran automatically, verdict, and — the one that decides how much
-        the verdict is worth — whether the reviewer reproduced runtime evidence
-        itself or read this harness's captured output.
+        the verdict is worth — what the reviewer's evidence actually rests on.
+        That last one is :meth:`_evidence_lines`, and it separates what the
+        reviewer reproduced by running the product from what it verified by
+        reading the tree and from what it took on trust from this harness.
         """
         if not self.review_required:
             return [
@@ -895,23 +968,7 @@ class RunJournal:
                 f"(HEAD {self.reviewed_head[:12] or '?'}, tree {self.reviewed_tree[:12] or '?'})"
             )
 
-        if self.review_reproduced_evidence:
-            lines.append(
-                f"- **Did the reviewer reproduce runtime evidence itself?** **Yes** — it ran "
-                f"{len(self.review_commands_run)} verification command(s) in its own session "
-                "rather than reading this harness's captured output."
-            )
-            for command in self.review_commands_run[:8]:
-                lines.append(f"    - `{command}`")
-            if len(self.review_commands_run) > 8:
-                lines.append(f"    - ... and {len(self.review_commands_run) - 8} more")
-        else:
-            lines.append(
-                "- **Did the reviewer reproduce runtime evidence itself?** **No.** Its "
-                "verdict rests on records Product Driver collected. That is a weaker "
-                "review: the harness's own honesty is a premise of it rather than "
-                "something it checked."
-            )
+        lines += self._evidence_lines()
         if self.review_commands_refused:
             lines.append(
                 f"    - the reviewer boundary refused {len(self.review_commands_refused)} "
@@ -945,6 +1002,98 @@ class RunJournal:
         lines.append(
             "- Scope of that sentence: an independent review of this **task**. It scores "
             "no repository criterion, moves no phase, and enables nothing."
+        )
+        return lines
+
+    def _evidence_lines(self) -> list[str]:
+        """What the reviewer actually reproduced, and what it only corroborated.
+
+        The question this answers used to have one bit of resolution: the
+        reviewer either "reproduced runtime evidence" or did not, and the first
+        was true of a reviewer that had successfully launched ``git status``. It
+        now separates three different things a founder would otherwise conflate:
+
+        * evidence the reviewer produced by **running the product** and watching
+          a named expectation hold;
+        * facts it established by **reading the repository** — real verification,
+          and not a demonstration that anything works;
+        * everything it took from **Product Driver's own records**, which is the
+          part where this harness's honesty is a premise rather than a finding.
+
+        Anything that ran and did not hold is named too. A review whose
+        expectation failed is not a review with no evidence; it is a review with
+        evidence pointing the other way, and hiding it would be the same false
+        green in a new place.
+        """
+        lines: list[str] = []
+        if self.review_reproduced_evidence:
+            lines.append(
+                f"- **Did the reviewer reproduce runtime evidence itself?** **Yes** — "
+                f"{len(self.review_reproduced_items)} command(s) it ran in its own session "
+                "executed the product and satisfied a named expectation."
+            )
+            lines.append("    - what it actually reproduced:")
+            for item in self.review_reproduced_items[:8]:
+                lines.append(f"        - {item}")
+            if len(self.review_reproduced_items) > 8:
+                lines.append(
+                    f"        - ... and {len(self.review_reproduced_items) - 8} more"
+                )
+        else:
+            lines.append(
+                "- **Did the reviewer reproduce runtime evidence itself?** **No.** No "
+                "command it ran both exercised the product and satisfied a named "
+                "expectation, so the rest of its verdict rests on records Product Driver "
+                "collected. That is a weaker review: the harness's own honesty is a "
+                "premise of it rather than something it checked."
+            )
+            if self.review_claimed_reproduced:
+                lines.append(
+                    "    - the reviewer's own reply claimed it had reproduced runtime "
+                    "evidence. The claim is not carried: what it ran does not support it."
+                )
+
+        if self.review_structural_items:
+            lines.append(
+                f"- **Verified structurally by the reviewer** "
+                f"({len(self.review_structural_items)}) — it read the repository itself and "
+                "a named expectation held. This is not a demonstration that the product "
+                "behaves:"
+            )
+            for item in self.review_structural_items[:6]:
+                lines.append(f"    - {item}")
+
+        if self.review_unmet_expectations:
+            lines.append(
+                f"- **Ran without its expectation holding** "
+                f"({len(self.review_unmet_expectations)}) — recorded, not discarded:"
+            )
+            for item in self.review_unmet_expectations[:6]:
+                lines.append(f"    - {item}")
+
+        inspected = max(
+            0,
+            len(self.review_evidence)
+            - len(self.review_reproduced_items)
+            - len(self.review_structural_items)
+            - len(self.review_unmet_expectations)
+            - len(self.review_commands_refused),
+        )
+        if inspected:
+            lines.append(
+                f"- {inspected} further command(s) the reviewer ran with no named "
+                "expectation attached. Those are inspections; they establish nothing by "
+                "machine."
+            )
+        if not self.review_evidence and self.review_commands_run:
+            lines.append(
+                f"    - the boundary allowed {len(self.review_commands_run)} command(s), but "
+                "this run holds no record of what any of them produced."
+            )
+        lines.append(
+            "- **Corroborated from Product Driver's own evidence:** everything in the "
+            "verdict not named above. Those facts were read out of this run's records, "
+            "not re-measured by the reviewer."
         )
         return lines
 

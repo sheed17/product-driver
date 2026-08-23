@@ -23,7 +23,12 @@ What is asserted here, in order:
 7. a review of an older tree can never satisfy a newer one;
 8. an unresolvable review fails closed, and never becomes a product change;
 9. an external action is reported as an external action, never manufactured;
-10. accepting a task still does not complete the phase around it.
+10. accepting a task still does not complete the phase around it;
+11. and — the weakness this file's own architecture still carried after all of
+    the above — "the reviewer reproduced runtime evidence" means an oracle was
+    satisfied by an observation, not that the boundary allowed a command. A
+    successful `git status` used to be indistinguishable from a probe that ran
+    and held.
 
 Every Claude session is faked. Nothing here consumes Claude usage, and nothing
 here touches the real Neyma repository.
@@ -69,6 +74,7 @@ from neyma_product_driver.reviewer import (
     IndependentReview,
     ReviewBlocker,
     ReviewCommand,
+    ReviewCommandExpectation,
     ReviewFinding,
     IndependentReviewerSession,
     reviewer_system_prompt,
@@ -76,6 +82,16 @@ from neyma_product_driver.reviewer import (
 from neyma_product_driver.reviewer_boundary import (
     ReviewerCommandPolicy,
     classify_reviewer_tool,
+)
+from neyma_product_driver.reviewer_evidence import (
+    DeclaredExpectations,
+    EvidenceExpectation,
+    EvidenceStatus,
+    ReproducedEvidence,
+    VerificationKind,
+    classify_verification_kind,
+    expectations_from_scenarios,
+    observation_from_tool_response,
 )
 from neyma_product_driver.run_journal import RunJournal
 from neyma_product_driver.scenario_validation import ApprovedCommands
@@ -224,14 +240,67 @@ def accept(**kw) -> EvaluatorDecision:
     )
 
 
+#: The oracle the reviewer in these fixtures declared for the suite it re-ran.
+#: Named, deterministic, and — this is the part that matters — satisfied by an
+#: observation the harness itself recorded rather than by the reviewer saying so.
+SUITE_ORACLE = EvidenceExpectation(
+    name="the effect-boundary suite passes",
+    expect_exit_code=0,
+    expect_contains=("passed",),
+    source="reviewer-declared",
+)
+
+
 def supported(**kw) -> IndependentReview:
+    """A review that really did reproduce runtime evidence.
+
+    It carries the whole chain, because after this change nothing shorter counts:
+    the command, the boundary's decision, the harness's observation of the exit
+    code and output, the named expectation, and the fact that the observation
+    satisfied it.
+    """
     return IndependentReview(
         verdict="SUPPORTED",
         summary="the claim CAS admits exactly one winner; I re-ran the probe",
         confidence=0.9,
         evidence_reproduced=True,
-        commands_run=[ReviewCommand(command="pytest -q", purpose="rerun", what_it_showed="green")],
-        executed_commands=[{"command": "pytest -q", "allowed": True, "basis": "read-only"}],
+        claimed_evidence_reproduced=True,
+        commands_run=[
+            ReviewCommand(
+                command="pytest -q",
+                purpose="re-run the effect-boundary suite",
+                what_it_showed="green",
+                expectation=ReviewCommandExpectation(
+                    name=SUITE_ORACLE.name,
+                    expect_exit_code=0,
+                    expect_contains=["passed"],
+                ),
+            )
+        ],
+        executed_commands=[
+            {
+                "command": "pytest -q",
+                "allowed": True,
+                "basis": "read-only",
+                "observed": True,
+                "exit_code": 0,
+            }
+        ],
+        reproduced_evidence=[
+            ReproducedEvidence(
+                command_requested="pytest -q",
+                command_executed="pytest -q",
+                exit_code=0,
+                observed="12 passed in 1.20s",
+                expectation=SUITE_ORACLE,
+                expectation_satisfied=True,
+                kind=VerificationKind.RUNTIME,
+                status=EvidenceStatus.RUNTIME_REPRODUCED,
+                detail=f"the observation satisfied {SUITE_ORACLE.name!r}",
+                allowed=True,
+                basis="read-only verification — pytest",
+            ).to_dict()
+        ],
         **kw,
     )
 
@@ -862,36 +931,737 @@ class TestTheBoundaryIsEnforcedNotRequested:
         assert classify_reviewer_tool("Bash", {"command": "ls"}, None).allowed is False
 
 
+#: A probe this repository declares, with the expectation a human wrote next to
+#: it. Used to prove the repository's own oracle is the one that gets applied.
+PROBE = ".venv/bin/python scripts/probe_phase6_external_effect.py"
+
+
+async def reviewer_ran(
+    session: IndependentReviewerSession,
+    command: str,
+    *,
+    response: Any = None,
+    failed: bool = False,
+    error: str = "",
+    tool_use_id: str = "",
+    observe: bool = True,
+) -> None:
+    """Drive one command through the reviewer's real hooks.
+
+    Both of them, in the order the SDK fires them: ``PreToolUse`` decides and
+    records the request, ``PostToolUse`` records what came back. ``observe=False``
+    is the case where the second never arrives — a turn abandoned, a transport
+    that dropped the result — which must not read as a command that ran.
+    """
+    tool_use_id = tool_use_id or f"tool-{len(session.executions) + 1}"
+    payload = {
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "tool_use_id": tool_use_id,
+    }
+    await session._pre_tool_use_hook(payload, tool_use_id, None)
+    if not observe:
+        return
+    if failed:
+        await session._post_tool_use_failure_hook(
+            {**payload, "error": error}, tool_use_id, None
+        )
+        return
+    await session._post_tool_use_hook(
+        {**payload, "tool_response": response}, tool_use_id, None
+    )
+
+
+def declaring(command: str, **expectation: Any) -> IndependentReview:
+    """A review claiming reproduced evidence, with a named oracle for ``command``."""
+    return IndependentReview(
+        verdict="SUPPORTED",
+        summary="the effect boundary admits exactly one winner",
+        evidence_reproduced=True,
+        commands_run=[
+            ReviewCommand(
+                command=command,
+                purpose="verify the invariant",
+                what_it_showed="everything I needed",
+                expectation=ReviewCommandExpectation(**expectation),
+            )
+        ],
+    )
+
+
+def executing_session(tmp_path: Path, declared: Any = None) -> IndependentReviewerSession:
+    return IndependentReviewerSession(
+        tmp_path,
+        command_policy=ReviewerCommandPolicy(approved=APPROVED, declared=declared),
+    )
+
+
 class TestClaimedEvidenceIsCheckedAgainstTheBoundary:
     def test_a_reviewer_cannot_claim_to_have_run_what_it_never_ran(
         self, tmp_path: Path
     ) -> None:
         """`evidence_reproduced` is corrected downward, never upward."""
-        session = IndependentReviewerSession(
-            tmp_path, command_policy=ReviewerCommandPolicy(approved=APPROVED)
-        )
+        session = executing_session(tmp_path)
         review = session.bind(
             IndependentReview(verdict="SUPPORTED", evidence_reproduced=True)
         )
         assert review.evidence_reproduced is False
         assert review.reproduced_runtime_evidence is False
+        assert review.claimed_evidence_reproduced is True
         assert "not reviewer-reproduced" in review.evidence_basis()
 
-    async def test_a_reviewer_that_really_ran_something_is_recorded_as_such(
+    async def test_launching_a_permitted_command_is_not_reproducing_evidence(
         self, tmp_path: Path
     ) -> None:
-        session = IndependentReviewerSession(
-            tmp_path, command_policy=ReviewerCommandPolicy(approved=APPROVED)
+        """The exact false green this change exists to remove.
+
+        `git diff HEAD` is allowed, it is recorded, and the boundary is entirely
+        happy with it. None of that observed one thing about whether the product
+        works, and before this the run reported reproduced runtime evidence for
+        it anyway.
+        """
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, "git diff HEAD", observe=False)
+        review = session.bind(
+            IndependentReview(verdict="SUPPORTED", evidence_reproduced=True)
         )
-        await session._pre_tool_use_hook(
-            {"tool_name": "Bash", "tool_input": {"command": "git diff HEAD"}}, None, None
+        assert review.commands_allowed, "the boundary did allow it"
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence_reproduced is False
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.OBSERVATION_MISSING
+        assert record.allowed is True
+
+
+# ==========================================================================
+# 4b. "Reproduced" means an oracle was satisfied by an observation
+# ==========================================================================
+
+
+class TestReproducedEvidenceMeansASatisfiedOracle:
+    async def test_an_allowed_command_with_the_expected_output_is_reproduced(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            PROBE,
+            response={"exit_code": 0, "stdout": "winners=1\nexactly one winner\n"},
+        )
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="the effect boundary admits exactly one winner",
+                expect_exit_code=0,
+                expect_contains=["exactly one winner"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is True
+        assert review.evidence_reproduced is True
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.RUNTIME_REPRODUCED
+        assert record.expectation_satisfied is True
+        assert record.exit_code == 0
+        assert record.command_executed == PROBE
+        assert "exactly one winner" in record.observed
+        assert "reviewer-reproduced runtime evidence" in review.evidence_basis()
+
+    async def test_an_allowed_command_with_the_wrong_output_is_not_reproduced(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            PROBE,
+            response={"exit_code": 0, "stdout": "winners=2\ntwo claimers succeeded\n"},
+        )
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="the effect boundary admits exactly one winner",
+                expect_exit_code=0,
+                expect_contains=["exactly one winner"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence_reproduced is False
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.EXPECTATION_FAILED
+        assert record.expectation_satisfied is False
+        assert "does not contain" in record.detail
+
+    async def test_output_that_contradicts_a_prohibited_string_is_not_reproduced(
+        self, tmp_path: Path
+    ) -> None:
+        """The scenario `not_contains` shape, used as a reviewer's oracle."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            PROBE,
+            response={"exit_code": 0, "stdout": "grant ok\nDOUBLE EXECUTION detected\n"},
+        )
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="no effect executes twice",
+                expect_exit_code=0,
+                expect_absent=["DOUBLE EXECUTION"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is False
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.EXPECTATION_FAILED
+        assert "must not appear" in record.detail
+
+    async def test_an_unexpected_nonzero_exit_is_not_reproduced(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            PROBE,
+            response={"exit_code": 3, "stdout": "exactly one winner\n"},
+        )
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="the effect boundary admits exactly one winner",
+                expect_exit_code=0,
+                expect_contains=["exactly one winner"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is False
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.EXPECTATION_FAILED
+        assert "exit code was 3" in record.detail
+
+    async def test_an_unannounced_nonzero_exit_establishes_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """A command that failed with nobody expecting it to is not an inspection."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, PROBE, response={"exit_code": 1, "stdout": "traceback"})
+        review = session.bind(
+            IndependentReview(verdict="SUPPORTED", evidence_reproduced=True)
+        )
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.COMMAND_ERRORED
+        assert review.reproduced_runtime_evidence is False
+
+    async def test_a_declared_negative_control_is_reproduced_when_it_holds(
+        self, tmp_path: Path
+    ) -> None:
+        """A probe that MUST fail is evidence exactly as much as one that must pass.
+
+        This is why the oracle carries an expected exit code rather than a
+        pass/fail flag: "the forged capability is rejected" is established by a
+        non-zero exit and a refusal string, and a rule that only ever counted
+        green would throw away half the adversarial battery.
+        """
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            f"{PROBE} --case forged-capability",
+            response={"exit_code": 2, "stdout": "REJECTED: capability signature invalid\n"},
+        )
+        review = session.bind(
+            declaring(
+                f"{PROBE} --case forged-capability",
+                name="a forged capability is rejected",
+                expect_exit_code=2,
+                expect_contains=["REJECTED"],
+                expect_absent=["granted"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is True
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.RUNTIME_REPRODUCED
+        assert record.exit_code == 2
+
+    async def test_a_command_that_did_not_complete_is_not_reproduced(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session, PROBE, failed=True, error="timed out after 120s", tool_use_id="t-1"
+        )
+        review = session.bind(
+            declaring(PROBE, name="the invariant holds", expect_exit_code=0)
+        )
+        assert review.reproduced_runtime_evidence is False
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.COMMAND_ERRORED
+        assert "timed out" in record.detail
+
+    async def test_missing_output_cannot_satisfy_a_substring_oracle(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, PROBE, response={"exit_code": 0, "stdout": ""})
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="the invariant is printed",
+                expect_exit_code=0,
+                expect_contains=["exactly one winner"],
+            )
+        )
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence.records[0].status is EvidenceStatus.EXPECTATION_FAILED
+
+    async def test_a_tool_response_shape_this_cannot_read_is_an_absence(
+        self, tmp_path: Path
+    ) -> None:
+        """An unreadable result degrades to "not observed", never to "satisfied"."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, PROBE, response=None)
+        review = session.bind(
+            declaring(PROBE, name="the invariant holds", expect_exit_code=0)
+        )
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.OBSERVATION_MISSING
+        assert review.reproduced_runtime_evidence is False
+
+
+class TestInspectionIsNotRuntimeEvidence:
+    async def test_git_status_alone_is_never_reproduced_runtime_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        """The plainest form of the false green: a successful `git status`."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session, "git status --porcelain", response={"exit_code": 0, "stdout": ""}
         )
         review = session.bind(
             IndependentReview(verdict="SUPPORTED", evidence_reproduced=True)
         )
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence_reproduced is False
+        assert review.evidence.records[0].status is EvidenceStatus.REVIEWER_INSPECTED
+
+    async def test_git_status_with_an_oracle_is_structural_not_runtime(
+        self, tmp_path: Path
+    ) -> None:
+        """Declaring an expectation for an inspection does not promote it.
+
+        The expectation held, and that is worth recording — it is a real,
+        machine-decided fact about the tree. It is still not a demonstration that
+        anything works, so it can never be what makes `evidence_reproduced` true.
+        """
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            "git status --porcelain",
+            response={"exit_code": 0, "stdout": " M src/external_effect.py\n"},
+        )
+        review = session.bind(
+            declaring(
+                "git status --porcelain",
+                name="the implementation is uncommitted",
+                expect_exit_code=0,
+                expect_contains=["src/external_effect.py"],
+            )
+        )
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.STRUCTURAL_VERIFIED
+        assert record.expectation_satisfied is True
+        assert review.reproduced_runtime_evidence is False
+        assert review.structurally_verified is True
+        assert "structurally only" in review.evidence_basis()
+
+    async def test_grep_is_inspection_however_certain_the_reviewer_sounds(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            "grep -rn CLAIMED src",
+            response={"exit_code": 0, "stdout": "src/external_effect.py:88: CLAIMED\n"},
+        )
+        review = session.bind(
+            IndependentReview(
+                verdict="SUPPORTED",
+                summary="I confirmed the compare-and-set is atomic by running the probe",
+                evidence_reproduced=True,
+                commands_run=[
+                    ReviewCommand(
+                        command="grep -rn CLAIMED src",
+                        purpose="confirm atomicity",
+                        what_it_showed="the CAS is atomic; the probe passes",
+                    )
+                ],
+            )
+        )
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence.records[0].status is EvidenceStatus.REVIEWER_INSPECTED
+
+    @pytest.mark.parametrize(
+        "command,expected",
+        [
+            ("git diff HEAD", VerificationKind.STRUCTURAL),
+            ("git status --porcelain", VerificationKind.STRUCTURAL),
+            ("grep -rn CLAIMED src", VerificationKind.STRUCTURAL),
+            ("ls -la src", VerificationKind.STRUCTURAL),
+            ("wc -l src/external_effect.py", VerificationKind.STRUCTURAL),
+            ("pytest -q eval/tests", VerificationKind.RUNTIME),
+            ("python -m pytest -q", VerificationKind.RUNTIME),
+            (PROBE, VerificationKind.RUNTIME),
+            (".venv/bin/python scripts/mutate_phase6_external_effect.py", VerificationKind.RUNTIME),
+        ],
+    )
+    def test_what_counts_as_running_the_product(
+        self, command: str, expected: VerificationKind
+    ) -> None:
+        assert classify_verification_kind(command) is expected
+
+
+class TestProseCannotOverrideAnOracle:
+    async def test_a_confident_summary_does_not_rescue_a_failed_expectation(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            PROBE,
+            response={"exit_code": 1, "stdout": "FAILED: two claimers succeeded\n"},
+        )
+        review = session.bind(
+            IndependentReview(
+                verdict="SUPPORTED",
+                summary="I ran the probe and it confirms exactly one winner. All green.",
+                evidence_reproduced=True,
+                commands_run=[
+                    ReviewCommand(
+                        command=PROBE,
+                        purpose="prove exactly-once",
+                        what_it_showed="passed cleanly, exactly one winner",
+                        expectation=ReviewCommandExpectation(
+                            name="the effect boundary admits exactly one winner",
+                            expect_exit_code=0,
+                            expect_contains=["exactly one winner"],
+                        ),
+                    )
+                ],
+            )
+        )
+        assert review.evidence_reproduced is False
+        assert review.reproduced_runtime_evidence is False
+        assert review.claimed_evidence_reproduced is True
+        assert "the claim is not carried" in review.evidence_basis()
+
+    def test_a_prior_product_driver_receipt_is_not_reviewer_reproduction(
+        self, tmp_path: Path
+    ) -> None:
+        """Reasoning from the harness's own records reproduces nothing."""
+        session = executing_session(tmp_path)
+        review = session.bind(
+            IndependentReview(
+                verdict="SUPPORTED",
+                summary=(
+                    "Product Driver's receipt for the M3 probe records exit 0 and the "
+                    "invariant string, so the claim is supported."
+                ),
+                evidence_reproduced=True,
+                commands_run=[],
+            )
+        )
+        assert review.evidence_reproduced is False
+        assert review.reproduced_runtime_evidence is False
+        assert list(review.evidence) == []
+        assert "not reviewer-reproduced" in review.evidence_basis()
+
+    def test_an_oracle_that_cannot_fail_is_not_an_oracle(self) -> None:
+        """A reviewer cannot manufacture reproduction out of an empty assertion."""
+        blank = EvidenceExpectation.from_any(
+            {"name": "looks fine", "expect_exit_code": None,
+             "expect_contains": ["", "   "], "expect_absent": []}
+        )
+        assert blank is not None
+        assert blank.deterministic is False
+        unnamed = EvidenceExpectation.from_any(
+            {"name": "", "expect_exit_code": 0, "expect_contains": [], "expect_absent": []}
+        )
+        assert unnamed is not None
+        assert unnamed.deterministic is False
+
+
+class TestEveryVerificationKeepsItsOwnResult:
+    async def test_multiple_commands_preserve_per_evidence_results(
+        self, tmp_path: Path
+    ) -> None:
+        """Four commands, four different outcomes, none of them merged."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session, PROBE, response={"exit_code": 0, "stdout": "exactly one winner\n"}
+        )
+        await reviewer_ran(
+            session,
+            ".venv/bin/python scripts/mutate_phase6_external_effect.py",
+            response={"exit_code": 0, "stdout": "0 mutants survived\n"},
+        )
+        await reviewer_ran(
+            session, "git status --porcelain", response={"exit_code": 0, "stdout": " M src/a.py\n"}
+        )
+        await reviewer_ran(session, "git push", response={"exit_code": 0, "stdout": ""})
+
+        review = session.bind(
+            IndependentReview(
+                verdict="SUPPORTED",
+                evidence_reproduced=True,
+                commands_run=[
+                    ReviewCommand(
+                        command=PROBE,
+                        purpose="exactly-once",
+                        what_it_showed="one winner",
+                        expectation=ReviewCommandExpectation(
+                            name="exactly one winner",
+                            expect_exit_code=0,
+                            expect_contains=["exactly one winner"],
+                        ),
+                    ),
+                    ReviewCommand(
+                        command=".venv/bin/python scripts/mutate_phase6_external_effect.py",
+                        purpose="mutation battery",
+                        what_it_showed="all killed",
+                        expectation=ReviewCommandExpectation(
+                            name="every mutant is killed",
+                            expect_exit_code=0,
+                            expect_contains=["1 mutant survived"],
+                        ),
+                    ),
+                    ReviewCommand(
+                        command="git status --porcelain",
+                        purpose="see the tree",
+                        what_it_showed="one modified file",
+                    ),
+                ],
+            )
+        )
+
+        statuses = [r.status for r in review.evidence]
+        assert statuses == [
+            EvidenceStatus.RUNTIME_REPRODUCED,
+            EvidenceStatus.EXPECTATION_FAILED,
+            EvidenceStatus.REVIEWER_INSPECTED,
+            EvidenceStatus.REFUSED,
+        ]
+        # One satisfied runtime oracle is enough to make the claim true, and the
+        # three that did not are still each recorded as what they were.
         assert review.reproduced_runtime_evidence is True
-        assert "reviewer-reproduced" in review.evidence_basis()
-        assert review.commands_allowed
+        assert len(review.evidence.runtime_reproduced) == 1
+        assert len(review.evidence.failed) == 1
+        assert len(review.evidence.refused) == 1
+        assert review.evidence.records[0].command_requested == PROBE
+        assert review.evidence.records[1].expectation_satisfied is False
+
+    async def test_two_runs_of_the_same_command_are_two_facts(
+        self, tmp_path: Path
+    ) -> None:
+        """Identical command text, different results; neither stands in for the other."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session, PROBE, tool_use_id="a", response={"exit_code": 0, "stdout": "one winner\n"}
+        )
+        await reviewer_ran(
+            session, PROBE, tool_use_id="b", response={"exit_code": 1, "stdout": "two winners\n"}
+        )
+        review = session.bind(
+            declaring(
+                PROBE,
+                name="exactly one winner",
+                expect_exit_code=0,
+                expect_contains=["one winner"],
+            )
+        )
+        assert [r.exit_code for r in review.evidence] == [0, 1]
+        assert [r.status for r in review.evidence] == [
+            EvidenceStatus.RUNTIME_REPRODUCED,
+            EvidenceStatus.EXPECTATION_FAILED,
+        ]
+
+    async def test_a_refused_command_can_never_become_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        """Fail-closed: the guard refuses, and nothing downstream can undo that."""
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, "git push origin HEAD", observe=False)
+        review = session.bind(
+            declaring(
+                "git push origin HEAD",
+                name="the branch is pushed",
+                expect_exit_code=0,
+                expect_contains=["main"],
+            )
+        )
+        record = review.evidence.records[0]
+        assert record.allowed is False
+        assert record.status is EvidenceStatus.REFUSED
+        assert review.reproduced_runtime_evidence is False
+
+
+class TestTheRepositorysOwnOracleIsTheOneUsed:
+    def test_expectations_are_harvested_from_scenario_files(self) -> None:
+        scenario = Scenario.model_validate(
+            {
+                "name": "p6-m3",
+                "commands": [
+                    {
+                        "name": "the effect boundary admits exactly one winner",
+                        "run": PROBE,
+                        "expect_exit_code": 0,
+                        "expect_contains": ["exactly one winner"],
+                    }
+                ],
+                "expect_state": [
+                    {
+                        "name": "no effect row is executed twice",
+                        "command": "sqlite3 db 'select 1'",
+                        "contains": ["executed=1"],
+                        "not_contains": ["executed=2"],
+                    }
+                ],
+            }
+        )
+        declared = expectations_from_scenarios([scenario])
+        probe = declared.for_command(PROBE)
+        assert probe is not None
+        assert probe.name == "the effect boundary admits exactly one winner"
+        assert probe.expect_contains == ("exactly one winner",)
+        assert probe.source == "repository scenario"
+
+        state = declared.for_command("sqlite3 db 'select 1'")
+        assert state is not None
+        assert state.expect_absent == ("executed=2",)
+
+    def test_an_argument_tail_still_finds_the_declared_expectation(self) -> None:
+        declared = DeclaredExpectations(
+            [
+                (PROBE, EvidenceExpectation(name="base", expect_exit_code=0)),
+                (
+                    f"{PROBE} --case forged",
+                    EvidenceExpectation(name="forged", expect_exit_code=2),
+                ),
+            ]
+        )
+        assert declared.for_command(f"{PROBE} --quiet").name == "base"
+        assert declared.for_command(f"{PROBE} --case forged").name == "forged"
+        assert declared.for_command("pytest -q") is None
+
+    async def test_a_humans_oracle_outranks_the_reviewers_own(
+        self, tmp_path: Path
+    ) -> None:
+        """A reviewer cannot lower the bar a scenario file already set.
+
+        The repository declared what this probe must show. A reviewer that
+        declares something weaker for the same command is not the authority on
+        it, so the human's expectation is the one applied — and here it fails.
+        """
+        declared = DeclaredExpectations(
+            [
+                (
+                    PROBE,
+                    EvidenceExpectation(
+                        name="the effect boundary admits exactly one winner",
+                        expect_exit_code=0,
+                        expect_contains=("exactly one winner",),
+                        source="repository scenario",
+                    ),
+                )
+            ]
+        )
+        session = executing_session(tmp_path, declared=declared)
+        await reviewer_ran(
+            session, PROBE, response={"exit_code": 0, "stdout": "done\n"}
+        )
+        review = session.bind(
+            declaring(PROBE, name="it ran", expect_exit_code=0, expect_contains=["done"])
+        )
+        record = review.evidence.records[0]
+        assert record.expectation is not None
+        assert record.expectation.source == "repository scenario"
+        assert record.status is EvidenceStatus.EXPECTATION_FAILED
+        assert review.reproduced_runtime_evidence is False
+
+    def test_carrying_declared_oracles_changes_nothing_about_the_gates(self) -> None:
+        """The oracle map is reporting, not policy. It cannot widen the boundary."""
+        declared = DeclaredExpectations(
+            [("git push", EvidenceExpectation(name="pushed", expect_exit_code=0))]
+        )
+        loose = ReviewerCommandPolicy(approved=APPROVED, declared=declared)
+        strict = ReviewerCommandPolicy(approved=APPROVED)
+        for command in ("git push", "rm -rf src", "pip install x", PROBE, "git diff"):
+            assert loose.decide(command).allowed == strict.decide(command).allowed
+
+
+class TestTheObservationIsReadFromTheToolNotTheReviewer:
+    @pytest.mark.parametrize(
+        "response,exit_code",
+        [
+            ({"exit_code": 0, "stdout": "ok"}, 0),
+            ({"exitCode": 7, "stdout": "ok"}, 7),
+            ({"returncode": 2, "stdout": "ok"}, 2),
+        ],
+    )
+    def test_an_exit_code_is_read_wherever_the_sdk_reports_it(
+        self, response: dict, exit_code: int
+    ) -> None:
+        observation = observation_from_tool_response({"command": "pytest"}, response)
+        assert observation.exit_code == exit_code
+        assert observation.exit_code_inferred is False
+
+    def test_a_result_with_no_exit_code_is_marked_inferred(self) -> None:
+        observation = observation_from_tool_response(
+            {"command": "pytest"}, {"stdout": "12 passed"}
+        )
+        assert observation.exit_code == 0
+        assert observation.exit_code_inferred is True
+
+    def test_an_unreadable_result_carries_nothing_forward(self) -> None:
+        observation = observation_from_tool_response({}, object())
+        assert observation.has_result is False
+        assert observation.exit_code is None
+
+    def test_output_is_clipped_rather_than_stored_whole(self) -> None:
+        observation = observation_from_tool_response(
+            {"command": "pytest"}, {"stdout": "x" * 100_000}
+        )
+        assert len(observation.output) < 20_000
+        assert "characters omitted" in observation.output
+
+    async def test_the_command_that_ran_is_recorded_next_to_the_one_requested(
+        self, tmp_path: Path
+    ) -> None:
+        session = executing_session(tmp_path)
+        await reviewer_ran(session, PROBE, response={"exit_code": 0, "stdout": "ok"})
+        entry = session.executions[-1]
+        assert entry.command == PROBE
+        assert entry.command_executed == PROBE
+        assert entry.observed is True
+
+    async def test_an_observation_with_nothing_to_join_to_is_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        """A PostToolUse for a command the boundary never classified invents nothing."""
+        session = executing_session(tmp_path)
+        assert session.command_policy is not None
+        assert (
+            session.command_policy.observe(
+                tool_use_id="never-seen", command="pytest -q", exit_code=0
+            )
+            is None
+        )
+        assert session.executions == []
+
+    def test_the_observation_hook_never_influences_the_session(self, tmp_path: Path) -> None:
+        """It records; it does not decide. Enforcement stays in PreToolUse alone."""
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "neyma_product_driver"
+            / "reviewer.py"
+        ).read_text(encoding="utf-8")
+        body = source[source.index("async def _post_tool_use_hook") : source.index("def _options")]
+        assert "permissionDecision" not in body
+        assert "deny" not in body
 
 
 # ==========================================================================
@@ -975,6 +1745,43 @@ class TestAReviewIsAboutOneExactTree:
         first, second = reviewer.bindings[0]["fingerprint"], reviewer.bindings[1]["fingerprint"]
         assert not first.matches(second)
         assert result.review_ledger.records[0].stale is True
+
+    def test_reproduced_runtime_evidence_does_not_rescue_a_stale_review(self) -> None:
+        """The strongest possible review of the wrong tree is still of the wrong tree.
+
+        Worth pinning separately now that a review can carry a satisfied runtime
+        oracle: reproduced evidence is evidence about the state it was produced
+        against, and a builder correction retires it exactly as it retires
+        anything else.
+        """
+        ledger = ReviewLedger()
+        review = supported()
+        assert review.reproduced_runtime_evidence is True
+        old = TreeFingerprint(head="a" * 40, tree="b" * 40, dirty_digest="c" * 64)
+        new = TreeFingerprint(head="a" * 40, tree="b" * 40, dirty_digest="d" * 64)
+        record = ledger.record(review, old, builder_session_id="builder-session-1")
+        review.reviewer_session_id = "reviewer-session-1"
+
+        assert ledger.invalidate_stale(new) == [record]
+        assert record.stale is True
+        assert ledger.satisfying(new) is None
+        assert record.satisfies(new) is False
+
+    def test_reproduced_runtime_evidence_does_not_make_a_self_review_independent(
+        self,
+    ) -> None:
+        """A builder measuring its own work is still the builder."""
+        ledger = ReviewLedger()
+        review = supported()
+        review.reviewer_session_id = "builder-session-1"
+        fingerprint = TreeFingerprint(head="a" * 40, tree="b" * 40)
+        record = ledger.record(
+            review, fingerprint, builder_session_id="builder-session-1"
+        )
+        assert review.reproduced_runtime_evidence is True
+        assert record.independent is False
+        assert record.satisfies(fingerprint) is False
+        assert ledger.satisfying(fingerprint) is None
 
     def test_a_supported_review_of_an_older_tree_satisfies_nothing(self) -> None:
         old = TreeFingerprint(head="a" * 40, tree="b" * 40, dirty_digest="c" * 64)
@@ -1353,9 +2160,107 @@ class TestTheFounderSummaryReportsTheReview:
         assert "**Ran automatically?** Yes" in section
         assert "**Verdict:** **SUPPORTED**" in section
         assert "reproduce runtime evidence itself?** **Yes**" in section
-        assert "`pytest -q`" in section
+        # Not "it ran N commands" — what it ran, what the oracle was, and that
+        # the oracle held. A founder has to be able to disbelieve this line.
+        assert "what it actually reproduced" in section
+        assert "pytest -q" in section
+        assert SUITE_ORACLE.name in section
+        assert "RUNTIME_REPRODUCED" in section
         assert "different sessions." in section
         assert journal.review_satisfied_scope is True
+
+    def test_a_reviewer_that_only_inspected_is_not_reported_as_reproducing(self) -> None:
+        """The false green, at the place a founder would have read it.
+
+        The reviewer ran something, the boundary allowed it, and the old summary
+        said runtime evidence had been reproduced. What it actually did was list
+        the tree.
+        """
+        requirement = resolve_review_requirement(Path("."), _NestedScope())
+        requirement.add(ReviewTrigger.REPOSITORY_AUTHORITY, "the repository requires one")
+        review = IndependentReview(
+            verdict="SUPPORTED",
+            confidence=0.8,
+            evidence_reproduced=False,
+            claimed_evidence_reproduced=True,
+            reproduced_evidence=[
+                ReproducedEvidence(
+                    command_requested="git status --porcelain",
+                    command_executed="git status --porcelain",
+                    exit_code=0,
+                    observed=" M src/external_effect.py",
+                    kind=VerificationKind.STRUCTURAL,
+                    status=EvidenceStatus.REVIEWER_INSPECTED,
+                    detail="no deterministic expectation was named",
+                    allowed=True,
+                ).to_dict()
+            ],
+        )
+        review.reviewer_session_id = "reviewer-session-1"
+        journal = _journal_with_review(
+            requirement=requirement, reviews=[review], automatic=True
+        )
+        section = "\n".join(journal._review_lines())
+        assert "reproduce runtime evidence itself?** **No.**" in section
+        assert "The claim is not carried" in section
+        assert "1 further command(s) the reviewer ran with no named expectation" in section
+        assert journal.review_reproduced_evidence is False
+
+    def test_a_failed_expectation_is_reported_rather_than_dropped(self) -> None:
+        requirement = resolve_review_requirement(Path("."), _NestedScope())
+        requirement.add(ReviewTrigger.REPOSITORY_AUTHORITY, "the repository requires one")
+        review = IndependentReview(
+            verdict="NOT_SUPPORTED",
+            reproduced_evidence=[
+                ReproducedEvidence(
+                    command_requested=".venv/bin/python scripts/probe.py",
+                    exit_code=1,
+                    expectation=EvidenceExpectation(
+                        name="exactly one winner", expect_exit_code=0
+                    ),
+                    expectation_satisfied=False,
+                    kind=VerificationKind.RUNTIME,
+                    status=EvidenceStatus.EXPECTATION_FAILED,
+                    detail="exit code was 1, not the expected 0",
+                    allowed=True,
+                ).to_dict()
+            ],
+        )
+        journal = _journal_with_review(
+            requirement=requirement, reviews=[review], automatic=True
+        )
+        section = "\n".join(journal._review_lines())
+        assert "Ran without its expectation holding" in section
+        assert "exactly one winner" in section
+        assert journal.review_unmet_expectations
+
+    def test_structural_verification_is_named_as_structural(self) -> None:
+        requirement = resolve_review_requirement(Path("."), _NestedScope())
+        requirement.add(ReviewTrigger.REPOSITORY_AUTHORITY, "the repository requires one")
+        review = IndependentReview(
+            verdict="SUPPORTED",
+            reproduced_evidence=[
+                ReproducedEvidence(
+                    command_requested="git diff HEAD",
+                    exit_code=0,
+                    expectation=EvidenceExpectation(
+                        name="the guard is present in the diff",
+                        expect_contains=("compare_and_set",),
+                    ),
+                    expectation_satisfied=True,
+                    kind=VerificationKind.STRUCTURAL,
+                    status=EvidenceStatus.STRUCTURAL_VERIFIED,
+                    allowed=True,
+                ).to_dict()
+            ],
+        )
+        journal = _journal_with_review(
+            requirement=requirement, reviews=[review], automatic=True
+        )
+        section = "\n".join(journal._review_lines())
+        assert "reproduce runtime evidence itself?** **No.**" in section
+        assert "Verified structurally by the reviewer" in section
+        assert "not a demonstration that the product behaves" in section
 
     def test_a_review_that_only_read_records_is_not_dressed_up(self) -> None:
         requirement = resolve_review_requirement(Path("."), _NestedScope())
