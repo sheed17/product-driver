@@ -216,8 +216,10 @@ class EvidenceExpectation:
     #: The oracle's name: the probe invariant, the scenario check, the thing
     #: this expectation is *about*.
     name: str = ""
-    #: The exit code the command must produce. ``None`` means "any exit code",
-    #: which is a real choice for a command whose output is the whole point.
+    #: The exit code the command must produce. ``None`` does not mean "any exit
+    #: code": it means this oracle announces none, and an unannounced non-zero
+    #: exit is :attr:`EvidenceStatus.COMMAND_ERRORED` however well the output
+    #: matched. A command that is supposed to fail says so here.
     expect_exit_code: int | None = None
     #: Substrings that must all be present in what the command produced.
     expect_contains: tuple[str, ...] = ()
@@ -602,9 +604,10 @@ def classify_evidence(
     The order is the order of the things that can go wrong, each of which stops
     the chain before it reaches "reproduced":
 
-    refused → never ran → the tool failed → no oracle → oracle failed → and only
-    then, satisfied, which is RUNTIME or STRUCTURAL according to whether the
-    command exercises the product or reads the tree.
+    refused → never ran → the tool failed → an exit code nobody announced → no
+    oracle → oracle failed → and only then, satisfied, which is RUNTIME or
+    STRUCTURAL according to whether the command exercises the product or reads
+    the tree.
     """
     kind = classify_verification_kind(command_requested)
     evidence = ReproducedEvidence(
@@ -641,18 +644,39 @@ def classify_evidence(
         )
         return evidence
 
-    if expectation is None or not expectation.deterministic:
-        if observation.exit_code not in (None, 0):
-            # Nothing declared that this should fail, and it did. A non-zero exit
-            # is a legitimate observation only when something named it in
-            # advance; unannounced, it is a command that did not do what the
-            # reviewer went there for.
-            evidence.status = EvidenceStatus.COMMAND_ERRORED
-            evidence.detail = (
-                f"the command exited {observation.exit_code} and no expectation declared "
-                "that it should, so nothing here was established"
+    # Nothing declared that this should fail, and it did. A non-zero exit is a
+    # legitimate observation only when something named it in advance;
+    # unannounced, it is a command that did not do what the reviewer went there
+    # for, whatever its output happened to say.
+    #
+    # This is checked BEFORE the oracle rather than inside it, because an
+    # expectation that asserts only substrings does not thereby announce an exit
+    # code. `pytest -q` exiting 1 still prints "5 passed", and an oracle reading
+    # `expect_contains: ["passed"]` with no `expect_exit_code` would otherwise
+    # be satisfied by a suite that failed — the same false green this module
+    # exists to close, one layer further in. An exit code counts as announced
+    # only when a deterministic expectation names it: an oracle that cannot
+    # decide anything cannot license a failure either.
+    announced_exit = (
+        expectation is not None
+        and expectation.deterministic
+        and expectation.expect_exit_code is not None
+    )
+    if not announced_exit and observation.exit_code not in (None, 0):
+        evidence.status = EvidenceStatus.COMMAND_ERRORED
+        evidence.detail = (
+            f"the command exited {observation.exit_code} and no expectation declared "
+            "that it should, so nothing here was established"
+            + (
+                " — an expectation that asserts only output does not announce an exit "
+                "code; declare `expect_exit_code` to make a non-zero exit evidence"
+                if expectation is not None and expectation.deterministic
+                else ""
             )
-            return evidence
+        )
+        return evidence
+
+    if expectation is None or not expectation.deterministic:
         evidence.status = EvidenceStatus.REVIEWER_INSPECTED
         evidence.detail = (
             "the reviewer ran this and read the output, but named no deterministic "

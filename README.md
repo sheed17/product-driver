@@ -1769,7 +1769,10 @@ emptied so a repository secret cannot leak into a run.
   but a reviewer that names a weak expectation gets a weak oracle. The strong
   path is a command a human already wrote into a scenario file with its
   assertions; that oracle is applied in preference to the reviewer's, and
-  widening it is a human writing more of them down.
+  widening it is a human writing more of them down. A weak oracle has a floor: an
+  expectation that names no `expect_exit_code` announces none, so a command that
+  exits non-zero under it is `COMMAND_ERRORED` however well its output matched —
+  `pytest -q` prints "5 passed" on its way to exiting 1.
 - Whether a command "exercises the product" is decided from its head: test
   runners, `python`, and the deterministic commands a scenario declares are
   runtime; `git`, `grep`, `ls` and friends are structural. A repository whose
@@ -1778,7 +1781,12 @@ emptied so a repository secret cannot leak into a run.
 - Where the SDK reports no exit code for a command that did not fail, one is
   inferred as `0` and marked `exit_code_inferred`. A tool result this cannot read
   at all leaves the observation absent, which fails closed to
-  `OBSERVATION_MISSING` rather than to a satisfied expectation.
+  `OBSERVATION_MISSING` rather than to a satisfied expectation. The flag is
+  carried in the review artifact but not rendered in the founder summary's
+  evidence line, which shows `exit 0` without qualifying it as inferred. Known
+  debt, held nonblocking: the inference only ever yields `0`, and only from a
+  result the transport returned without an error, so it cannot dress a failure up
+  as a success.
 - The working-tree half of a review fingerprint hashes the tracked diff plus the
   contents of untracked files, under a per-file (2 MB) and total (64 MB) budget.
   A file past those budgets contributes its path and size instead of its bytes,

@@ -86,9 +86,11 @@ from neyma_product_driver.reviewer_boundary import (
 from neyma_product_driver.reviewer_evidence import (
     DeclaredExpectations,
     EvidenceExpectation,
+    EvidenceObservation,
     EvidenceStatus,
     ReproducedEvidence,
     VerificationKind,
+    classify_evidence,
     classify_verification_kind,
     expectations_from_scenarios,
     observation_from_tool_response,
@@ -1147,6 +1149,97 @@ class TestReproducedEvidenceMeansASatisfiedOracle:
         record = review.evidence.records[0]
         assert record.status is EvidenceStatus.COMMAND_ERRORED
         assert review.reproduced_runtime_evidence is False
+
+    async def test_a_substring_oracle_does_not_announce_an_exit_code(
+        self, tmp_path: Path
+    ) -> None:
+        """The false green this rule closes: a failing suite that still says "passed".
+
+        `pytest -q` prints "3 failed, 5 passed" on its way to exiting 1. An oracle
+        asserting only that the output contains "passed" is satisfied by that
+        line, and before this rule the run recorded RUNTIME_REPRODUCED for a
+        suite that failed. An expectation that asserts substrings has not thereby
+        announced an exit code, so the exit code is still unannounced and the
+        command still established nothing.
+        """
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            "pytest -q",
+            response={"exit_code": 1, "stdout": "3 failed, 5 passed in 2.1s\n"},
+        )
+        review = session.bind(
+            declaring(
+                "pytest -q",
+                name="the effect-boundary suite is green",
+                expect_contains=["passed"],
+                expect_exit_code=None,
+            )
+        )
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.COMMAND_ERRORED
+        assert record.expectation_satisfied is False
+        assert record.exit_code == 1
+        assert "exited 1" in record.detail
+        assert "declare `expect_exit_code`" in record.detail
+        assert review.reproduced_runtime_evidence is False
+        assert review.evidence_reproduced is False
+        assert review.claimed_evidence_reproduced is True
+
+    async def test_an_unannounced_nonzero_exit_is_not_structural_either(
+        self, tmp_path: Path
+    ) -> None:
+        """The same rule, on the inspection side: `grep` exits 1 when it finds nothing.
+
+        A reviewer asserting only that the output lacks a string gets that for
+        free from an empty result, so the exit code is the part that carries the
+        fact and an oracle that did not name it decided nothing.
+        """
+        session = executing_session(tmp_path)
+        await reviewer_ran(
+            session,
+            "grep -rn CLAIMED src",
+            response={"exit_code": 1, "stdout": ""},
+        )
+        review = session.bind(
+            declaring(
+                "grep -rn CLAIMED src",
+                name="no claim path remains",
+                expect_absent=["CLAIMED"],
+                expect_exit_code=None,
+            )
+        )
+        record = review.evidence.records[0]
+        assert record.status is EvidenceStatus.COMMAND_ERRORED
+        assert review.structurally_verified is False
+        assert review.reproduced_runtime_evidence is False
+
+    def test_only_a_deterministic_oracle_can_announce_a_nonzero_exit(self) -> None:
+        """An expectation that cannot decide anything cannot license a failure.
+
+        An unnamed expectation is not an oracle, so its `expect_exit_code` is not
+        an announcement either — otherwise a reviewer could excuse any non-zero
+        exit by naming nothing and asserting a number.
+        """
+        errored = classify_evidence(
+            command_requested=PROBE,
+            allowed=True,
+            observation=EvidenceObservation(
+                command_executed=PROBE, exit_code=2, output="boom", response_seen=True
+            ),
+            expectation=EvidenceExpectation(name="", expect_exit_code=2),
+        )
+        assert errored.status is EvidenceStatus.COMMAND_ERRORED
+
+        announced = classify_evidence(
+            command_requested=PROBE,
+            allowed=True,
+            observation=EvidenceObservation(
+                command_executed=PROBE, exit_code=2, output="boom", response_seen=True
+            ),
+            expectation=EvidenceExpectation(name="it must fail", expect_exit_code=2),
+        )
+        assert announced.status is EvidenceStatus.RUNTIME_REPRODUCED
 
     async def test_a_declared_negative_control_is_reproduced_when_it_holds(
         self, tmp_path: Path

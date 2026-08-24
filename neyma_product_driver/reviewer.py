@@ -176,8 +176,11 @@ REVIEW_SCHEMA: dict[str, Any] = {
                                 "type": ["integer", "null"],
                                 "description": (
                                     "The exit code that must be observed. Use a non-zero "
-                                    "value deliberately for a negative control. null "
-                                    "means the exit code is not part of the oracle."
+                                    "value deliberately for a negative control. null does "
+                                    "NOT mean any exit code is acceptable: it announces "
+                                    "none, and a command that then exits non-zero is "
+                                    "recorded as errored however well its output matched. "
+                                    "Name the exit code you expect."
                                 ),
                             },
                             "expect_contains": {
@@ -322,8 +325,11 @@ against what your command actually produced. Your prose is not what decides it.
   - A command with no named expectation is an inspection. Say so; it establishes
     nothing by machine.
   - A negative control is a first-class oracle: if the point is that the command
-    must FAIL, declare the non-zero `expect_exit_code` or the error string and
-    it counts exactly as much as a passing one.
+    must FAIL, declare the non-zero `expect_exit_code` and it counts exactly as
+    much as a passing one.
+  - Declare `expect_exit_code` whenever you can. Substrings alone do not announce
+    an exit code, and a command that exits non-zero with nothing having announced
+    it establishes nothing — `pytest -q` prints "passed" on its way to failing.
 
 SET `evidence_reproduced` TO TRUE ONLY IF at least one command you ran in this
 session exercised the product AND its named expectation held. If you ran
