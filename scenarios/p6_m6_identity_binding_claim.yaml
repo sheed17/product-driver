@@ -1,0 +1,1153 @@
+# P6 / M6 — Identity Binding Claim.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M6 operation           (the probe, run whole)
+#   2. a safe approved M6 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--candidates`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 / M4 / M5 entrypoints)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry and
+# the acceptance criteria; stage 2 refines them against the diff the builder actually produced;
+# stage 3 grows neighbours around whatever failed. None of that can author shell — a generated case
+# may only CHOOSE one of the approved commands below, optionally with an argument tail, and decide
+# when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3, M4 and
+# M5. M6 ships dark: no linker service, no queue, no HTTP surface, no live channel. The executor's
+# only concurrency primitive is `parallel_requests`, which is HTTP — so for this unit the generator
+# has NO way to compose ordering, concurrency, timing, duplication, crash or replay variation from
+# the outside. The axis is a closed, bounded, argument-only vocabulary; the approval boundary is
+# unchanged, because a prefix match already permits argument tails and already refuses shell.
+# See docs/SCENARIO-SPACE.md gap G2.
+#
+# WHAT M6 IS, IN THREE SENTENCES, because everything below is a consequence of them:
+#
+#   ### AN IDENTITY BINDING CLAIM IS A CLAIM THAT ARTIFACT X BELONGS TO ENTITY Y.
+#   ### IT IS EVIDENCED, CORRECTABLE AND ESCALATABLE — AND IT IS NOT A FACT, NOT AN OBSERVATION,
+#   ### NOT AUTHORITY, AND NOT SOMETHING A MODEL MAY CONFIRM.
+#
+# `provenance_class` is a DETERMINISTIC, IMMUTABLE FUNCTION of `match_method` (SD-6), computed once
+# at creation and never independently edited. That single sentence is what makes the whole unit
+# enforceable: the model reads, the linker decides, and a guess never acquires the authority of a
+# fact by moving through enough layers.
+#
+# THE THREE THINGS THIS FILE DELIBERATELY DOES NOT DECIDE. The corpus disagrees with itself in three
+# places, and encoding a resolution here would make Product Driver the author of a canonical
+# decision it has no authority to make (see `tasks/neyma_p6_m6.md` §3.9):
+#
+#   M6-AQ-1  how does `IB-7` hand a completed effect to M10? M10 is triggered by
+#            `CorrectionInvalidatedAnEffect`, a name that appears in NO registry, NO event family
+#            and NO contract projection, while F6 lists M10 as a consumer of `ClaimCorrected`.
+#   M6-AQ-2  does the exact-trusted-ID path (`IB-2`) carry a `rule_id`? Entity §16's CHECK requires
+#            one for every `LINKER_INFERRED` claim; `IB-2`'s guard names no rule; V4 leaves the
+#            registered freight identity rule set undiscovered.
+#   M6-AQ-3  how does a claim LEAVE `CONFLICTING`? Registry §4 and machine §9 classify it
+#            non-terminal human-owned; §14 enumerates no row out of it, and GR-1 makes anything
+#            unenumerated ILLEGAL.
+#
+# Every oracle below asserts only what EVERY reading agrees on: derived provenance, a guess that
+# never confirms, an owner binding that survives the relinker, one confirmed binding per subject,
+# an append-only correction that records its own obligation, and a replay that rebuilds projections
+# rather than the owner's mind.
+
+name: p6_m6_identity_binding_claim
+phase: "P6"
+mode: backend
+description: >
+  P6 M6: the Identity Binding Claim — one `identity_binding_claims` row, one machine, seven states,
+  and the rule that makes identity a decision rather than a guess: `provenance_class` is computed
+  from `match_method` and can never be chosen, edited or laundered. There is no linker service, no
+  queue and no live channel (M6 ships dark by contract), so the product is exercised through its
+  real runtime as a brokerage narrative: a POD arrives and its load number matches exactly one open
+  load, so the binding confirms; a second POD's reference matches two loads and nobody may pick one;
+  a model reads "4471" off a scanned page and that is evidence to be matched, never a confirmation;
+  a model merely feels that an email is about load 4471 and it goes to a human at confidence 1.0
+  just as it would at 0.4; the owner assigns an unlinked message by hand and the linker then decides
+  it knows better — and does not get to win; the owner discovers the POD was load 44718's all along,
+  after an invoice already went out on it. What matters is not that the happy path binds — it is
+  what the machine REFUSES, and whether a human's decision can ever be quietly recomputed,
+  overwritten, duplicated, laundered, guessed at, or rebuilt away by a replay.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M6 surface the builder must produce. A missing one is recorded as a failed assertion, so a run
+# against a repository where M6 does not exist yet cannot report a verified M6.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/identity_binding_claim.py"
+  - "src/freight_recon/migrations/phase6_identity_binding_claims.py"
+  - "eval/tests/test_phase6_identity_binding_claim.py"
+  - "scripts/probe_phase6_identity_binding_claim.py"
+  - "scripts/mutate_phase6_identity_binding_claim.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if the
+  #    builder ships a probe that cannot exercise one of the canonical risk families, this command
+  #    fails here rather than the family silently going unverified. It is also what tells a reader of
+  #    this file which `--case` values exist.
+  - name: "the M6 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # IB-1 / SD-6 — provenance is DERIVED, never chosen
+      - "proposal-creates-proposed-with-derived-provenance"
+      - "provenance-is-derived-from-match-method"
+      - "provenance-class-is-not-independently-editable"
+      - "provenance-mapping-is-exhaustive-and-immutable"
+      - "provenance-laundering-refused"
+      - "content-cannot-set-its-own-provenance"
+      # IB-2 / IB-2r — deterministic confirmation, and its absence of a fallback
+      - "exact-trusted-id-confirms"
+      - "exact-id-with-two-open-entities-is-ambiguous"
+      - "no-best-guess-fallback"
+      - "registered-rule-confirms"
+      - "reconciliation-requires-two-sources"
+      # IB-2h — the human assertion, and the immutable target it must bind
+      - "human-assertion-confirms-owner-asserted"
+      - "human-assertion-requires-authenticated-tenant-human"
+      - "human-assertion-requires-decision-ref"
+      - "ordinal-target-resolves-to-immutable-id-or-fails-closed"
+      - "ordinal-target-changed-between-display-and-click-fails-closed"
+      # IB-3 — the model READS; it never DECIDES
+      - "model-extract-is-evidence-not-confirmation"
+      - "model-extracted-requires-evidence-span"
+      - "extracted-identifier-re-enters-deterministic-matching"
+      - "forged-evidence-span-fails-closed"
+      # IB-4 — ambiguity, and the confidence that may never gate it
+      - "model-inferred-routes-to-ambiguous"
+      - "model-guess-never-confirms-at-confidence-1-0"
+      - "multiple-candidates-ambiguous"
+      - "single-weak-candidate-ambiguous"
+      - "ambiguous-is-human-owned"
+      - "confidence-is-invisible-to-every-guard"
+      # IB-5 / IB-5x — supersession, and the B3 regression
+      - "linker-inferred-claim-may-be-recomputed"
+      - "owner-asserted-binding-survives-relinker"
+      - "owner-asserted-overwrite-is-illegal-and-recorded"
+      - "superseded-claim-is-retained"
+      # IB-6 — the M7 seam: disagreement raises, it does not resolve
+      - "inferrer-vs-owner-raises-conflict-not-a-winner"
+      - "conflicting-preserves-the-human-binding"
+      - "m7-conflict-machine-is-not-built"
+      # IB-7 — correction, and the obligation it owes downstream
+      - "human-correction-moves-confirmed-to-corrected"
+      - "correction-is-append-only-and-lineage-preserving"
+      - "correction-of-correction-is-supported"
+      - "correction-records-its-propagation-obligation"
+      - "m10-compensation-machine-is-not-built"
+      # IB-8 / §25 — rejection, and a cancelled entity
+      - "proposed-or-ambiguous-may-be-rejected"
+      - "cancelled-entity-supersedes-the-confirmed-binding"
+      # §17 / §19 / GR-3 — uniqueness, concurrency, the database
+      - "one-confirmed-binding-per-subject"
+      - "competing-confirmations-serialize-at-most-one-wins"
+      - "occ-on-claim-version"
+      - "database-invariants"
+      # [C-1] — tenancy
+      - "tenant-isolation"
+      - "cross-tenant-identical-subject-ref"
+      - "wrong-tenant-human-assertion-fails-closed"
+      # §35 / §40 / ADR-003 — security
+      - "forged-human-fails-closed"
+      - "inactive-human-fails-closed"
+      - "model-actor-cannot-confirm"
+      - "counterparty-cannot-become-owner-asserted"
+      # GR-2 / GR-4 / GR-11 / M-26 — the P5 transport M6 rides
+      - "state-and-event-co-commit"
+      - "inbox-idempotency"
+      - "duplicate-proposal-is-a-no-op"
+      - "replay-preserves-owner-asserted-byte-identical"
+      - "replay-creates-no-new-authority-and-no-effect"
+      - "correction-before-confirmation-is-parked"
+      # §38 / §40 — the checkpoint and approval seams M6 feeds and must not duplicate
+      - "conflicting-binding-blocks-consequential-action"
+      - "superseded-binding-blocks-consequential-action"
+      - "confirmed-binding-provenance-is-allowed-for-consequential-action"
+      - "ambiguous-binding-does-not-flow-through-approval"
+      - "m6-mints-no-gate-decision"
+
+  # 2. THE MUTATION AXIS. M6 ships dark, so ordering, concurrency, timing, duplication, crash and
+  #    replay variation are reachable through these arguments or not at all.
+  #
+  #    The vocabulary is CLOSED and BOUNDED on purpose. This is not fuzzing: an unknown fault or an
+  #    out-of-range value must be REFUSED (see commands 3, 3b and 3c).
+  - name: "the M6 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # the axes a situation can be varied along
+      - "--concurrency"      # how many confirmers race the one-CONFIRMED-per-subject index
+      - "--delay-ms"         # timing skew between them
+      - "--repeat"           # duplicate proposal / redelivery pressure
+      - "--tenants"          # isolation pressure
+      - "--candidates"       # how many entities the matcher sees for one subject
+      - "--confidence"       # the negative control: it must change NOTHING, at 1.0 or at 0.0
+      - "--seed"             # deterministic interleaving; the same seed reproduces the failure
+      # the closed fault vocabulary, every member named by the canonical machine, the entity
+      # specification, an ADR, the event registry or a named mandate
+      - "model-infer-binding"           # IB-4 / GR-8
+      - "model-extract-without-span"    # §37 — structurally impossible
+      - "forged-evidence-span"          # §35
+      - "confidence-one-point-zero"     # ADR-007 §4.2 — the negative control
+      - "edit-provenance-class"         # SD-6
+      - "launder-provenance"            # R-P2
+      - "content-sets-provenance"       # R-P1 / M-13
+      - "unregistered-rule"             # IB-2r
+      - "single-source-reconciliation"  # IB-2r — reconciliation needs >= 2
+      - "multiple-candidates"           # IB-4
+      - "single-weak-candidate"         # IB-4 / M-17
+      - "no-candidate"                  # IB-4
+      - "relink-owner-asserted"         # IB-5x / GR-9 / the B3 regression
+      - "relink-linker-inferred"        # IB-5 — the legitimate rebuild
+      - "inferrer-disagrees"            # IB-6
+      - "correct-confirmed"             # IB-7
+      - "correct-a-correction"          # machine §25
+      - "drop-propagation-obligation"   # IB-7 / M-20
+      - "reject-proposed"               # IB-8
+      - "cancel-entity"                 # §25
+      - "duplicate-proposal"            # §33 / GR-4
+      - "competing-confirmation"        # §17
+      - "occ-conflict"                  # §19 / GR-3
+      - "concurrent-confirm"            # machine §17
+      - "forged-human"                  # §35
+      - "inactive-human"                # §35 / M1's precedent
+      - "wrong-tenant"                  # [C-1]
+      - "model-actor-confirm"           # [C-6] / ER-10
+      - "counterparty-asserts-authority"  # ADR-007 §4.4
+      - "ordinal-target"                # L-B
+      - "ordinal-target-moved"          # L-B — the slot's occupant changed
+      - "malformed-claim"               # fail closed
+      - "replay"                        # GR-11 / [C-5] / §34
+      - "restart-before-confirm"        # machine §36
+      - "restart-after-correct"         # machine §36
+      - "unreceived-subject"            # M-26 — a claim whose subject has not arrived
+      - "reorder-stream"                # F6 — proposals order-tolerant, correction STRICT
+      - "relinker-retry-storm"          # machine §20
+
+  # 3. THE NEGATIVE CONTROL FOR THAT VOCABULARY. A dimension set that accepts anything is fuzzing
+  #    wearing a closed-vocabulary costume. This proves the closure is real: an invented fault is
+  #    refused, with a non-zero exit and a readable message rather than a stack trace (`Traceback` is
+  #    in `forbidden`, so a crash here fails the whole scenario).
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case exact-trusted-id-confirms --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3b. THE FIRST M6-SPECIFIC NEGATIVE CONTROL. Entity §26: a claim NEVER EXPIRES. Machine §12 and
+  #     §23 say the same twice more, and §28 gives it no deletion policy — the evidence chain is
+  #     permanent (§29). A probe that ACCEPTED a claim-expiry fault would be producing passing
+  #     evidence for a transition the corpus states does not exist, which is the same shape as M4's
+  #     refused `unfreeze` and M5's refused `expire-observation`.
+  - name: "a claim-expiry fault does not exist, because a claim never expires"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case superseded-claim-is-retained --inject expire-claim"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3c. THE SECOND, AND THE ONE THAT IS ABOUT M7. ADR-007 §5.3: a conflict closes by a registered
+  #     deterministic rule or by a human, and there is NO THIRD WAY — `AutoResolve` is an ILLEGAL
+  #     transition, and "a conflict that times out is a conflict resolved by a clock". M6 does not
+  #     build the Conflict machine at all, so a fault that asks it to auto-resolve one is asking the
+  #     probe to exercise a mechanism this unit must not own AND that the corpus forbids outright.
+  - name: "an auto-resolve-conflict fault does not exist, because a clock is not a decision"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case inferrer-vs-owner-raises-conflict-not-a-winner --inject auto-resolve-conflict"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. THE PRODUCT, DRIVEN. Run whole, this is the deterministic basic M6 operation. Run with
+  #    `--case <case>` it is the approved focused entry point a generated scenario composes with —
+  #    the bare form below is what makes every `--case` tail approvable, because the approved set
+  #    matches by prefix and refuses shell composition in the tail.
+  - name: "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M6 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M6 adds a table and edits `schema.py`, so every layer that reads a
+  #    canonical database can be broken from inside M6. Each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M6 must not disturb, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_schema.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M6 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # M6 emits SIX already-registered F6 names plus two already-registered cross-family names
+  # (`ConflictRaised`, whose registered producer list includes `IB-6`, and the F14 tripwires), and
+  # mints none of its own — so the canonical event-contract guard is load-bearing for this unit
+  # rather than incidental: a builder that invents `ClaimRejected`, `ClaimConflicted` or
+  # `CorrectionInvalidatedAnEffect` fails here.
+  - name: "the P5 transport, replay, timers and canonical event contracts M6 rides, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py eval/tests/test_p5_event_contracts.py eval/tests/test_p5_canonical_event_mint.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2, M3, M4 and M5, whose schema M6 extends, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py eval/tests/test_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. M4's and M5's own deterministic probes, re-run. "M6 broke nothing" is a claim about THEIR
+  #    behaviour, so it is measured against THEIR oracles rather than against M6's account of it.
+  #    M5 in particular is the unit M6 is closest to: `subject_ref` points into `observations`, and
+  #    M5's inert binding seam is the thing M6 must NOT reach back into and rewrite.
+  - name: "M5 still behaves as specified with M6's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M4 still behaves as specified with M6's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M6 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "one confirmed binding" proves nothing about a
+# table.
+#
+# Every check below reads the DATABASE or the SOURCE TREE, not the probe's narration. That is the
+# point for this unit above all others: "provenance is derived", "there is one confirmed binding per
+# subject", "a MODEL_EXTRACTED claim has an evidence span" and "the human is real" are each a
+# property of the SCHEMA, and every one of them is a sentence a fully green test suite can state
+# while the database enforces none of them.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because SQLite
+  # silently ignores the pragma inside one — that makes every tenant-consistent foreign key more than
+  # decoration. A probe that skips it measures a database no caller ever gets.
+  - name: "a freshly created canonical database carries the claim layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "identity_binding_claims"
+      - "observations"
+      - "tenant_humans"
+      - "event_outbox"
+      - "approvals"
+      - "effect_grants"
+
+  # The seven states, structurally. Not a convention, not a Python enum nobody enforces — a CHECK
+  # constraint, so an eighth state and a misspelled seventh are both uninsertable. There is
+  # deliberately no `RESOLVED` (that is M7's vocabulary and the single most likely import), no
+  # `EXPIRED` (entity §26: never), no `ARCHIVED` and no `DELETED` (§28: no deletion policy, §29:
+  # permanent, the evidence chain).
+  - name: "the seven canonical claim states are a database constraint, and there is no eighth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='identity_binding_claims'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('claim state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the identity_binding_claims table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'AMBIGUOUS'"
+      - "'CONFIRMED'"
+      - "'CONFLICTING'"
+      - "'CORRECTED'"
+      - "'PROPOSED'"
+      - "'REJECTED'"
+      - "'SUPERSEDED'"
+    not_contains:
+      - "'RESOLVED'"
+      - "'EXPIRED'"
+      - "'ARCHIVED'"
+      - "'DELETED'"
+
+  # THE SIX MATCH METHODS. Entity §12 gives the closed set. A seventh is how `SYSTEM_IMPORTED`
+  # sneaks into a table whose mapping cannot produce it, and how a "best guess" method arrives
+  # wearing a deterministic name.
+  - name: "the six canonical match methods are a database constraint, and there is no seventh"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='identity_binding_claims'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'match_method TEXT NOT NULL CHECK \\(match_method IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('claim match methods:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the identity_binding_claims table declares no CHECK on match_method')"
+    timeout_s: 300
+    contains:
+      - "'EXACT_ID'"
+      - "'HUMAN'"
+      - "'MODEL_EXTRACT'"
+      - "'MODEL_INFER'"
+      - "'RECONCILIATION'"
+      - "'RULE'"
+
+  # SD-6, AS A CHECK. This is the single most load-bearing line in the unit. `provenance_class` is a
+  # DETERMINISTIC, IMMUTABLE FUNCTION of `match_method`, computed once at creation and never
+  # independently edited (entity §13). The two fields cannot drift, and the only version of that
+  # sentence a database enforces is a CHECK that pairs them — every other version is a comment that
+  # one `UPDATE` in one helper defeats. This reads the DDL and asserts all six pairs are named
+  # together inside a single provenance CHECK.
+  - name: "provenance_class is a CHECKED function of match_method, not two free fields"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='identity_binding_claims'\").fetchone();
+      sql=' '.join((row[0] if row else '').split());
+      pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'),
+      ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'),
+      ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')];
+      checks=re.findall(r'CHECK\\s*\\((?:[^()]|\\([^()]*\\))*\\)', sql);
+      prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k];
+      body=' '.join(prov);
+      print('provenance CHECK pairs match_method to provenance_class:', bool(prov));
+      print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])"
+    timeout_s: 300
+    contains:
+      - "provenance CHECK pairs match_method to provenance_class: True"
+      - "unmapped match methods: []"
+
+  # ONE CANONICAL BINDING PER SUBJECT. Entity §17: `UNIQUE (tenant_id, subject_ref) WHERE state =
+  # 'CONFIRMED'`. A partial unique index is what makes "two confirmed bindings for one artifact" a
+  # write the database refuses rather than a race an application-level check-then-insert loses. It is
+  # also, per machine §17, half of the concurrency story — the other half is OCC.
+  - name: "one CONFIRMED binding per subject is a PARTIAL UNIQUE index, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      rows=[r[0] for r in c.execute(
+      \"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\")];
+      key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s
+      and 'WHERE' in s.upper() and 'CONFIRMED' in s];
+      print('one-confirmed-binding index:', key[0] if key else 'MISSING')"
+    timeout_s: 300
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "subject_ref"
+      - "CONFIRMED"
+
+  # MODEL_EXTRACTED WITHOUT AN EVIDENCE SPAN IS STRUCTURALLY IMPOSSIBLE. Entity §16 states it as a
+  # CHECK and §37 lists it among the states that cannot exist. This is the line that separates
+  # `MODEL_EXTRACTED` (a human can open the document and look) from `MODEL_INFERRED` (nothing to
+  # look at) — and without the CHECK, an extraction with no artifact behind it is just a guess with
+  # a better provenance label, which is exactly the laundering R-P2 forbids.
+  #
+  # The `rule_id` CHECK is read beside it because entity §16 states both in the same breath, and
+  # both are the same kind of claim: a provenance class that asserts a basis must carry the basis.
+  - name: "MODEL_EXTRACTED requires an evidence span, and an inferred/reconciled claim requires a rule, by CHECK"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='identity_binding_claims'\").fetchone();
+      sql=' '.join((row[0] if row else '').split());
+      checks=re.findall(r'CHECK\\s*\\((?:[^()]|\\([^()]*\\))*\\)', sql);
+      ev=[k for k in checks if 'MODEL_EXTRACTED' in k and 'evidence_id' in k and 'span' in k];
+      rule=[k for k in checks if 'rule_id' in k and 'LINKER_INFERRED' in k and 'RECONCILED' in k];
+      cols=sorted(r[1] for r in c.execute('PRAGMA table_info(identity_binding_claims)'));
+      print('claim columns:', cols);
+      print('MODEL_EXTRACTED requires evidence_id + span:', bool(ev));
+      print('LINKER_INFERRED/RECONCILED requires rule_id:', bool(rule))"
+    timeout_s: 300
+    contains:
+      - "'binding_claim_id'"
+      - "'confidence'"
+      - "'corrected_from'"
+      - "'decision_ref'"
+      - "'entity_ref'"
+      - "'evidence_id'"
+      - "'match_method'"
+      - "'provenance_class'"
+      - "'rule_id'"
+      - "'span'"
+      - "'state'"
+      - "'subject_ref'"
+      - "'superseded_by'"
+      - "'tenant'"
+      - "'version'"
+      - "MODEL_EXTRACTED requires evidence_id + span: True"
+      - "LINKER_INFERRED/RECONCILED requires rule_id: True"
+
+  # THE DERIVED FIELDS ARE IMMUTABLE IN THE DATABASE. SD-6 says `provenance_class` is computed ONCE
+  # and NEVER INDEPENDENTLY EDITED, and R-P2 says a change of belief is a NEW claim rather than an
+  # edited field. An "immutable" column with no trigger behind it is a comment — and this repository
+  # already builds invariants exactly this way: `trg_checkpoint_witnesses_append_only_update`,
+  # `trg_durable_timers_immutable`, `trg_event_outbox_envelope_immutable`,
+  # `trg_pending_references_immutable`, and M5's own `raw_value`/`content_digest` triggers.
+  #
+  # `match_method` is asserted beside it because the mapping is a FUNCTION: a method that can be
+  # rewritten is a provenance that can be rewritten one indirection later, and then the CHECK above
+  # is protecting nothing.
+  - name: "provenance_class and match_method are immutable in the database, not merely in the Python"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      trig=[r[0] or '' for r in c.execute(
+      \"select sql from sqlite_master where type='trigger' and tbl_name='identity_binding_claims'\")];
+      body=' '.join(trig);
+      print('provenance_class protected by a trigger:', bool(re.search(r'provenance_class', body)));
+      print('match_method protected by a trigger:', bool(re.search(r'match_method', body)));
+      print('claim triggers:', len(trig))"
+    timeout_s: 300
+    contains:
+      - "provenance_class protected by a trigger: True"
+      - "match_method protected by a trigger: True"
+
+  # A NAMED HUMAN AND A REAL SUBJECT, NOT TWO STRINGS. Machine §5: the owner is "system; a human on
+  # `AMBIGUOUS`/`CONFLICTING`". Entity §35: `OWNER_ASSERTED` requires an AUTHENTICATED human bound to
+  # an IMMUTABLE identifier. Entity §18 makes `subject_ref` a foreign key.
+  #
+  # These are the two FKs whose targets EXIST today. `tenant_humans` is M1's, and it is the precedent
+  # M1 set for `owner_id` and M4 set for `granted_by`; `observations` is M5's, and it is what makes
+  # "bound to an immutable id, never an ordinal" a property the database can hold rather than a
+  # sentence a UI promises. `entity_ref`, `evidence_id`, `rule_id` and `conflict_id` point at tables
+  # no unit owns yet — see `tasks/neyma_p6_m6.md` §3.6.
+  - name: "the human and the subject are FOREIGN KEYS, not conventions"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('identity_binding_claims foreign keys ->',
+      sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(identity_binding_claims)')}))"
+    timeout_s: 300
+    contains:
+      - "tenant_humans"
+      - "observations"
+      - "identity_binding_claims"
+
+  # NO EXPIRY, NO DELETION, NO AUTO-RESOLUTION WAS INVENTED. Entity §26: never expires. §28: no
+  # deletion policy. §29: permanent, the evidence chain. ADR-007 §5.3: `AutoResolve` is an ILLEGAL
+  # transition and "a conflict that times out is a conflict resolved by a clock".
+  #
+  # That is four statements of the same family of rule, and the way a build session breaks them is
+  # not by arguing — it is by adding a TTL, a sweep, a stale-claim reaper or an auto-resolver because
+  # those felt like hygiene, or by adding an `IB-9` row to close the `CONFLICTING` state §3.9 leaves
+  # open. Two scans, because the two surfaces fail differently. In CODE and DDL the identifier
+  # appearing at all is the invention. In the SPECS prose must stay free to SAY that no expiry
+  # exists — describing the rule is the correct behaviour — so only a machine-table or event-registry
+  # ROW counts: a line whose first cell names the transition or the event.
+  - name: "no claim expiry, sweep, deletion, auto-resolution or extra transition was invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      names=r'ClaimExpired|ClaimDeleted|ClaimArchived|ClaimAutoResolved|claim_expiry|expire_claim|expire_claims|sweep_claims|purge_claims|auto_resolve_conflict|autoresolve';
+      code=re.compile(names);
+      code_hits=sorted({str(f) for r in ('src/freight_recon','scripts')
+      if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py')
+      if code.search(f.read_text(encoding='utf-8', errors='replace'))});
+      row=re.compile(r'^\\|\\s*[*\\x60 ]*(?:' + names + r'|IB-9|IB-1[0-9])\\b', re.M);
+      spec=pathlib.Path('docs/specifications');
+      spec_hits=sorted({str(f) for f in spec.rglob('*.md')
+      if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else [];
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=sorted(r[1] for r in c.execute('PRAGMA table_info(identity_binding_claims)'));
+      print('invented expiry/auto-resolve surfaces:', code_hits);
+      print('invented expiry/extra transition rows:', spec_hits);
+      print('expiry columns on identity_binding_claims:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])"
+    timeout_s: 300
+    contains:
+      - "invented expiry/auto-resolve surfaces: []"
+      - "invented expiry/extra transition rows: []"
+      - "expiry columns on identity_binding_claims: []"
+
+  # THE SIX F6 CONTRACTS, AND NO SEVENTH. `event_contracts_data.json` is the mechanical projection of
+  # `events/registry.md`, which its own header names as THE SOLE CANONICAL LIST of event names — and
+  # `state-machines/registry.md` §6 says its own event table is PROVISIONAL by comparison. The
+  # projection carries exactly six `Claim*` F6 contracts, and it carries `ConflictRaised` with
+  # `IB-6` in its producer list, which is what makes emitting that one at IB-6 canonical rather than
+  # writing another machine's contract (contrast `ExceptionRaised`, whose producer list is `EC-1`
+  # alone — see `tasks/neyma_p6_m6.md` §3.7).
+  #
+  # `CorrectionInvalidatedAnEffect` is asserted ABSENT from the registered corpus, because it is the
+  # name M10's own specification says triggers a Compensation and it exists in no registry at all.
+  # That absence is `M6-AQ-1`, and minting the name would be resolving it.
+  - name: "M6 uses the six registered F6 contracts and the registered cross-family names, and invents no seventh"
+    command: >-
+      .venv/bin/python -c "import json,pathlib,re;
+      data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8'));
+      rows=data.get('contracts') or [];
+      byname={r['name']: r for r in rows} if isinstance(rows,list) else {};
+      f6=sorted(n for n,r in byname.items() if r.get('family')=='F6');
+      print('registered F6 contracts:', f6);
+      print('ConflictRaised producers:', sorted(byname.get('ConflictRaised',{}).get('producers') or []));
+      print('CorrectionInvalidatedAnEffect registered:', 'CorrectionInvalidatedAnEffect' in byname);
+      src=pathlib.Path('src/freight_recon/identity_binding_claim.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else 'MISSING identity_binding_claim.py';
+      used=sorted(set(re.findall(r'\\b(?:Claim|Conflict|Compensation|Exception)[A-Z][A-Za-z]*\\b', text)));
+      print('unregistered Claim*/Conflict*/Compensation*/Exception* names in the machine:',
+      [u for u in used if u not in byname])"
+    timeout_s: 300
+    contains:
+      - "registered F6 contracts: ['ClaimAmbiguous', 'ClaimConfirmed', 'ClaimCorrected', 'ClaimEvidenced', 'ClaimProposed', 'ClaimSuperseded']"
+      - "'IB-6'"
+      - "CorrectionInvalidatedAnEffect registered: False"
+      - "unregistered Claim*/Conflict*/Compensation*/Exception* names in the machine: []"
+
+  # M7 AND M10 WERE NOT BUILT ALONG THE WAY. `IB-6` ends in a Conflict and `IB-7` ends in a
+  # Compensation, and the cheapest way to satisfy both sentences is to build the machines they name —
+  # which is two units nobody asked for. The repository has already ruled on this exact shape twice:
+  # `event_inbox.expire_overdue` marks the row and RETURNS the owner rather than minting
+  # `ExceptionRaised`, and M5's binding seam APPLIES a decision rather than computing one. M6 owes a
+  # `CONFLICTING` state, a registered `ConflictRaised`, and a durable propagation obligation. It does
+  # not owe `conflicts`, `compensations`, `CF-*` or `CM-*`.
+  - name: "the conflict and compensation seams are fed without M7 or M10 being built"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      src=pathlib.Path('src/freight_recon/identity_binding_claim.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_identity_binding_claims.py');
+      migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      print('mints another machine event:',
+      sorted(set(re.findall(r'\\bConflictOpened\\b|\\bConflictEscalated\\b|\\bConflictResolved\\b|\\bConflictPartyAttached\\b|\\bCompensationRequired\\b|\\bCompensationApproved\\b|\\bCompensationStarted\\b|\\bCompensationCompleted\\b|\\bExceptionRaised\\b|\\bCorrectionInvalidatedAnEffect\\b|\\bCF-[0-9]+\\b|\\bCM-[0-9]+\\b|\\bEC-[0-9]+\\b', text+migtext))));
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\"));
+      print('m7/m9/m10 tables created by m6:',
+      [t for t in tables if t in ('conflicts','conflict_parties','compensations','exceptions','evidence','evidence_spans','rules')])"
+    timeout_s: 300
+    contains:
+      - "mints another machine event: []"
+      - "m7/m9/m10 tables created by m6: []"
+
+  # THE DARK POSTURE, MEASURED — and measured the way Neyma's own guard measures it. The
+  # authoritative sweep walks `src/freight_recon/**`, because that is the production package;
+  # `scripts/` is developer tooling that ships to nobody. Two separate assertions rather than one glob
+  # over both, because a single glob cannot tell the deterministic verification probe from a real
+  # caller, and the version of this check that could not tell them apart would have to be relaxed to
+  # let the probe exist at all.
+  - name: "M6 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      hits=sorted(str(f) for f in root.rglob('*.py')
+      if f.name!='identity_binding_claim.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='identity_binding_claim')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='identity_binding_claim' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production importers of identity_binding_claim:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of identity_binding_claim: []"
+
+  - name: "the only thing outside the package that reaches M6 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='identity_binding_claim')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='identity_binding_claim' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching identity_binding_claim:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching identity_binding_claim: ['probe_phase6_identity_binding_claim.py']"
+
+  # NO LIVE LINKER, NO PRODUCT SURFACE. M6's product form is an `AMBIGUOUS` queue a human works
+  # through and an "assign unlinked N" action in a channel — so the things that must not arrive with
+  # it are that queue and that action. This repository already carries every surface the temptation
+  # would reach for: `email_triage.py` is, by ADR-007 §14's own words, THE ANCESTOR of this linker,
+  # and `action_callback.py` already carries a `_learn_correction`. This walks the production package
+  # for a module that both reaches the claim machine and reaches one of those channels, which is the
+  # shape a live linker would have, and asserts the set is empty.
+  - name: "no live linker: nothing joins the claim machine to an inbound or outbound channel"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      CHANNELS={'ingestion','email_adapter','imap_mailbox','email_corpus','email_triage',
+      'inbox_brain','inbox_discovery','extraction','extraction_bridge','browser_use_adapter',
+      'browser_use_write','cdp_readonly','cdp_session','cdp_actuator','tms_adapter','tms_write',
+      'slack_adapter','slack_delegate','channels','alert_channel','action_callback','ops_control',
+      'mailbox_intake'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8')))) for f in root.rglob('*.py')];
+      print('modules joining the claim machine to a channel:',
+      sorted(name for name,m in seen if 'identity_binding_claim' in m and (m & CHANNELS)))"
+    timeout_s: 300
+    contains:
+      - "modules joining the claim machine to a channel: []"
+
+  # M6 AUTHORIZES NOTHING, AND IT IS NOT A SECOND GATE. Entity §38 makes a claim an INPUT to
+  # checkpoint step 4 — `CONFLICTING`, `SUPERSEDED` or retracted BLOCKS — and CLAUDE.md rule 17 keeps
+  # the checkpoint the only thing that mints a gate decision. M6 is the unit with the strongest
+  # temptation to become a second gate, because "is this binding good enough to act on?" is a
+  # question it can answer locally and must not answer authoritatively.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # M5 WAS NOT REWRITTEN TO SUIT M6. `subject_ref` points INTO `observations`, and M5 left its own
+  # binding seam deliberately inert — `binding_claim_id` with NO foreign key into a table M5 did not
+  # own, and a `DETERMINISTIC_MATCH_METHODS` constant spelled `RECONCILE` where M6's canonical
+  # `match_method` enum spells `RECONCILIATION`. Both are M5's, both are landed, and neither is M6's
+  # to tidy: M6 uses the canonical six in its OWN table and leaves M5's constant alone. This asserts
+  # M5's shipped shape is byte-unchanged in the two places M6 would touch it if it were going to.
+  - name: "M5's landed observation seam is not rewritten by M6"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_observations.py');
+      text=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      m=re.search(r'DETERMINISTIC_MATCH_METHODS:[^=]*=\\s*(\\([^)]*\\))', text);
+      print('M5 match-method constant:', ' '.join(m.group(1).split()) if m else 'MISSING');
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)')))"
+    timeout_s: 300
+    contains:
+      - "M5 match-method constant: (\"EXACT_ID\", \"RULE\", \"RECONCILE\", \"HUMAN\")"
+      - "'content_digest'"
+      - "'raw_value'"
+      - "'binding_claim_id'"
+
+# ---------------------------------------------------------------------------
+# WHICH IDENTIFIED RISKS THIS SCENARIO VERIFIES, AND BY WHAT.
+#
+# Read by the acceptance gate. A run's generator names the risks it thinks could realistically fail;
+# the gate then asks, for each acceptance-blocking one, whether any executed scenario actually
+# verified it. An entry here is a claim by a human, checked by the machine: `checks` must have
+# executed and every assertion they produced must have passed, and `observations` are LITERAL
+# substrings those checks must have printed. The claim counts for acceptance only when all of that
+# held AND the scenario as a whole PASSED with resolvable evidence.
+#
+# WHAT IS DELIBERATELY NOT DECLARED. Nothing is declared for `ambiguous_external_effect` or
+# `timeout_after_effect`. M6 touches the outside world not at all — M3 remains the single effect
+# authority — so an M6 run that identifies one of those as a blocking risk is identifying a risk
+# about ANOTHER unit's behaviour and must generate a case for it or block. That absence is the point:
+# this block is an inventory of oracles, not a list of categories to wave through.
+verifies:
+  - risk_category: authorization
+    claim: >-
+      A model proposes; it never confirms. A `MODEL_INFERRED` claim routes to `AMBIGUOUS` and is
+      still `AMBIGUOUS` at confidence 1.0, because confidence is structurally invisible to every
+      guard; a `MODEL_EXTRACTED` claim is evidence that re-enters deterministic matching rather than
+      a confirmation; a counterparty is `MODEL_EXTRACTED` at best and can never become
+      `OWNER_ASSERTED`; and a machine actor cannot confirm an owner assertion at all.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "A MODEL GUESS ROUTES TO AMBIGUOUS AND NEVER CONFIRMS"
+      - "CONFIDENCE 1.0 CHANGES NOTHING"
+      - "CONFIDENCE IS INVISIBLE TO EVERY GUARD"
+      - "MODEL_EXTRACTED IS EVIDENCE, NOT CONFIRMATION"
+      - "A COUNTERPARTY IS MODEL_EXTRACTED AT BEST, NEVER OWNER_ASSERTED"
+      - "A MODEL ACTOR CANNOT CONFIRM"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      `provenance_class` is a deterministic, immutable function of `match_method` — computed once,
+      CHECKed by the database, protected by a trigger, and never independently edited. A change of
+      belief is a NEW claim with a new `match_method`, never an edited provenance; inbound content
+      cannot set it; and the seven canonical states are a CHECK constraint with no eighth and no
+      imported `RESOLVED`.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "provenance_class is a CHECKED function of match_method, not two free fields"
+      - "provenance_class and match_method are immutable in the database, not merely in the Python"
+      - "the seven canonical claim states are a database constraint, and there is no eighth"
+      - "the six canonical match methods are a database constraint, and there is no seventh"
+    observations:
+      - "provenance_class IS DERIVED FROM match_method, NEVER CHOSEN"
+      - "provenance_class IS IMMUTABLE ONCE COMPUTED"
+      - "A CHANGE OF BELIEF IS A NEW CLAIM, NEVER AN EDITED PROVENANCE"
+      - "unmapped match methods: []"
+      - "provenance_class protected by a trigger: True"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      An `OWNER_ASSERTED` binding survives the relinker: recomputing one is an ILLEGAL transition
+      that raises, persists nothing and is recorded to audit AND security, while a `LINKER_INFERRED`
+      binding may be recomputed freely and its predecessor is retained. When the inferrer merely
+      DISAGREES, the claim goes `CONFLICTING` and a conflict is raised — Neyma never picks a winner,
+      and the human binding is preserved intact.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "the conflict and compensation seams are fed without M7 or M10 being built"
+    observations:
+      - "AN OWNER_ASSERTED BINDING SURVIVES THE RELINKER"
+      - "RECOMPUTING AN OWNER_ASSERTED BINDING IS AN ILLEGAL TRANSITION"
+      - "A LINKER_INFERRED BINDING MAY BE RECOMPUTED FREELY"
+      - "THE SUPERSEDED CLAIM IS RETAINED"
+      - "THE INFERRER DISAGREEING WITH THE OWNER RAISES A CONFLICT, NOT A WINNER"
+      - "THE HUMAN BINDING IS PRESERVED UNDER CONFLICT"
+      - "mints another machine event: []"
+
+  - risk_category: missing_data
+    claim: >-
+      Ambiguity is human-owned and never silently resolved. Multiple candidates, a single weak
+      candidate, no candidate and a model guess all route to `AMBIGUOUS`; there is no best-guess
+      fallback behind the exact-trusted-ID path; and a `MODEL_EXTRACTED` claim with no evidence span
+      is structurally impossible rather than merely discouraged.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "MODEL_EXTRACTED requires an evidence span, and an inferred/reconciled claim requires a rule, by CHECK"
+      - "the human and the subject are FOREIGN KEYS, not conventions"
+    observations:
+      - "MULTIPLE CANDIDATES ARE AMBIGUOUS, NEVER A WINNER"
+      - "A SINGLE WEAK CANDIDATE IS STILL AMBIGUOUS"
+      - "AMBIGUOUS IS OWNED BY A NAMED HUMAN"
+      - "THERE IS NO BEST-GUESS FALLBACK"
+      - "A MODEL_EXTRACTED CLAIM WITHOUT AN EVIDENCE SPAN IS STRUCTURALLY IMPOSSIBLE"
+      - "MODEL_EXTRACTED requires evidence_id + span: True"
+      - "tenant_humans"
+
+  - risk_category: safety_invariant
+    claim: >-
+      The deterministic ladder holds in the order ADR-007 §4.1 fixes it: an exact trusted ID matching
+      exactly one open entity confirms, a registered rule with an id may confirm, reconciliation
+      needs at least two sources, an unregistered rule may not confirm, and the state row commits
+      with its canonical event. M6 uses the six registered F6 contracts and the registered
+      cross-family names, and mints no seventh.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "M6 uses the six registered F6 contracts and the registered cross-family names, and invents no seventh"
+      - "the conflict and compensation seams are fed without M7 or M10 being built"
+    observations:
+      - "AN EXACT TRUSTED ID MATCHING EXACTLY ONE OPEN ENTITY CONFIRMS"
+      - "A REGISTERED DETERMINISTIC RULE MAY CONFIRM; AN UNREGISTERED ONE MAY NOT"
+      - "RECONCILIATION REQUIRES AT LEAST TWO SOURCES"
+      - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+      - "unregistered Claim*/Conflict*/Compensation*/Exception* names in the machine: []"
+      - "m7/m9/m10 tables created by m6: []"
+
+  - risk_category: concurrency
+    claim: >-
+      At most one `CONFIRMED` binding exists per subject, and that is a PARTIAL UNIQUE index rather
+      than an application-level check two writers both pass. Under competing confirmation attempts
+      exactly one wins and the rest are refused; processing moves under OCC, so a lost update raises
+      rather than silently winning.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "one CONFIRMED binding per subject is a PARTIAL UNIQUE index, tenant-first"
+    observations:
+      - "AT MOST ONE CONFIRMED BINDING PER SUBJECT"
+      - "COMPETING CONFIRMATIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+      - "A LOST UPDATE ON A CLAIM IS REFUSED"
+      - "CREATE UNIQUE INDEX"
+
+  - risk_category: cross_tenant
+    claim: >-
+      The same `subject_ref` and `entity_ref` values in two tenants are two isolated claims, and no
+      claim is read, confirmed, corrected or superseded across a tenant boundary. A human asserting
+      into the wrong tenant fails closed. Tenant is the first partition dimension, in the index and
+      in every query.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the claim layer, tenant-first"
+      - "one CONFIRMED binding per subject is a PARTIAL UNIQUE index, tenant-first"
+    observations:
+      - "THE SAME subject_ref IN TWO TENANTS IS TWO ISOLATED CLAIMS"
+      - "A WRONG-TENANT HUMAN ASSERTION FAILS CLOSED"
+      - "problems: []"
+
+  - risk_category: malformed_input
+    claim: >-
+      A forged human, an inactive human, a forged evidence span, a malformed claim and an ordinal
+      whose slot changed between render and click all fail closed rather than becoming half-written
+      rows. An invented fault name is refused with a non-zero exit and a readable message; so are a
+      claim-expiry fault and an auto-resolve-conflict fault, because the transitions they name do not
+      exist in the corpus.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "a claim-expiry fault does not exist, because a claim never expires"
+      - "an auto-resolve-conflict fault does not exist, because a clock is not a decision"
+      - "the M6 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+      - "A HUMAN ASSERTION BINDS AN IMMUTABLE ID, NEVER AN ORDINAL"
+      - "THE ORDINAL RESOLVED TO AN IMMUTABLE ID OR THE ACTION FAILED CLOSED"
+
+  - risk_category: idempotency
+    claim: >-
+      Re-proposing an identical `LINKER_INFERRED` binding for an already-`CONFIRMED` subject is a
+      no-op, and a redelivered trigger is a no-op through the consumer inbox. Duplicate pressure
+      produces no second claim, no second confirmation and no second obligation.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+    observations:
+      - "A REDELIVERED PROPOSAL IS A NO-OP"
+      - "AT MOST ONE CONFIRMED BINDING PER SUBJECT"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replay rebuilds projections, not the owner's mind. Every `OWNER_ASSERTED` binding replays
+      byte-identical, replay mints no new authority and causes no external effect, tenant isolation
+      holds through it, and a correction arriving before its confirmation is PARKED and drained
+      rather than dropped — proposals are order-tolerant, correction and supersession are not.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+    observations:
+      - "EVERY OWNER_ASSERTED BINDING REPLAYED BYTE-IDENTICAL"
+      - "replay: 0 new claims, 0 rewritten provenance, 0 new authority, 0 external effects"
+      - "A CORRECTION ARRIVING BEFORE ITS CONFIRMATION IS PARKED, NOT DROPPED"
+
+  - risk_category: restart_recovery
+    claim: >-
+      A restart mid-confirmation re-derives `LINKER_INFERRED` claims freely and preserves
+      `OWNER_ASSERTED` ones and human decisions from the event log. Recovery never produces a second
+      confirmed binding and never re-runs the propagation the first pass already recorded.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+    observations:
+      - "A LINKER_INFERRED BINDING MAY BE RECOMPUTED FREELY"
+      - "EVERY OWNER_ASSERTED BINDING REPLAYED BYTE-IDENTICAL"
+
+  - risk_category: stale_state
+    claim: >-
+      Correction is append-only and lineage-preserving: the prior claim is retained, never deleted
+      and never edited, correction-of-correction is supported, and each correction records the
+      M6-owned obligation that dependents be re-derived and that completed effects resting on the
+      wrong binding require Compensation. No Compensation is fabricated as completed, because M10 is
+      not built.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "the conflict and compensation seams are fed without M7 or M10 being built"
+      - "no claim expiry, sweep, deletion, auto-resolution or extra transition was invented"
+    observations:
+      - "CORRECTION IS APPEND-ONLY: THE PRIOR CLAIM IS RETAINED"
+      - "CORRECTION-OF-CORRECTION IS SUPPORTED"
+      - "THE CORRECTION RECORDED ITS PROPAGATION OBLIGATION"
+      - "COMPLETED EFFECTS THAT RESTED ON THE WRONG BINDING ARE NAMED FOR COMPENSATION"
+      - "NO COMPENSATION IS FABRICATED AS COMPLETED"
+      - "expiry columns on identity_binding_claims: []"
+
+  - risk_category: approval_required
+    claim: >-
+      A `CONFLICTING` or `SUPERSEDED` binding blocks the consequential action at checkpoint step 4,
+      a consequential binding carries an allowed provenance, and a material `AMBIGUOUS` or
+      `CONFLICTING` binding does not flow through approval. M6 feeds the existing gate; it never
+      becomes a second one.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "A CONFLICTING OR SUPERSEDED BINDING BLOCKS THE CONSEQUENTIAL ACTION"
+      - "A CONSEQUENTIAL BINDING CARRIES AN ALLOWED PROVENANCE"
+      - "AN AMBIGUOUS OR CONFLICTING BINDING DOES NOT FLOW THROUGH APPROVAL"
+      - "M6 MINTS NO GATE DECISION"
+
+  - risk_category: persistence_failure
+    claim: >-
+      A pre-M6 database taken through the migration reaches the canonical claim shape, a freshly
+      created canonical database reports no readiness problems, and the invariants that matter — the
+      derived provenance, the one confirmed binding, the required evidence span, the named human,
+      the real subject — are enforced by the database rather than asserted in a docstring.
+    checks:
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the claim layer, tenant-first"
+      - "MODEL_EXTRACTED requires an evidence span, and an inferred/reconciled claim requires a rule, by CHECK"
+      - "the human and the subject are FOREIGN KEYS, not conventions"
+    observations:
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL CLAIM SHAPE"
+      - "THE DATABASE ENFORCES THE CLAIM INVARIANTS"
+      - "problems: []"
+
+  - risk_category: regression
+    claim: >-
+      M6 adds a table and edits the canonical schema, so every layer that reads a canonical database
+      is re-run against this change rather than assumed: the P3 kernel, the P4 boundary, the P5
+      transport and its canonical event contracts, and the M1/M2/M3/M4/M5 batteries. M5's and M4's
+      own probes still report their behaviours as specified with M6's tables present, M5's landed
+      seam is byte-unchanged, and every M6 guard is proven capable of failing.
+    checks:
+      - "the P3 checkpoint kernel M6 must not disturb, unbroken"
+      - "the P4 governed effect boundary M6 must not widen, unbroken"
+      - "the P5 transport, replay, timers and canonical event contracts M6 rides, unbroken"
+      - "M1, M2, M3, M4 and M5, whose schema M6 extends, unbroken"
+      - "M5 still behaves as specified with M6's tables in the schema"
+      - "M4 still behaves as specified with M6's tables in the schema"
+      - "M5's landed observation seam is not rewritten by M6"
+      - "the M6 mutation battery"
+    observations:
+      - "mutants caught"
+      - "behaviours as specified, 0 wrong"
+      - "THE M7 CONFLICT MACHINE IS NOT BUILT"
+      - "THE M10 COMPENSATION MACHINE IS NOT BUILT"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with `tasks/neyma_p6_m6.md`, which
+# states them verbatim to the builder. They are matched as substrings against everything observed —
+# nothing interprets them.
+#
+# Note what is NOT here. There is no required literal about how `IB-7` hands a completed effect to
+# M10, none about whether the exact-trusted-ID path carries a `rule_id`, and none about how a claim
+# leaves `CONFLICTING`: the repository's own authority does not currently settle any of the three
+# (see the header and `tasks/neyma_p6_m6.md` §3.9). Every literal below is one that every reading
+# agrees on.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "A BINDING IS A CLAIM THAT AN ARTIFACT BELONGS TO AN ENTITY, NEVER A FACT"
+  - "provenance_class IS DERIVED FROM match_method, NEVER CHOSEN"
+  - "provenance_class IS IMMUTABLE ONCE COMPUTED"
+  - "A CHANGE OF BELIEF IS A NEW CLAIM, NEVER AN EDITED PROVENANCE"
+  - "PROVENANCE IS RUNTIME-ASSIGNED, NEVER SET FROM CONTENT"
+  - "AN EXACT TRUSTED ID MATCHING EXACTLY ONE OPEN ENTITY CONFIRMS"
+  - "THERE IS NO BEST-GUESS FALLBACK"
+  - "A REGISTERED DETERMINISTIC RULE MAY CONFIRM; AN UNREGISTERED ONE MAY NOT"
+  - "RECONCILIATION REQUIRES AT LEAST TWO SOURCES"
+  - "A HUMAN ASSERTION IS OWNER_ASSERTED, AUTHENTICATED, AND CARRIES A decision_ref"
+  - "A HUMAN ASSERTION BINDS AN IMMUTABLE ID, NEVER AN ORDINAL"
+  - "THE ORDINAL RESOLVED TO AN IMMUTABLE ID OR THE ACTION FAILED CLOSED"
+  - "MODEL_EXTRACTED IS EVIDENCE, NOT CONFIRMATION"
+  - "A MODEL_EXTRACTED CLAIM WITHOUT AN EVIDENCE SPAN IS STRUCTURALLY IMPOSSIBLE"
+  - "THE EXTRACTED IDENTIFIER RE-ENTERS DETERMINISTIC MATCHING"
+  - "A MODEL GUESS ROUTES TO AMBIGUOUS AND NEVER CONFIRMS"
+  - "CONFIDENCE 1.0 CHANGES NOTHING"
+  - "CONFIDENCE IS INVISIBLE TO EVERY GUARD"
+  - "MULTIPLE CANDIDATES ARE AMBIGUOUS, NEVER A WINNER"
+  - "A SINGLE WEAK CANDIDATE IS STILL AMBIGUOUS"
+  - "AMBIGUOUS IS OWNED BY A NAMED HUMAN"
+  - "A LINKER_INFERRED BINDING MAY BE RECOMPUTED FREELY"
+  - "AN OWNER_ASSERTED BINDING SURVIVES THE RELINKER"
+  - "RECOMPUTING AN OWNER_ASSERTED BINDING IS AN ILLEGAL TRANSITION"
+  - "THE SUPERSEDED CLAIM IS RETAINED"
+  - "THE INFERRER DISAGREEING WITH THE OWNER RAISES A CONFLICT, NOT A WINNER"
+  - "THE HUMAN BINDING IS PRESERVED UNDER CONFLICT"
+  - "CORRECTION IS APPEND-ONLY: THE PRIOR CLAIM IS RETAINED"
+  - "CORRECTION-OF-CORRECTION IS SUPPORTED"
+  - "THE CORRECTION RECORDED ITS PROPAGATION OBLIGATION"
+  - "COMPLETED EFFECTS THAT RESTED ON THE WRONG BINDING ARE NAMED FOR COMPENSATION"
+  - "NO COMPENSATION IS FABRICATED AS COMPLETED"
+  - "A DISPROVEN OR CANCELLED PROPOSAL IS REJECTED"
+  - "A CANCELLED ENTITY SUPERSEDES THE BINDING AND RETURNS THE SUBJECT TO A HUMAN"
+  - "AT MOST ONE CONFIRMED BINDING PER SUBJECT"
+  - "COMPETING CONFIRMATIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+  - "A LOST UPDATE ON A CLAIM IS REFUSED"
+  - "THE SAME subject_ref IN TWO TENANTS IS TWO ISOLATED CLAIMS"
+  - "A WRONG-TENANT HUMAN ASSERTION FAILS CLOSED"
+  - "A FORGED OR INACTIVE HUMAN FAILS CLOSED"
+  - "A MODEL ACTOR CANNOT CONFIRM"
+  - "A COUNTERPARTY IS MODEL_EXTRACTED AT BEST, NEVER OWNER_ASSERTED"
+  - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+  - "A REDELIVERED PROPOSAL IS A NO-OP"
+  - "EVERY OWNER_ASSERTED BINDING REPLAYED BYTE-IDENTICAL"
+  - "replay: 0 new claims, 0 rewritten provenance, 0 new authority, 0 external effects"
+  - "A CORRECTION ARRIVING BEFORE ITS CONFIRMATION IS PARKED, NOT DROPPED"
+  - "A CONFLICTING OR SUPERSEDED BINDING BLOCKS THE CONSEQUENTIAL ACTION"
+  - "A CONSEQUENTIAL BINDING CARRIES AN ALLOWED PROVENANCE"
+  - "AN AMBIGUOUS OR CONFLICTING BINDING DOES NOT FLOW THROUGH APPROVAL"
+  - "M6 MINTS NO GATE DECISION"
+  - "THE M7 CONFLICT MACHINE IS NOT BUILT"
+  - "THE M10 COMPENSATION MACHINE IS NOT BUILT"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL CLAIM SHAPE"
+  - "THE DATABASE ENFORCES THE CLAIM INVARIANTS"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M6 exists to prevent has just
+  # happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### MODEL_INFERRED CONFIRMED ###"
+  - "### CONFIDENCE GATED A CONFIRMATION ###"
+  - "### OWNER_ASSERTED OVERWRITTEN ###"
+  - "### OWNER_ASSERTED SILENTLY SUPERSEDED ###"
+  - "### WEAK CANDIDATE AUTO-CONFIRMED ###"
+  - "### BEST GUESS ACCEPTED ###"
+  - "### provenance_class EDITED ###"
+  - "### PROVENANCE LAUNDERED ###"
+  - "### PROVENANCE SET FROM CONTENT ###"
+  - "### MODEL_EXTRACTED WITHOUT EVIDENCE SPAN ###"
+  - "### FORGED EVIDENCE SPAN ACCEPTED ###"
+  - "### TWO CONFIRMED BINDINGS ###"
+  - "### ORDINAL BOUND WITHOUT AN IMMUTABLE ID ###"
+  - "### ORDINAL FELL BACK TO POSITION ###"
+  - "### INFERRER PICKED A WINNER ###"
+  - "### CROSS-TENANT CONFIRMATION ACCEPTED ###"
+  - "### FORGED HUMAN ACCEPTED ###"
+  - "### INACTIVE HUMAN ACCEPTED ###"
+  - "### MODEL ACTOR CONFIRMED ###"
+  - "### COUNTERPARTY BECAME OWNER_ASSERTED ###"
+  - "### CORRECTION WITHOUT ITS PROPAGATION OBLIGATION ###"
+  - "### COMPENSATION FABRICATED ###"
+  - "### CLAIM DELETED ###"
+  - "### CLAIM EXPIRED ###"
+  - "### CONFLICT AUTO-RESOLVED ###"
+  - "### REPLAY REWROTE OWNER_ASSERTED PROVENANCE ###"
+  - "### REPLAY MINTED NEW AUTHORITY ###"
+  - "### DOWNSTREAM EFFECT DURING REPLAY ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### PARKED CORRECTION DROPPED ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6 work is
+# largely untracked and those commands would destroy it irrecoverably.
+teardown: []
