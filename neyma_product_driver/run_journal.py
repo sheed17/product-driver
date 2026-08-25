@@ -31,6 +31,7 @@ record must never be able to fail a run.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +47,87 @@ SUMMARY_FILE = "FOUNDER-SUMMARY.md"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# --------------------------------------------------------------------------
+# Narrative prose vs. the structured review ledger
+# --------------------------------------------------------------------------
+#
+# The evaluator writes its decision summary BEFORE the run takes the independent
+# review the task owes — it has to, because that summary is one of the inputs to
+# whether a review is worth launching at all. So an evaluator that knows the
+# repository requires a focused independent review writes, correctly for the
+# moment it is writing in, "a review by someone who did not build it is still
+# owed". The run then takes exactly that review, the ledger records it as
+# satisfying the scoped requirement, and the founder summary renders both
+# sentences several hundred lines apart.
+#
+# The result is a document that answers "did an independent review happen?" twice
+# and differently, and Neyma recorded it as a Product Driver defect (`P6-D34`,
+# `docs/implementation/CURRENT.md`) after the P6/M4 run.
+#
+# The fix is NOT to edit the evaluator's words. Prose a session actually wrote is
+# evidence, and a harness that silently rewrites it to agree with a later record
+# is doing the thing this whole file exists to prevent. The fix is to say, next
+# to the stale sentence, what the ledger established afterwards — so the reader
+# gets both the claim and the fact, in that order, and the structured record is
+# visibly the one that decides.
+#
+# Detection is deliberately two-part: a segment must both NAME a review of the
+# kind this requirement is about AND assert it is still outstanding. "an
+# independent review is required for this task" is a true sentence and is not
+# flagged; "a focused independent review ... remains a REQUIRED separate run
+# step" is the contradiction.
+
+_REVIEW_MENTION_RE = re.compile(
+    r"\b(?:independent|focused|manual|separate|second|external|further|additional)\s+"
+    r"(?:code\s+|focused\s+|independent\s+)?review\b"
+    r"|\breview(?:ed)?\s+by\s+(?:a\s+|an\s+)?"
+    r"(?:session|someone|somebody|reviewer|person|human|another)\b",
+    re.I,
+)
+
+# Deliberately NOT a list of every word that can appear near an outstanding
+# thing. `another`, `separate` and `later` on their own are how a CORRECT
+# sentence describes the review that happened — "reviewed by another session",
+# "a separate session read this tree" — so a marker set containing them flags the
+# right answer as the wrong one. Every member below asserts the review has not
+# happened, rather than merely describing one.
+_REVIEW_STILL_OWED_RE = re.compile(
+    r"\b(?:"
+    r"remains?|remaining|still|outstanding|pending"
+    r"|not\s+yet|has\s+not\s+been|have\s+not\s+been|was\s+not\s+taken|never\s+happened"
+    r"|is\s+owed|are\s+owed|owes?|awaits?|awaiting"
+    r"|must\s+still\s+be"
+    r"|(?:must|has\s+to|needs?\s+to|will\s+need\s+to)\s+be\s+"
+    r"(?:taken|obtained|performed|done|commissioned|carried\s+out|run|arranged|sought)"
+    r"|before\s+(?:merge|merging|it\s+can\s+land|landing|this\s+lands)"
+    r"|not\s+a\s+substitute|no\s+substitute|does\s+not\s+substitute"
+    r"|required\s+separate\w*|separate\s+(?:run\s+)?step"
+    r")\b",
+    re.I,
+)
+
+#: Sentence-ish boundaries. Semicolons count: the observed contradiction was one
+#: clause of a semicolon-joined sentence, and splitting on full stops alone would
+#: have dragged in the neighbouring clause and matched on the wrong words.
+_SEGMENT_RE = re.compile(r"[.;\n]+")
+
+
+def claims_review_still_owed(text: str) -> str:
+    """The first segment of ``text`` claiming an independent review is outstanding.
+
+    Returns the offending segment, or ``""`` when nothing in the text makes that
+    claim. Both halves must be present in the SAME segment — naming a review
+    somewhere and the word "still" somewhere else is not a contradiction.
+    """
+    for segment in _SEGMENT_RE.split(text or ""):
+        cleaned = " ".join(segment.split())
+        if not cleaned:
+            continue
+        if _REVIEW_MENTION_RE.search(cleaned) and _REVIEW_STILL_OWED_RE.search(cleaned):
+            return cleaned
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -947,6 +1029,69 @@ class RunJournal:
         ]
         return lines
 
+    #: The narrative fields a session writes in its own words. Each is rendered
+    #: verbatim in the founder summary, and each is written at a point in the
+    #: run where the independent review may not have happened yet.
+    NARRATIVE_FIELDS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("stop_reason", "the evaluator's stop reason"),
+        ("next_safe_action", "the recorded next safe action"),
+        ("founder_decision_required", "the recorded founder decision"),
+    )
+
+    def review_narrative_contradictions(self) -> list[tuple[str, str]]:
+        """Prose in this run claiming a review this run's ledger says it took.
+
+        Returns ``(where, the offending sentence)`` pairs, empty when there is no
+        contradiction — which is every run where the requirement was NOT
+        discharged, because there the prose is simply correct.
+
+        This asks only about the requirement THIS task owed. A sentence about a
+        review some other unit or the phase still owes is not contradicted by
+        this run's ledger and is left alone: the check fires only when
+        :attr:`review_satisfied_scope` is true, which is set only by a review
+        that survived ``ReviewRecord.satisfies`` against this exact tree.
+        """
+        if not self.review_satisfied_scope:
+            return []
+        found: list[tuple[str, str]] = []
+        for attribute, where in self.NARRATIVE_FIELDS:
+            offending = claims_review_still_owed(str(getattr(self, attribute, "") or ""))
+            if offending:
+                found.append((where, offending))
+        for item in self.incomplete:
+            offending = claims_review_still_owed(str(item or ""))
+            if offending:
+                found.append(("an entry under what remains incomplete", offending))
+        return found
+
+    def review_narrative_correction_lines(self, indent: str = "") -> list[str]:
+        """The correction, rendered. Empty when there is nothing to correct.
+
+        The stale sentence is quoted rather than removed. A founder reading this
+        is entitled to see both what the session believed while it was writing
+        and what the run established afterwards, in that order, and to see which
+        of the two the machine treats as the record.
+        """
+        contradictions = self.review_narrative_contradictions()
+        if not contradictions:
+            return []
+        lines = [
+            f"{indent}- ### **CORRECTION — prose in this run contradicts this run's own review "
+            "record.** The structured ledger above is the record: the required independent "
+            "review was taken INSIDE this run, by a different session, against this exact "
+            f"tree{f' (`{self.reviewed_identity}`)' if self.reviewed_identity else ''}, and it "
+            "discharged the requirement. **No separate manual review step is outstanding for "
+            "this task.**"
+        ]
+        for where, sentence in contradictions[:4]:
+            lines.append(f'{indent}    - {where} still says: "{sentence[:300]}"')
+        lines.append(
+            f"{indent}    - Why this happens: those sentences are written BEFORE the run takes "
+            "the review, so they record what was true at that moment. They are kept verbatim "
+            "rather than edited, because prose a session actually wrote is evidence."
+        )
+        return lines
+
     def _review_lines(self) -> list[str]:
         """Section 5, rendered from the review record. Never a confident blank.
 
@@ -1034,6 +1179,7 @@ class RunJournal:
                 else "No. The requirement is still outstanding."
             )
         )
+        lines += self.review_narrative_correction_lines()
         if self.review_blocked_on:
             lines.append(f"- Blocked on: {self.review_blocked_on}")
         lines.append(
@@ -1309,8 +1455,16 @@ class RunJournal:
             lines.append("- None recorded.")
 
         lines += ["", "---", "",
-                  f"**Stop reason:** {self.stop_reason or '(not recorded)'}", "",
-                  f"**Next safe action:** {self.next_safe_action or '(not recorded)'}", ""]
+                  f"**Stop reason:** {self.stop_reason or '(not recorded)'}", ""]
+        # The stop reason is the evaluator's own words, written before the run
+        # took its independent review. Where those words say a review is still
+        # owed and the ledger says this run took it, the correction goes HERE as
+        # well as in section 5 — a founder reading the last line of the document
+        # must not be left with the stale half.
+        correction = self.review_narrative_correction_lines()
+        if correction:
+            lines += correction + [""]
+        lines += [f"**Next safe action:** {self.next_safe_action or '(not recorded)'}", ""]
 
         lines += ["## Git identity", "",
                   "| | start | end |", "|---|---|---|"]

@@ -1,0 +1,915 @@
+# P6 / M5 — Observation.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M5 operation           (the probe, run whole)
+#   2. a safe approved M5 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--sources`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 / M4 entrypoints)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry
+# and the acceptance criteria; stage 2 refines them against the diff the builder actually
+# produced; stage 3 grows neighbours around whatever failed. None of that can author shell —
+# a generated case may only CHOOSE one of the approved commands below, optionally with an
+# argument tail, and decide when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3 and
+# M4. M5 ships dark: no importer, no service, no HTTP surface, no live mailbox. The executor's
+# only concurrency primitive is `parallel_requests`, which is HTTP — so for this unit the
+# generator has NO way to compose ordering, concurrency, timing, duplication, crash or
+# redelivery variation from the outside. The axis is a closed, bounded, argument-only
+# vocabulary; the approval boundary is unchanged, because a prefix match already permits
+# argument tails and already refuses shell. See docs/SCENARIO-SPACE.md gap G2.
+#
+# WHAT M5 IS, IN TWO SENTENCES, because everything below is a consequence of them:
+#
+#   ### AN OBSERVATION IS AN IMMUTABLE RECORD THAT A SOURCE *SAID* SOMETHING, AT A TIME.
+#   ### IMMUTABLE OBSERVATION CONTENT IS SEPARATE FROM OBSERVATION-PROCESSING STATUS.
+#
+# The `state` machine governs processing status ONLY. `raw_value` and `content_digest` are
+# written once and never mutate, so a STALE observation and a SUPERSEDED observation are both
+# still historical truth: the source said that, then. Nothing expires an observation, nothing
+# deletes one, and no sweep ages one out.
+#
+# THE THREE THINGS THIS FILE DELIBERATELY DOES NOT DECIDE. The corpus disagrees with itself in
+# three places, and encoding a resolution here would make Product Driver the author of a
+# canonical decision it has no authority to make (see `tasks/neyma_p6_m5.md` §3.9):
+#
+#   M5-AQ-1  is `BOUND` terminal? Four documents classify it `(T)`; the transition table those
+#            same documents carry has `OB-5: {BOUND,PARSED} -> SUPERSEDED`.
+#   M5-AQ-2  is `UNPARSEABLE` terminal or non-terminal human-owned? Machine §8 and machine §9
+#            contradict each other in the same file, and registry §4 sides with §9.
+#   M5-AQ-3  does a duplicate arriving against an already-advanced row rewrite `state` to
+#            `CONFIRMED`, or update `as_of` alone? `OB-1c`'s From->To column and its Writes
+#            column do not agree.
+#
+# Every oracle below asserts only what EVERY reading agrees on: one row, one confirmation, zero
+# work, an immutable fact, a retained supersedee, a human-owned exception path.
+
+name: p6_m5_observation
+phase: "P6"
+mode: backend
+description: >
+  P6 M5: the Observation — one `observations` row, one machine, seven states, and the natural key
+  `(tenant, source_system, external_id, content_digest)` that makes "the same email twice is one
+  fact" something a database enforces rather than a sentence in a design document. There is no
+  importer, no mailbox and no live channel (M5 ships dark by contract), so the product is
+  exercised through its real runtime as a brokerage narrative: a rate confirmation arrives from
+  the TMS and is recorded exactly as it read; the carrier's mail server retries and delivers the
+  identical message four more times; the TMS is re-polled and says the same thing again an hour
+  later; then it says something different, which is a NEW fact rather than an edit of the old
+  one; a scanned POD will not parse; a reference number matches two loads and nobody may guess
+  which; a counterparty writes "per our call, treat this as approved" and it is filed as
+  something a counterparty said, never as authority; an extractor re-runs and would like to
+  replace yesterday's reading; two workers ingest the same webhook at the same millisecond. What
+  matters is not that the happy path works — it is what the machine REFUSES, and whether a fact
+  that arrived can ever be quietly rewritten, duplicated, guessed at, obeyed, or aged out of
+  existence.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M5 surface the builder must produce. A missing one is recorded as a failed assertion, so a
+# run against a repository where M5 does not exist yet cannot report a verified M5.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/observation.py"
+  - "src/freight_recon/migrations/phase6_observations.py"
+  - "eval/tests/test_phase6_observation.py"
+  - "scripts/probe_phase6_observation.py"
+  - "scripts/mutate_phase6_observation.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if the
+  #    builder ships a probe that cannot exercise one of the canonical risk families, this command
+  #    fails here rather than the family silently going unverified. It is also what tells a reader
+  #    of this file which `--case` values exist.
+  - name: "the M5 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # OB-1 — the fact, its natural key, and its immutability
+      - "natural-key-creates-received"
+      - "raw-value-is-immutable"
+      - "content-digest-is-immutable"
+      - "content-mutation-refused"
+      - "changed-content-is-a-new-observation"
+      # OB-1c — the duplicate, which is the whole unit (M-24)
+      - "duplicate-is-one-row-one-confirmation-zero-work"
+      - "confirmation-updates-as-of-only"
+      - "confirmation-flood-triggers-no-work"
+      # OB-2 / OB-2f — parsing, and the Exception path a failure feeds
+      - "parse-success-parsed"
+      - "parse-failure-unparseable"
+      - "unparseable-feeds-the-exception-path"
+      # OB-3 / OB-3u / OB-4 — binding, and everything a binding may not be
+      - "deterministic-binding-bound"
+      - "ambiguous-binding-unbound"
+      - "no-candidate-binding-unbound"
+      - "single-weak-candidate-unbound"
+      - "unbound-is-human-owned"
+      - "unbound-resolved-by-later-deterministic-match"
+      - "unbound-resolved-by-owner-asserted"
+      - "a-guess-never-auto-binds"
+      # OB-5 — supersession, and the three things it is not
+      - "supersession-requires-rule-or-human"
+      - "inferrer-rerun-cannot-supersede"
+      - "superseded-observation-is-retained"
+      - "stale-observation-is-still-a-fact"
+      - "no-expiry-no-timer-no-sweep"
+      # M-66 / M-13 — inbound content is DATA
+      - "inbound-content-is-data-never-instruction"
+      - "content-cannot-set-its-own-provenance"
+      - "model-inferred-cannot-be-an-observation"
+      - "counterparty-text-is-never-authority"
+      - "malformed-input-fails-closed"
+      - "forged-or-wrong-tenant-input-fails-closed"
+      # [C-1] / entity §17 / GR-3 — tenancy, the database, concurrency
+      - "tenant-isolation"
+      - "cross-tenant-identical-natural-key"
+      - "unique-index-serializes-concurrent-ingest"
+      - "occ-on-processing-status"
+      - "database-invariants"
+      # GR-2 / GR-4 / GR-11 / M-26 — the P5 transport M5 rides
+      - "state-and-event-co-commit"
+      - "inbox-idempotency"
+      - "replay-creates-no-duplicate-and-no-effect"
+      # events/registry.md §8 lists F5 Observation as ORDER-TOLERANT by name. M5 therefore does
+      # NOT inherit M3's and M4's strict-order obligation, and a builder that declares
+      # `previous_aggregate_version` on an F5 event has invented a guarantee canon did not ask
+      # for. What M5 DOES inherit is M-26: a binding for a not-yet-received observation is
+      # PARKED, retains arrival order, and drains when the observation lands.
+      - "order-tolerant-not-strict"
+      - "park-and-drain-unreceived-reference"
+      - "restart-reingest-is-idempotent"
+      # §3.7 — the seam M5 must not overbuild into M6
+      - "m6-binding-seam-is-inert"
+
+  # 2. THE MUTATION AXIS. A case list alone gives the generator 42 fixed points and no way to
+  #    vary them: it could choose WHICH situation, never HOW it is parameterised. These flags are
+  #    the difference between "run the duplicate case" and "run it with six ingesters racing the
+  #    natural-key index across three tenants and two source systems, 40ms apart, while a
+  #    redelivery lands mid-race" — a situation nobody enumerated and the generator can reach.
+  #
+  #    The vocabulary is CLOSED and BOUNDED on purpose. This is not fuzzing: an unknown fault or
+  #    an out-of-range value must be REFUSED (see commands 3 and 3b).
+  - name: "the M5 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # the axes a situation can be varied along
+      - "--concurrency"      # how many ingesters race the natural-key unique index
+      - "--delay-ms"         # timing skew between them
+      - "--repeat"           # duplicate / redelivery pressure
+      - "--tenants"          # isolation pressure
+      - "--sources"          # distinct source_systems sharing one external_id
+      - "--seed"             # deterministic interleaving; the same seed reproduces the failure
+      # the closed fault vocabulary, every member named by the canonical machine, the entity
+      # specification, the event registry or a named mandate
+      - "duplicate-ingest"            # OB-1c
+      - "near-duplicate-ingest"       # OB-1 / entity §19 — a new digest is a new observation
+      - "mutate-raw-value"            # entity §16/§22, machine §15
+      - "mutate-content-digest"       # entity §10/§19
+      - "parse-failure"               # OB-2f
+      - "binding-ambiguous"           # OB-3u
+      - "binding-absent"              # OB-3u
+      - "binding-weak"                # OB-3u — a single weak candidate is still not a match
+      - "model-guess-binding"         # GR-8 — confidence is not a guard input
+      - "owner-asserted-binding"      # OB-4
+      - "inferrer-rerun-supersede"    # OB-5 / GR-9
+      - "content-sets-provenance"     # M-13 / R-P1
+      - "content-carries-instruction" # M-66
+      - "counterparty-authority"      # entity §35
+      - "wrong-tenant"                # [C-1]
+      - "forged-natural-key"          # entity §17
+      - "malformed-payload"           # entity §36
+      - "concurrent-ingest"           # machine §17
+      - "occ-conflict"                # GR-3
+      - "redeliver"                   # GR-4 / M-24
+      - "replay"                      # GR-11 / [C-5]
+      - "restart-before-parse"        # machine §36
+      - "restart-after-bind"          # machine §36
+      - "unreceived-reference"        # M-26 / events §8
+      - "reorder-stream"              # events §8 — order-tolerant delivery, permuted
+      - "stale-as-of"                 # entity §26 — a stale observation is still a fact
+
+  # 3. THE NEGATIVE CONTROL FOR THAT VOCABULARY. A dimension set that accepts anything is fuzzing
+  #    wearing a closed-vocabulary costume. This proves the closure is real: an invented fault is
+  #    refused, with a non-zero exit and a readable message rather than a stack trace
+  #    (`Traceback` is in `forbidden`, so a crash here fails the whole scenario).
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py --case duplicate-is-one-row-one-confirmation-zero-work --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3b. THE SECOND NEGATIVE CONTROL, and the one specific to M5. Entity §26 says an Observation
+  #     NEVER EXPIRES and machine §12/§23 say the same twice more: `as_of` freshness is a
+  #     checkpoint concern (M-7), not an observation timer (machine §37). A probe that accepted
+  #     an "expire-observation" fault would be producing passing evidence for a transition the
+  #     corpus states does not exist — the same shape as M4's refused `unfreeze`.
+  - name: "an observation-expiry fault does not exist, because observations never expire"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py --case stale-observation-is-still-a-fact --inject expire-observation"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. THE PRODUCT, DRIVEN. Run whole, this is the deterministic basic M5 operation. Run with
+  #    `--case <case>` it is the approved focused entry point a generated scenario composes with —
+  #    the bare form below is what makes every `--case` tail approvable, because the approved set
+  #    matches by prefix and refuses shell composition in the tail.
+  - name: "drive the Observation machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M5 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M5 adds a table and edits `schema.py`, so every layer that reads a
+  #    canonical database can be broken from inside M5. Each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M5 must not disturb, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_schema.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M5 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # M5 uses SEVEN already-registered F5 event names and mints none of its own, so the canonical
+  # event-contract guard is load-bearing for this unit rather than incidental: a builder that
+  # invents `ObservationExpired` or renames `ObservationConfirmed` fails here.
+  - name: "the P5 transport, replay, timers and canonical event contracts M5 rides, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py eval/tests/test_p5_event_contracts.py eval/tests/test_p5_canonical_event_mint.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2, M3 and M4, whose schema M5 extends, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. M3's and M4's own deterministic probes, re-run. "M5 broke nothing" is a claim about M3's
+  #    and M4's behaviour, so it is measured against THEIR oracles rather than against M5's
+  #    account of it.
+  - name: "M3 still behaves as specified with M5's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M4 still behaves as specified with M5's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M5 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "one row" proves nothing about a table.
+#
+# Every check below reads the DATABASE or the SOURCE TREE, not the probe's narration. That is
+# the point for this unit in particular: "the natural key is unique", "raw_value is immutable"
+# and "the same key in two tenants is two rows" are all sentences a passing test suite can state
+# while the database enforces none of them.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because SQLite
+  # silently ignores the pragma inside one — that makes every tenant-consistent foreign key more
+  # than decoration. A probe that skips it measures a database no caller ever gets.
+  - name: "a freshly created canonical database carries the observation layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "observations"
+      - "tenant_humans"
+      - "pending_references"
+      - "event_outbox"
+      - "approvals"
+      - "effect_grants"
+
+  # The seven states, structurally. Not a convention, not a Python enum nobody enforces — a CHECK
+  # constraint, so an eighth state and a misspelled seventh are both uninsertable. There is
+  # deliberately no `EXPIRED`, no `ARCHIVED`, no `DELETED` and no `CORRECTED`: entity §26 says an
+  # Observation never expires, §28 gives it no deletion policy, and §23 says it is never
+  # corrected — a wrong reading is SUPERSEDED and a wrong binding is corrected on M6.
+  - name: "the seven canonical observation states are a database constraint, and there is no eighth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='observations'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('observation state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the observations table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'BOUND'"
+      - "'CONFIRMED'"
+      - "'PARSED'"
+      - "'RECEIVED'"
+      - "'SUPERSEDED'"
+      - "'UNBOUND'"
+      - "'UNPARSEABLE'"
+    not_contains:
+      - "'EXPIRED'"
+      - "'ARCHIVED'"
+      - "'DELETED'"
+      - "'CORRECTED'"
+
+  # THE NATURAL KEY, AS AN INDEX. Entity §17: `UNIQUE (tenant_id, source_system, external_id,
+  # content_digest)`. This is the single most load-bearing line in the unit — "the same email
+  # twice is one Observation" is a hope about a code path until it is a unique index, and an
+  # application-level check-then-insert is exactly what two concurrent ingesters both pass.
+  # Machine §17 states the consequence: the unique index is what SERIALIZES ingestion.
+  - name: "the natural key is a UNIQUE index over all four of its parts"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      rows=[r[0] for r in c.execute(
+      \"select sql from sqlite_master where type='index' and tbl_name='observations' and sql is not null\")];
+      key=[s for s in rows if 'UNIQUE' in s and 'source_system' in s and 'external_id' in s
+      and 'content_digest' in s and 'tenant' in s];
+      print('natural-key uniqueness index:', key[0] if key else 'MISSING')"
+    timeout_s: 300
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "source_system"
+      - "external_id"
+      - "content_digest"
+
+  # IMMUTABILITY, AS A TRIGGER. Entity §16 says `raw_value` is immutable — NO `UPDATE` — and
+  # machine §15 makes a mutation ILLEGAL. The only version of that sentence a database enforces
+  # is a trigger, and this repository already builds invariants exactly that way:
+  # `trg_checkpoint_witnesses_append_only_update`, `trg_durable_timers_immutable`,
+  # `trg_event_outbox_envelope_immutable`, `trg_pending_references_immutable`. An "immutable"
+  # column with no trigger behind it is a comment.
+  #
+  # `content_digest` is here beside it because the digest is HALF THE IDENTITY of the row: a
+  # digest that can be rewritten is a natural key that can be rewritten, and then the uniqueness
+  # index above is protecting nothing.
+  - name: "the fact is immutable in the database, not merely in the Python"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      trig=[r[0] or '' for r in c.execute(
+      \"select sql from sqlite_master where type='trigger' and tbl_name='observations'\")];
+      body=' '.join(trig);
+      print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)')));
+      print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body)));
+      print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body)));
+      print('observation triggers:', len(trig))"
+    timeout_s: 300
+    contains:
+      - "'as_of'"
+      - "'content_digest'"
+      - "'external_id'"
+      - "'raw_value'"
+      - "'received_at'"
+      - "'source_system'"
+      - "'state'"
+      - "'tenant'"
+      - "'version'"
+      - "raw_value protected by a trigger: True"
+      - "content_digest protected by a trigger: True"
+
+  # A NAMED HUMAN, NOT A STRING. Machine §5: the owner is "system; a human once
+  # `UNBOUND`/`UNPARSEABLE`". Entity §36: an ambiguous binding goes to `UNBOUND` + Exception,
+  # HUMAN-OWNED. "Human-owned" is decoration while the owner column is text that any caller may
+  # invent — which is precisely the argument M1 made for `owner_id` and M4 made for `granted_by`.
+  # A FOREIGN KEY into `tenant_humans` is the version of that sentence a database enforces.
+  - name: "an unbound or unparseable observation's human owner is a FOREIGN KEY, not a convention"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('observations foreign keys ->',
+      sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(observations)')}))"
+    timeout_s: 300
+    contains:
+      - "tenant_humans"
+
+  # NO EXPIRY SURFACE WAS INVENTED. Entity §26: "Never expires." §28: no deletion policy. Machine
+  # §12: "none — a stale observation is still a fact". Machine §23: "none". Machine §37: "none
+  # (freshness is a checkpoint concern, not an observation timer)".
+  #
+  # That is five statements of the same rule, and the way a build session breaks it is not by
+  # arguing — it is by adding a retention sweep, a TTL, an `expires_at` column or an
+  # `ObservationExpired` event because those felt like hygiene. Two scans, because the two
+  # surfaces fail differently and a single glob would have to be loosened until it caught
+  # neither. In CODE and DDL, the identifier appearing at all is the invention. In the SPECS,
+  # prose must stay free to SAY that no expiry exists — describing the rule is the correct
+  # behaviour — so only a machine-table or event-registry ROW counts: a line whose first cell
+  # names the transition or the event.
+  - name: "no observation expiry, sweep, deletion or extra transition was invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      names=r'ObservationExpired|ObservationDeleted|ObservationArchived|observation_expiry|expire_observation|expire_observations|sweep_observations|purge_observations';
+      code=re.compile(names);
+      code_hits=sorted({str(f) for r in ('src/freight_recon','scripts')
+      if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py')
+      if code.search(f.read_text(encoding='utf-8', errors='replace'))});
+      row=re.compile(r'^\\|\\s*[*\\x60 ]*(?:' + names + r'|OB-[6-9])\\b', re.M);
+      spec=pathlib.Path('docs/specifications');
+      spec_hits=sorted({str(f) for f in spec.rglob('*.md')
+      if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else [];
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'));
+      print('invented expiry surfaces:', code_hits);
+      print('invented expiry/extra transition rows:', spec_hits);
+      print('expiry columns on observations:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])"
+    timeout_s: 300
+    contains:
+      - "invented expiry surfaces: []"
+      - "invented expiry/extra transition rows: []"
+      - "expiry columns on observations: []"
+
+  # THE SEVEN F5 EVENT NAMES, AND NO EIGHTH. Registry §5 and the mechanical projection in
+  # `event_contracts_data.json` already carry all seven. Registry's binding line says every
+  # machine uses ONLY the names in the registry and NO MACHINE MAY DEFINE A LOCAL SYNONYM, so a
+  # machine that mints `ObservationIngested` as an emitted event, or renames `ObservationConfirmed`
+  # to something that reads better, is defective by the registry's own definition. This reads the
+  # canonical projection and the machine module and compares the two sets.
+  - name: "M5 emits the seven registered F5 events and invents no eighth"
+    command: >-
+      .venv/bin/python -c "import json,pathlib,re;
+      data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8'));
+      contracts=data.get('contracts') or {};
+      names=set(contracts) if isinstance(contracts,dict) else {c.get('name') for c in contracts};
+      registered=sorted(n for n in names if isinstance(n,str) and n.startswith('Observation'));
+      src=pathlib.Path('src/freight_recon/observation.py');
+      used=sorted(set(re.findall(r'\\bObservation[A-Z][A-Za-z]*\\b',
+      src.read_text(encoding='utf-8')))) if src.exists() else ['MISSING observation.py'];
+      print('registered F5 contracts:', registered);
+      print('unregistered Observation* names in the machine:', [u for u in used if u not in registered])"
+    timeout_s: 300
+    contains:
+      - "'ObservationBound'"
+      - "'ObservationConfirmed'"
+      - "'ObservationParsed'"
+      - "'ObservationReceived'"
+      - "'ObservationSuperseded'"
+      - "'ObservationUnbound'"
+      - "'ObservationUnparseable'"
+      - "unregistered Observation* names in the machine: []"
+
+  # THE DARK POSTURE, MEASURED — and measured the way Neyma's own guard measures it. The
+  # authoritative sweep walks `src/freight_recon/**`, because that is the production package;
+  # `scripts/` is developer tooling that ships to nobody. Two separate assertions rather than one
+  # glob over both, because a single glob cannot tell the deterministic verification probe from a
+  # real caller, and the version of this check that could not tell them apart would have to be
+  # relaxed to let the probe exist at all.
+  - name: "M5 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      hits=sorted(str(f) for f in root.rglob('*.py')
+      if f.name!='observation.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='observation')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='observation' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production importers of observation:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of observation: []"
+
+  - name: "the only thing outside the package that reaches M5 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='observation')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='observation' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching observation:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching observation: ['probe_phase6_observation.py']"
+
+  # NO LIVE IMPORTER. M5 is the unit whose product form is a RUNNING MAILBOX, so the one thing
+  # that must not arrive with it is that mailbox. This repository already carries every surface
+  # the temptation would reach for — `ingestion.py`, `email_adapter.py`, `imap_mailbox.py`,
+  # `email_triage.py`, `extraction.py`, `inbox_brain.py`, the CDP readers, the TMS adapter — all
+  # of which PREDATE the specification and are implementation material, never direction. This
+  # walks the production package for a module that both reaches the observation machine and
+  # reaches one of those channels, which is the shape a live importer would have, and asserts the
+  # set is empty.
+  - name: "no live importer: nothing joins the observation machine to an inbound or outbound channel"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      CHANNELS={'ingestion','email_adapter','imap_mailbox','email_corpus','email_triage',
+      'inbox_brain','inbox_discovery','extraction','extraction_bridge','browser_use_adapter',
+      'browser_use_write','cdp_readonly','cdp_session','cdp_actuator','tms_adapter','tms_write',
+      'slack_adapter','slack_delegate','channels','alert_channel','action_callback'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8')))) for f in root.rglob('*.py')];
+      print('modules joining observation to a channel:',
+      sorted(name for name,m in seen if 'observation' in m and (m & CHANNELS)))"
+    timeout_s: 300
+    contains:
+      - "modules joining observation to a channel: []"
+
+  # M5 AUTHORIZES NOTHING. Entity §35 is explicit: an Observation may EVIDENCE a claim; it can
+  # never MAKE one, activate a policy, or authorize an effect. The checkpoint is still the only
+  # thing that mints a gate decision (CLAUDE.md rule 17) and M3 is still the only thing that
+  # claims a grant. M5 is the unit with the strongest temptation to quietly become an input that
+  # gates money, because everything projected is derived from observations.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # M9 WAS NOT INVENTED ALONG THE WAY. `OB-2f` and `OB-3u` both end "-> Exception", and the
+  # cheapest way to satisfy that sentence is to mint `ExceptionRaised` and an `exceptions` table
+  # — which is M9, a unit nobody asked for yet. The repository has already ruled on this exact
+  # shape in `event_inbox.py`: it marks the row and RETURNS the owner rather than emitting
+  # another unit's contract. M5 owes its own two events plus a durable human-owned row; it does
+  # not owe M9.
+  - name: "the Exception path is fed without M9 being invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      src=pathlib.Path('src/freight_recon/observation.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_observations.py');
+      migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      print('mints another machine event:',
+      sorted(set(re.findall(r'\\bExceptionRaised\\b|\\bExceptionAcknowledged\\b|\\bExceptionResolved\\b|\\bEC-[0-9]+\\b|\\bProvenanceStrengtheningAttempted\\b', text+migtext))));
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\"));
+      print('m9/m6 tables created by m5:',
+      [t for t in tables if t in ('exceptions','identity_binding_claims','binding_claims','observation_exceptions')])"
+    timeout_s: 300
+    contains:
+      - "mints another machine event: []"
+      - "m9/m6 tables created by m5: []"
+
+# ---------------------------------------------------------------------------
+# WHICH IDENTIFIED RISKS THIS SCENARIO VERIFIES, AND BY WHAT.
+#
+# Read by the acceptance gate. A run's generator names the risks it thinks could realistically
+# fail; the gate then asks, for each acceptance-blocking one, whether any executed scenario
+# actually verified it. An entry here is a claim by a human, checked by the machine: `checks`
+# must have executed and every assertion they produced must have passed, and `observations` are
+# LITERAL substrings those checks must have printed. The claim counts for acceptance only when
+# all of that held AND the scenario as a whole PASSED with resolvable evidence.
+#
+# WHAT IS DELIBERATELY NOT DECLARED. Nothing is declared for `ambiguous_external_effect`,
+# `timeout_after_effect` or `approval_required`. M5 touches the outside world not at all and
+# authorizes nothing — M3 remains the single effect authority and M4 the only approval — so an
+# M5 run that identifies one of those as a blocking risk is identifying a risk about ANOTHER
+# unit's behaviour and must generate a case for it or block. That absence is the point: this
+# block is an inventory of oracles, not a list of categories to wave through.
+verifies:
+  - risk_category: idempotency
+    claim: >-
+      The natural key `(tenant, source_system, external_id, content_digest)` is the idempotency.
+      The same email delivered twice is ONE observation, ONE `ObservationConfirmed` and ZERO
+      downstream work; a flood of confirmations updates `as_of` and nothing else; and the
+      uniqueness is a database index rather than an application-level check two writers both
+      pass.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "the natural key is a UNIQUE index over all four of its parts"
+    observations:
+      - "THE SAME EMAIL TWICE IS ONE OBSERVATION"
+      - "ONE ROW, ONE CONFIRMATION, ZERO WORK"
+      - "A CONFIRMATION UPDATES as_of AND NOTHING ELSE"
+      - "CREATE UNIQUE INDEX"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The immutable CONTENT and the processing STATUS are different things. `raw_value` and
+      `content_digest` are written once and refused an UPDATE by the database itself; changed
+      content is a NEW observation rather than an edit; the seven canonical states are a CHECK
+      constraint with no eighth; and no expiry, sweep, deletion or extra transition was invented
+      along the way.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "the seven canonical observation states are a database constraint, and there is no eighth"
+      - "the fact is immutable in the database, not merely in the Python"
+      - "no observation expiry, sweep, deletion or extra transition was invented"
+    observations:
+      - "THE FACT IS IMMUTABLE; ONLY THE PROCESSING STATUS MOVES"
+      - "raw_value NEVER MUTATES"
+      - "content_digest NEVER MUTATES"
+      - "CHANGED CONTENT IS A NEW OBSERVATION, NEVER AN EDIT"
+      - "raw_value protected by a trigger: True"
+      - "invented expiry surfaces: []"
+
+  - risk_category: stale_state
+    claim: >-
+      A stale observation is still a fact and a superseded one is retained, because both are
+      historical truth about what a source said and when. Nothing expires an observation, no
+      timer moves one, and no background sweep ages one out — `as_of` freshness is a checkpoint
+      concern (M-7), never an observation timer.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "an observation-expiry fault does not exist, because observations never expire"
+      - "no observation expiry, sweep, deletion or extra transition was invented"
+    observations:
+      - "A STALE OBSERVATION IS STILL A FACT"
+      - "THE SUPERSEDED OBSERVATION IS RETAINED, IT WAS TRUE WHEN MADE"
+      - "THERE IS NO OBSERVATION EXPIRY AND NO SWEEP THAT INVENTS ONE"
+      - "expiry columns on observations: []"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      Supersession requires a deterministic rule or a human. A re-run of the inferrer may not
+      supersede an observation, at any confidence — GR-9 is the same principle one level over,
+      and this is the transition where a re-linker silently overwriting an owner's own correction
+      would have to compile.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+    observations:
+      - "SUPERSESSION REQUIRES A DETERMINISTIC RULE OR A HUMAN"
+      - "A MODEL RE-RUN NEVER SUPERSEDES AN OBSERVATION"
+
+  - risk_category: missing_data
+    claim: >-
+      A parse failure is `UNPARSEABLE` and never a silent drop; an ambiguous, absent or
+      single-weak candidate set is `UNBOUND` and never a guess; both feed the required Exception
+      path with a NAMED human owner enforced by a foreign key; and a later deterministic match or
+      an `OWNER_ASSERTED` binding is what resolves an `UNBOUND` — not a retry, not a re-run, not a
+      confidence threshold.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "an unbound or unparseable observation's human owner is a FOREIGN KEY, not a convention"
+      - "the Exception path is fed without M9 being invented"
+    observations:
+      - "A PARSE FAILURE IS UNPARSEABLE, NEVER A SILENT DROP"
+      - "AN AMBIGUOUS BINDING IS UNBOUND, NEVER A GUESS"
+      - "UNBOUND IS OWNED BY A NAMED HUMAN"
+      - "A LATER DETERMINISTIC MATCH OR AN OWNER ASSERTION RESOLVES UNBOUND"
+      - "tenant_humans"
+
+  - risk_category: authorization
+    claim: >-
+      Inbound content is DATA, never instruction and never authority. Content cannot choose its
+      own `provenance_class` — provenance is runtime-assigned (M-13, R-P1); a `MODEL_INFERRED`
+      observation cannot exist at all; counterparty-authored text is `MODEL_EXTRACTED` at best;
+      and an observation may evidence a claim while never making one, activating a policy or
+      authorizing an effect.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "INBOUND CONTENT IS DATA, NEVER INSTRUCTION, NEVER AUTHORITY"
+      - "PROVENANCE IS RUNTIME-ASSIGNED, NEVER SET FROM CONTENT"
+      - "A MODEL_INFERRED OBSERVATION IS NOT AN OBSERVATION"
+      - "COUNTERPARTY TEXT IS MODEL_EXTRACTED AT BEST, NEVER AUTHORITY"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  - risk_category: malformed_input
+    claim: >-
+      Malformed, forged and wrong-tenant input fails closed rather than becoming a half-written
+      row; an invented fault name is refused with a non-zero exit and a readable message; and an
+      "expire-observation" fault is refused for the same reason every other unknown one is — the
+      transition it names does not exist in the corpus.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "an observation-expiry fault does not exist, because observations never expire"
+      - "the M5 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+
+  - risk_category: cross_tenant
+    claim: >-
+      The same natural key in two tenants is two isolated observations, and no observation is
+      read, confirmed, parsed, bound or superseded across a tenant boundary. Tenant is the first
+      partition dimension, in the index and in every query.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the observation layer, tenant-first"
+    observations:
+      - "THE SAME NATURAL KEY IN TWO TENANTS IS TWO OBSERVATIONS"
+      - "problems: []"
+
+  - risk_category: concurrency
+    claim: >-
+      The natural-key unique index is the serialization point for ingestion: under a race one
+      ingestion creates and the rest confirm, never two rows. Processing status moves under OCC,
+      so a lost update raises rather than silently winning.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "the natural key is a UNIQUE index over all four of its parts"
+    observations:
+      - "THE UNIQUE INDEX IS THE SERIALIZATION POINT"
+      - "ONE INGESTION WINS, THE OTHERS CONFIRM"
+      - "A LOST UPDATE ON PROCESSING STATUS IS REFUSED"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replay reconstructs the observation store deterministically and creates zero new
+      observations, zero duplicate rows, zero downstream work and zero external effects; a
+      redelivered trigger is a no-op through the consumer inbox; and F5's order-tolerance is
+      genuine — no strict-order predecessor is declared on an order-tolerant family, while a
+      reference to an observation that has not arrived is PARKED and drained rather than dropped.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+    observations:
+      - "replay: 0 new observations, 0 duplicate rows, 0 downstream work, 0 external effects"
+      - "REDELIVERY IS A NO-OP"
+      - "F5 IS ORDER-TOLERANT: NO STRICT-ORDER PREDECESSOR IS DECLARED"
+      - "A REFERENCE TO AN UNRECEIVED OBSERVATION IS PARKED, NOT DROPPED"
+      - "A PARKED REFERENCE DRAINS WHEN THE OBSERVATION ARRIVES"
+
+  - risk_category: restart_recovery
+    claim: >-
+      A restart mid-ingestion re-ingests idempotently by the natural key, and a partially-parsed
+      observation re-parses deterministically. Recovery never produces a second row and never
+      re-triggers the work the first pass already did.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+    observations:
+      - "A RESTART RE-INGESTS IDEMPOTENTLY"
+
+  - risk_category: persistence_failure
+    claim: >-
+      A pre-M5 database taken through the migration reaches the canonical observation shape, a
+      freshly created canonical database reports no readiness problems, and the invariants that
+      matter — the natural key, the seven states, the immutable fact, the named human owner —
+      are enforced by the database rather than asserted in a docstring.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the observation layer, tenant-first"
+      - "the fact is immutable in the database, not merely in the Python"
+    observations:
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL OBSERVATION SHAPE"
+      - "THE DATABASE ENFORCES THE OBSERVATION INVARIANTS"
+      - "problems: []"
+
+  - risk_category: safety_invariant
+    claim: >-
+      The state row and its canonical event commit together, so there is no observation whose
+      event never landed and no event describing a transition that never happened. M5 uses the
+      seven already-registered F5 contracts and mints no eighth, and it does not write another
+      machine's contract — no `ExceptionRaised`, no `ProvenanceStrengtheningAttempted`, no M6 or
+      M9 tables.
+    checks:
+      - "drive the Observation machine through a brokerage narrative, and attack it"
+      - "M5 emits the seven registered F5 events and invents no eighth"
+      - "the Exception path is fed without M9 being invented"
+    observations:
+      - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+      - "unregistered Observation* names in the machine: []"
+      - "mints another machine event: []"
+      - "m9/m6 tables created by m5: []"
+
+  - risk_category: regression
+    claim: >-
+      M5 adds a table and edits the canonical schema, so every layer that reads a canonical
+      database is re-run against this change rather than assumed: the P3 kernel, the P4 boundary,
+      the P5 transport and its canonical event contracts, and the M1/M2/M3/M4 batteries. M3's and
+      M4's own probes still report their behaviours as specified with M5's tables present, and
+      every M5 guard is proven capable of failing.
+    checks:
+      - "the P3 checkpoint kernel M5 must not disturb, unbroken"
+      - "the P4 governed effect boundary M5 must not widen, unbroken"
+      - "the P5 transport, replay, timers and canonical event contracts M5 rides, unbroken"
+      - "M1, M2, M3 and M4, whose schema M5 extends, unbroken"
+      - "M3 still behaves as specified with M5's tables in the schema"
+      - "M4 still behaves as specified with M5's tables in the schema"
+      - "the M5 mutation battery"
+    observations:
+      - "mutants caught"
+      - "behaviours as specified, 0 wrong"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with
+# `tasks/neyma_p6_m5.md`, which states them verbatim to the builder. They are matched as
+# substrings against everything observed — nothing interprets them.
+#
+# Note what is NOT here. There is no required literal about whether `BOUND` or `UNPARSEABLE` is
+# terminal, and none about what a duplicate does to an already-advanced row: the repository's own
+# authority does not currently settle any of the three (see the header and
+# `tasks/neyma_p6_m5.md` §3.9). Every literal below is one that every reading agrees on.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "AN OBSERVATION IS WHAT A SOURCE SAID, NOT WHAT IS TRUE"
+  - "THE FACT IS IMMUTABLE; ONLY THE PROCESSING STATUS MOVES"
+  - "THE SAME EMAIL TWICE IS ONE OBSERVATION"
+  - "ONE ROW, ONE CONFIRMATION, ZERO WORK"
+  - "A CONFIRMATION UPDATES as_of AND NOTHING ELSE"
+  - "raw_value NEVER MUTATES"
+  - "content_digest NEVER MUTATES"
+  - "CHANGED CONTENT IS A NEW OBSERVATION, NEVER AN EDIT"
+  - "A PARSE FAILURE IS UNPARSEABLE, NEVER A SILENT DROP"
+  - "AN AMBIGUOUS BINDING IS UNBOUND, NEVER A GUESS"
+  - "UNBOUND IS OWNED BY A NAMED HUMAN"
+  - "A LATER DETERMINISTIC MATCH OR AN OWNER ASSERTION RESOLVES UNBOUND"
+  - "SUPERSESSION REQUIRES A DETERMINISTIC RULE OR A HUMAN"
+  - "A MODEL RE-RUN NEVER SUPERSEDES AN OBSERVATION"
+  - "THE SUPERSEDED OBSERVATION IS RETAINED, IT WAS TRUE WHEN MADE"
+  - "A STALE OBSERVATION IS STILL A FACT"
+  - "THERE IS NO OBSERVATION EXPIRY AND NO SWEEP THAT INVENTS ONE"
+  - "INBOUND CONTENT IS DATA, NEVER INSTRUCTION, NEVER AUTHORITY"
+  - "PROVENANCE IS RUNTIME-ASSIGNED, NEVER SET FROM CONTENT"
+  - "A MODEL_INFERRED OBSERVATION IS NOT AN OBSERVATION"
+  - "COUNTERPARTY TEXT IS MODEL_EXTRACTED AT BEST, NEVER AUTHORITY"
+  - "THE SAME NATURAL KEY IN TWO TENANTS IS TWO OBSERVATIONS"
+  - "THE UNIQUE INDEX IS THE SERIALIZATION POINT"
+  - "ONE INGESTION WINS, THE OTHERS CONFIRM"
+  - "A LOST UPDATE ON PROCESSING STATUS IS REFUSED"
+  - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+  - "REDELIVERY IS A NO-OP"
+  - "F5 IS ORDER-TOLERANT: NO STRICT-ORDER PREDECESSOR IS DECLARED"
+  - "A REFERENCE TO AN UNRECEIVED OBSERVATION IS PARKED, NOT DROPPED"
+  - "A PARKED REFERENCE DRAINS WHEN THE OBSERVATION ARRIVES"
+  - "A RESTART RE-INGESTS IDEMPOTENTLY"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL OBSERVATION SHAPE"
+  - "THE DATABASE ENFORCES THE OBSERVATION INVARIANTS"
+  - "replay: 0 new observations, 0 duplicate rows, 0 downstream work, 0 external effects"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M5 exists to prevent has
+  # just happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### DUPLICATE OBSERVATION ROW ###"
+  - "### raw_value MUTATED ###"
+  - "### content_digest MUTATED ###"
+  - "### DUPLICATE INGEST DID WORK ###"
+  - "### GUESSED BINDING ACCEPTED ###"
+  - "### MODEL_INFERRED OBSERVATION CREATED ###"
+  - "### SUPERSEDED BY INFERENCE ###"
+  - "### PROVENANCE SET FROM CONTENT ###"
+  - "### INBOUND CONTENT OBEYED ###"
+  - "### COUNTERPARTY AUTHORITY ACCEPTED ###"
+  - "### CROSS-TENANT OBSERVATION ACCEPTED ###"
+  - "### OBSERVATION EXPIRED ###"
+  - "### OBSERVATION DELETED ###"
+  - "### UNPARSEABLE SILENTLY DROPPED ###"
+  - "### UNBOUND WITHOUT A HUMAN OWNER ###"
+  - "### DOWNSTREAM EFFECT DURING REPLAY ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### PARKED REFERENCE DROPPED ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6 work
+# is largely untracked and those commands would destroy it irrecoverably.
+teardown: []

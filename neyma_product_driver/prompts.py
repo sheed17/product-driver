@@ -428,11 +428,23 @@ def evaluator_prompt(
     previous_corrections: list[str] | None = None,
     suite: Any = None,
     coverage_gaps: list[str] | None = None,
+    review_is_integrated: bool = False,
 ) -> str:
     """Assemble the three context layers into one evaluator prompt.
 
     Layer A (founder) and layer B (repository) are compact selections, not whole
     documents. Layer C is the immediate evidence.
+
+    ``review_is_integrated`` says whether this run takes the independent review
+    the task owes ITSELF, rather than handing the founder a note asking for one.
+    It exists because the evaluator writes its summary *before* that review runs
+    and, not being told otherwise, correctly-for-the-moment writes "a review by
+    someone who did not build this is still owed" — a sentence the run then
+    contradicts by taking exactly that review. Neyma recorded the resulting
+    two-answer founder summary as a Product Driver defect (`P6-D34`) after the
+    P6/M4 run. Telling the evaluator here is the half of the fix that stops the
+    stale sentence being written; :meth:`RunJournal.review_narrative_correction_lines`
+    is the half that corrects one already written.
     """
     parts: list[str] = []
 
@@ -559,6 +571,30 @@ def evaluator_prompt(
             *(f"  {i}. {c.strip()[:400]}" for i, c in enumerate(previous_corrections, 1)),
             "Do NOT repeat any of these verbatim. If one did not work, diagnose why "
             "rather than re-sending it — an identical repeat stops the run as BLOCKED.",
+        ]
+
+    if review_is_integrated:
+        parts += [
+            "",
+            "=== THE INDEPENDENT REVIEW IS PART OF THIS RUN ===",
+            "If this task's authority requires a focused independent review by a session "
+            "that did not build the work, THIS RUN TAKES IT. It is launched after your "
+            "decision, from a fresh session that is not the builder's, it is bound to the "
+            "exact tree you are judging, and its findings come back into this same loop as "
+            "grounded corrections. The founder relays nothing.",
+            "",
+            "So: state the review REQUIREMENT if the repository states one, and say what it "
+            "is about. Do NOT write that a review 'remains outstanding', 'is still owed', "
+            "'must be taken separately', or 'is a required separate step' — the run has not "
+            "reached that point yet when you write, and by the time anyone reads your words "
+            "next to this run's review ledger, it has. A summary that answers 'did an "
+            "independent review happen?' twice and differently is worse than one that "
+            "answers it once.",
+            "",
+            "Your ACCEPT is never a claim that a review happened. It is a judgement that the "
+            "observed behaviour matches the task. The ledger records the review; you do not "
+            "need to caveat it, and the harness will not let an unsatisfied review "
+            "requirement pass whatever you return.",
         ]
 
     parts += [

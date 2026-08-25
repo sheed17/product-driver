@@ -742,6 +742,10 @@ async def run_control_loop(
             previous_corrections=sent_corrections,
             suite=suite_result,
             coverage_gaps=_coverage_gap_briefs(planner, suite_result),
+            # The evaluator writes its summary before the review runs. Telling it
+            # the run takes that review itself is what stops it writing a
+            # sentence the run then contradicts (Neyma `P6-D34`).
+            review_is_integrated=config.review.automatic,
         )
 
         provenance = _build_provenance(

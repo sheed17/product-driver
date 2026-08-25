@@ -95,7 +95,7 @@ from neyma_product_driver.reviewer_evidence import (
     expectations_from_scenarios,
     observation_from_tool_response,
 )
-from neyma_product_driver.run_journal import RunJournal
+from neyma_product_driver.run_journal import RunJournal, claims_review_still_owed
 from neyma_product_driver.scenario_validation import ApprovedCommands
 from neyma_product_driver.scenarios import Scenario
 from neyma_product_driver.task_scope import TaskResult
@@ -2216,6 +2216,215 @@ def _journal_with_review(**kw) -> RunJournal:
     journal.builder_session_id = "builder-session-1"
     journal.record_independent_review(**kw)
     return journal
+
+
+class TestProseNeverContradictsTheReviewLedger:
+    """The P6/M4 defect Neyma recorded as `P6-D34`.
+
+    The evaluator writes its decision summary BEFORE the run takes the review the
+    task owes — it has to, because that summary is an input to the decision about
+    whether to take one. So an evaluator that has read a repository requiring a
+    focused independent review writes, correctly for the moment it is writing in,
+    "a review by someone who did not build this remains a REQUIRED separate run
+    step". The run then takes exactly that review, the ledger records it as
+    satisfying the requirement, and `FOUNDER-SUMMARY.md` answers "did an
+    independent review happen?" twice and differently, several hundred lines
+    apart.
+
+    The fix asserted here is deliberately narrow. It does NOT edit the
+    evaluator's words — prose a session actually wrote is evidence, and a harness
+    that silently rewrites evidence to agree with a later record is doing the
+    thing this whole file exists to prevent. It states, next to the stale
+    sentence, what the ledger established afterwards.
+    """
+
+    def _satisfied(self, stop_reason: str) -> RunJournal:
+        requirement = resolve_review_requirement(Path("."), _NestedScope())
+        requirement.add(ReviewTrigger.REPOSITORY_AUTHORITY, "the repository requires one")
+        ledger = ReviewLedger()
+        review = supported()
+        review.reviewer_session_id = "reviewer-session-1"
+        entry = ledger.record(
+            review,
+            TreeFingerprint(head="a" * 40, tree="b" * 40),
+            builder_session_id="builder-session-1",
+        )
+        journal = _journal_with_review(
+            requirement=requirement,
+            ledger=ledger,
+            satisfying=entry,
+            reviews=[review],
+            automatic=True,
+        )
+        journal.record_stop(reason=stop_reason, next_safe_action="Read the diff yourself.")
+        return journal
+
+    #: The exact sentence the P6/M4 run wrote, trimmed to the clause that carries
+    #: the contradiction. Kept verbatim so this test fails if the detector is ever
+    #: narrowed past the case it was built for.
+    M4_STOP_REASON = (
+        "P6/M4 was operated as a running unit and the observed behaviour matches the "
+        "contract. M4 is tier-1 (CLAUDE.md 7), so a focused independent review by a "
+        "session that did not build it remains a REQUIRED separate run step; this "
+        "ACCEPT is a judgement that the observed builder behaviour matches the M4 "
+        "contract, not a substitute for that review."
+    )
+
+    def test_the_exact_m4_sentence_is_detected(self) -> None:
+        journal = self._satisfied(self.M4_STOP_REASON)
+        found = journal.review_narrative_contradictions()
+        assert found, "the sentence that produced P6-D34 is not detected"
+        assert found[0][0] == "the evaluator's stop reason"
+        assert "remains a REQUIRED separate run step" in found[0][1]
+
+    def test_the_correction_is_rendered_where_the_stale_sentence_is_read(self) -> None:
+        """Both places, because a founder may read either alone.
+
+        Section 5 is where the structured answer lives; the stop reason is the
+        last thing in the document. A correction in only one of them leaves the
+        other reading as the record.
+        """
+        summary = self._satisfied(self.M4_STOP_REASON).founder_summary()
+        assert summary.count("CORRECTION — prose in this run contradicts") == 2
+        assert "No separate manual review step is outstanding for this task." in summary
+
+    def test_the_original_prose_is_preserved_verbatim(self) -> None:
+        """The correction stands beside the claim; it never replaces it."""
+        summary = self._satisfied(self.M4_STOP_REASON).founder_summary()
+        assert "remains a REQUIRED separate run step" in summary
+        assert "not a substitute for that review" in summary
+
+    def test_an_unsatisfied_requirement_is_not_corrected(self) -> None:
+        """When the review did NOT discharge the requirement the prose is right.
+
+        This is the half that makes the check safe: it fires only on
+        `review_satisfied_scope`, which is set only by a review that survived
+        `ReviewRecord.satisfies` against this exact tree.
+        """
+        requirement = resolve_review_requirement(Path("."), _NestedScope())
+        requirement.add(ReviewTrigger.REPOSITORY_AUTHORITY, "the repository requires one")
+        journal = _journal_with_review(requirement=requirement, reviews=[])
+        journal.record_stop(reason=self.M4_STOP_REASON)
+        assert journal.review_satisfied_scope is False
+        assert journal.review_narrative_contradictions() == []
+        assert "CORRECTION — prose in this run contradicts" not in journal.founder_summary()
+
+    def test_stating_the_requirement_is_not_a_contradiction(self) -> None:
+        """A true sentence about the rule must not be flagged.
+
+        "an independent review is required, and the run takes it" is exactly what
+        the evaluator SHOULD write. A detector that fired on it would train the
+        next evaluator to stop mentioning the requirement at all.
+        """
+        journal = self._satisfied(
+            "M5 is tier-1, so a focused independent review by a session that did not "
+            "write it is required, and Product Driver launched it inside this run."
+        )
+        assert journal.review_narrative_contradictions() == []
+
+    def test_the_next_safe_action_and_founder_decision_are_checked_too(self) -> None:
+        """Three narrative fields carry a session's own words, not one."""
+        journal = self._satisfied("M5 built and verified.")
+        journal.next_safe_action = (
+            "Commission a separate independent review before merging this."
+        )
+        journal.founder_decision_required = (
+            "Decide whether the outstanding independent review by another session can wait."
+        )
+        wheres = [where for where, _ in journal.review_narrative_contradictions()]
+        assert "the recorded next safe action" in wheres
+        assert "the recorded founder decision" in wheres
+
+    def test_an_unresolved_finding_claiming_a_review_is_checked(self) -> None:
+        journal = self._satisfied("M5 built and verified.")
+        journal.incomplete = ["an independent review by a fresh session is still outstanding"]
+        wheres = [where for where, _ in journal.review_narrative_contradictions()]
+        assert "an entry under what remains incomplete" in wheres
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            # The exact P6/M4 clause.
+            "a focused independent review by a session that did not build it remains a "
+            "REQUIRED separate run step",
+            "An independent review is still outstanding.",
+            "a separate manual review is still required before merge",
+            "This work must still be reviewed by someone who did not write it.",
+            "A focused independent review must be taken before this lands.",
+            "Commission a separate independent review before merging this.",
+            "Decide whether the outstanding independent review by another session can wait.",
+            "The unit is awaiting its focused independent review.",
+            "A second review has not been performed.",
+        ],
+    )
+    def test_sentences_that_claim_the_review_is_outstanding(self, sentence: str) -> None:
+        assert claims_review_still_owed(sentence), f"not detected: {sentence!r}"
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            # Every one of these DESCRIBES the review that happened, or states
+            # the rule. `another`, `separate` and `later` are how correct prose
+            # talks about a review, so a marker set containing them bare would
+            # flag the right answer as the wrong one.
+            "The independent review was performed by another session.",
+            "A separate session read this tree and supported it.",
+            "The focused independent review SUPPORTED this implementation.",
+            "a focused independent review by a session that did not write it is required, "
+            "and Product Driver launches it inside the run",
+            "An independent review must be independent of the builder.",
+            "The review was later corroborated by the mutation battery.",
+            "This is a focused independent review of the approval lifecycle.",
+            "An independent review is required for tier-1 work.",
+            "Reviewed by another session at commit abc123.",
+            "The repository states an independent-review rule for effect-boundary work.",
+        ],
+    )
+    def test_correct_prose_about_a_review_is_never_flagged(self, sentence: str) -> None:
+        """The half that decides whether this check is usable.
+
+        A detector that fires on "reviewed by another session" trains the next
+        evaluator to stop describing the review at all, which is a worse founder
+        summary than the one this fixes.
+        """
+        assert not claims_review_still_owed(sentence), f"false positive: {sentence!r}"
+
+    def test_the_evaluator_is_told_the_review_happens_inside_the_run(self) -> None:
+        """The other half of the fix: stop the stale sentence being written.
+
+        Correcting a sentence after the fact is a repair. Telling the evaluator
+        that this run takes the review itself is what stops there being one.
+        """
+        from neyma_product_driver.prompts import evaluator_prompt
+
+        integrated = evaluator_prompt(
+            task="build P6/M5",
+            iteration=1,
+            max_iterations=3,
+            builder_summary="done",
+            git=None,
+            scenario=None,
+            service_logs=None,
+            evidence_dir="/runs/r1",
+            review_is_integrated=True,
+        )
+        assert "THE INDEPENDENT REVIEW IS PART OF THIS RUN" in integrated
+        assert "remains outstanding" in integrated
+        assert "Your ACCEPT is never a claim that a review happened." in integrated
+
+        # And it must not appear when the run does NOT take one, or the evaluator
+        # would be told something false about this run.
+        standalone = evaluator_prompt(
+            task="build P6/M5",
+            iteration=1,
+            max_iterations=3,
+            builder_summary="done",
+            git=None,
+            scenario=None,
+            service_logs=None,
+            evidence_dir="/runs/r1",
+        )
+        assert "THE INDEPENDENT REVIEW IS PART OF THIS RUN" not in standalone
 
 
 class TestTheFounderSummaryReportsTheReview:
