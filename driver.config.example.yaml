@@ -130,7 +130,7 @@ scenario_generation:
   # Extra commands generated scenarios may run, beyond those already present in
   # your scenario files. Extra arguments are allowed; shell operators are not.
   #
-  # A useful pattern, and the one the P6/M3 configuration uses: when a unit
+  # A useful pattern, and the one the P6/M3 and P6/M4 configurations use: when a unit
   # ships a probe with a focused `--case <name>` interface, the bare probe in the
   # scenario file already approves every case (approval matches by prefix). What
   # enumerating them here adds is VISIBILITY — the generation brief shows the
@@ -140,6 +140,12 @@ scenario_generation:
   approved_commands: []
   #   - ".venv/bin/python scripts/inspect_state.py"
   #   - ".venv/bin/python scripts/probe_phase6_external_effect.py --case forged-capability"
+  #   - ".venv/bin/python scripts/probe_phase6_approval.py --case provenance-drift-voids"
+  # A unit that ships dark has no service and no HTTP surface, so the probe's own
+  # argument vocabulary is the ONLY way a generated scenario can vary ordering,
+  # concurrency, timing, crash or fault. Teach that shape by example rather than
+  # enumerating the combinations — the prefix match already approves them all:
+  #   - ".venv/bin/python scripts/probe_phase6_approval.py --case amount-drift-voids --inject drift-amount --seed 7"
   # Requests may only address these hosts. Loopback only, by design.
   local_http_hosts: ["127.0.0.1", "localhost", "::1"]
 

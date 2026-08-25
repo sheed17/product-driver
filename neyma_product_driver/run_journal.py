@@ -250,6 +250,21 @@ class RunJournal:
     scope_is_nested: bool = False
     scenario_name: str = ""
     scenario_phase: str = ""
+    #: What the unit under verification is FOR, in plain terms, taken verbatim
+    #: from the permanent scenario file's ``description``.
+    #:
+    #: It is here because sections 2 and 4 could otherwise only answer "why does
+    #: this matter" with the registry's phase-level objective — "the 13 machines,
+    #: 134 transitions" — which is true and tells a founder nothing about the
+    #: unit the run actually built. The scenario's description is the one
+    #: human-authored sentence in the whole pipeline that says what the unit is
+    #: for; nothing a model produced reaches this field.
+    #:
+    #: It is rendered as a statement of PURPOSE and never of achievement, under
+    #: its own label, and it is deliberately not in section 3 or 4: what a unit
+    #: is for is not evidence that it works, and this renderer's entire job is
+    #: to keep those two apart.
+    scenario_purpose: str = ""
 
     started_at: str = field(default_factory=_now)
     ended_at: str = ""
@@ -485,6 +500,7 @@ class RunJournal:
         unit: Any = None,
         scenario_name: str = "",
         scenario_phase: str = "",
+        scenario_purpose: str = "",
     ) -> None:
         """Copy the run's final records in. Reads them; never interprets them.
 
@@ -495,6 +511,7 @@ class RunJournal:
         self.run_status = str(getattr(run_status, "value", run_status) or "")
         self.scenario_name = scenario_name or self.scenario_name
         self.scenario_phase = scenario_phase or self.scenario_phase
+        self.scenario_purpose = scenario_purpose or self.scenario_purpose
 
         if gate is not None:
             status = getattr(gate, "status", "")
@@ -634,7 +651,11 @@ class RunJournal:
                 "observed_behavior": list(self.observed_behavior),
                 "builder_claims": list(self.builder_claims),
                 "reviews": list(self.reviews),
-                "scenario": {"name": self.scenario_name, "phase": self.scenario_phase},
+                "scenario": {
+                    "name": self.scenario_name,
+                    "phase": self.scenario_phase,
+                    "purpose": self.scenario_purpose,
+                },
                 "verification_established": self.verification_established,
             },
             "independent_review": {
@@ -759,7 +780,23 @@ class RunJournal:
                 lines.append(f"    - \"{_one_line(claim, 220)}\"")
 
         # 2 ------------------------------------------------------------------
+        #
+        # The unit's own purpose leads, because the registry's objective below is
+        # about the PHASE. "Work Item, Pipeline Instance, the 13 machines, 134
+        # transitions" is a true answer to "why does P6 matter" and a useless one
+        # to "why did this run matter". The scenario's `description` is the one
+        # human-authored sentence in the pipeline that says what the unit is for.
+        #
+        # Labelled as purpose, never as achievement. Whether any of it was
+        # achieved is section 3's question and section 3 answers it from the
+        # gate, not from here.
         lines += ["", "### 2. Why this matters for Neyma", ""]
+        if self.scenario_purpose:
+            lines.append(
+                "- What this unit is FOR, in plain terms — from the permanent verification "
+                "scenario a person wrote, and a statement of purpose rather than a finding:"
+            )
+            lines.append(f"    - {_one_line(self.scenario_purpose, 1200)}")
         if self.active_unit_id:
             lines.append(f"- This run worked on **{self.active_unit_id}**"
                          + (f" — {self.active_unit_name}" if self.active_unit_name else "")

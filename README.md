@@ -270,8 +270,8 @@ efficiently.
 
 ```bash
 .venv/bin/python -m neyma_product_driver scenarios plan \
-  --task "$(cat tasks/neyma_p6_m3.md)" \
-  --scenario p6_m3_external_effect
+  --task "$(cat tasks/neyma_p6_m4.md)" \
+  --scenario p6_m4_approval
 ```
 
 Generates the initial scenario plan and prints it. **Executes nothing** — no
@@ -283,16 +283,23 @@ This consumes Claude usage (one planning session). It is worth it before a long
 run: a plan that has misunderstood the unit is visible here in a minute rather
 than an hour in.
 
-### 4. The actual M3 run
+### 4. The actual run — currently P6/M4, the Approval
 
 ```bash
 .venv/bin/python -m neyma_product_driver run \
-  --task "$(cat tasks/neyma_p6_m3.md)" \
-  --scenario p6_m3_external_effect
+  --task "$(cat tasks/neyma_p6_m4.md)" \
+  --scenario p6_m4_approval
 ```
 
+M3 landed as `P6-CP-3`; **M4 is the next build checkpoint**, and its unit is the
+one that decides whether a human's "yes" still describes the world by the time
+Neyma acts on it. The M3 pair is still on disk and still runs
+(`tasks/neyma_p6_m3.md` + `--scenario p6_m3_external_effect`) — the M4 scenario
+re-runs M3's own probe as a regression anchor, because M4 consumes the approval
+inside M3's claim CAS.
+
 That is the whole invocation. `driver.config.yaml` supplies the repository, the
-iteration ceiling, the models and the M3 command vocabulary. From here the driver
+iteration ceiling, the models and the M4 command vocabulary. From here the driver
 runs unattended: it reads Neyma's authority, drives the builder, inspects the
 real diff, generates adversarial scenarios from it, operates the implementation,
 reads persisted state, evaluates what it saw, sends grounded corrections back to
@@ -322,7 +329,7 @@ conversation rather than starting a new builder that has to rediscover the work:
 .venv/bin/python -m neyma_product_driver status          # find the run id
 .venv/bin/python -m neyma_product_driver run \
   --resume-run <run-id> \
-  --task "$(cat tasks/neyma_p6_m3.md)"
+  --task "$(cat tasks/neyma_p6_m4.md)"
 ```
 
 A resumed run also restores its scenario plan. If that plan exists on disk and
@@ -787,7 +794,7 @@ independent session PENDING.
 **One command does the whole thing.**
 
 ```bash
-python -m neyma_product_driver run --task "$(cat tasks/neyma_p6_m4.md)" --scenario p6_m4
+python -m neyma_product_driver run --task "$(cat tasks/neyma_p6_m4.md)" --scenario p6_m4_approval
 ```
 
 and the run itself goes:
@@ -1597,11 +1604,22 @@ the exact tree that was reviewed, lists the commands the reviewer ran and the
 ones the boundary refused, and — when a later change retired a review that had
 already said yes — says that too.
 
+Section 2 leads with **what the unit under verification is FOR, in plain
+terms**, taken verbatim from the permanent scenario file's `description` — the
+one human-authored sentence in the whole pipeline that says what the thing being
+built is actually for. Without it, "why does this matter" could only be answered
+with the registry's *phase*-level objective ("the 13 machines, 134 transitions"),
+which is true and tells a founder nothing about the unit this run built. It is
+labelled a statement of purpose and is deliberately not in section 3 or 4: what a
+unit is for is not evidence that it works, and keeping those two apart is this
+renderer's entire job.
+
 Every clause is rendered deterministically from records the run already
 produced — the acceptance gate's verdict, the evaluator's observations, the file
-and commit record, the review ledger, the repository's own unit registry. Nothing
-in it is composed by a model at the end of a run, which is what makes the next
-paragraph enforceable rather than aspirational.
+and commit record, the review ledger, the permanent scenario's own description,
+the repository's own unit registry. Nothing in it is composed by a model at the
+end of a run, which is what makes the next paragraph enforceable rather than
+aspirational.
 
 **Five upgrades it cannot make.** A run may state that something is *proven*
 only when the run reached ACCEPTED, the deterministic gate returned VERIFIED, no

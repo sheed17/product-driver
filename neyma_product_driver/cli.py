@@ -3062,6 +3062,7 @@ def _journal_the_outcome(
             unit=unit,
             scenario_name=scenario.name if scenario else state.scenario_name,
             scenario_phase=scenario.phase if scenario else "",
+            scenario_purpose=scenario.description if scenario else "",
         )
         return
 
@@ -3099,6 +3100,7 @@ def _journal_the_outcome(
         unit=unit,
         scenario_name=scenario.name if scenario else state.scenario_name,
         scenario_phase=scenario.phase if scenario else "",
+        scenario_purpose=scenario.description if scenario else "",
     )
 
     # Unresolved material findings are what "still NOT built" means for a run:

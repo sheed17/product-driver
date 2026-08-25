@@ -1,0 +1,851 @@
+# P6 / M4 — Approval.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M4 operation           (the probe, run whole)
+#   2. a safe approved M4 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--signers`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 entrypoints)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry
+# and the acceptance criteria; stage 2 refines them against the diff the builder actually
+# produced; stage 3 grows neighbours around whatever failed. None of that can author shell —
+# a generated case may only CHOOSE one of the approved commands below, optionally with an
+# argument tail, and decide when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3.
+# M4 ships dark: no service, no HTTP surface, no live approval channel. The executor's only
+# concurrency primitive is `parallel_requests`, which is HTTP — so for this unit the generator
+# has NO way to compose ordering, concurrency, timing, crash, drift or redelivery variation
+# from the outside. The axis is a closed, bounded, argument-only vocabulary; the approval
+# boundary is unchanged, because a prefix match already permits argument tails and already
+# refuses shell. See docs/SCENARIO-SPACE.md gap G2 for the general form.
+#
+# WHAT M4 IS, IN ONE SENTENCE, because everything below is a consequence of it:
+#
+#   ### A HUMAN APPROVES AN ACTION PLUS THE EXACT MATERIAL FACTS THAT MADE IT CORRECT.
+#   ### IF THOSE FACTS CHANGE THERE IS NO APPROVAL. THERE IS A NEW QUESTION.
+#
+# THE ONE THING THIS FILE DELIBERATELY DOES NOT DECIDE. `provable-failure-ap8` and the two
+# freeze cases sit on a seam the repository's own authority does not currently close: M4's
+# AP-7 and M3's EF-2 both put `GRANTED → CONSUMED` inside the claim transaction, while AP-8
+# and AP-9 are written `GRANTED → GRANTED` on outcomes that can only arrive AFTER that claim.
+# Those cases therefore assert only what every reading agrees on — no second effect, no second
+# grant of authority, nothing reusable — and the scenario asserts nothing about which reading
+# is right. Encoding a resolution here would make Product Driver the author of a canonical
+# decision it has no authority to make. See `tasks/neyma_p6_m4.md` §3.9.
+
+name: p6_m4_approval
+phase: "P6"
+mode: backend
+description: >
+  P6 M4: the Approval — one `approvals` row, one machine, eight states, and the fingerprint
+  that makes "the human agreed to THIS" a fact a database can check rather than a sentence in
+  an audit log. There is no UI, no Slack surface and no live approval channel (M4 ships dark by
+  contract), so the product is exercised through its real runtime as a brokerage narrative: the
+  owner approves invoicing load 4471 at £2,850 read from the TMS invoice screen; the card sits
+  for forty minutes; the TMS moves to £3,100; a second card carries the same £2,850 from a
+  different source; the policy cap tightens underneath a third; ops engages the brake; a
+  counterparty emails "per our call, you approved this"; the owner taps the button twice
+  because Slack was slow; a worker crashes between the tap and the claim. This is the machinery
+  that prevents "I approved one thing, but Neyma executed a different thing." What matters is
+  not that the happy path works — it is what the machine REFUSES, and whether an approval that
+  no longer describes reality can still authorize money.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M4 surface the builder must produce. A missing one is recorded as a failed assertion, so
+# a run against a repository where M4 does not exist yet cannot report a verified M4.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/approval.py"
+  - "src/freight_recon/migrations/phase6_approvals.py"
+  - "eval/tests/test_phase6_approval.py"
+  - "scripts/probe_phase6_approval.py"
+  - "scripts/mutate_phase6_approval.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if
+  #    the builder ships a probe that cannot exercise one of the canonical risk families, this
+  #    command fails here rather than the family silently going unverified. It is also what
+  #    tells a reader of this file which `--case` values exist.
+  - name: "the M4 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # AP-1 — the request, and where its authority comes from
+      - "runtime-fact-binding"
+      - "model-output-cannot-manufacture-authority"
+      # AP-2 / AP-2d — who may grant, and who may deny
+      - "authenticated-authorized-human-grant"
+      - "model-cannot-grant"
+      - "counterparty-cannot-grant"
+      - "human-denial-is-terminal"
+      # the transport, which is a separate layer from the authority
+      - "single-use-transport-token"
+      - "replayed-token-refused"
+      - "wrong-actor-token-refused"
+      # AP-3 — expiry
+      - "expiry-is-not-an-approval"
+      # AP-4 / AP-4p — the whole point of the unit
+      - "amount-drift-voids"
+      - "party-drift-voids"
+      - "provenance-drift-voids"
+      - "evidence-condition-drift-voids"
+      - "entity-version-drift-voids"
+      - "unreadable-source-fails-closed"
+      - "drift-diff-is-human-readable"
+      - "policy-version-drift-voids"
+      # AP-5 / AP-6 — the two ways a live approval is stopped by a person
+      - "brake-voids-before-consume"
+      - "human-revoke-before-consume"
+      # AP-7 — the atomic seam with M3, and the double tap
+      - "consume-cas-in-the-claim-txn"
+      - "double-tap-is-idempotent"
+      # AP-8 / AP-9 — the two attempt outcomes, exactly as canon writes them
+      - "provable-failure-ap8"
+      - "unknown-outcome-freeze-ap9"
+      - "frozen-approval-not-reusable"
+      # §36 — crash recovery, both sides of the consume
+      - "crash-before-consume-survives"
+      - "crash-after-consume-not-regranted"
+      # §16 / ADR-005 §3.16 — dual control
+      - "dual-control-distinct-actors"
+      - "dual-control-drift-voids-signatures"
+      # ADR-005 §3.8 / §3.10 — what an approval cannot become
+      - "partial-approval-is-a-new-proposal"
+      - "live-approval-uniqueness"
+      # the inherited obligations and the seams M4 co-commits across
+      - "m2-awaiting-approval-seam"
+      - "m3-claim-serialization-seam"
+      - "database-invariants"
+      - "replay-zero-approval-authority"
+      - "redelivery-idempotency"
+      - "transactional-co-commit"
+      - "tenant-isolation"
+      - "retained-canonical-payload"
+      - "terminal-states-stay-terminal"
+      # §40 — the two authority forgeries the transport layer must name, not launder.
+      # `replayed-token-refused` and `wrong-actor-token-refused` above cover a REAL
+      # token misused; these two cover one that was never real and one aimed elsewhere.
+      - "forged-authority-refused"
+      - "wrong-target-authority-refused"
+      # events/registry.md §8 — F4 Approval is a STRICT-ORDER aggregate by name, so M4
+      # inherits the obligation M3 discharged on its own aggregate: every producer
+      # declares `previous_aggregate_version`, and a strict consumer reads the COMPLETE
+      # aggregate stream rather than the `Approval*` family subset. A consumer that
+      # filters by family can filter out its own predecessor and never unblock.
+      - "strict-order-predecessor-declared"
+      - "complete-aggregate-stream-consumed"
+      # ER-16 — `ApprovalFrozen` is the SOLE canonical evidence of a freeze. A rebuild
+      # sets frozen=true because that event is PRESENT, never by inferring it from
+      # `OutcomeUnknown` AND NOT `RealityEstablished`.
+      - "frozen-reconstructed-from-positive-evidence"
+
+  # 2. THE MUTATION AXIS. A case list alone gives the generator 39 fixed points and no way to
+  #    vary them: it could choose WHICH situation, never HOW it is parameterised. These flags
+  #    are the difference between "run the drift case" and "run it with the provenance class
+  #    moving between signature 1 and signature 2, three signers, 40ms apart, while the live
+  #    re-read fails" — a situation nobody enumerated and the generator can reach.
+  #
+  #    The vocabulary is CLOSED and BOUNDED on purpose. This is not fuzzing: an unknown fault
+  #    or an out-of-range value must be REFUSED (see command 3), every combination still has
+  #    to cite a requirement to survive validation, and `--seed` makes any discovered failure
+  #    reproducible — which is what lets it be promoted into permanent coverage later.
+  #
+  #    Costs nothing at the safety boundary: approval matches by PREFIX and refuses shell
+  #    composition in the tail, so every combination of these flags is already approved by the
+  #    single bare-probe entry in command 4. No new command is authored by anything.
+  - name: "the M4 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # the axes a situation can be varied along
+      - "--concurrency"      # how many actors race the consume CAS
+      - "--delay-ms"         # timing skew between those actors, and between signatures
+      - "--repeat"           # redelivery / double-tap pressure
+      - "--tenants"          # isolation pressure
+      - "--signers"          # dual-control quorum size
+      - "--seed"             # deterministic interleaving; the same seed reproduces the failure
+      # the closed fault vocabulary, every member named by the canonical machine or ADR-005
+      - "drift-amount"               # AP-4  / ADR-005 §3.2 #5
+      - "drift-party"                # AP-4  / ADR-005 §3.2 #6
+      - "drift-provenance"           # AP-4  / ADR-005 §3.3
+      - "drift-evidence-condition"   # AP-4  / ADR-005 §3.14
+      - "drift-entity-version"       # AP-4  / ADR-005 §3.2 #12
+      - "source-unreadable"          # ADR-005 §3.12 — a failed re-read is not "no drift"
+      - "policy-bump"                # AP-4p / ADR-005 §3.11
+      - "brake-engage"               # AP-5
+      - "human-revoke"               # AP-6
+      - "ttl-elapse"                 # AP-3
+      - "provable-failure"           # AP-8  / M3 EF-3f
+      - "outcome-unknown"            # AP-9  / M3 EF-3u
+      - "double-tap"                 # §19   / ADR-005 §3.15
+      - "replay-token"               # §40   / ADR-005 §3.15 layer 1
+      - "wrong-actor"                # §40   — the token is actor-bound
+      - "crash-before-consume"       # §36
+      - "crash-after-consume"        # §36
+      - "redeliver"                  # GR-4  / §19
+      - "signature-drift"            # §16   / ADR-005 §3.16
+      - "forge-token"                # §40   — a forged authority names no row
+      - "wrong-target"               # §40   — authority is bound to ONE target
+      - "drop-predecessor"           # events §8 — successor names an unapplied predecessor
+      - "reorder-stream"             # events §8 — delivery order permuted in the aggregate
+      - "freeze-by-absence"          # ER-16 — rebuild the freeze from an absence
+
+  # 3. THE NEGATIVE CONTROL FOR THAT VOCABULARY. A dimension set that accepts anything is
+  #    fuzzing wearing a closed-vocabulary costume. This proves the closure is real: an
+  #    invented fault is refused, with a non-zero exit and a readable message rather than a
+  #    stack trace (`Traceback` is in `forbidden`, so a crash here fails the whole scenario).
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py --case amount-drift-voids --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3b. THE SECOND NEGATIVE CONTROL, and the one that is specific to M4. `ApprovalUnfrozen` is
+  #     the mechanism the repository has recorded as ABSENT (residual `G2-D15`): no M4 row
+  #     clears `frozen`, there is no `ApprovalUnfrozen` event, and `RealityEstablished` is an
+  #     M3 fact on a different aggregate. A probe that accepts an unfreeze fault is a probe
+  #     whose passing runs would be evidence for a transition nobody authorized.
+  - name: "an unfreeze fault does not exist, because the transition it names does not exist"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py --case frozen-approval-not-reusable --inject unfreeze"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. THE PRODUCT, DRIVEN. Run whole, this is the deterministic basic M4 operation. Run with
+  #    `--case <case>` it is the approved focused entry point a generated scenario composes
+  #    with — the bare form below is what makes every `--case` tail approvable, because the
+  #    approved set matches by prefix and refuses shell composition in the tail.
+  - name: "drive the Approval machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M4 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M4 consumes the P3 fingerprint kernel and checkpoint steps 1–2,
+  #    executes nothing itself through the P4 boundary but may not weaken it, rides the P5
+  #    transport, and co-commits with M2 and M3. Each of those can be broken from inside M4,
+  #    so each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel and fingerprint M4 binds to, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M4 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P5 transport, replay isolation and durable timers M4 consumes, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2 and M3, whose transitions M4 co-commits with, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. M3's own deterministic probe, re-run. M4 co-commits inside M3's claim CAS, so "M3 is
+  #    still the single effect authority" is a claim about M3's behaviour and is measured
+  #    against M3's own oracle rather than against M4's account of it.
+  - name: "M3 still behaves as specified with M4's consumption seam in place"
+    run: ".venv/bin/python scripts/probe_phase6_external_effect.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M4 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "verified" proves nothing about a row.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because
+  # SQLite silently ignores the pragma inside one — that makes every tenant-consistent foreign
+  # key more than decoration. A probe that skips it measures a database no caller ever gets.
+  - name: "a freshly created canonical database carries the approval layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "approvals"
+      - "effect_grants"
+      - "checkpoint_witnesses"
+      - "pipeline_instances"
+      - "tenant_humans"
+
+  # The eight states, structurally. Not a convention, not a Python enum nobody enforces — a
+  # CHECK constraint, so a ninth state and a misspelled eighth are both uninsertable. There is
+  # deliberately no `SUPERSEDED`: ADR-005 §3.10 decomposes supersession into drift-void ∪
+  # duplicate-refusal, and a ninth state would be the mechanism this unit exists without.
+  - name: "the eight canonical approval states are a database constraint, and there is no ninth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='approvals'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('approval state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the approvals table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'CONSUMED'"
+      - "'DENIED'"
+      - "'EXPIRED'"
+      - "'GRANTED'"
+      - "'REQUESTED'"
+      - "'REVOKED'"
+      - "'VOID_ON_BRAKE'"
+      - "'VOID_ON_DRIFT'"
+    not_contains:
+      - "'SUPERSEDED'"
+
+  # Entity spec §16: "CHECK: state = GRANTED requires a non-null granted_by". §37 names a
+  # GRANTED approval with no `granted_by` as a STRUCTURALLY IMPOSSIBLE state, and the only
+  # version of that sentence a database enforces is a CHECK. The columns beside it are the
+  # ones §10 makes required — without `canonical_payload` the drift diff of §3.13 cannot be
+  # produced at all, and the unit degrades into a hash that can say "something changed".
+  - name: "a GRANTED approval without a human is uninsertable, and the payload is retained"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='approvals'\").fetchone();
+      sql=row[0] if row else '';
+      print('approvals columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(approvals)')));
+      import re as _re;
+      print('granted_by is a CHECK:',
+      bool(_re.search(r'CHECK[^;]*granted_by', sql, _re.S) or
+      _re.search(r'granted_by[^;]*CHECK', sql, _re.S)))"
+    timeout_s: 300
+    contains:
+      - "'canonical_payload'"
+      - "'commit_key'"
+      - "'expires_at'"
+      - "'fingerprint_version'"
+      - "'gate_decision'"
+      - "'granted_by'"
+      - "'material_facts_fingerprint'"
+      - "'policy_version'"
+      - "'rendered_facts'"
+      - "'tenant'"
+      - "'version'"
+      - "granted_by is a CHECK: True"
+
+  # Entity spec §17: `UNIQUE (tenant_id, commit_key) WHERE state IN ('REQUESTED','GRANTED')`.
+  # "At most one live approval per effect" is a hope about a code path until it is a partial
+  # unique index; the same argument M2 made for its reservation and M3 made for its claim
+  # instant. A re-approval supersedes only after the prior is terminal, which is what makes
+  # ADR-005 §3.10's "no third state" true rather than merely stated.
+  - name: "at most one LIVE approval per tenant and commit key, by UNIQUE partial index"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      rows=[r[0] for r in c.execute(
+      \"select sql from sqlite_master where type='index' and tbl_name='approvals' and sql is not null\")];
+      live=[s for s in rows if 'UNIQUE' in s and 'commit_key' in s and 'REQUESTED' in s and 'GRANTED' in s];
+      print('live-approval uniqueness index:', live[0] if live else 'MISSING')"
+    timeout_s: 300
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "commit_key"
+      - "REQUESTED"
+      - "GRANTED"
+
+  # "Only an authenticated authorized human grants" is decoration while `granted_by` is a text
+  # column that any string satisfies. A FOREIGN KEY into `tenant_humans` is the version of that
+  # sentence a database enforces — exactly the argument M1 made for `owner_id`, and exactly
+  # what ADR-005 §4 means by "inside Neyma's trust boundary".
+  - name: "an approval's human and its effect are FOREIGN KEYs, not conventions"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('approvals foreign keys ->', sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(approvals)')}))"
+    timeout_s: 300
+    contains:
+      - "tenant_humans"
+
+  # THE RECORDED RESIDUAL, PRESERVED RATHER THAN QUIETLY CLOSED. `G2-D15` states that the
+  # UNFREEZE direction of AP-9's `frozen` flag is unmodelled: no M4 transition row clears it,
+  # there is no `ApprovalUnfrozen` event, and `RealityEstablished` is an M3 fact on a different
+  # aggregate. That residual FAILS CLOSED — a rebuilt approval is reconstructed as still
+  # frozen, i.e. unusable — which is why it is nonblocking. A builder that "fixes" it by
+  # minting an event, a transition or a hidden write has invented canonical authority, and this
+  # check is what notices. If the repository's own authority ever changes and authorizes one,
+  # this check is the thing that must be updated deliberately, by a human, with the change
+  # cited — which is the correct cost.
+  # Two scans, because the two surfaces fail differently and a single glob would have to be
+  # loosened until it caught neither. In CODE, the identifier appearing at all is the
+  # invention — nothing legitimately names an event that does not exist. In the SPECS, prose
+  # must stay free to SAY that no unfreeze exists (this is a recorded residual; describing it
+  # is the correct behaviour), so only a machine-table or event-registry ROW counts — a line
+  # whose first cell names the transition or the event. That is what minting one looks like.
+  - name: "no unfreeze event, transition or write was invented for AP-9 (residual G2-D15 preserved)"
+    command: >-
+      .venv/bin/python -c "import pathlib,re;
+      names=r'ApprovalUnfrozen|ApprovalThawed|UnfreezeApproval|approval_unfrozen';
+      code=re.compile(names);
+      code_hits=sorted({str(f) for r in ('src/freight_recon','scripts')
+      if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py')
+      if code.search(f.read_text(encoding='utf-8', errors='replace'))});
+      row=re.compile(r'^\\|\\s*[*\\x60 ]*(?:' + names + r'|AP-1[0-9])\\b', re.M);
+      spec=pathlib.Path('docs/specifications');
+      spec_hits=sorted({str(f) for f in spec.rglob('*.md')
+      if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else [];
+      print('invented unfreeze surfaces:', code_hits);
+      print('invented unfreeze/extra transition rows:', spec_hits)"
+    timeout_s: 300
+    contains:
+      - "invented unfreeze surfaces: []"
+      - "invented unfreeze/extra transition rows: []"
+
+  # THE DARK POSTURE, MEASURED — and measured the way Neyma's own guard measures it. The
+  # authoritative sweep walks `src/freight_recon/**`, because that is the production package;
+  # `scripts/` is developer tooling that ships to nobody. Two separate assertions rather than
+  # one glob over both, because a single glob cannot tell the deterministic verification probe
+  # from a real caller, and the version of this check that could not tell them apart would have
+  # to be relaxed to let the probe exist at all.
+  #
+  # `checkpoint.py` is named as a permitted importer ONLY if the builder finds that canon
+  # requires the checkpoint to read the durable approval directly; today `checkpoint.py` takes
+  # an `ApprovalRecord` as a typed INPUT and constructs nothing. If M4 changes that, the change
+  # is a dark seam canon required and the builder must say which clause required it.
+  - name: "M4 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      hits=sorted(str(f) for f in root.rglob('*.py')
+      if f.name!='approval.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='approval')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='approval' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production importers of approval:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of approval: []"
+
+  - name: "the only thing outside the package that reaches M4 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='approval')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='approval' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching approval:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching approval: ['probe_phase6_approval.py']"
+
+  # P8 has not happened, and M4 is the unit with the strongest temptation to become a second
+  # one: an approval IS authority, and a module that mints its own gate decision has become an
+  # effect authority whatever it is called. The checkpoint is still the only thing that mints
+  # one, and M3 is still the only thing that claims a grant.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # NO LIVE APPROVAL SURFACE. M4 is the unit whose product form is a button in Slack, so the
+  # one thing that must not arrive with it is that button. This walks the production package
+  # for a module that both reaches the approval machine and reaches an outbound channel — the
+  # shape a live approval channel would have — and asserts the set is empty.
+  - name: "no live approval channel: nothing joins the approval machine to an outbound surface"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      OUT={'slack_adapter','slack_delegate','email_adapter','channels','alert_channel',
+      'browser_use_write','cdp_actuator','action_callback'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8')))) for f in root.rglob('*.py')];
+      print('modules joining approval to an outbound channel:',
+      sorted(name for name,m in seen if 'approval' in m and (m & OUT)))"
+    timeout_s: 300
+    contains:
+      - "modules joining approval to an outbound channel: []"
+
+# ---------------------------------------------------------------------------
+# WHICH IDENTIFIED RISKS THIS SCENARIO VERIFIES, AND BY WHAT.
+#
+# Read by the acceptance gate. A run's generator names the risks it thinks could
+# realistically fail; the gate then asks, for each acceptance-blocking one,
+# whether any executed scenario actually verified it. An entry here is a claim by
+# a human, checked by the machine: `checks` must have executed and every
+# assertion they produced must have passed, and `observations` are LITERAL
+# substrings those checks must have printed. The claim counts for acceptance only
+# when all of that held AND the scenario as a whole PASSED with resolvable
+# evidence.
+#
+# WHAT IS DELIBERATELY NOT DECLARED. Nothing is declared for
+# `ambiguous_external_effect` or `timeout_after_effect`. M4 does not touch the
+# outside world at all — M3 is the single effect authority and stays it — so an
+# M4 run that identifies either as a blocking risk is identifying a risk about
+# M3's behaviour and must generate a case for it or block. That absence is the
+# point: this block is an inventory of oracles, not a list of categories to wave
+# through.
+verifies:
+  - risk_category: approval_required
+    claim: >-
+      An approval exists only where the gate actually requires a human, its fingerprint and
+      canonical payload come from live runtime reads rather than model output, and the facts
+      that were rendered to the approver are the facts that were fingerprinted.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "a GRANTED approval without a human is uninsertable, and the payload is retained"
+    observations:
+      - "AN APPROVAL IS A HUMAN PLUS THE EXACT FACTS"
+      - "'rendered_facts'"
+
+  - risk_category: authorization
+    claim: >-
+      Only an authenticated, authorized tenant human can grant. A model cannot, a counterparty
+      cannot, a document cannot, a confidence score cannot, a retry handler cannot — and the
+      human is a FOREIGN KEY into the tenant's recorded humans rather than a string a caller
+      may invent.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "an approval's human and its effect are FOREIGN KEYs, not conventions"
+    observations:
+      - "ONLY AN AUTHENTICATED AUTHORIZED HUMAN GRANTS"
+      - "A MODEL CANNOT GRANT"
+      - "A COUNTERPARTY CLAIM IS A FRAUD SIGNAL, NEVER AN APPROVAL"
+      - "tenant_humans"
+
+  - risk_category: stale_state
+    claim: >-
+      An approval whose material facts have moved is not an approval. Amount, counterparty,
+      provenance class with the value unchanged, evidence condition and entity version each
+      void it, the void names the field with its old and new value, and no effect occurs.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A DRIFTED FACT IS NOT AN APPROVAL, IT IS A NEW QUESTION"
+      - "SAME AMOUNT, CHANGED PROVENANCE, VOID"
+      - "THE DRIFT DIFF NAMES THE FIELD, THE OLD VALUE AND THE NEW"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      A live re-read that fails is not "no drift", and an evidence condition that degrades from
+      consistent to stale, unknown or conflicting voids the approval. Absence of signal is never
+      read as agreement.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "AN UNREADABLE SOURCE IS NOT \"NO DRIFT\""
+      - "A DEGRADED EVIDENCE CONDITION IS DRIFT"
+
+  - risk_category: safety_invariant
+    claim: >-
+      A policy version change, a brake engaged in scope, and a human revocation each stop a
+      live approval before consumption; an expired approval is not a weaker approval; and a
+      frozen approval is not reusable by any route, with no timer and no retry handler able to
+      unfreeze it.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "no unfreeze event, transition or write was invented for AP-9 (residual G2-D15 preserved)"
+    observations:
+      - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
+      - "A BRAKE BEFORE CONSUME VOIDS THE APPROVAL"
+      - "AN EXPIRED APPROVAL IS NOT A WEAKER APPROVAL"
+      - "A FROZEN APPROVAL IS NOT REUSABLE"
+      - "NO TIMER UNFREEZES AN APPROVAL"
+      - "invented unfreeze surfaces: []"
+
+  - risk_category: concurrency
+    claim: >-
+      GRANTED to CONSUMED is an atomic CAS co-committed with M3's claim, so there is no state
+      where the approval is spent and the claim was not durably won, and none where the claim
+      succeeded and the approval remains reusable. Two humans approving simultaneously produce
+      one consumption, not an error.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "M3 still behaves as specified with M4's consumption seam in place"
+    observations:
+      - "CONSUMED EXACTLY ONCE, IN THE CLAIM TRANSACTION"
+      # M3's OWN literal, from M3's own probe — deliberately not in this file's
+      # expect_visible and deliberately not in tasks/neyma_p6_m4.md, because the
+      # M4 builder does not print it and must not be asked to. "M4 did not break
+      # the single serialization point" is a claim about M3's behaviour, so it is
+      # measured against M3's oracle rather than against M4's account of it.
+      - "ONE WINNER, NEVER TWO"
+
+  - risk_category: idempotency
+    claim: >-
+      A double tap of the same approval finds it already consumed and answers "already done",
+      raising nothing and acting nothing; a redelivered canonical event produces no second
+      transition, no second approval and no second effect.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A DOUBLE TAP IS ALREADY DONE, NOT AN ERROR"
+      - "REDELIVERY IS IDEMPOTENT"
+
+  - risk_category: repeated_request
+    claim: >-
+      The transport token is single use and actor bound: a replayed callback is refused, a
+      callback presented by another actor is refused, and neither reaches the authority layer.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A REPLAYED TOKEN IS REFUSED AT THE TRANSPORT"
+      - "A TOKEN PRESENTED BY ANOTHER ACTOR IS REFUSED"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replay reconstructs approval history and creates zero grants of authority, zero
+      re-grants, zero consumptions into an effect and zero external effects. And per ER-16
+      the freeze it reconstructs comes from the PRESENCE of `ApprovalFrozen`, never from
+      inferring it out of `OutcomeUnknown` AND NOT `RealityEstablished` — an absence is only
+      as true as the fold is complete and correctly ordered, and a safety-critical quarantine
+      may not depend on either.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "replay: 0 grants, 0 approvals granted, 0 approvals consumed, 0 external effects"
+      - "A FREEZE IS REBUILT FROM POSITIVE EVIDENCE, NEVER FROM AN ABSENCE"
+
+  - risk_category: cross_tenant
+    claim: >-
+      No approval is read, granted, revoked or consumed across a tenant, and the same commit
+      key in two tenants remains two isolated approvals.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the approval layer, tenant-first"
+    observations:
+      - "THE SAME COMMIT KEY IN TWO TENANTS IS TWO APPROVALS"
+      - "problems: []"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The eight canonical states are a CHECK constraint, there is no ninth and no SUPERSEDED,
+      terminal states remain terminal, a partial approval is a new proposal rather than a
+      mutation, and an illegal transition refuses and records rather than half-applying.
+    checks:
+      - "the eight canonical approval states are a database constraint, and there is no ninth"
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A PARTIAL APPROVAL IS A NEW PROPOSAL"
+      - "A TERMINAL APPROVAL STAYS TERMINAL"
+      - "'VOID_ON_DRIFT'"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      `F4 Approval` is a STRICT-ORDER aggregate (`events/registry.md` §8), so every producer
+      declares `previous_aggregate_version` and the outbox refuses a link the producer's own
+      emitted history does not hold; a consumer blocks only when a declared predecessor is
+      above its high-water mark, never on a bare missing version — a version with no event is
+      NORMAL, because a co-committed transition advances its aggregate and emits nothing. And
+      the consumer reads the COMPLETE aggregate stream rather than the `Approval*` family
+      subset, so an `IllegalTransitionAttempted` riding the aggregate cannot become a
+      predecessor the consumer discarded and then waits on forever.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "EVERY APPROVAL EVENT DECLARES WHAT IT FOLLOWS"
+      - "A STRICT CONSUMER READS THE COMPLETE AGGREGATE STREAM"
+      - "AN ABSENCE IS NEVER \"THERE IS NOTHING BEFORE ME\""
+
+  - risk_category: persistence_failure
+    claim: >-
+      A pre-M4 database taken through the migration reaches the canonical approval shape, a
+      freshly created canonical database reports no readiness problems, and the canonical
+      payload and actor history survive so the years-later reconstruction contract is
+      structurally represented rather than asserted.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the approval layer, tenant-first"
+      - "a GRANTED approval without a human is uninsertable, and the payload is retained"
+    observations:
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL APPROVAL SHAPE"
+      - "WHAT THE HUMAN SAW IS STILL READABLE"
+      - "problems: []"
+
+  - risk_category: restart_recovery
+    claim: >-
+      A GRANTED approval survives an ordinary pre-consumption crash and recovery re-runs the
+      checkpoint including the live drift check before any claim; a crash after consumption
+      does not return the approval to GRANTED and does not make it reusable.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A CRASH BEFORE CONSUME LEAVES A GRANTED APPROVAL, RE-CHECKED"
+      - "A CRASH AFTER CONSUME NEVER RETURNS AN APPROVAL TO GRANTED"
+
+  - risk_category: malformed_input
+    claim: >-
+      An invented fault is refused with a non-zero exit and a readable message, and an
+      "unfreeze" fault is refused for the same reason every other unknown one is — the
+      transition it names does not exist in the corpus.
+    checks:
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "an unfreeze fault does not exist, because the transition it names does not exist"
+      - "the M4 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+
+  - risk_category: authorization
+    claim: >-
+      A forged transport authority names no approval row and is refused at the transport
+      rather than laundered into an ordinary denial, and authority minted for one target is
+      refused when presented against another — the confused-deputy shape M3's §40 already
+      refuses at the grant handle, refused again at the approval.
+    checks:
+      - "drive the Approval machine through a brokerage narrative, and attack it"
+    observations:
+      - "A FORGED AUTHORITY NAMES NO APPROVAL"
+      - "AUTHORITY FOR ANOTHER TARGET IS REFUSED"
+
+  - risk_category: regression
+    claim: >-
+      The P3 kernel and fingerprint M4 binds to, the P4 boundary it must not widen, the P5
+      transport and timers it consumes and the M1/M2/M3 transitions it co-commits with are all
+      re-run against this change rather than assumed; M3's own probe still reports its
+      behaviours as specified; and every M4 guard is proven capable of failing.
+    checks:
+      - "the P3 checkpoint kernel and fingerprint M4 binds to, unbroken"
+      - "the P4 governed effect boundary M4 must not widen, unbroken"
+      - "the P5 transport, replay isolation and durable timers M4 consumes, unbroken"
+      - "M1, M2 and M3, whose transitions M4 co-commits with, unbroken"
+      - "M3 still behaves as specified with M4's consumption seam in place"
+      - "the M4 mutation battery"
+    observations:
+      - "mutants caught"
+      - "behaviours as specified, 0 wrong"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with
+# `tasks/neyma_p6_m4.md`, which states them verbatim to the builder. They are matched as
+# substrings against everything observed — nothing interprets them.
+#
+# Note what is NOT here. There is no required literal about AP-8's or AP-9's reachability from
+# GRANTED, because the repository's own authority does not currently settle it (see the header
+# and `tasks/neyma_p6_m4.md` §3.9). "A FROZEN APPROVAL IS NOT REUSABLE" and "NO TIMER UNFREEZES
+# AN APPROVAL" are required because every reading agrees on them.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "AN APPROVAL IS A HUMAN PLUS THE EXACT FACTS"
+  - "ONLY AN AUTHENTICATED AUTHORIZED HUMAN GRANTS"
+  - "A MODEL CANNOT GRANT"
+  - "A COUNTERPARTY CLAIM IS A FRAUD SIGNAL, NEVER AN APPROVAL"
+  - "A DRIFTED FACT IS NOT AN APPROVAL, IT IS A NEW QUESTION"
+  - "SAME AMOUNT, CHANGED PROVENANCE, VOID"
+  - "THE DRIFT DIFF NAMES THE FIELD, THE OLD VALUE AND THE NEW"
+  - "A DEGRADED EVIDENCE CONDITION IS DRIFT"
+  - "AN UNREADABLE SOURCE IS NOT \"NO DRIFT\""
+  - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
+  - "A BRAKE BEFORE CONSUME VOIDS THE APPROVAL"
+  - "A HUMAN MAY REVOKE BEFORE CONSUMPTION"
+  - "AN EXPIRED APPROVAL IS NOT A WEAKER APPROVAL"
+  - "A DENIAL IS TERMINAL"
+  - "CONSUMED EXACTLY ONCE, IN THE CLAIM TRANSACTION"
+  - "A DOUBLE TAP IS ALREADY DONE, NOT AN ERROR"
+  - "A REPLAYED TOKEN IS REFUSED AT THE TRANSPORT"
+  - "A TOKEN PRESENTED BY ANOTHER ACTOR IS REFUSED"
+  - "A PARTIAL APPROVAL IS A NEW PROPOSAL"
+  - "AT MOST ONE LIVE APPROVAL PER COMMIT KEY"
+  - "DUAL-CONTROL DRIFT VOIDS ALL SIGNATURES"
+  - "A DUPLICATE ACTOR DOES NOT SATISFY QUORUM"
+  - "A FROZEN APPROVAL IS NOT REUSABLE"
+  - "NO TIMER UNFREEZES AN APPROVAL"
+  - "A CRASH BEFORE CONSUME LEAVES A GRANTED APPROVAL, RE-CHECKED"
+  - "A CRASH AFTER CONSUME NEVER RETURNS AN APPROVAL TO GRANTED"
+  - "A TERMINAL APPROVAL STAYS TERMINAL"
+  - "THE SAME COMMIT KEY IN TWO TENANTS IS TWO APPROVALS"
+  - "REDELIVERY IS IDEMPOTENT"
+  - "WHAT THE HUMAN SAW IS STILL READABLE"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL APPROVAL SHAPE"
+  - "A FORGED AUTHORITY NAMES NO APPROVAL"
+  - "AUTHORITY FOR ANOTHER TARGET IS REFUSED"
+  - "EVERY APPROVAL EVENT DECLARES WHAT IT FOLLOWS"
+  - "A STRICT CONSUMER READS THE COMPLETE AGGREGATE STREAM"
+  - "AN ABSENCE IS NEVER \"THERE IS NOTHING BEFORE ME\""
+  - "A FREEZE IS REBUILT FROM POSITIVE EVIDENCE, NEVER FROM AN ABSENCE"
+  - "replay: 0 grants, 0 approvals granted, 0 approvals consumed, 0 external effects"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M4 exists to prevent has
+  # just happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### DRIFTED APPROVAL EXECUTED ###"
+  - "### APPROVAL CONSUMED TWICE ###"
+  - "### APPROVAL GRANTED WITHOUT A HUMAN ###"
+  - "### NON-HUMAN GRANT ACCEPTED ###"
+  - "### EXPIRED APPROVAL EXECUTED ###"
+  - "### REVOKED APPROVAL EXECUTED ###"
+  - "### FROZEN APPROVAL REUSED ###"
+  - "### APPROVAL UNFROZEN ###"
+  - "### CONSUMED WITHOUT A DURABLE CLAIM ###"
+  - "### CLAIM WON WITH A REUSABLE APPROVAL ###"
+  - "### APPROVAL AUTHORITY DURING REPLAY ###"
+  - "### PARTIAL APPROVAL APPLIED ###"
+  - "### QUORUM MET BY ONE ACTOR ###"
+  - "### CROSS-TENANT APPROVAL ACCEPTED ###"
+  - "### SECOND EFFECT AUTHORITY ###"
+  - "### FORGED AUTHORITY ACCEPTED ###"
+  - "### PREDECESSOR SKIPPED ###"
+  - "### FREEZE INFERRED FROM AN ABSENCE ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6
+# work is largely untracked and those commands would destroy it irrecoverably.
+teardown: []

@@ -100,12 +100,25 @@ no HTTP surface**, so the generator cannot compose ordering, concurrency, timing
 redelivery variation at all. The whole possibility space collapses to "which case do I
 run".
 
-**Today's workaround, used by `p6_m3_external_effect`:** push the axis into the unit's own
-probe as a closed, bounded, argument-only vocabulary (`--concurrency`, `--delay-ms`,
-`--repeat`, `--tenants`, `--seed`, `--inject <closed set>`). This works, needs no change to
-the safety boundary — a prefix match already permits argument tails and already refuses
-shell — and is what keeps M3's door open. Its cost is that the concurrency and
-fault-injection model is re-implemented per unit instead of being owned by the driver.
+**Today's workaround, used by `p6_m3_external_effect` and `p6_m4_approval`:** push the axis
+into the unit's own probe as a closed, bounded, argument-only vocabulary (`--concurrency`,
+`--delay-ms`, `--repeat`, `--tenants`, `--seed`, `--inject <closed set>`, plus whatever
+extra axis the unit genuinely has — M4 adds `--signers`, because dual-control quorum size is
+a real variation and nothing else can reach it). This works, needs no change to the safety
+boundary — a prefix match already permits argument tails and already refuses shell — and is
+what keeps both doors open. Its cost is that the concurrency and fault-injection model is
+re-implemented per unit instead of being owned by the driver, and it is now re-implemented
+twice, which is the second data point rather than a new problem.
+
+**The M4 addition worth naming separately: a fault vocabulary can be closed in a way that
+protects a recorded gap.** Residual `G2-D15` in the target repository records that AP-9's
+`frozen` flag has no modelled unfreeze direction — no transition clears it, no
+`ApprovalUnfrozen` event exists. `p6_m4_approval` therefore runs `--inject unfreeze` as a
+*second* negative control beside `--inject not-a-real-fault`, and asserts over the corpus
+that no unfreeze surface was invented. A probe that ACCEPTED an unfreeze fault would be
+producing passing evidence for a transition nobody authorized, which is exactly how a
+recorded residual gets quietly closed by a build session. Closure of the vocabulary is not
+only an anti-fuzzing property; it is also where "do not invent canon" becomes mechanical.
 
 **What it would need.** A `parallel_commands` step kind, and the isolation proof that
 `ScenarioSuite.isolation_groups` already computes but which nothing currently acts on.
