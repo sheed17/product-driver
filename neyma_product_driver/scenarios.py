@@ -375,6 +375,66 @@ class Scenario(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _claims_name_a_check_that_can_emit_them(self) -> "Scenario":
+        """A claim may not require an observation none of its checks can produce.
+
+        The sibling above catches a name that matches nothing. This catches the
+        other half of the same defect: a name that matches the *wrong* check.
+        Observations are matched against the output of the named checks only —
+        see :meth:`ScenarioExecutor._resolve_risk_claims` — so a claim that
+        names commands A and B while the literal it requires is emitted by C
+        can never be established, no matter how correct the product is. It
+        fails closed forever, and it reads on the gate as a product defect
+        rather than as the mapping error it is.
+
+        Statically, the one thing this file knows about what a check emits is
+        what the check itself *declares*: a command's ``expect_contains`` and a
+        state check's ``contains``. So the rule is scoped to exactly that and no
+        further. When a literal has a declared producer in this scenario and the
+        claim requiring it names none of them, that is decidable and wrong.
+        When it has no declared producer — free-form narration from a probe or a
+        mutation battery — nothing here can attribute it, and this stays silent
+        rather than guessing; that residue is what a per-scenario readiness test
+        is for.
+        """
+        declared: dict[str, set[str]] = {}
+        for spec in self.commands:
+            if spec.name:
+                for literal in spec.expect_contains:
+                    declared.setdefault(literal, set()).add(spec.name)
+        for check in self.expect_state:
+            if check.name:
+                for literal in check.contains:
+                    declared.setdefault(literal, set()).add(check.name)
+        for step in self.steps:
+            if step.command is not None and step.command.name:
+                for literal in step.command.expect_contains:
+                    declared.setdefault(literal, set()).add(step.command.name)
+            if step.state_check is not None and step.state_check.name:
+                for literal in step.state_check.contains:
+                    declared.setdefault(literal, set()).add(step.state_check.name)
+
+        for claim in self.verifies:
+            if not claim.checks:
+                # No named checks: observations are matched against everything
+                # the run observed, so no attribution is being asserted.
+                continue
+            named = set(claim.checks)
+            for literal in claim.observations:
+                producers = declared.get(literal)
+                if producers and not (producers & named):
+                    raise ValueError(
+                        f"the verifies: entry {claim.claim!r} requires the observation "
+                        f"{literal!r}, but the check(s) it names "
+                        f"({', '.join(sorted(named))}) do not include any check that "
+                        f"declares it. In this scenario {literal!r} is declared by "
+                        f"{', '.join(sorted(producers))}. Observations are matched only "
+                        "against the output of the named checks, so this claim could "
+                        "never be established. Name the check that produces it."
+                    )
+        return self
+
     def check_names(self) -> set[str]:
         """The names of every command and state check this scenario runs."""
         names: set[str] = set()

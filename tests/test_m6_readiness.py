@@ -91,6 +91,11 @@ M6_TASK = M6_TASK_PATH.read_text(encoding="utf-8")
 #: the task failed to state.
 M6_TASK_FLAT = " ".join(M6_TASK.split())
 PROBE = ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py"
+#: The `name:` the base scenario gives the bare probe run — the deterministic basic M6
+#: operation, and the only check in the file that drives the machine and narrates what it saw.
+PROBE_CHECK = (
+    "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
+)
 
 #: A persisted-state command the base scenario already carries, so a generated case that reuses it is
 #: choosing an approved oracle rather than authoring one.
@@ -586,6 +591,110 @@ class TestTheM6BaseScenario:
         """
         assert "NOT AN OBSERVATION, NOT A FACT, NOT AUTHORITY, NOT A CARGO/FREIGHT" in M6_TASK
         assert "NOT SOMETHING A MODEL MAY CONFIRM" in M6_TASK
+
+
+# --------------------------------------------------------------------------
+# 1b. Every declared risk is mapped to a command that can actually prove it
+# --------------------------------------------------------------------------
+
+
+#: The two literals that say M6 stopped where it was told to stop. They are M6's own narration:
+#: `tasks/neyma_p6_m6.md` states them verbatim to the builder as strings the M6 PROBE must print,
+#: and the probe is the only command in this scenario that runs the machine and narrates what it
+#: found. No pytest anchor prints them, because none of them runs M6's story.
+DARK_POSTURE_LITERALS = (
+    "THE M7 CONFLICT MACHINE IS NOT BUILT",
+    "THE M10 COMPENSATION MACHINE IS NOT BUILT",
+)
+
+
+class TestTheDeclaredRisksAreMappedToCommandsThatCanProveThem:
+    """A `verifies:` claim is resolved by matching its `observations:` against the output of the
+    checks it NAMES, and nothing else. So a claim that names commands which cannot emit the literal
+    it requires is unfalsifiable in the wrong direction: it fails closed forever, on every run, no
+    matter how correct the product is — and it fails wearing the costume of a product defect.
+
+    That is exactly what blocked run `20260825-204229`. The `regression` claim required the two
+    "NOT BUILT" literals from the P3/P4/P5 and M1-M5 pytest anchors, which narrate nothing; the M6
+    probe emitted both, the scenario's own `expect_visible` checks for both PASSED, and the gate
+    still reported a standing [P1] coverage gap for `regression`, because the probe was not named.
+    No change inside Neyma could have closed it.
+
+    `Scenario._claims_name_a_check_that_can_emit_them` now refuses the statically decidable half of
+    this at load time — a literal one check DECLARES and a different claim requires. The residue is
+    free-form narration, which nothing can attribute by reading YAML, so it is pinned here for the
+    literals whose producer this repository actually knows.
+    """
+
+    def test_the_regression_claim_names_the_probe_that_proves_the_dark_posture(self, m6):
+        """The M6-owned half of the regression claim: M7 not built, M10 not built, nothing foreign
+        leaked in. The probe is the command that observes it, so the claim must name the probe."""
+        regression = [c for c in m6.verifies if c.risk_category == "regression"]
+        assert regression, "the M6 scenario no longer declares a regression claim"
+        claim = regression[0]
+        for literal in DARK_POSTURE_LITERALS:
+            assert literal in claim.observations, (
+                f"the regression claim no longer requires {literal!r}. The dark-posture proof is "
+                "not optional: removing it is how this defect gets 'fixed' by weakening the oracle"
+            )
+        assert PROBE_CHECK in claim.checks, (
+            "the regression claim requires the dark-posture literals but does not name the M6 "
+            f"probe. Only {PROBE_CHECK!r} runs the machine and narrates what it found; the pytest "
+            "anchors it names print no such sentence, so the claim could never be established"
+        )
+
+    def test_every_claim_requiring_a_dark_posture_literal_names_the_probe(self, m6):
+        """Stated once, for the whole file rather than for one claim: wherever the scenario asks for
+        this proof, it must ask the command that produces it."""
+        for claim in m6.verifies:
+            needed = [lit for lit in DARK_POSTURE_LITERALS if lit in claim.observations]
+            if not needed:
+                continue
+            assert PROBE_CHECK in claim.checks, (
+                f"the {claim.risk_category!r} claim requires {needed} but names only "
+                f"{sorted(claim.checks)}; none of those emits it"
+            )
+
+    def test_the_dark_posture_literals_are_still_required_somewhere(self, m6):
+        """The other way to make the gap go away is to stop asking. This refuses that."""
+        for literal in DARK_POSTURE_LITERALS:
+            assert literal in m6.expect_visible, (
+                f"{literal!r} is no longer an expected observation of the M6 scenario"
+            )
+            assert any(literal in claim.observations for claim in m6.verifies), (
+                f"{literal!r} is expected but no declared risk rests on it any more"
+            )
+
+    def test_a_claim_may_not_require_an_observation_its_checks_cannot_declare(self, m6):
+        """The general half, enforced at load time — asserted here against the real M6 file so the
+        shipped scenario is covered by the invariant and not merely by the unit test of it.
+
+        A literal that some check DECLARES (`expect_contains` / `contains`) has a known producer.
+        A claim requiring it while naming none of those producers is a mapping error the loader can
+        see, and it now refuses to load. Free-form narration has no declared producer, so it is
+        deliberately outside this rule and inside the three tests above.
+        """
+        declared: dict[str, set[str]] = {}
+        for spec in m6.commands:
+            if spec.name:
+                for literal in spec.expect_contains:
+                    declared.setdefault(literal, set()).add(spec.name)
+        for check in m6.expect_state:
+            if check.name:
+                for literal in check.contains:
+                    declared.setdefault(literal, set()).add(check.name)
+
+        for claim in m6.verifies:
+            if not claim.checks:
+                continue
+            for literal in claim.observations:
+                producers = declared.get(literal)
+                if not producers:
+                    continue
+                assert producers & set(claim.checks), (
+                    f"the {claim.risk_category!r} claim requires {literal!r}, which is declared by "
+                    f"{sorted(producers)}, but names none of them"
+                )
 
 
 # --------------------------------------------------------------------------

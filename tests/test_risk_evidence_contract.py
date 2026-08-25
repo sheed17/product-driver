@@ -30,6 +30,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from neyma_product_driver.config import ScenarioGenerationConfig, ScenarioRunConfig
 from neyma_product_driver.models import RiskEvidence
@@ -888,6 +889,135 @@ class TestAddingValidCoverageDoesNotWidenTheGap:
         planner.expand_after_failures(task="t", unit=FakeUnit(), failures=[])
 
         assert len(planner.plan.risks) == 1
+
+
+# --------------------------------------------------------------------------
+# A claim may not require an observation its own checks cannot produce
+# --------------------------------------------------------------------------
+
+
+class TestAClaimIsMappedToChecksThatCanProduceItsObservations:
+    """The mirror image of the defect this file was written for, and the one that
+    blocked run ``20260825-204229``.
+
+    That run's gate reported a standing [P1] gap on ``regression`` while the
+    product was correct: the permanent M6 scenario's ``regression`` claim
+    required two literals the M6 probe emits, and named only pytest anchors that
+    narrate nothing. Observations are matched against the output of the NAMED
+    checks alone — see ``ScenarioExecutor._resolve_risk_claims`` — so the claim
+    was unfalsifiable in the wrong direction: no product change could establish
+    it, and the gate reported the mapping error as a coverage gap.
+
+    The half a YAML loader can decide is the half where the literal has a
+    declared producer: some check in the same scenario says, in its own
+    ``expect_contains`` or ``contains``, that it emits that string. A claim
+    requiring it while naming none of those producers is refused at load time,
+    exactly as a claim naming a check that does not exist already is. Free-form
+    narration — a probe's story, a mutation battery's tally — declares nothing
+    and is therefore left alone here rather than guessed at; the shipped
+    scenarios pin those in their own readiness files.
+    """
+
+    def _scenario(self, claim_checks: list[str]) -> Scenario:
+        return Scenario(
+            name="s",
+            commands=[
+                {
+                    "name": "the migration battery",
+                    "run": "echo hi",
+                    "expect_contains": ["A LEGACY DATABASE MIGRATED"],
+                },
+                {"name": "the unit tests", "run": "echo hi", "expect_exit_code": 0},
+            ],
+            verifies=[
+                {
+                    "risk_category": "persistence_failure",
+                    "claim": "the legacy database migrates",
+                    "checks": claim_checks,
+                    "observations": ["A LEGACY DATABASE MIGRATED"],
+                }
+            ],
+        )
+
+    def test_naming_the_declared_producer_loads(self) -> None:
+        scenario = self._scenario(["the migration battery"])
+
+        assert scenario.verifies[0].checks == ["the migration battery"]
+
+    def test_naming_the_producer_among_others_loads(self) -> None:
+        scenario = self._scenario(["the unit tests", "the migration battery"])
+
+        assert len(scenario.verifies[0].checks) == 2
+
+    def test_naming_only_a_check_that_cannot_emit_it_is_refused(self) -> None:
+        with pytest.raises(ValidationError) as excinfo:
+            self._scenario(["the unit tests"])
+
+        message = str(excinfo.value)
+        assert "A LEGACY DATABASE MIGRATED" in message
+        assert "the migration battery" in message
+        assert "could never be established" in message
+
+    def test_free_form_narration_is_not_second_guessed(self) -> None:
+        """No check declares this literal, so nothing here knows who prints it.
+
+        The probe that narrates it is the ordinary case, and refusing it would
+        make every honest scenario in this repository unloadable. The rule stays
+        scoped to what the file actually says.
+        """
+        scenario = Scenario(
+            name="s",
+            commands=[{"name": "the probe", "run": "echo hi", "expect_exit_code": 0}],
+            verifies=[
+                {
+                    "risk_category": "regression",
+                    "claim": "the probe says so",
+                    "checks": ["the probe"],
+                    "observations": ["THE M7 CONFLICT MACHINE IS NOT BUILT"],
+                }
+            ],
+        )
+
+        assert scenario.verifies[0].observations == [
+            "THE M7 CONFLICT MACHINE IS NOT BUILT"
+        ]
+
+    def test_a_claim_with_no_named_checks_asserts_no_attribution(self) -> None:
+        """Observations then match everything the run observed, which is a
+        different and weaker declaration — but not a mis-mapping."""
+        scenario = Scenario(
+            name="s",
+            commands=[
+                {
+                    "name": "the migration battery",
+                    "run": "echo hi",
+                    "expect_contains": ["A LEGACY DATABASE MIGRATED"],
+                }
+            ],
+            verifies=[
+                {
+                    "risk_category": "persistence_failure",
+                    "claim": "somewhere in this run",
+                    "observations": ["A LEGACY DATABASE MIGRATED"],
+                }
+            ],
+        )
+
+        assert scenario.verifies[0].checks == []
+
+    def test_every_shipped_scenario_obeys_it(self) -> None:
+        """The rule is a load-time error, so this passing means every scenario in
+        the repository loads — and that the M6 regression mapping is fixed rather
+        than merely tested around."""
+        from neyma_product_driver.scenarios import load_scenario
+
+        directory = Path(__file__).resolve().parents[1] / "scenarios"
+        if not directory.exists():  # pragma: no cover - the files ship with the driver
+            pytest.skip("no scenarios in this checkout")
+
+        loaded = [load_scenario(path) for path in sorted(directory.glob("*.y*ml"))]
+
+        assert loaded, "no permanent scenarios were found"
 
 
 # --------------------------------------------------------------------------

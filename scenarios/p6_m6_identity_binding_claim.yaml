@@ -1022,6 +1022,14 @@ verifies:
       own probes still report their behaviours as specified with M6's tables present, M5's landed
       seam is byte-unchanged, and every M6 guard is proven capable of failing.
     checks:
+      # The regression claim includes the M6-owned half — that M7 was not built, that M10 was not
+      # built, that no foreign event or table leaked in — and the probe is the command that observes
+      # those properties. The pytest anchors below re-run the layers M6 could break; none of them
+      # narrates, so none of them can emit the two "NOT BUILT" literals this claim requires. Naming
+      # the probe here maps the claim to the command that actually proves that half of it. It is
+      # already run once by this scenario; naming it a second time re-reads its result, never re-runs
+      # it.
+      - "drive the Identity Binding Claim machine through a brokerage narrative, and attack it"
       - "the P3 checkpoint kernel M6 must not disturb, unbroken"
       - "the P4 governed effect boundary M6 must not widen, unbroken"
       - "the P5 transport, replay, timers and canonical event contracts M6 rides, unbroken"
