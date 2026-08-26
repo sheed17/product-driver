@@ -50,6 +50,7 @@ from .scenario_generator import (
     provenance_for,
 )
 from .scenario_plan import (
+    REJECTED_CONTRACT,
     CompilationError,
     GeneratedScenario,
     GeneratedScenarioPlan,
@@ -332,6 +333,28 @@ class ScenarioPlanner:
         terminal scrollback the gate never saw. Same for a plan that could not
         be read at all: a run that cannot say what it decided to verify has not
         established that it verified it.
+
+        And so does a candidate this harness could not READ. A generator that
+        proposed nine scenarios which Product Driver then discarded, because none
+        of them satisfied the structured schema Product Driver itself authored,
+        produced no coverage *and no information* — the same state as a generator
+        that raised, reached by a different route. It is emphatically not the
+        state "the generator had nothing to add", and until this it was recorded
+        as though it were: the P6/M6 re-verification run proposed nine, invalided
+        nine on an unrecognised ``risk_category``, reported ``0 generated
+        case(s)``, and ACCEPTed. Neyma logged that as ``P6-D46``.
+
+        A *mixed* wave belongs here too, and this is the deliberate part. Some
+        candidates parsing does not excuse the ones that did not: what an
+        unreadable candidate would have exercised is unknown, so nothing can say
+        whether the coverage that did run reaches it. That is an unquantifiable
+        coverage gap, and it follows the rule this method already applies to a
+        wave whose reasoner raised — which blocks even when other waves produced
+        good coverage. Same fact, same answer.
+
+        What is NOT here: a duplicate, a safety or quality refusal, a budget.
+        Those are planning working, on a proposal it understood, and a harness
+        that treated them as failures would block every healthy run.
         """
         problems = [
             f"generation wave {record.wave} failed: {record.reasoner_error}"
@@ -341,6 +364,25 @@ class ScenarioPlanner:
         if self._restore_failure:
             problems.append(self._restore_failure)
         for record in self.plan.waves:
+            invalid = record.contract_rejections
+            if invalid:
+                named = "; ".join(
+                    f"{r.id or '(unnamed)'}: "
+                    + (r.reasons[0] if r.reasons else "no reason recorded")
+                    for r in invalid[:6]
+                )
+                if len(invalid) > 6:
+                    named += f"; ... and {len(invalid) - 6} more"
+                problems.append(
+                    f"generation wave {record.wave} ({record.stage}) is a "
+                    "generation-contract failure in Product Driver itself, not an absence "
+                    f"of proposed coverage: {record.accounting()}. Product Driver could "
+                    "not interpret its own generated schema or taxonomy for "
+                    f"{len(invalid)} candidate(s), so what they would have exercised is "
+                    "unknown and this run may not be read as having generated "
+                    f"{record.accepted_count} scenario(s) by choice. Invalid candidates: "
+                    + named
+                )
             if record.stage != STAGE_RESUME:
                 continue
             for rejected in record.rejected:
@@ -566,12 +608,21 @@ class ScenarioPlanner:
         )
         parsed, malformed = parse_scenarios(payload, provenance=provenance)
         record.proposed = len(parsed) + len(malformed)
+        # Which STAGE rejected a candidate is what classifies it, not what the
+        # reason string happens to say. Everything in `malformed` failed before
+        # it was ever a model: the payload did not satisfy the structured schema
+        # this harness itself authored and handed to the generator, so what the
+        # candidate would have exercised is unknown. Everything below, from
+        # `validate_plan` onwards, is planning working as designed on a proposal
+        # it understood — a duplicate, a safety refusal, a budget — and stays
+        # `filtered`.
         record.rejected += [
             RejectedScenario(
                 id=str(raw.get("id") or ""),
                 title=str(raw.get("title") or ""),
                 reasons=reasons,
                 raw=raw,
+                kind=REJECTED_CONTRACT,
             )
             for raw, reasons in malformed
         ]
@@ -745,19 +796,38 @@ class ScenarioPlanner:
 
     def _finish_wave(self, record: WaveRecord) -> None:
         self.plan.waves.append(record)
+        # Recomputed here, not by the caller: the plan's four generation counts
+        # are summed across `waves`, and every path into this method reaches it
+        # with the record still unrecorded. `_generate` recomputes via
+        # `_link_risks` one line earlier, which is one line too early — the wave
+        # that just proposed nine and invalided nine was not yet in the list, so
+        # the summary read "0 proposed".
+        self.plan.recompute_coverage()
         for note in record.budget_notes:
             self.emit(f"  scenario budget: {note}")
         if record.reasoner_error:
             self.emit(f"  scenario generation: {record.reasoner_error}")
+        # All four counts, always, even when three of them are zero. A wave line
+        # that reported only what survived is what let nine invalid candidates
+        # read as nothing proposed.
+        self.emit(f"  wave {record.wave} ({record.stage}): {record.accounting()}")
         if record.rejected:
             self.emit(f"  {len(record.rejected)} proposed scenario(s) refused:")
             for rejected in record.rejected[:8]:
-                self.emit(f"    - {rejected.id or '(unnamed)'}: {rejected.reasons[0]}")
-        if record.accepted_ids:
+                marker = "INVALID" if rejected.is_contract_failure else "filtered"
+                self.emit(
+                    f"    - [{marker}] {rejected.id or '(unnamed)'}: "
+                    + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
+                )
+        if record.contract_rejections:
             self.emit(
-                f"  wave {record.wave} ({record.stage}): {len(record.accepted_ids)} scenario(s) "
-                f"accepted — {', '.join(record.accepted_ids)}"
+                f"  HARNESS ERROR: {len(record.contract_rejections)} of "
+                f"{record.proposed} proposed scenario(s) could not be read by Product "
+                "Driver's own schema/taxonomy. This is not zero generated coverage; it "
+                "is unknown generated coverage, and it blocks acceptance."
             )
+        if record.accepted_ids:
+            self.emit(f"  accepted: {', '.join(record.accepted_ids)}")
         self.persist()
 
     # -- basis -------------------------------------------------------------

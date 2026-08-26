@@ -48,6 +48,7 @@ The within-run loop is already the shape described above, and it is sound:
 | neighbouring-risk expansion after a failure | `scenario_plan.RISK_FAMILIES`, `neighbours()` |
 | failure clustering (shared-cause grouping, deterministic) | `failure_clustering.cluster_failures` — union-find, no model consulted |
 | bounded expansion on every axis, refusals recorded | `ScenarioGenerationConfig` budgets; `WaveRecord.rejected` |
+| one authoritative taxonomy, derived by every layer | `scenario_plan.RiskCategory` → `RISK_CATEGORY_VALUES` → `PLAN_SCHEMA` enum, `GENERATOR_SYSTEM`, the parser, `RiskClaim` |
 | the safety boundary | `scenario_validation.ApprovedCommands` — prefix match, argument tails only, quote-aware shell-operator scan, control-character refusal |
 | the quality boundary | `scenario_validation.validate_plan` — grounding, oracles, duplicate coverage, effect-family state-check requirement |
 | the acceptance gate | `scenario_gate.evaluate_gate` — deterministic; no model participates |
@@ -57,6 +58,43 @@ The within-run loop is already the shape described above, and it is sound:
 `RiskCategory` enum and the human-authored-only approved command set are load-bearing: a
 model that can widen its own taxonomy or author its own shell has neither a bounded space
 nor a boundary.
+
+### A candidate the harness cannot read is not a candidate it decided against
+
+The enum is closed at the *schema* the generator answers into — `PLAN_SCHEMA` derives its
+`risk_category` enum from `RISK_CATEGORY_VALUES`, and so do the system instructions. It was
+once closed only in the parser, with `{"type": "string"}` on the wire and the vocabulary
+retyped in prose; the P6/M6 re-verification run duly proposed nine scenarios under nine
+invented labels, every one was discarded at the parse stage, and the run reported
+`0 generated case(s)` and ACCEPTed. Neyma logged that as `P6-D46`.
+
+So rejections are classified by the **stage** that made them, and the two kinds are never
+summed:
+
+* `REJECTED_FILTERED` — `validate_plan` onwards. A duplicate, a safety or quality refusal,
+  a budget. Product Driver understood the proposal and said no. Coverage is narrower on
+  purpose; nothing is wrong; acceptance is unaffected.
+* `REJECTED_CONTRACT` — the parse stage. The payload did not satisfy the schema this harness
+  itself authored and handed to the generator, so the candidate never became a model and
+  **what it would have exercised is unknown**.
+
+`WaveRecord.accounting()` states all four numbers — proposed, accepted, filtered, invalid —
+and `CoverageSummary` carries them into `scenario-plan.json`, so `total_scenarios` can never
+be read alone.
+
+A contract rejection is a `generation_problems()` entry, which is the existing channel
+`evaluate_gate` already refuses to accept on. **That holds for a mixed wave too**, and the
+reason is the definition above rather than a severity judgement: nothing can say whether the
+candidates that did run reach a risk nobody can name. It is the same unquantifiable gap a
+failed reasoner leaves, and this method already blocks on that even when other waves produced
+good coverage. Same fact, same answer. Deliberately *not* a new verdict kind: an unknown
+category is neither a scenario failure nor a product defect, and the run must read as
+BLOCKED-on-the-harness, which `generation_problems()` already produces.
+
+There is no alias map. The only normalisation is the surrounding-whitespace-and-case fold the
+parser has always applied, which is a format variation and not a change of meaning:
+`cross-tenant-leak` is one hyphen from `cross_tenant` and is still refused, because guessing
+which risk a model meant is how a harness starts verifying something nobody asked for.
 
 ---
 

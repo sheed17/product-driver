@@ -84,6 +84,35 @@ class RiskCategory(str, Enum):
     REGRESSION = "regression"
 
 
+#: The canonical vocabulary, as the strings a payload actually carries. THE ONE
+#: SOURCE. Every layer that has to *state* the taxonomy rather than merely hold a
+#: :class:`RiskCategory` — the generator's structured-output schema, the system
+#: instructions it is given, the brief, the rejection accounting and the tests
+#: that pin all of them — derives from this tuple. None of them keeps its own
+#: copy, because a second hand-maintained list is how the vocabularies drift
+#: apart: Product Driver went on rejecting what it had told a model to send.
+RISK_CATEGORY_VALUES: tuple[str, ...] = tuple(c.value for c in RiskCategory)
+
+
+#: Why a proposed scenario is not going to run. Two kinds, and they are not the
+#: same fact.
+#:
+#: ``REJECTED_FILTERED`` — planning worked and decided against this candidate: a
+#: duplicate of coverage that already exists, a safety or quality refusal, a
+#: budget. Product Driver understood the proposal and said no. Coverage is
+#: narrower on purpose and nothing is wrong.
+REJECTED_FILTERED = "filtered"
+
+#: ``REJECTED_CONTRACT`` — Product Driver could not READ the proposal. The
+#: generator answered, the harness's own schema or taxonomy could not interpret
+#: what came back, and the candidate never became a model at all. Nobody knows
+#: what risk was on offer, so nobody can say whether the coverage that did run
+#: reaches it. This is a defect in the harness, or in the generation contract
+#: between it and the generator — never a statement about the product, and never
+#: the same fact as "the generator had nothing to add".
+REJECTED_CONTRACT = "generation_contract"
+
+
 #: Categories whose whole claim is about an effect having (or not having)
 #: durably happened. For these, an HTTP status is not evidence — the scenario
 #: must inspect persisted state, or it is rejected. This is the mechanical form
@@ -642,13 +671,32 @@ class CoverageSummary(BaseModel):
     by_risk_category: dict[str, int] = Field(default_factory=dict)
     by_priority: dict[str, int] = Field(default_factory=dict)
     uncovered_risks: list[str] = Field(default_factory=list)
+    #: What the waves actually produced, before this plan narrowed it. Carried
+    #: here so ``total_scenarios`` can never be read on its own: "0 generated
+    #: case(s)" is true of a run nobody proposed anything to and of a run whose
+    #: every proposal the harness failed to parse, and only one of those is a
+    #: reason to relax.
+    proposed: int = 0
+    accepted: int = 0
+    filtered: int = 0
+    invalid: int = 0
 
     def render(self) -> str:
         cats = ", ".join(sorted(self.by_risk_category)) or "none"
         lines = [
             f"{self.total_scenarios} generated case(s)",
-            f"risk categories exercised: {cats}",
+            f"generation: {self.proposed} proposed, {self.accepted} accepted for "
+            f"execution, {self.filtered} filtered or deduplicated, {self.invalid} "
+            "invalid (Product Driver could not read them)",
         ]
+        if self.invalid:
+            lines.append(
+                f"WARNING: {self.invalid} proposed scenario(s) were discarded because this "
+                "harness could not interpret its own generated schema or taxonomy. That is "
+                "a generation-contract error, NOT an absence of proposed coverage, and it "
+                "does not mean those situations are safe."
+            )
+        lines.append(f"risk categories exercised: {cats}")
         if self.uncovered_risks:
             lines.append("identified but NOT exercised: " + "; ".join(self.uncovered_risks))
         return "\n".join(lines)
@@ -663,10 +711,29 @@ class RejectedScenario(BaseModel):
     title: str = ""
     reasons: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
+    #: ``REJECTED_FILTERED`` or ``REJECTED_CONTRACT``. Defaulted to *filtered*
+    #: deliberately: a plan written before this field existed, and every refusal
+    #: path that is working as intended, must read as an ordinary decision. Only
+    #: a stage that could not interpret the proposal sets the other value, and it
+    #: sets it explicitly.
+    kind: str = REJECTED_FILTERED
+
+    @property
+    def is_contract_failure(self) -> bool:
+        return self.kind == REJECTED_CONTRACT
 
 
 class WaveRecord(BaseModel):
-    """One generation wave: what was asked, proposed, accepted and refused."""
+    """One generation wave: what was asked, proposed, accepted and refused.
+
+    The four counts below are kept apart on purpose, because collapsing them is
+    exactly how a run reports zero generated scenarios when nine were proposed
+    and the harness could not read any of them (Neyma recorded that shape as
+    ``P6-D46`` after the P6/M6 re-verification run). "Nothing was proposed",
+    "everything proposed was a duplicate", and "everything proposed was
+    unreadable" are three different facts with three different responses, and a
+    single number cannot carry them.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -679,6 +746,28 @@ class WaveRecord(BaseModel):
     rejected: list[RejectedScenario] = Field(default_factory=list)
     budget_notes: list[str] = Field(default_factory=list)
     reasoner_error: str = ""
+
+    @property
+    def accepted_count(self) -> int:
+        return len(self.accepted_ids)
+
+    @property
+    def contract_rejections(self) -> list[RejectedScenario]:
+        """Candidates Product Driver could not interpret. A harness defect."""
+        return [r for r in self.rejected if r.is_contract_failure]
+
+    @property
+    def filtered_rejections(self) -> list[RejectedScenario]:
+        """Candidates Product Driver understood and decided against. Intended."""
+        return [r for r in self.rejected if not r.is_contract_failure]
+
+    def accounting(self) -> str:
+        """Proposed / accepted / filtered / invalid, in one line, always all four."""
+        return (
+            f"{self.proposed} proposed, {self.accepted_count} accepted for execution, "
+            f"{len(self.filtered_rejections)} filtered or deduplicated, "
+            f"{len(self.contract_rejections)} invalid (Product Driver could not read them)"
+        )
 
 
 class GeneratedScenarioPlan(BaseModel):
@@ -739,6 +828,12 @@ class GeneratedScenarioPlan(BaseModel):
             uncovered_risks=[
                 r.description for r in self.risks if r.risk_category.value not in covered
             ],
+            # Summed across every wave, so the plan's own summary carries the
+            # four counts rather than the one that survived.
+            proposed=sum(w.proposed for w in self.waves),
+            accepted=sum(w.accepted_count for w in self.waves),
+            filtered=sum(len(w.filtered_rejections) for w in self.waves),
+            invalid=sum(len(w.contract_rejections) for w in self.waves),
         )
 
     def planned_gaps(self) -> list["IdentifiedRisk"]:
@@ -788,7 +883,14 @@ class GeneratedScenarioPlan(BaseModel):
         rejected = [r for w in self.waves for r in w.rejected]
         if rejected:
             lines += ["", "REJECTED PROPOSALS:"]
-            lines += [f"  {r.id or '(unnamed)'}: {'; '.join(r.reasons)}" for r in rejected]
+            # The kind is printed, not inferred from the prose. "Product Driver
+            # decided against this" and "Product Driver could not read this" are
+            # the two facts a reader of this file most needs kept apart.
+            lines += [
+                f"  [{'INVALID — harness could not read it' if r.is_contract_failure else 'filtered'}] "
+                f"{r.id or '(unnamed)'}: {'; '.join(r.reasons)}"
+                for r in rejected
+            ]
         lines += [
             "",
             "This describes verified coverage, not exhaustive correctness. Situations "

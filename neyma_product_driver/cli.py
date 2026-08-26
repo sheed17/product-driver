@@ -742,6 +742,13 @@ async def run_control_loop(
             previous_corrections=sent_corrections,
             suite=suite_result,
             coverage_gaps=_coverage_gap_briefs(planner, suite_result),
+            # Coverage the run set out to produce and did not. Without this the
+            # evaluator read "0 generated case(s)" off the suite summary and
+            # wrote it down as a finding, when nine had been proposed and the
+            # harness had failed to parse all nine (Neyma `P6-D46`).
+            generation_problems=(
+                list(planner.generation_problems()) if planner is not None else []
+            ),
             # The evaluator writes its summary before the review runs. Telling it
             # the run takes that review itself is what stops it writing a
             # sentence the run then contradicts (Neyma `P6-D34`).

@@ -428,6 +428,7 @@ def evaluator_prompt(
     previous_corrections: list[str] | None = None,
     suite: Any = None,
     coverage_gaps: list[str] | None = None,
+    generation_problems: list[str] | None = None,
     review_is_integrated: bool = False,
 ) -> str:
     """Assemble the three context layers into one evaluator prompt.
@@ -531,6 +532,22 @@ def evaluator_prompt(
                 "the harness already refuses to accept a run that has one, so do not "
                 "treat a gap as something to argue about. Say what the gap means for the "
                 "work and what verification would close it.",
+            ]
+        if generation_problems:
+            parts += [
+                "",
+                "--- VERIFICATION THAT WAS NEVER PRODUCED (computed by the harness) ---",
+                "The generated suite above reports how many cases RAN. These are the "
+                "reasons some coverage this run set out to produce does not appear in it "
+                "at all — a generator session that failed, or candidates the harness "
+                "itself could not read. A count of zero generated cases next to one of "
+                "these does NOT mean the generator found nothing worth exercising:",
+                *(f"  - {problem}" for problem in generation_problems),
+                "",
+                "Do not describe this run as having generated no scenarios, and do not "
+                "treat these as the product's problem — they are the harness's. The "
+                "harness already refuses to accept a run that has one, so state plainly "
+                "what was not verified rather than reasoning around it.",
             ]
         parts += [
             "",

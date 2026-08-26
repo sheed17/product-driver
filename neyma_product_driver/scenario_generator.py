@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import textwrap
 import threading
 from pathlib import Path
 from typing import Any, Protocol
@@ -34,6 +35,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from .scenario_plan import (
+    RISK_CATEGORY_VALUES,
     GeneratedScenario,
     GenerationBasis,
     IdentifiedRisk,
@@ -323,6 +325,29 @@ def _describe_session_error(subtype: str, max_turns: int) -> str:
     return f"the generator session ended in error ({subtype or 'no subtype reported'})"
 
 
+def _risk_category_schema(description: str) -> dict[str, Any]:
+    """The ``risk_category`` field, constrained to the canonical vocabulary.
+
+    An ``enum`` rather than a bare ``string``, and derived from
+    :data:`~neyma_product_driver.scenario_plan.RISK_CATEGORY_VALUES` rather than
+    typed out again. This field used to be ``{"type": "string"}``: the taxonomy
+    lived only in the system prose, so the structured-output contract permitted
+    anything, and the model duly answered with nine task-shaped labels of its own
+    invention ("cross-tenant-leak", "double-confirmation-race"). Every one was
+    then discarded by the parser below, and the run reported zero generated
+    scenarios. Prose asks; a schema constrains, and this is the layer that has
+    to constrain.
+
+    A fresh copy per call, because a schema dict is mutable and one shared object
+    reachable from two places in ``PLAN_SCHEMA`` is a footgun for nothing.
+    """
+    return {
+        "type": "string",
+        "enum": list(RISK_CATEGORY_VALUES),
+        "description": description,
+    }
+
+
 class ScenarioReasoner(Protocol):
     """Proposes situations worth exercising. The source of judgement.
 
@@ -343,7 +368,12 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "id": {"type": "string"},
                     "description": {"type": "string"},
-                    "risk_category": {"type": "string"},
+                    "risk_category": _risk_category_schema(
+                        "The situation family this risk belongs to. It must be one "
+                        "of the listed values exactly; there is no free-text option, "
+                        "and a risk that fits none of them belongs in "
+                        "`unresolved_questions` instead."
+                    ),
                     "severity": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
                     "basis": {
                         "type": "string",
@@ -362,7 +392,15 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "id": {"type": "string"},
                     "title": {"type": "string"},
                     "purpose": {"type": "string"},
-                    "risk_category": {"type": "string"},
+                    "risk_category": _risk_category_schema(
+                        "The situation family this scenario exercises. It must be "
+                        "one of the listed values exactly. These are families, not "
+                        "descriptions: a scenario about one tenant reading another's "
+                        "rows is `cross_tenant`, and a scenario about two "
+                        "confirmations racing is `concurrency`. Do not invent a "
+                        "label for the specific defect — say that in "
+                        "`generating_risk`, which is free text and exists for it."
+                    ),
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
                     "rationale": {
                         "type": "string",
@@ -513,7 +551,18 @@ PLAN_SCHEMA: dict[str, Any] = {
 }
 
 
-GENERATOR_SYSTEM = """\
+#: The canonical vocabulary as the generator is shown it: wrapped prose, built
+#: from the enum. It was typed out by hand here, next to a structured schema that
+#: did not constrain the field at all — two statements of one taxonomy, neither
+#: derived from it. Rendered now, so a category added to
+#: :class:`~neyma_product_driver.scenario_plan.RiskCategory` reaches the model in
+#: the same commit, and one removed stops being offered in the same commit.
+RENDERED_CATEGORIES = "\n".join(
+    textwrap.wrap(", ".join(RISK_CATEGORY_VALUES) + ".", width=72)
+)
+
+
+_GENERATOR_SYSTEM_TEMPLATE = """\
 You design verification scenarios for a freight-operations product. You decide
 WHAT SITUATIONS SHOULD BE EXERCISED before an implementation is trusted. You do
 not diagnose failures, you do not judge the product, and you do not write code.
@@ -544,13 +593,14 @@ make invoking it a scenario. Drive the product — issue the requests, repeat th
 call, race two calls, restart the service, then read the persisted state and say
 what it must show.
 
-Categories available: happy_path, boundary, missing_data, malformed_input,
-conflicting_evidence, idempotency, repeated_request, concurrency, authorization,
-approval_required, cross_tenant, partial_failure, service_unavailable,
-dependency_failure, timeout_before_effect, timeout_after_effect,
-ambiguous_external_effect, retry_safety, persistence_failure, stale_state,
-ui_backend_disagreement, restart_recovery, crash_mid_workflow,
-browser_network_error, unexpected_state_transition, safety_invariant, regression.
+`risk_category` is a CLOSED vocabulary. It must be exactly one of the values
+below — the structured schema you are answering into permits nothing else, and a
+value outside it is not a scenario the harness proposes differently, it is a
+scenario the harness cannot read at all. Do not coin a label for the specific
+defect you have in mind: `generating_risk` is free text and exists for exactly
+that. Pick the family; describe the defect there.
+
+Categories available: {CATEGORIES}
 
 WHAT AN ACTION MAY BE. `actions` is an ordered list; each entry has a `kind`:
 
@@ -622,6 +672,9 @@ Return only the requested JSON object.
 """
 
 
+GENERATOR_SYSTEM = _GENERATOR_SYSTEM_TEMPLATE.replace("{CATEGORIES}", RENDERED_CATEGORIES)
+
+
 # --------------------------------------------------------------------------
 # Parsing — fail-closed
 # --------------------------------------------------------------------------
@@ -667,8 +720,18 @@ def parse_scenarios(
     for index, raw in enumerate(_items(payload, "scenarios"), start=1):
         category = _category(raw.get("risk_category"))
         if category is None:
+            # Recorded with the vocabulary it was measured against, so the run's
+            # own artifacts answer "invalid according to what?" without anyone
+            # having to go and read this module.
             malformed.append(
-                (raw, [f"unknown risk_category {raw.get('risk_category')!r}"])
+                (
+                    raw,
+                    [
+                        f"unknown risk_category {raw.get('risk_category')!r}: it is not "
+                        "one of "
+                        + ", ".join(RISK_CATEGORY_VALUES)
+                    ],
+                )
             )
             continue
 
@@ -724,6 +787,24 @@ def parse_scenarios(
         except ValidationError as exc:
             malformed.append((raw, [_render_error(e) for e in exc.errors()]))
     return parsed, malformed
+
+
+def unknown_category(raw: dict[str, Any]) -> str:
+    """The declared ``risk_category``, when it is outside the canonical vocabulary.
+
+    Returns ``""`` when the value is canonical. Exactly the check
+    :func:`parse_scenarios` already makes, re-asked of the raw proposal so a
+    caller can classify a rejection from the payload itself rather than by
+    reading its prose. Deterministic and total: no fuzzy matching, no mapping of
+    a novel string onto a canonical one. The only normalisation is the
+    surrounding-whitespace-and-case fold :func:`_category` has always applied,
+    which is a format variation, not a change of meaning.
+    """
+    if not isinstance(raw, dict):
+        return ""
+    if _category(raw.get("risk_category")) is not None:
+        return ""
+    return str(raw.get("risk_category") or "").strip() or "(none declared)"
 
 
 def parse_notes(payload: dict[str, Any] | None) -> tuple[list[str], list[str]]:
@@ -944,6 +1025,7 @@ def provenance_for(
 
 __all__ = [
     "GENERATOR_SYSTEM",
+    "RENDERED_CATEGORIES",
     "GenerationBrief",
     "LLMScenarioReasoner",
     "PLAN_SCHEMA",
@@ -952,4 +1034,5 @@ __all__ = [
     "parse_risks",
     "parse_scenarios",
     "provenance_for",
+    "unknown_category",
 ]
