@@ -349,6 +349,12 @@ class ValidationContext:
     #: SKIPPED with a reason, which is honest coverage reporting rather than a
     #: silent gap.
     browser_enabled: bool = True
+    #: Literal output a human already bound to one exact command invocation, in
+    #: the permanent scenario files. Normalized command string -> the literals
+    #: that command's own reviewed expectations say it prints. Read only by
+    #: :func:`unattributed_observations`; empty is safe, and simply means the
+    #: only basis a generated scenario can offer is its own.
+    established_observations: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def grounds_requirement(self, reference: str) -> bool:
         text = (reference or "").strip().lower()
@@ -363,6 +369,184 @@ class ValidationContext:
         if not text:
             return False
         return any(token and token in text for token in self.principle_tokens)
+
+
+# --------------------------------------------------------------------------
+# Oracle attribution — which command has a basis for emitting a literal
+# --------------------------------------------------------------------------
+
+
+def established_observations_from(
+    scenarios: Sequence[Scenario],
+) -> dict[str, frozenset[str]]:
+    """Literal output a human already bound to one exact command invocation.
+
+    Returns ``{normalized command: literals that command is said to print}``,
+    harvested from the same human-authored files
+    :meth:`ApprovedCommands.from_sources` harvests commands from, and from
+    nothing else. Three sources, all reviewed prose in a scenario file: a
+    command's own ``expect_contains``, a state check's ``contains``, and the
+    ``observations`` of a ``verifies:`` claim — attributed to the commands
+    behind the ``checks`` that claim names, because that is the only text the
+    executor matches those observations against.
+
+    **The key is an invocation, not a program.** ``probe.py`` and
+    ``probe.py --case second-detection`` are two different invocations, and the
+    literals a human wrote down belong to the one they wrote. An argument tail a
+    generated scenario adds is the model's own composition: it narrows what the
+    program does, and nothing in this repository can say what the narrowed form
+    still prints. So the lookup below is exact, deliberately *not* the prefix
+    match the approved-command set uses. Prefix matching is the right rule for
+    "may this run" and the wrong rule for "does this print that": one is about
+    authority a human granted over a command, the other about output a human
+    observed from one invocation of it.
+
+    Nothing here duplicates a product string into Product Driver. Every literal
+    is read at runtime out of the repository's own scenario files, so a
+    repository that binds no literals to any command simply yields an empty map
+    and the rule below falls back to a scenario's own attribution.
+    """
+    declared: dict[str, set[str]] = {}
+
+    def bind(command: str, literals: Iterable[str]) -> None:
+        key = _norm_command(command)
+        if not key:
+            return
+        wanted = {text for text in literals if str(text).strip()}
+        if wanted:
+            declared.setdefault(key, set()).update(wanted)
+
+    for scenario in scenarios:
+        # name -> the invocations that name runs, so a `verifies:` claim's
+        # checks can be resolved back to command strings.
+        by_name: dict[str, set[str]] = {}
+
+        def remember(name: str, command: str) -> None:
+            key = _norm_command(command)
+            if name and key:
+                by_name.setdefault(name, set()).add(key)
+
+        for spec in scenario.commands:
+            bind(spec.run, spec.expect_contains)
+            remember(spec.name, spec.run)
+        for check in scenario.expect_state:
+            bind(check.command, check.contains)
+            remember(check.name, check.command)
+        for step in scenario.steps:
+            if step.command is not None:
+                bind(step.command.run, step.command.expect_contains)
+                remember(step.command.name, step.command.run)
+            if step.state_check is not None:
+                bind(step.state_check.command, step.state_check.contains)
+                remember(step.state_check.name, step.state_check.command)
+
+        for claim in getattr(scenario, "verifies", []) or []:
+            # A claim's observations are matched against the CONCATENATED output
+            # of every check it names, so only a claim naming exactly one check
+            # attributes anything to a single command. Binding a multi-check
+            # claim's literals to each of its checks is the same
+            # over-attribution this whole rule exists to refuse — it says "this
+            # command prints that" on evidence that says only "these commands
+            # together print that", and it is enough to let the M7 S3 shape
+            # through: the concurrency claim names the probe *and* the index
+            # introspection, and a scenario running only the second would
+            # inherit a basis for a sentence only the first can print.
+            if len(claim.checks) != 1:
+                continue
+            for key in by_name.get(claim.checks[0], ()):
+                bind(key, claim.observations)
+
+    return {command: frozenset(literals) for command, literals in declared.items()}
+
+
+def _emitted_by(literal: str, declared: Iterable[str]) -> bool:
+    """Would any of ``declared`` appearing put ``literal`` in the output too?
+
+    Containment rather than equality, and in exactly one direction: if a command
+    is said to print ``B`` and the asserted literal ``L`` is a substring of
+    ``B``, then ``B`` appearing means ``L`` appears. The reverse does not hold
+    and is not accepted. This is the same exact-substring test the executor
+    applies — no similarity, no token overlap, no prose comparison.
+    """
+    return any(literal in str(text) for text in declared)
+
+
+def _attributed_literals(generated: GeneratedScenario) -> set[str]:
+    """Every literal this scenario attributes to one of its own operations."""
+    out: set[str] = set()
+    for action in generated.actions:
+        out.update(action.expect_contains)
+        if action.request is not None:
+            out.update(action.request.expect_contains)
+        for request in action.requests:
+            out.update(request.expect_contains)
+        if action.state_check is not None:
+            out.update(action.state_check.contains)
+        for step in action.browser_steps:
+            if step.expect_text:
+                out.add(step.expect_text)
+    for check in generated.persisted_state_checks:
+        out.update(check.contains)
+    return {text for text in out if str(text).strip()}
+
+
+def unattributed_observations(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[tuple[str, tuple[str, ...]]]:
+    """Asserted output literals nothing this scenario runs has a basis for emitting.
+
+    ``expected_observations`` is matched against *everything* the run produced,
+    which makes it the one oracle in a generated scenario that names no command.
+    That is exactly how a scenario comes to run the command for case A and
+    require the sentence case B prints: both literals are true of the program,
+    the harness has no reason to prefer one, and the mismatch only surfaces as a
+    failed assertion after execution — where it reads as a defect in the product
+    rather than as the mapping error it is. The permanent side has refused this
+    shape at load time since ``Scenario._claims_name_a_check_that_can_emit_them``;
+    this is the same rule one layer over, for the side a model writes.
+
+    A literal has a basis when either:
+
+    1. **the scenario attributes it itself** — it appears in an action's
+       ``expect_contains``, a state check's ``contains`` or a browser step's
+       ``expect_text``. The proposal has named the operation that prints it, and
+       if that turns out to be wrong the failure is at least attributed to a
+       command rather than to the run at large; or
+    2. **a human already bound it to a command the scenario runs as written** —
+       the literal is in :func:`established_observations_from` for an invocation
+       this scenario executes verbatim. A tail makes it a different invocation
+       and no longer that basis.
+
+    Returns ``[(literal, known producers), ...]``. The producers are carried so
+    the refusal can say where the literal *does* come from, which is the
+    difference between "we refuse this" and a reason a human can act on.
+    """
+    asserted = [text for text in generated.expected_observations if str(text).strip()]
+    if not asserted:
+        return []
+
+    attributed = _attributed_literals(generated)
+    established = context.established_observations or {}
+    run_verbatim = {
+        _norm_command(command) for command in generated.command_strings()
+    }
+    from_commands: set[str] = set()
+    for command in run_verbatim:
+        from_commands.update(established.get(command, ()))
+
+    out: list[tuple[str, tuple[str, ...]]] = []
+    for literal in asserted:
+        if _emitted_by(literal, attributed) or _emitted_by(literal, from_commands):
+            continue
+        producers = tuple(
+            sorted(
+                command
+                for command, literals in established.items()
+                if _emitted_by(literal, literals)
+            )
+        )
+        out.append((literal, producers))
+    return out
 
 
 def grounding_tokens_from(unit: object | None) -> set[str]:
@@ -681,6 +865,36 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
             f"a {generated.risk_category.value} scenario asserts something about whether an "
             "effect durably happened, but inspects no persisted state. An HTTP status or a "
             "local response is not evidence that the underlying outcome occurred."
+        )
+
+    # -- an asserted observation needs a command that could emit it --------
+    #
+    # The mirror of the rule above. That one refuses a claim about an effect
+    # with no oracle; this one refuses an oracle with no operation behind it.
+    # Both are the same principle — an assertion Product Driver cannot attribute
+    # to anything it runs is not evidence about the product — and this half was
+    # missing, so a scenario could execute the command for one case and require
+    # the sentence a different case prints. It fails closed forever, against a
+    # perfectly correct product, and the gate reads it as a product defect.
+    for literal, producers in unattributed_observations(generated, context):
+        where = ""
+        if producers:
+            where = (
+                " In this repository's own scenario files that literal is established "
+                "by: " + "; ".join(repr(command) for command in producers[:3])
+                + ". This scenario runs none of those invocations as written — an "
+                "argument tail narrows what a command does, and nothing here can know "
+                "what the narrowed form still prints."
+            )
+        reasons.append(
+            f"expected_observations requires {literal!r}, and no operation this scenario "
+            "performs has a basis for emitting it: no action's expect_contains, no state "
+            "check's contains and no browser step's expect_text names it, and the scenario "
+            "runs no approved command a human already bound it to. This is a generation "
+            "contract error, not a statement about the product: the assertion is matched "
+            "against everything the run produced, so it cannot be attributed to any "
+            "command, and it would fail against a correct product. Name the operation that "
+            "prints it, in that operation's own expectations." + where
         )
 
     # -- cleanup / isolation ----------------------------------------------

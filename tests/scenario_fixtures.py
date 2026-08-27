@@ -143,7 +143,32 @@ def raw_scenario(
         "confidence": 0.8,
     }
     payload.update(overrides)
+    _bind_observations(payload, state_checks_given=state_checks is not None)
     return payload
+
+
+def _bind_observations(payload: dict[str, Any], *, state_checks_given: bool) -> None:
+    """Keep a fixture's asserted literals attributed to the operation that prints them.
+
+    Validation refuses an ``expected_observations`` entry that no operation in
+    the same scenario declares — that is the rule the M7 ``S3`` shape violated.
+    Most tests here override ``expected_observations`` only to give a candidate a
+    distinct coverage signature, so this keeps the default state check declaring
+    whatever those tests asked for, exactly as a compliant generator would. A
+    test that supplies its own checks is left alone: those tests are about the
+    binding itself.
+    """
+    if state_checks_given:
+        return
+    literals = [text for text in payload.get("expected_observations") or [] if str(text).strip()]
+    checks = payload.get("persisted_state_checks")
+    if not literals or not checks:
+        return
+    first = checks[0]
+    if isinstance(first, dict):
+        first["contains"] = list(literals)
+    else:
+        first.contains = list(literals)
 
 
 def raw_payload(*scenarios: dict[str, Any], risks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -218,6 +243,7 @@ def make_scenario(
         ),
     }
     data.update(overrides)
+    _bind_observations(data, state_checks_given=state_checks is not None)
     return GeneratedScenario.model_validate(data)
 
 
@@ -225,6 +251,7 @@ def validation_context(**overrides: Any) -> Any:
     from neyma_product_driver.scenario_validation import (
         ApprovedCommands,
         ValidationContext,
+        established_observations_from,
         grounding_tokens_from,
         principle_tokens_from,
     )
@@ -232,6 +259,7 @@ def validation_context(**overrides: Any) -> Any:
     base = base_scenario()
     defaults: dict[str, Any] = {
         "approved_commands": ApprovedCommands.from_sources(scenarios=[base]),
+        "established_observations": established_observations_from([base]),
         "grounding_tokens": grounding_tokens_from(FakeUnit()),
         "principle_tokens": principle_tokens_from(FakeFounder()),
         "declared_services": {"api"},

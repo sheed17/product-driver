@@ -320,6 +320,96 @@ cannot resolve, or a genuine product or authority decision is owed. Each closure
 consumes one of the planner's bounded waves, so the loop is bounded by the budgets that
 already existed.
 
+## An asserted observation needs a command that could emit it (added 2026-08-27)
+
+Written after run `20260827-063257`, which verified P6/M7 in every way that matters — the
+permanent scenario passed, the probe reported `behaviours as specified, 0 wrong`, 49 tests
+passed, 16/16 mutants were caught, every regression anchor was green, ship-dark held — and
+did not reach VERIFIED, on one generated scenario that could not pass against a correct
+product.
+
+**What was wrong.** `S3` ran the M7 probe with
+`--case second-detection-attaches-a-party-not-a-new-conflict`, which prints
+`A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT` and exits 0. Its action
+asserted exactly that. Its scenario-level `expected_observations` *also* asserted
+`CONCURRENT DETECTORS PRODUCE ONE CONFLICT AND LOSE NO PARTY` — the sentence belonging to a
+different `--case` of the same program, which the selected case does not print by design.
+The assertion was unsatisfiable however correct M7 was, and it arrived at the gate as a
+failed scenario, which is to say as a product defect.
+
+The defect is not those two strings. `expected_observations` is the one oracle in a
+generated scenario that **names no command**: it is matched against everything the run
+produced, so nothing had to be able to emit it. The generator had learned the vocabulary
+from a flat list in `tasks/neyma_p6_m7.md` and from `scenarios/p6_m7_conflict.yaml`'s
+top-level `expect_visible` — both of which are true of the *whole* battery and neither of
+which says which selection prints what.
+
+**The rule.** `scenario_validation.unattributed_observations`, called from the quality
+boundary. Every `expected_observations` literal must have a basis, and there are exactly
+two:
+
+1. **the scenario attributes it itself** — it appears in an action's `expect_contains`, a
+   state check's `contains` or a browser step's `expect_text`;
+2. **a human already bound it to an invocation the scenario runs verbatim** —
+   `established_observations_from` harvests literals out of the permanent scenario files,
+   from a command's own `expect_contains`, a state check's `contains`, and the
+   `observations` of a single-check `verifies:` claim.
+
+`forbidden_observations` is exempt: an absence needs no producer.
+
+This is `Scenario._claims_name_a_check_that_can_emit_them` one layer over, and deliberately
+so — the permanent side has refused this shape at load time for exactly the same stated
+reason ("it reads on the gate as a product defect rather than as the mapping error it is").
+Three properties are load-bearing:
+
+* **The key is an invocation, not a program.** `probe.py` and `probe.py --case x` are two
+  different invocations. The approved-command set matches by *prefix*, because that is the
+  right rule for "may a model run this"; this map matches **exactly**, because a tail is the
+  model's own composition and nothing in this repository can say what the narrowed form
+  still prints. Reusing the prefix match here would hand every `--case` tail the whole
+  battery's vocabulary, which is the defect.
+* **A multi-check claim attributes nothing to one command.** Its observations are matched
+  against the *concatenated* output of every check it names, so binding them to each check
+  says "this command prints that" on evidence that says only "these together print that".
+  That alone re-opens the hole: M7's `concurrency` claim names the probe *and* the index
+  introspection, and `S3` ran the second.
+* **Silence beats guessing.** A literal with no declared producer anywhere is left alone as
+  long as the scenario names the operation that prints it. Requiring the harness to have
+  heard a sentence before would be a second, unrelated boundary and would refuse every
+  scenario exercising output no permanent file happens to quote. No product string is
+  duplicated into Product Driver; the map is read out of the repository's own files.
+
+**Where the refusal lands, and why not further.** This is a `REJECTED_FILTERED` refusal, by
+the same rule that classifies every other one: *which stage refused a candidate is what
+classifies it*. Product Driver read this proposal, modelled it, knows the risk it named and
+refused it on the merits — that is not the `REJECTED_CONTRACT` state, where a candidate
+never became a model and what it would have exercised is unknown. Calling it one would
+misstate the fact and would make a recoverable generator slip block the run terminally,
+taking with it the coverage-gap closure the same run needs. Refusal is not a shortcut to
+green either: the risk register is untouched, so if the refused case was the only coverage
+for a blocking risk, the gate reports that risk uncovered from the execution records
+exactly as if nothing had been proposed for it.
+
+**And the generator is told.** The rule is in `GENERATOR_SYSTEM`'s hard constraints, in the
+brief's prose about observations, and in `PLAN_SCHEMA`'s `expected_observations`
+description — including the part that actually bit: *a command run with a selector prints
+only what that selection prints.*
+
+## A wave is told what the last one got wrong (added 2026-08-27)
+
+The same run refused a candidate in wave 2 for using an unapproved command, and wave 3
+proposed the identical command and was refused for the identical reason. Nothing carried a
+refusal forward, so each wave rediscovered the boundary at full price — and a *closure*
+wave that repeats a refused shape has spent itself and closed nothing.
+
+`GenerationBrief.prior_rejections` now carries this run's earlier refusals, newest wave
+first, deduplicated on the reason text and bounded like every other brief section. It is
+history, not instruction: the reasons are the harness's own words, and the wave still faces
+the same validation. This closes the last item on the list of what a coverage-gap wave is
+actually handed — it already had the exact missing risk category, the risk narrative, the
+prior executed evidence (including `permanent_coverage` claims) and the approved command
+vocabulary.
+
 ## Independent review as a step in the same loop (added 2026-08-22)
 
 The P6/M3 run exposed a gap on the other side of verification. Product Driver built M3,

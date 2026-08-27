@@ -264,6 +264,10 @@ class TestUnsafeOperationsRejected:
                         path="/login",
                         json_body={"user": "carrier-b", "password": "not-the-owner"},
                         expect_status=403,
+                        # The response is what prints it, and the scenario has
+                        # to say so: an asserted literal no operation declares
+                        # is refused as an unattributable oracle.
+                        expect_contains=["not authorized"],
                     ),
                 )
             ],

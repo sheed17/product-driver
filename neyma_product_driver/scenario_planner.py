@@ -63,6 +63,7 @@ from .scenario_plan import (
 from .scenario_validation import (
     ApprovedCommands,
     ValidationContext,
+    established_observations_from,
     grounding_tokens_from,
     permanent_signatures,
     principle_tokens_from,
@@ -582,6 +583,13 @@ class ScenarioPlanner:
                     gaps if gaps is not None else self.plan.planned_gaps()
                 )
             ],
+            # What this run already tried and had refused. Without it a wave
+            # cannot learn from the one before it: run 20260827-063257 refused a
+            # candidate in wave 2 for using an unapproved command, and wave 3
+            # proposed the identical command and was refused for the identical
+            # reason. A closure wave that repeats a refused shape has spent
+            # itself and closed nothing.
+            prior_rejections=self._prior_rejections(),
         )
 
         try:
@@ -709,9 +717,43 @@ class ScenarioPlanner:
         approved, _reasons = self.approved_commands.resolve(scenario.command_strings())
         return approved
 
+    def _prior_rejections(self, limit: int = 16) -> list[str]:
+        """Why this run's earlier candidates were refused, newest wave first.
+
+        Deduplicated on the reason text, because one wave refusing six
+        candidates for the same unapproved command is one fact, not six, and a
+        brief that spends its budget restating it teaches less than one line
+        would. Bounded for the same reason every other brief section is.
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        for record in reversed(self.plan.waves):
+            for rejected in record.rejected:
+                for reason in rejected.reasons:
+                    text = " ".join(str(reason).split())
+                    if not text or text in seen:
+                        continue
+                    seen.add(text)
+                    out.append(
+                        f"wave {record.wave} ({record.stage}) refused "
+                        f"{rejected.id or '(unnamed)'}: {text}"
+                    )
+                    if len(out) >= limit:
+                        return out
+        return out
+
     def _validation_context(self) -> ValidationContext:
         return ValidationContext(
             approved_commands=self.approved_commands,
+            # Harvested from exactly the sources the approved command set is
+            # harvested from, so "which commands may run" and "what has a human
+            # said those commands print" can never drift apart.
+            established_observations=established_observations_from(
+                [
+                    *self.permanent_scenarios,
+                    *([self.base_scenario] if self.base_scenario else []),
+                ]
+            ),
             grounding_tokens=grounding_tokens_from(self._unit),
             principle_tokens=principle_tokens_from(self.founder),
             existing_signatures=self.plan.signatures()

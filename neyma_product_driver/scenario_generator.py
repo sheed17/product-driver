@@ -84,6 +84,7 @@ class GenerationBrief:
         failure_clusters: list[str] | None = None,
         product_principles: list[str] | None = None,
         uncovered_risks: list[str] | None = None,
+        prior_rejections: list[str] | None = None,
     ) -> None:
         self.stage = stage
         self.wave = wave
@@ -101,6 +102,13 @@ class GenerationBrief:
         #: told only what is already covered proposes whatever looks interesting
         #: next, and the gaps it named an hour ago stay exactly where they were.
         self.uncovered_risks = uncovered_risks or []
+        #: What earlier waves in this run proposed and had refused, with the
+        #: reason. A wave that is not told what the last one got wrong repeats
+        #: it: run 20260827-063257 refused the same unapproved command in wave 2
+        #: and again, verbatim, in wave 3, and spent a whole closure wave doing
+        #: it. Shown as history, never as instruction — the refusal reasons are
+        #: this harness's own words, not the generator's.
+        self.prior_rejections = prior_rejections or []
 
     def render(self) -> str:
         parts: list[str] = [
@@ -150,6 +158,15 @@ class GenerationBrief:
                 "that only looks like coverage. Say so in `unresolved_questions` instead: "
                 "an honestly unclosable gap blocks acceptance, which is the correct "
                 "outcome, and a scenario that pretends to close it is worse than the gap.",
+            ]
+        if self.prior_rejections:
+            parts += [
+                "",
+                "WHAT THIS RUN ALREADY PROPOSED AND HAD REFUSED, WITH THE REASON. Each "
+                "line is a candidate this harness rejected before it ran. Proposing the "
+                "same shape again spends the wave and closes nothing, so read these as "
+                "constraints you already have evidence for:",
+                *(f"  - {r}" for r in self.prior_rejections[:20]),
             ]
         if self.basis.prior_failures:
             parts += [
@@ -238,6 +255,23 @@ class GenerationBrief:
             "property with a `persisted_state_check` and leave the observation lists empty. "
             "A scenario that fails because its expectation was phrased as prose has told "
             "you nothing about the product.",
+            "",
+            "EVERY entry in `expected_observations` must be text one specific operation "
+            "in THIS scenario prints, and you must say which one: put it in that "
+            "action's `expect_contains`, that state check's `contains`, or that browser "
+            "step's `expect_text`. `expected_observations` is matched against everything "
+            "the run produced, so an entry with no operation behind it is attributed to "
+            "nothing, and the harness refuses it before the scenario runs.",
+            "",
+            "This matters most when a command takes a SELECTOR — `--case <name>`, a "
+            "subcommand, a filter, a test id. A selected run prints what THAT selection "
+            "prints and nothing else. A sentence that belongs to a different selection is "
+            "not available to you, however true it is of the program as a whole, and "
+            "asserting it makes the scenario fail against a perfectly correct product. "
+            "Assert the selection you actually ran, or run the unselected command.",
+            "",
+            "`forbidden_observations` is deliberately exempt: asserting that something "
+            "never appears anywhere needs no command behind it.",
             "",
             "Quoting is understood: an argument may contain >, <, |, ( or ) inside quotes, "
             "so a SQL oracle such as",
@@ -480,7 +514,13 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "the probe prints exactly that; 'the ledger shows one payment' is "
                         "not, and will fail against a perfectly correct product. If you "
                         "cannot name the exact text, assert it with a persisted_state_check "
-                        "instead and leave this empty.",
+                        "instead and leave this empty. Every entry here must ALSO be "
+                        "declared by the operation that prints it — in that action's "
+                        "expect_contains, that state check's contains, or that browser "
+                        "step's expect_text. An entry no operation in this scenario claims "
+                        "to emit is refused before execution: it cannot be attributed to "
+                        "any command, and a command run with a selector (--case, a "
+                        "subcommand, a filter) prints only what that selection prints.",
                     },
                     "forbidden_observations": {
                         "type": "array",
@@ -660,6 +700,15 @@ HARD CONSTRAINTS — a scenario violating any of these is discarded by the harne
     `command` is required and must come from the approved list. Do not write a
     `description` or `expect` field here — those do not exist, and an entry
     carrying one is discarded, taking the whole scenario's only oracle with it.
+  - Every literal in `expected_observations` must be declared by the operation
+    that prints it — that action's `expect_contains`, that state check's
+    `contains`, or that browser step's `expect_text`. `expected_observations` is
+    matched against everything the run produced, so an entry with no operation
+    behind it names no command and is refused before execution. A command run
+    with a SELECTOR (`--case <name>`, a subcommand, a filter) prints only what
+    that selection prints: a sentence belonging to another selection is not
+    available to you, however true it is of the program as a whole.
+    `forbidden_observations` is exempt — an absence needs no producer.
   - A scenario that mutates local state must declare `cleanup` commands or an
     `isolation_note` explaining why it cannot contaminate the next scenario.
   - Do not duplicate a situation already covered. Adding a different label to the

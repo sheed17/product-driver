@@ -762,7 +762,14 @@ def _gap_scenario(command: str, risk_key: str) -> GeneratedScenario:
             generating_risk="an approval whose amount moved could still authorize the effect",
             source_risks=[risk_key],
         ),
-        actions=[{"kind": "command", "name": "drift the approved amount", "command": command}],
+        actions=[{
+            "kind": "command",
+            "name": "drift the approved amount",
+            "command": command,
+            # The command that prints it, named. An asserted literal no operation
+            # in the scenario declares is refused as an unattributable oracle.
+            "expect_contains": ["A DRIFTED FACT IS NOT AN APPROVAL, IT IS A NEW QUESTION"],
+        }],
         expected_observations=["A DRIFTED FACT IS NOT AN APPROVAL, IT IS A NEW QUESTION"],
         forbidden_observations=["### DRIFTED APPROVAL EXECUTED ###"],
     )

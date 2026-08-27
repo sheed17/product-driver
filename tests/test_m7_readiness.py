@@ -1484,7 +1484,15 @@ def _gap_scenario(command: str, risk_key: str) -> GeneratedScenario:
             generating_risk="a second detector could open a second conflict on the same field",
             source_risks=[risk_key],
         ),
-        actions=[{"kind": "command", "name": "race the detectors", "command": command}],
+        actions=[{
+            "kind": "command",
+            "name": "race the detectors",
+            "command": command,
+            # The command that prints it, named. An asserted literal no operation
+            # in the scenario declares is refused as an unattributable oracle —
+            # which is exactly the S3 shape this run's harness correction closes.
+            "expect_contains": ["A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT"],
+        }],
         # `concurrency` is a family whose claims are about a TABLE — "there is one open conflict" is
         # not something a probe can prove by printing it. This is the mechanical form of the
         # rubric's "a 200 is not success".
@@ -1654,6 +1662,7 @@ class TestP6D46StaysClosedForM7:
                 "kind": "command",
                 "name": "drive the conflict machine",
                 "command": f"{PROBE} --case at-most-one-open-conflict-per-field",
+                "expect_contains": ["AT MOST ONE OPEN CONFLICT PER TENANT, ENTITY AND FIELD"],
             }],
             state_checks=[{
                 "name": "the conflict layer is still tenant-first and readable",

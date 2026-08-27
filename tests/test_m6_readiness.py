@@ -1245,7 +1245,14 @@ def _gap_scenario(command: str, risk_key: str) -> GeneratedScenario:
             generating_risk="a relinker re-run could silently overwrite an owner's binding",
             source_risks=[risk_key],
         ),
-        actions=[{"kind": "command", "name": "re-run the inferrer", "command": command}],
+        actions=[{
+            "kind": "command",
+            "name": "re-run the inferrer",
+            "command": command,
+            # The command that prints it, named. An asserted literal no operation
+            # in the scenario declares is refused as an unattributable oracle.
+            "expect_contains": ["AN OWNER_ASSERTED BINDING SURVIVES THE RELINKER"],
+        }],
         # `conflicting_evidence` is a family whose claims are about a TABLE — "the owner's binding
         # is still there" is not something a probe can prove by printing it. This is the mechanical
         # form of the rubric's "a 200 is not success", and M6 is the unit it applies to most

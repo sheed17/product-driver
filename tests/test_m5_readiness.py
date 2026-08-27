@@ -873,7 +873,14 @@ def _gap_scenario(command: str, risk_key: str) -> GeneratedScenario:
             generating_risk="a duplicate delivery could create a second observation",
             source_risks=[risk_key],
         ),
-        actions=[{"kind": "command", "name": "redeliver the same message", "command": command}],
+        actions=[{
+            "kind": "command",
+            "name": "redeliver the same message",
+            "command": command,
+            # The command that prints it, named. An asserted literal no operation
+            # in the scenario declares is refused as an unattributable oracle.
+            "expect_contains": ["ONE ROW, ONE CONFIRMATION, ZERO WORK"],
+        }],
         # `idempotency` is in the planner's EFFECT_FAMILY, so a case in it that
         # inspects no persisted state is refused — and rightly. "the duplicate
         # created no second row" is a claim about a TABLE, and a probe that
