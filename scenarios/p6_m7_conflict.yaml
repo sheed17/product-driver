@@ -1,0 +1,1280 @@
+# P6 / M7 — Conflict.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M7 operation           (the probe, run whole)
+#   2. a safe approved M7 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--parties`, `--age-ms`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 / M4 / M5 / M6 entrypoints)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry and
+# the acceptance criteria; stage 2 refines them against the diff the builder actually produced;
+# stage 3 grows neighbours around whatever failed. None of that can author shell — a generated case
+# may only CHOOSE one of the approved commands below, optionally with an argument tail, and decide
+# when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3, M4, M5
+# and M6. M7 ships dark: no reconciliation service, no queue, no HTTP surface, no live channel. The
+# executor's only concurrency primitive is `parallel_requests`, which is HTTP — so for this unit the
+# generator has NO way to compose ordering, concurrency, timing, duplication, crash or replay
+# variation from the outside. The axis is a closed, bounded, argument-only vocabulary; the approval
+# boundary is unchanged, because a prefix match already permits argument tails and already refuses
+# shell. See docs/SCENARIO-SPACE.md gap G2.
+#
+# WHAT M7 IS, IN THREE SENTENCES, because everything below is a consequence of them:
+#
+#   ### A CONFLICT IS TWO OR MORE MUTUALLY EXCLUSIVE CLAIMS OR OBSERVATIONS ON THE SAME FIELD.
+#   ### ITS PURPOSE IS TO MAKE DISAGREEMENT VISIBLE AND BLOCKING — IT IS THE MECHANISM BY WHICH
+#   ### NEYMA NEVER SILENTLY CHOOSES. IT IS NOT `unknown`, NOT AN ERROR, AND NOT RESOLVABLE BY
+#   ### RECENCY, CONFIDENCE, A MODEL, OR A CLOCK.
+#
+# A conflict is NOT missing data. We do not lack information — we have too much, and it disagrees
+# (I8). That distinction is the whole unit: treating a conflict as `unknown` would let a "best
+# available" read slip through, and treating it as `conflicting` stops everything, which is correct.
+#
+# THE THREE THINGS THIS FILE DELIBERATELY DOES NOT DECIDE. The corpus disagrees with itself in three
+# places, and encoding a resolution here would make Product Driver the author of a canonical
+# decision it has no authority to make (see `tasks/neyma_p6_m7.md` §3.8):
+#
+#   M7-AQ-1  how does `IB-6`'s already-shipped `ConflictRaised` materialize an M7 Conflict row?
+#            Entity §15/§17/§33 require a row, a partial unique index and party attachment; M6 is
+#            LANDED and mints a fresh conflict id per call with no row; and a coordination event may
+#            not instruct a consumer to transition (ER-1, registry §9).
+#   M7-AQ-2  is `EF-4c` required to emit `ConflictRaised`, and whose change is that? The registry
+#            and the contract projection both name it a producer; the shipped `external_effect.py`
+#            emits `VerificationConflict` alone, and M3 is landed and tier-1.
+#   M7-AQ-3  how is a Conflict cancelled when the disagreement disappears? Entity §25 and machine
+#            §22 say it is possible and "still an event, never silence"; §14 enumerates only
+#            CF-1..CF-7, GR-1 makes anything unenumerated ILLEGAL, there is no `CANCELLED` state,
+#            and no `ConflictCancelled` event is registered anywhere.
+#
+# Every oracle below asserts only what EVERY reading agrees on: an owner from creation, a raise and
+# a freeze in one commit, an open conflict that blocks, a resolution that carries exactly one basis,
+# a timer that escalates and never resolves, one open conflict per field with the new party attached
+# to it, and a rebuild that reconstructs the complete party set without resolving anything.
+
+name: p6_m7_conflict
+phase: "P6"
+mode: backend
+description: >
+  P6 M7: the Conflict — one `conflicts` row per disputed field, one machine, five states, and the
+  rule that makes disagreement a decision a human owns rather than a winner a machine picked. There
+  is no reconciliation service, no queue and no live channel (M7 ships dark by contract), so the
+  product is exercised through its real runtime as a brokerage narrative: the TMS says load 4471 is
+  delivered and the carrier portal says it is still in transit, so the delivery field freezes and a
+  named human owns it; the owner assigned a POD to load 4471 by hand and the linker now insists it
+  belongs to 44718, and Neyma preserves the owner's binding and raises rather than picking; a
+  readback of the payable we just entered does not match the invoice the owner approved, which is
+  not an ordinary failure and not a silent retry; two standing rules disagree about which source
+  governs, and that fails closed too. A third source arrives and attaches to the same conflict
+  rather than starting another. The clock advances and the conflict escalates — it never expires and
+  it never resolves. What matters is not that a conflict can be raised — it is that nothing closes
+  it except a registered rule with an id or an authenticated human with a decision, and that an
+  invoice cannot go out while it stands.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M7 surface the builder must produce. A missing one is recorded as a failed assertion, so a run
+# against a repository where M7 does not exist yet cannot report a verified M7.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/conflict.py"
+  - "src/freight_recon/migrations/phase6_conflicts.py"
+  - "eval/tests/test_phase6_conflict.py"
+  - "scripts/probe_phase6_conflict.py"
+  - "scripts/mutate_phase6_conflict.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if the
+  #    builder ships a probe that cannot exercise one of the canonical risk families, this command
+  #    fails here rather than the family silently going unverified. It is also what tells a reader of
+  #    this file which `--case` values exist.
+  - name: "the M7 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # CF-1 — the raise, the freeze, the owner, and the six kinds
+      - "raise-creates-raised-with-a-named-human-owner"
+      - "raise-and-freeze-are-one-commit"
+      - "ownerless-conflict-is-impossible"
+      - "a-model-cannot-own-a-conflict"
+      - "the-six-conflict-kinds-are-closed"
+      - "system-vs-system-raises-a-conflict"
+      - "claim-vs-claim-raises-a-conflict"
+      - "claim-vs-observation-raises-a-conflict"
+      - "inferrer-vs-owner-records-the-owner-asserted-party"
+      - "readback-vs-approved-is-not-an-ordinary-failure"
+      - "rule-vs-rule-fails-closed-and-never-auto-merges"
+      - "injected-competing-claim-freezes-the-entity-not-control"
+      # CF-2
+      - "acknowledgement-opens-the-conflict"
+      # THE INVARIANT — an open conflict blocks, and M7 is not a second gate
+      - "raised-conflict-already-blocks-consequential-action"
+      - "open-conflict-blocks-consequential-action"
+      - "escalated-conflict-still-blocks-consequential-action"
+      - "open-conflict-fails-checkpoint-native-state-validity"
+      - "no-effect-grant-on-a-conflicted-material-field"
+      - "open-conflict-blocks-the-approval"
+      - "m7-mints-no-gate-decision"
+      # CF-3 — the registered rule, and the four things that are not one
+      - "registered-rule-resolves-the-conflict"
+      - "unregistered-rule-cannot-resolve"
+      - "rule-resolution-requires-a-registered-rule-id"
+      - "confidence-cannot-resolve-a-conflict"
+      - "recency-cannot-resolve-a-conflict"
+      - "source-priority-cannot-resolve-without-a-registered-rule"
+      - "a-model-cannot-resolve-a-conflict"
+      # CF-4 — the authenticated human
+      - "authenticated-human-resolves-the-conflict"
+      - "human-resolution-requires-a-decision-ref"
+      - "counterparty-cannot-resolve-a-conflict"
+      - "wrong-tenant-human-resolution-fails-closed"
+      - "forged-human-fails-closed"
+      - "inactive-human-fails-closed"
+      # the resolution basis, and what a resolution does and does not do
+      - "resolution-carries-exactly-one-basis"
+      - "resolution-with-neither-rule-nor-decision-is-illegal"
+      - "resolution-unfreezes-the-field"
+      - "a-resolved-conflict-is-retained-never-deleted"
+      - "new-evidence-after-resolution-raises-a-new-conflict"
+      # CF-5 — the timer escalates and never resolves
+      - "age-threshold-escalates-the-conflict"
+      - "a-timer-never-resolves-a-conflict"
+      - "a-conflict-never-expires"
+      # CF-6 — an escalated conflict resolves by TARGET STATE
+      - "escalated-resolves-by-registered-rule"
+      - "escalated-resolves-by-authenticated-human"
+      - "escalated-resolution-is-by-target-state-never-by-position"
+      # CF-7 — the new party attaches to the conflict that already exists
+      - "second-detection-attaches-a-party-not-a-new-conflict"
+      - "at-most-one-open-conflict-per-field"
+      - "an-attached-party-carries-its-own-provenance"
+      - "party-provenance-is-never-strengthened"
+      - "concurrent-detectors-produce-one-conflict"
+      - "a-party-retraction-never-silently-closes-the-conflict"
+      # replay and restart
+      - "replay-rebuilds-the-complete-party-set"
+      - "replay-keeps-the-field-frozen"
+      - "replay-cannot-resolve-or-duplicate-a-conflict"
+      - "replay-creates-no-new-authority-and-no-effect"
+      - "restart-preserves-the-open-conflict"
+      # [C-1] — tenancy
+      - "tenant-isolation"
+      - "cross-tenant-identical-entity-ref-and-field"
+      - "cross-tenant-party-reference-fails-closed"
+      # GR-2 / GR-3 / GR-4 — concurrency, idempotency, the database
+      - "occ-on-conflict-version"
+      - "competing-resolutions-serialize-at-most-one-wins"
+      - "redelivered-detection-is-a-no-op"
+      - "inbox-idempotency"
+      - "state-and-event-co-commit"
+      - "database-invariants"
+      - "malformed-conflict-fails-closed"
+      - "persistence-failure-rolls-back-the-raise-and-the-freeze"
+      # the seams M7 feeds and must not rewrite
+      - "the-m6-claim-machine-is-not-rewritten"
+      - "the-m3-unknown-outcome-semantics-are-unchanged"
+      - "the-cross-family-conflict-raised-producers-are-recorded"
+      - "m8-m9-m10-and-m12-are-not-built"
+
+  # 2. THE MUTATION AXIS. M7 ships dark, so ordering, concurrency, timing, duplication, crash and
+  #    replay variation are reachable through these arguments or not at all.
+  #
+  #    The vocabulary is CLOSED and BOUNDED on purpose. This is not fuzzing: an unknown fault or an
+  #    out-of-range value must be REFUSED (see commands 3, 3b and 3c).
+  - name: "the M7 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # the axes a situation can be varied along
+      - "--concurrency"      # how many detectors or resolvers race the one-open-conflict index
+      - "--delay-ms"         # timing skew between them
+      - "--repeat"           # duplicate detection / redelivery pressure
+      - "--tenants"          # isolation pressure
+      - "--parties"          # how many disagreeing parties one field attracts
+      - "--age-ms"           # how far the durable timer is advanced: it ESCALATES, never resolves
+      - "--confidence"       # the negative control: it must change NOTHING, at 1.0 or at 0.0
+      - "--seed"             # deterministic interleaving; the same seed reproduces the failure
+      # the closed fault vocabulary, every member named by the canonical machine, the entity
+      # specification, an ADR, the event registry or a named mandate
+      - "system-vs-system"              # ADR-007 §5.1 (1)
+      - "claim-vs-claim"                # ADR-007 §5.1 (2)
+      - "claim-vs-observation"          # ADR-007 §5.1 (3)
+      - "inferrer-vs-owner"             # ADR-007 §5.1 (4) — and M6's IB-6 seam
+      - "readback-vs-approved"          # ADR-007 §5.1 (5) — and M3's EF-4c seam
+      - "rule-vs-rule"                  # GR-15 / spec §20.7
+      - "ownerless-raise"               # entity §16 / §37
+      - "model-owner"                   # [C-6] / ER-9
+      - "acknowledge"                   # CF-2
+      - "age-threshold"                 # CF-5 — the durable timer
+      - "timer-resolve"                 # machine §15 — ILLEGAL
+      - "auto-resolve"                  # ADR-007 §5.3 — ILLEGAL
+      - "model-resolve"                 # GR-7 / [C-6] — ILLEGAL
+      - "confidence-resolve"            # ADR-007 §4.2 / §8 — the negative control
+      - "recency-resolve"               # ADR-007 §8 — "a conflict resolved by network jitter"
+      - "source-priority-resolve"       # ADR-007 §8 — registered rule or nothing
+      - "unregistered-rule"             # CF-3
+      - "missing-rule-id"               # entity §16 CHECK
+      - "missing-decision-ref"          # entity §16 CHECK / GR-14 / K-1
+      - "both-resolution-bases"         # F7 — exactly one
+      - "neither-resolution-basis"      # machine §15 — ILLEGAL
+      - "forged-human"                  # entity §35
+      - "inactive-human"                # entity §35 / M1's precedent
+      - "wrong-tenant"                  # [C-1] / ER-15
+      - "counterparty-resolve"          # ADR-007 §4.4
+      - "second-detection"              # CF-7
+      - "concurrent-detection"          # machine §17
+      - "duplicate-detection"           # [C-3] / GR-4
+      - "retract-party"                 # entity §25 — never silence (M7-AQ-3)
+      - "strengthen-party-provenance"   # ER-14 / R-P2
+      - "cross-tenant-party"            # [C-1]
+      - "occ-conflict"                  # GR-3 / [C-10]
+      - "competing-resolution"          # GR-3
+      - "malformed-conflict"            # fail closed
+      - "persistence-failure"           # entity §15 — one commit, or nothing
+      - "replay"                        # GR-11 / [C-5] / K-3
+      - "restart-before-open"           # machine §36
+      - "restart-after-escalate"        # machine §36
+      - "reorder-stream"                # F7 order-tolerant, but ordered WITHIN one aggregate
+      - "new-evidence-after-resolution" # machine §24
+
+  # 3. THE NEGATIVE CONTROL FOR THAT VOCABULARY. A dimension set that accepts anything is fuzzing
+  #    wearing a closed-vocabulary costume. This proves the closure is real: an invented fault is
+  #    refused, with a non-zero exit and a readable message rather than a stack trace (`Traceback` is
+  #    in `forbidden`, so a crash here fails the whole scenario).
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py --case open-conflict-blocks-consequential-action --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3b. THE FIRST M7-SPECIFIC NEGATIVE CONTROL. Entity §26: a Conflict NEVER EXPIRES — it ages
+  #     (`AgeThresholdCrossed → ESCALATED`) and escalates. Machine §12 and §23 say the same twice
+  #     more, and §28 gives it no deletion policy. A probe that ACCEPTED an expiry fault would be
+  #     producing passing evidence for a transition the corpus states does not exist — the same shape
+  #     as M4's refused `unfreeze`, M5's refused `expire-observation` and M6's refused `expire-claim`.
+  - name: "a conflict-expiry fault does not exist, because a conflict never expires"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py --case a-conflict-never-expires --inject expire-conflict"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 3c. THE SECOND, AND THE ONE THAT HOLDS AN AUTHORITY QUESTION OPEN. Entity §25 and machine §22 say
+  #     a Conflict may be cancelled if the underlying disagreement disappears — "still an event,
+  #     never silence" — while §14 enumerates only CF-1..CF-7, GR-1 makes anything unenumerated
+  #     ILLEGAL, registry §4 gives M7 no `CANCELLED` state, and no `ConflictCancelled` event is
+  #     registered in `events/registry.md`, in F7 or in the contract projection. That is `M7-AQ-3`.
+  #     A probe that ACCEPTED a cancel fault would have ANSWERED it, by building the transition the
+  #     enumeration does not contain. `retract-party` stays in the vocabulary precisely so the
+  #     agreed half — a retraction never silently closes the conflict — is still exercised.
+  - name: "a cancel-conflict fault does not exist, because the transition table enumerates none"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py --case a-party-retraction-never-silently-closes-the-conflict --inject cancel-conflict"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. THE PRODUCT, DRIVEN. Run whole, this is the deterministic basic M7 operation. Run with
+  #    `--case <case>` it is the approved focused entry point a generated scenario composes with —
+  #    the bare form below is what makes every `--case` tail approvable, because the approved set
+  #    matches by prefix and refuses shell composition in the tail.
+  - name: "drive the Conflict machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M7 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M7 adds two tables and edits `schema.py`, so every layer that reads a
+  #    canonical database can be broken from inside M7. Each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M7 must not disturb, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_schema.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M7 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # M7 emits FIVE already-registered F7 names and mints none of its own, and `CF-5` rides P5's
+  # existing durable timers rather than a second timer mechanism — so the canonical event-contract
+  # guard and the durable-timer suite are load-bearing for this unit rather than incidental. A
+  # builder that invents `ConflictExpired`, `ConflictCancelled` or `ConflictAutoResolved` fails here,
+  # and so does one that emits `ConflictResolved` with neither resolution basis or with both.
+  - name: "the P5 transport, replay, timers and canonical event contracts M7 rides, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py eval/tests/test_p5_event_contracts.py eval/tests/test_p5_canonical_event_mint.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2, M3, M4, M5 and M6, whose schema M7 extends, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py eval/tests/test_phase6_observation.py eval/tests/test_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. M6's, M5's and M4's own deterministic probes, re-run. "M7 broke nothing" is a claim about
+  #    THEIR behaviour, so it is measured against THEIR oracles rather than against M7's account of
+  #    it. M6 in particular is the unit M7 is closest to: `IB-6` already emits `ConflictRaised`, and
+  #    that shipped behaviour is the thing M7 must NOT reach back into and rewrite.
+  - name: "M6 still behaves as specified with M7's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M5 still behaves as specified with M7's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M4 still behaves as specified with M7's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M7 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "one open conflict" proves nothing about a
+# table.
+#
+# Every check below reads the DATABASE or the SOURCE TREE, not the probe's narration. That is the
+# point for this unit above all others: "there is one open conflict per field", "a conflict has a
+# human owner", "a resolution carries exactly one basis" and "the five states are the five states"
+# are each a property of the SCHEMA, and every one of them is a sentence a fully green test suite can
+# state while the database enforces none of them.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because SQLite
+  # silently ignores the pragma inside one — that makes every tenant-consistent foreign key more than
+  # decoration. A probe that skips it measures a database no caller ever gets.
+  #
+  # `durable_timers` is asserted beside the conflict tables because CF-5 rides P5's EXISTING timer
+  # substrate; a second timer mechanism invented inside M7 would leave this row untouched and is
+  # caught by the sweep further down.
+  - name: "a freshly created canonical database carries the conflict layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "conflicts"
+      - "conflict_parties"
+      - "identity_binding_claims"
+      - "observations"
+      - "tenant_humans"
+      - "durable_timers"
+      - "event_outbox"
+      - "approvals"
+      - "effect_grants"
+
+  # THE FIVE STATES, STRUCTURALLY. Not a convention, not a Python enum nobody enforces — a CHECK
+  # constraint, so a sixth state and a misspelled fifth are both uninsertable. There is deliberately
+  # no `CANCELLED` (entity §25 names cancellation, §14 enumerates no row for it, and inventing the
+  # state is how `M7-AQ-3` gets silently answered), no `EXPIRED` (entity §26 and machine §12/§23:
+  # NEVER — it ages and escalates), no bare `RESOLVED` (that is M9 Exception's vocabulary and the
+  # likeliest import), and no `AUTO_RESOLVED`/`DISMISSED`.
+  - name: "the five canonical conflict states are a database constraint, and there is no sixth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='conflicts'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('conflict state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the conflicts table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'ESCALATED'"
+      - "'OPEN'"
+      - "'RAISED'"
+      - "'RESOLVED_BY_HUMAN'"
+      - "'RESOLVED_BY_RULE'"
+    not_contains:
+      - "'CANCELLED'"
+      - "'EXPIRED'"
+      - "'RESOLVED'"
+      - "'AUTO_RESOLVED'"
+      - "'DISMISSED'"
+
+  # THE SIX KINDS. Entity §12 gives the closed set, and the `ConflictRaised` contract carries the
+  # same six as its `kind` enum. A seventh is how "we picked the likelier source" arrives wearing a
+  # canonical name, and how a conflict the corpus never described gets raised and then quietly
+  # resolved by whatever mechanism the seventh kind was invented to justify.
+  - name: "the six canonical conflict kinds are a database constraint, and there is no seventh"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='conflicts'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'kind TEXT NOT NULL CHECK \\(kind IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('conflict kinds:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the conflicts table declares no CHECK on kind')"
+    timeout_s: 300
+    contains:
+      - "'CLAIM_VS_CLAIM'"
+      - "'CLAIM_VS_OBSERVATION'"
+      - "'INFERRER_VS_OWNER'"
+      - "'READBACK_VS_APPROVED'"
+      - "'RULE_VS_RULE'"
+      - "'SYSTEM_VS_SYSTEM'"
+
+  # THE RESOLUTION BASIS, AS A CHECK. Entity §16 states it twice in the same breath:
+  # `state = RESOLVED_BY_RULE` requires a non-null `rule_id`; `state = RESOLVED_BY_HUMAN` requires a
+  # non-null `decision_ref`. Machine §15 makes a resolution with NEITHER an illegal transition, and
+  # F7 declares `rule_id | decision_ref` a required one-of — so the P5 contract layer refuses the
+  # event too. Both halves exist or the sentence is a comment: the event guard protects the stream,
+  # and the CHECK protects the row a rebuild reads back.
+  #
+  # `owner_id NOT NULL` is read beside them because entity §16 states that in the same list, and it
+  # is the half that makes an ownerless conflict structurally impossible (§37) rather than merely
+  # discouraged.
+  - name: "the resolution basis and the owner are CHECK constraints, not conventions"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='conflicts'\").fetchone();
+      sql=' '.join((row[0] if row else '').split());
+      checks=re.findall(r'CHECK\\s*\\((?:[^()]|\\([^()]*\\))*\\)', sql);
+      rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k];
+      human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k];
+      cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')};
+      print('conflict columns:', sorted(cols));
+      print('RESOLVED_BY_RULE requires rule_id:', bool(rule));
+      print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human));
+      print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3]));
+      print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3]));
+      print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))"
+    timeout_s: 300
+    contains:
+      - "'conflict_id'"
+      - "'decision_ref'"
+      - "'entity_ref'"
+      - "'field'"
+      - "'kind'"
+      - "'owner_id'"
+      - "'rule_id'"
+      - "'state'"
+      - "'tenant'"
+      - "'version'"
+      - "RESOLVED_BY_RULE requires rule_id: True"
+      - "RESOLVED_BY_HUMAN requires decision_ref: True"
+      - "owner_id NOT NULL: True"
+      - "entity_ref NOT NULL: True"
+      - "field NOT NULL: True"
+
+  # ONE OPEN CONFLICT PER FIELD. Entity §17: `UNIQUE (tenant_id, entity_ref, field) WHERE state IN
+  # ('RAISED','OPEN','ESCALATED')`. A partial unique index is what makes "two open conflicts on one
+  # field" a write the database REFUSES rather than a race an application-level check-then-insert
+  # loses — and machine §17 states the consequence directly: a second detection attaches a party
+  # (CF-7), not a new conflict. The `WHERE` clause is load-bearing in both directions: without it,
+  # a resolved conflict blocks the NEW conflict machine §24 requires when new evidence arrives.
+  - name: "one open conflict per field is a PARTIAL UNIQUE index over the three open states, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      rows=[r[0] for r in c.execute(
+      \"select sql from sqlite_master where type='index' and tbl_name='conflicts' and sql is not null\")];
+      key=[s for s in rows if 'UNIQUE' in s and 'entity_ref' in s and 'field' in s and 'tenant' in s
+      and 'WHERE' in s.upper()];
+      print('one-open-conflict index:', ' '.join(key[0].split()) if key else 'MISSING')"
+    timeout_s: 300
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "entity_ref"
+      - "field"
+      - "RAISED"
+      - "OPEN"
+      - "ESCALATED"
+
+  # A NAMED HUMAN, NOT A STRING. Machine §5: the owner is "a named human, from `RAISED`". Entity §16
+  # makes `owner_id` NOT NULL from creation and §37 makes an ownerless Conflict structurally
+  # impossible. A FOREIGN KEY into `tenant_humans` is the version of "named human" a database
+  # enforces — exactly the argument M1 made for `owner_id`, M4 made for `granted_by` and M6 made for
+  # the human behind a `decision_ref`. `system` is not a human (I1) and a model may not be one ([C-6]).
+  # The set is asserted by MEMBERSHIP rather than by equality, because entity §18 names five
+  # references and the task deliberately leaves the `decision_ref` half open (`K-1`'s polymorphic
+  # FK needs `rules`, which is M12 and is not built). Pinning the exact set here would decide that
+  # for the builder. What is NOT open: the owner is FK-backed, the party row points at its parent,
+  # and no foreign key points at a table this unit does not own — an FK into an unbuilt `rules`,
+  # `evidence` or projection table is how half of another machine arrives to satisfy a constraint.
+  - name: "the conflict owner is a FOREIGN KEY into tenant_humans, not a convention"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables={r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")};
+      conf=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflicts)')});
+      party=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflict_parties)')});
+      print('conflicts foreign keys ->', conf);
+      print('conflict_parties foreign keys ->', party);
+      print('owner is FK-backed into tenant_humans:', 'tenant_humans' in conf);
+      print('a party points at its parent conflict:', 'conflicts' in party);
+      print('foreign keys into a table nobody built:', sorted(set(conf+party) - tables))"
+    timeout_s: 300
+    contains:
+      - "owner is FK-backed into tenant_humans: True"
+      - "a party points at its parent conflict: True"
+      - "foreign keys into a table nobody built: []"
+
+  # EVERY PARTY CARRIES ITS OWN PROVENANCE, AND IT IS ONE OF THE CANONICAL SIX. Entity §13 and
+  # machine §31: each `parties[]` entry carries its own `provenance_class`, and an `INFERRER_VS_OWNER`
+  # conflict specifically records that ONE PARTY IS `OWNER_ASSERTED` — which is the evidence of why
+  # the inferrer did not overwrite it. `ER-14`/`R-P2`: a consumer may never strengthen provenance, so
+  # the attaching party's class is CARRIED, never rewritten. A party table with a free-text
+  # provenance column is a laundering hole with a schema.
+  - name: "every conflict party carries its own canonical provenance_class, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='conflict_parties'\").fetchone();
+      sql=' '.join((row[0] if row else '').split());
+      m=re.search(r'provenance_class TEXT NOT NULL CHECK \\(provenance_class IN \\(([^)]*)\\)', sql);
+      cols={r[1]: r for r in c.execute('PRAGMA table_info(conflict_parties)')};
+      print('party columns:', sorted(cols));
+      print('party provenance vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: conflict_parties declares no CHECK on provenance_class');
+      print('party tenant NOT NULL:', bool(cols.get('tenant') and cols['tenant'][3]))"
+    timeout_s: 300
+    contains:
+      - "'conflict_id'"
+      - "'party_ref'"
+      - "'provenance_class'"
+      - "'tenant'"
+      - "'LINKER_INFERRED'"
+      - "'MODEL_EXTRACTED'"
+      - "'MODEL_INFERRED'"
+      - "'OWNER_ASSERTED'"
+      - "'RECONCILED'"
+      - "'SYSTEM_IMPORTED'"
+      - "party tenant NOT NULL: True"
+
+  # NO EXPIRY, NO CANCELLATION TRANSITION, NO AUTO-RESOLUTION, NO SWEEP WAS INVENTED. Entity §26 and
+  # machine §12/§23: NEVER expires. §28: no deletion policy. §29: permanent. ADR-007 §5.3:
+  # `AutoResolve` is ILLEGAL and "a conflict that times out is a conflict resolved by a clock".
+  #
+  # That is four statements of one family of rule, and the way a build session breaks them is not by
+  # arguing — it is by adding a TTL, a sweep, a stale-conflict reaper or an auto-resolver because
+  # those felt like hygiene, or by adding a `CF-8` row to close the cancellation `M7-AQ-3` leaves
+  # open. Two scans, because the two surfaces fail differently. In CODE and DDL an INVENTED EVENT
+  # NAME or an expiry identifier appearing at all is the invention — note that `auto_resolve` and
+  # `timer_resolve` are deliberately NOT scanned for, because the probe must ATTEMPT both to prove
+  # GR-1 refuses them. In the SPECS prose must stay free to SAY that no expiry exists — describing
+  # the rule is the correct behaviour — so only a machine-table or event-registry ROW counts: a line
+  # whose first cell names the transition or the event.
+  - name: "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts';
+      code=re.compile(names);
+      code_hits=sorted({str(f) for r in ('src/freight_recon','scripts')
+      if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py')
+      if code.search(f.read_text(encoding='utf-8', errors='replace'))});
+      row=re.compile(r'^\\|\\s*[*\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\b', re.M);
+      spec=pathlib.Path('docs/specifications');
+      spec_hits=sorted({str(f) for f in spec.rglob('*.md')
+      if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else [];
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)'));
+      print('conflict column population:', len(cols));
+      print('invented expiry/cancellation surfaces:', code_hits);
+      print('invented expiry/extra transition rows:', spec_hits);
+      print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])"
+    timeout_s: 300
+    contains:
+      - "invented expiry/cancellation surfaces: []"
+      - "invented expiry/extra transition rows: []"
+      - "expiry columns on conflicts: []"
+
+  # THE FIVE F7 CONTRACTS, AND NO SIXTH — read out of the corpus rather than asserted about it.
+  # `event_contracts_data.json` is the mechanical projection of `events/registry.md`, which its own
+  # header names as THE SOLE CANONICAL LIST of event names, and `state-machines/registry.md` §6 says
+  # its own event table is PROVISIONAL by comparison.
+  #
+  # Four properties are read here, and each settles something the prose alone does not:
+  #   - `ConflictResolved` declares `rule_id | decision_ref` as a REQUIRED ONE-OF, which is the
+  #     mechanical form of "exactly one basis" and the reason the P5 layer refuses a resolution
+  #     carrying neither or both;
+  #   - `ConflictResolved`'s producers are CF-3 and CF-4 and NOT CF-6, which is what makes machine
+  #     §14's `DELEGATES_TO` reading — an escalated resolution emits under the id its TARGET STATE
+  #     selects — a reading of the corpus rather than an assertion about it;
+  #   - `ConflictRaised` carries THREE producers, so the cross-family seam is a registered fact and
+  #     not this file's opinion (`M7-AQ-1`, `M7-AQ-2`);
+  #   - `ConflictOpened` and `ConflictEscalated` declare NO payload fields, so the `kind` payload
+  #     shown for them in the PROVISIONAL state-machine table is not emittable.
+  #
+  # `ConflictDetected` is excluded from the unregistered-name sweep on purpose: target spec §12.7 and
+  # machine §33 name it as a TRIGGER, and a trigger is not an event. Minting it as one would be the
+  # `CorrectionInvalidatedAnEffect` mistake M6 correctly refused, and it is caught by its absence
+  # from the registered set, printed below.
+  - name: "M7 uses the five registered F7 contracts and invents no sixth"
+    command: >-
+      .venv/bin/python -c "import json,pathlib,re;
+      data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8'));
+      rows=data.get('contracts') or [];
+      byname={r['name']: r for r in rows} if isinstance(rows,list) else {};
+      print('registered F7 contracts:', sorted(n for n,r in byname.items() if r.get('family')=='F7'));
+      print('ConflictRaised producers:', sorted(byname.get('ConflictRaised',{}).get('producers') or []));
+      print('ConflictResolved producers:', sorted(byname.get('ConflictResolved',{}).get('producers') or []));
+      print('ConflictResolved requires exactly one of:',
+      [(sorted(g['members']), g['required']) for g in (byname.get('ConflictResolved',{}).get('one_of') or [])]);
+      print('ConflictOpened declared payload:', [f['name'] for f in (byname.get('ConflictOpened',{}).get('fields') or [])]);
+      print('ConflictEscalated declared payload:', [f['name'] for f in (byname.get('ConflictEscalated',{}).get('fields') or [])]);
+      print('synonym events registered:', sorted(n for n in ('ConflictExpired','ConflictCancelled','ConflictAutoResolved','ConflictWinnerChosen','ConflictDismissed','ConflictDetected') if n in byname));
+      src=pathlib.Path('src/freight_recon/conflict.py');
+      print('machine source:', 'present' if src.exists() else 'MISSING conflict.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      used=sorted(set(re.findall(r'\\b(?:Conflict|Compensation|Expectation)[A-Z][A-Za-z]*\\b', text)));
+      print('Conflict*/Compensation*/Expectation* names in the machine:', used);
+      print('unregistered names in the machine:', [u for u in used if u not in byname and u != 'ConflictDetected'])"
+    timeout_s: 300
+    contains:
+      - "registered F7 contracts: ['ConflictEscalated', 'ConflictOpened', 'ConflictPartyAttached', 'ConflictRaised', 'ConflictResolved']"
+      - "ConflictRaised producers: ['CF-1', 'EF-4c', 'IB-6']"
+      - "ConflictResolved producers: ['CF-3', 'CF-4']"
+      - "ConflictResolved requires exactly one of: [(['decision_ref', 'rule_id'], True)]"
+      - "ConflictOpened declared payload: []"
+      - "ConflictEscalated declared payload: []"
+      - "synonym events registered: []"
+      - "machine source: present"
+      - "unregistered names in the machine: []"
+
+  # M8, M9, M10 AND M12 WERE NOT BUILT ALONG THE WAY. `CF-5` reaches for a deadline and M8 owns
+  # deadlines; a blocking conflict looks like an Exception and M9 owns those; machine §27 ends a
+  # resolution in a Compensation and M10 owns that; and `CF-3` needs a REGISTERED RULE, which is M12
+  # — the single most tempting of the four, because "no rules exist yet" is exactly the gap a
+  # builder closes by writing a small rule registry. It is four units nobody asked for. The
+  # repository has already ruled on this shape three times: `event_inbox.expire_overdue` returns the
+  # accountable owner rather than minting `ExceptionRaised`, M5's binding seam APPLIES a decision
+  # rather than computing one, and M6 recorded its propagation obligation rather than building M10.
+  - name: "the expectation, exception, compensation and rule seams are fed without M8, M9, M10 or M12 being built"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      src=pathlib.Path('src/freight_recon/conflict.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_conflicts.py');
+      migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      print('machine and migration present:', bool(text) and bool(migtext));
+      print('mints another machine event:',
+      sorted(set(re.findall(r'\\bExceptionRaised\\b|\\bExceptionResolved\\b|\\bExpectationRaised\\b|\\bExpectationOverdue\\b|\\bCompensationRequired\\b|\\bCompensationApproved\\b|\\bCompensationCompleted\\b|\\bRuleProposed\\b|\\bRuleActivated\\b|\\bCM-[0-9]+\\b|\\bEC-[0-9]+\\b|\\bEX-[0-9]+\\b|\\bRU-[0-9]+\\b', text+migtext))));
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\"));
+      print('m8/m9/m10/m12 tables created by m7:',
+      [t for t in tables if t in ('expectations','exceptions','compensations','rules','rule_versions','evidence','evidence_spans')])"
+    timeout_s: 300
+    contains:
+      - "machine and migration present: True"
+      - "mints another machine event: []"
+      - "m8/m9/m10/m12 tables created by m7: []"
+
+  # THE DARK POSTURE, MEASURED — and measured the way Neyma's own guard measures it. The
+  # authoritative sweep walks `src/freight_recon/**`, because that is the production package;
+  # `scripts/` is developer tooling that ships to nobody. Two separate assertions rather than one glob
+  # over both, because a single glob cannot tell the deterministic verification probe from a real
+  # caller, and the version of this check that could not tell them apart would have to be relaxed to
+  # let the probe exist at all.
+  - name: "M7 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      files=[f for f in root.rglob('*.py')];
+      hits=sorted(str(f) for f in files
+      if f.name!='conflict.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='conflict')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='conflict' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production modules scanned:', len(files));
+      print('production importers of conflict:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of conflict: []"
+
+  - name: "the only thing outside the package that reaches M7 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='conflict')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='conflict' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching conflict:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching conflict: ['probe_phase6_conflict.py']"
+
+  # NO LIVE CONFLICT INBOX, NO PRODUCT SURFACE. M7's product form is a queue of frozen fields a
+  # human works through and resolves — so the queue and the resolve button are precisely the things
+  # that must not arrive with it. This repository already carries every surface the temptation would
+  # reach for. This walks the production package for a module that both reaches the conflict machine
+  # and reaches one of those channels, which is the shape a live conflict inbox would have, and
+  # asserts the set is empty.
+  - name: "no live conflict inbox: nothing joins the conflict machine to an inbound or outbound channel"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      CHANNELS={'ingestion','email_adapter','imap_mailbox','email_corpus','email_triage',
+      'inbox_brain','inbox_discovery','extraction','extraction_bridge','browser_use_adapter',
+      'browser_use_write','cdp_readonly','cdp_session','cdp_actuator','tms_adapter','tms_write',
+      'slack_adapter','slack_delegate','channels','alert_channel','action_callback','ops_control',
+      'mailbox_intake'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8')))) for f in root.rglob('*.py')];
+      print('modules scanned for a channel join:', len(seen));
+      print('modules joining the conflict machine to a channel:',
+      sorted(name for name,m in seen if 'conflict' in m and (m & CHANNELS)))"
+    timeout_s: 300
+    contains:
+      - "modules joining the conflict machine to a channel: []"
+
+  # M7 AUTHORIZES NOTHING, AND IT IS NOT A SECOND GATE. Entity §38 makes an open Conflict an INPUT to
+  # checkpoint step 4 — the step FAILS if any material field has one — and CLAUDE.md rule 17 keeps the
+  # checkpoint the only thing that mints a gate decision. M7 is the unit with the second-strongest
+  # temptation to become a second gate after M6, because "may this action proceed?" is literally the
+  # question `GR-10` asks it, and machine §16 says its precedence "dominates all machines that read
+  # the field" — which is a statement about PRECEDENCE, not about who admits execution.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # M6 WAS NOT REWRITTEN TO SUIT M7 — the `M7-AQ-1` protection, as a check rather than a request.
+  # `IB-6` is a REGISTERED producer of `ConflictRaised` and it already emits one: it mints a
+  # `conflict_id` of its own, rides the `conflict` aggregate, and writes no Conflict row, because
+  # when it was built there was no table to write to. That shape is exactly what `M7-AQ-1` asks
+  # about — and the cheapest way to make the question go away is to edit M6 until the answer is
+  # obvious, which would be resolving a canonical question by changing a landed unit.
+  #
+  # `CURRENT.md`'s ⛔ table forbids rebuilding or polishing M1–M6. This asserts M6's shipped shape is
+  # unchanged in the two places M7 would touch it if it were going to.
+  - name: "M6's landed IB-6 conflict seam is not rewritten by M7"
+    command: >-
+      .venv/bin/python -c "import pathlib,re;
+      ib=pathlib.Path('src/freight_recon/identity_binding_claim.py');
+      t=ib.read_text(encoding='utf-8') if ib.exists() else '';
+      print('M6 machine present:', bool(t));
+      print('M6 IB-6 still mints its own conflict id:', bool(re.search(r'conflict_id\\s*=\\s*f\\\"conf-', t)));
+      print('M6 still rides the conflict aggregate:', 'CONFLICT_AGGREGATE_TYPE = \\\"conflict\\\"' in t);
+      print('M6 still emits ConflictRaised at IB-6:', bool(re.search(r'transition_id=\\\"IB-6\\\"', t)) and 'ConflictRaised' in t)"
+    timeout_s: 300
+    contains:
+      - "M6 machine present: True"
+      - "M6 IB-6 still mints its own conflict id: True"
+      - "M6 still rides the conflict aggregate: True"
+      - "M6 still emits ConflictRaised at IB-6: True"
+
+  # M3 WAS NOT REWRITTEN TO SUIT M7 EITHER — the `M7-AQ-2` protection. `EF-4c` is the third
+  # registered producer of `ConflictRaised`, and it emits none today: it moves
+  # `ATTEMPTED → UNKNOWN_OUTCOME` and emits `VerificationConflict{unknown_reason:
+  # OBSERVATION_CONFLICTING}`. Whether it must grow that emission is a canonical question; adding it
+  # here would answer the question by editing a LANDED, tier-1 effect-boundary unit.
+  #
+  # `UNKNOWN_OUTCOME` is read beside it because it is the semantics M7 is most able to damage by
+  # accident: `GR-6` says it never silently becomes success or failure, no timer may move it, and
+  # only `EF-5`'s `RealityEstablished` closes it. Resolving a READBACK_VS_APPROVED conflict is not
+  # establishing reality.
+  - name: "M3's landed EF-4c readback seam and its UNKNOWN_OUTCOME semantics are unchanged by M7"
+    command: >-
+      .venv/bin/python -c "import pathlib,re;
+      ef=pathlib.Path('src/freight_recon/external_effect.py');
+      e=ef.read_text(encoding='utf-8') if ef.exists() else '';
+      print('M3 machine present:', bool(e));
+      i=e.find('id=\\\"EF-4c\\\"');
+      blk=e[i:i+400] if i>=0 else '';
+      m=re.search(r'events=\\(([^)]*)\\)', blk) if blk else None;
+      print('M3 EF-4c emits:', m.group(1).strip() if m else 'MISSING EF-4c row');
+      print('M3 EF-4c to_state UNKNOWN_OUTCOME:', 'EffectGrantState.UNKNOWN_OUTCOME' in blk);
+      print('M7 did not add a ConflictRaised emission to M3:', 'ConflictRaised' not in e);
+      cf=pathlib.Path('src/freight_recon/conflict.py');
+      ct=cf.read_text(encoding='utf-8') if cf.exists() else '';
+      print('M7 machine present:', bool(ct));
+      print('M7 writes no effect_grants or identity_binding_claims row:',
+      not re.search(r'(?:UPDATE|INSERT INTO)\\s+(?:effect_grants|identity_binding_claims)', ct, re.I))"
+    timeout_s: 300
+    contains:
+      - "M3 machine present: True"
+      - "M3 EF-4c emits: \"VerificationConflict\","
+      - "M3 EF-4c to_state UNKNOWN_OUTCOME: True"
+      - "M7 did not add a ConflictRaised emission to M3: True"
+      - "M7 machine present: True"
+      - "M7 writes no effect_grants or identity_binding_claims row: True"
+
+# ---------------------------------------------------------------------------
+# WHICH IDENTIFIED RISKS THIS SCENARIO VERIFIES, AND BY WHAT.
+#
+# Read by the acceptance gate. A run's generator names the risks it thinks could realistically fail;
+# the gate then asks, for each acceptance-blocking one, whether any executed scenario actually
+# verified it. An entry here is a claim by a human, checked by the machine: `checks` must have
+# executed and every assertion they produced must have passed, and `observations` are LITERAL
+# substrings those checks must have printed. The claim counts for acceptance only when all of that
+# held AND the scenario as a whole PASSED with resolvable evidence.
+#
+# WHAT IS DELIBERATELY NOT DECLARED. Nothing is declared for `ambiguous_external_effect` or
+# `timeout_after_effect`. M7 touches the outside world not at all — M3 remains the single effect
+# authority, and a `READBACK_VS_APPROVED` conflict is evidence BESIDE an `UNKNOWN_OUTCOME`, never a
+# replacement for it — so an M7 run that identifies one of those as a blocking risk is identifying a
+# risk about ANOTHER unit's behaviour and must generate a case for it or block. That absence is the
+# point: this block is an inventory of oracles, not a list of categories to wave through.
+verifies:
+  - risk_category: safety_invariant
+    claim: >-
+      While a Conflict is `RAISED`, `OPEN` or `ESCALATED` the disputed field is `conflicting` and
+      BLOCKS every consequential action on that entity — checkpoint step 4 refuses it, no Effect
+      Grant is minted on it, and the approval does not proceed. `RAISED` already blocks and
+      `ESCALATED` still blocks. M7 supplies the native state; it never becomes a second gate, and
+      `checkpoint.py` remains the only thing that mints a gate decision.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "WHILE A CONFLICT IS OPEN THE FIELD IS conflicting AND BLOCKS EVERY CONSEQUENTIAL ACTION"
+      - "A RAISED CONFLICT ALREADY BLOCKS"
+      - "AN ESCALATED CONFLICT STILL BLOCKS"
+      - "CHECKPOINT STEP 4 REFUSES A MATERIAL FIELD WITH AN OPEN CONFLICT"
+      - "NO EFFECT GRANT IS MINTED ON A CONFLICTED MATERIAL FIELD"
+      - "M7 MINTS NO GATE DECISION"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  - risk_category: authorization
+    claim: >-
+      A Conflict closes exactly two ways and there is no third. A registered, versioned deterministic
+      rule with an `rule_id` may resolve it; an authenticated human with a `decision_ref` may resolve
+      it; and confidence, recency, ambient source priority, a model and a counterparty may not. A
+      model can neither own nor resolve a Conflict, and a forged, inactive or wrong-tenant human
+      fails closed.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the conflict owner is a FOREIGN KEY into tenant_humans, not a convention"
+    observations:
+      - "A REGISTERED, VERSIONED, DETERMINISTIC RULE MAY RESOLVE; AN UNREGISTERED ONE MAY NOT"
+      - "CONFIDENCE NEVER RESOLVES A CONFLICT"
+      - "RECENCY NEVER RESOLVES A CONFLICT"
+      - "SOURCE PRIORITY IS A REGISTERED RULE OR IT IS NOTHING"
+      - "A MODEL NEVER RESOLVES A CONFLICT"
+      - "A MODEL CANNOT OWN A CONFLICT"
+      - "AN AUTHENTICATED HUMAN RESOLVES WITH A decision_ref"
+      - "A COUNTERPARTY NEVER RESOLVES A CONFLICT"
+      - "A FORGED OR INACTIVE HUMAN FAILS CLOSED"
+      - "conflicts foreign keys -> ['tenant_humans']"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      Disagreement becomes visible and blocking rather than silently resolved. All six canonical
+      kinds raise — system-vs-system, claim-vs-claim, claim-vs-observation, inferrer-vs-owner,
+      readback-vs-approved and rule-vs-rule — the `INFERRER_VS_OWNER` conflict records that one party
+      is `OWNER_ASSERTED`, a readback contradicting the approved facts is not an ordinary failure,
+      two conflicting standing rules fail closed rather than auto-merging, and Neyma never picks a
+      winner.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the six canonical conflict kinds are a database constraint, and there is no seventh"
+      - "every conflict party carries its own canonical provenance_class, tenant-first"
+    observations:
+      - "A CONFLICT IS TWO OR MORE MUTUALLY EXCLUSIVE CLAIMS ON ONE FIELD, MADE VISIBLE AND BLOCKING"
+      - "AN INFERRER_VS_OWNER CONFLICT RECORDS THAT ONE PARTY IS OWNER_ASSERTED"
+      - "A READBACK CONTRADICTING THE APPROVED FACTS IS A CONFLICT, NOT AN ORDINARY FAILURE"
+      - "TWO CONFLICTING STANDING RULES FAIL CLOSED; NEYMA NEVER PICKS A WINNER"
+      - "'RULE_VS_RULE'"
+      - "'OWNER_ASSERTED'"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The five canonical states are a database CHECK with no sixth — no `CANCELLED`, no `EXPIRED`, no
+      bare `RESOLVED` imported from M9 — and the seven `CF-*` rows are the whole lifecycle. A timer
+      escalates and never resolves, a Conflict never expires, `AutoResolve` is an illegal transition,
+      and an escalated Conflict resolves by TARGET STATE rather than by position. New conflicting
+      evidence after a resolution raises a NEW Conflict; the prior resolution stands in history.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the five canonical conflict states are a database constraint, and there is no sixth"
+      - "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented"
+    observations:
+      - "A CONFLICT AGES AND ESCALATES"
+      - "A TIMER NEVER RESOLVES A CONFLICT"
+      - "A CONFLICT NEVER EXPIRES"
+      - "AN ESCALATED CONFLICT RESOLVES BY TARGET STATE, NEVER BY POSITION"
+      - "NEW CONFLICTING EVIDENCE AFTER A RESOLUTION RAISES A NEW CONFLICT"
+      - "invented expiry/cancellation surfaces: []"
+      - "invented expiry/extra transition rows: []"
+
+  - risk_category: missing_data
+    claim: >-
+      A required basis that is absent fails closed rather than being assumed. An ownerless Conflict is
+      structurally impossible; a resolution with neither a `rule_id` nor a `decision_ref` is an
+      illegal transition; a rule resolution without a registered rule id does not happen; and a
+      Conflict is never treated as `unknown` — we do not lack information, we have too much and it
+      disagrees.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the resolution basis and the owner are CHECK constraints, not conventions"
+    observations:
+      - "A CONFLICT IS NOT unknown: WE HAVE TOO MUCH INFORMATION, AND IT DISAGREES"
+      - "AN OWNERLESS CONFLICT IS STRUCTURALLY IMPOSSIBLE"
+      - "A CONFLICT HAS A NAMED HUMAN OWNER FROM CREATION"
+      - "A RESOLUTION WITH NEITHER A RULE NOR A DECISION IS AN ILLEGAL TRANSITION"
+      - "RESOLVED_BY_RULE requires rule_id: True"
+      - "RESOLVED_BY_HUMAN requires decision_ref: True"
+      - "owner_id NOT NULL: True"
+
+  - risk_category: concurrency
+    claim: >-
+      At most one open Conflict exists per `(tenant, entity_ref, field)`, and that is a PARTIAL UNIQUE
+      index over the three open states rather than an application-level check two writers both pass.
+      Concurrent detectors produce one Conflict and lose no party; competing resolutions serialize so
+      exactly one wins; and a stale expected version raises rather than silently overwriting.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "one open conflict per field is a PARTIAL UNIQUE index over the three open states, tenant-first"
+    observations:
+      - "AT MOST ONE OPEN CONFLICT PER TENANT, ENTITY AND FIELD"
+      - "CONCURRENT DETECTORS PRODUCE ONE CONFLICT AND LOSE NO PARTY"
+      - "COMPETING RESOLUTIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+      - "A LOST UPDATE ON A CONFLICT IS REFUSED"
+      - "CREATE UNIQUE INDEX"
+      - "ESCALATED"
+
+  - risk_category: cross_tenant
+    claim: >-
+      The same `entity_ref` and the same `field` in two tenants are two isolated Conflicts, and no
+      Conflict is read, attached to or resolved across a tenant boundary. A cross-tenant party
+      reference and a wrong-tenant resolution both fail closed. Tenant is the first partition
+      dimension, in the index, in the party table and in every query.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the conflict layer, tenant-first"
+      - "one open conflict per field is a PARTIAL UNIQUE index over the three open states, tenant-first"
+      - "every conflict party carries its own canonical provenance_class, tenant-first"
+    observations:
+      - "THE SAME entity_ref AND field IN TWO TENANTS ARE TWO ISOLATED CONFLICTS"
+      - "A CROSS-TENANT PARTY REFERENCE FAILS CLOSED"
+      - "A WRONG-TENANT RESOLUTION FAILS CLOSED"
+      - "problems: []"
+      - "party tenant NOT NULL: True"
+
+  - risk_category: malformed_input
+    claim: >-
+      A forged human, an inactive human, a malformed conflict and an injected competing claim all fail
+      closed rather than becoming half-written rows or control. An invented fault name is refused with
+      a non-zero exit and a readable message; so are a conflict-expiry fault and a cancel-conflict
+      fault, because the transitions they name are not in the enumeration.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "a conflict-expiry fault does not exist, because a conflict never expires"
+      - "a cancel-conflict fault does not exist, because the transition table enumerates none"
+      - "the M7 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+      - "AN INJECTED COMPETING CLAIM YIELDS A FROZEN ENTITY AND A HUMAN, NEVER CONTROL"
+      - "A FORGED OR INACTIVE HUMAN FAILS CLOSED"
+
+  - risk_category: idempotency
+    claim: >-
+      A redelivered detection is a no-op through the consumer inbox, a duplicate detection of the same
+      disagreement raises nothing new, and a second disagreeing source attaches a party to the
+      Conflict that already exists rather than starting another. Duplicate pressure produces no second
+      Conflict and no lost party.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+    observations:
+      - "A REDELIVERED DETECTION IS A NO-OP"
+      - "A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT"
+      - "AT MOST ONE OPEN CONFLICT PER TENANT, ENTITY AND FIELD"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replay rebuilds the conflict, not the decision. A full-history rebuild reconstructs the COMPLETE
+      party set from `ConflictRaised`'s parties plus every subsequent `ConflictPartyAttached`, the
+      field is still frozen after reconstruction, and a replay can neither resolve a Conflict nor
+      duplicate one. Replay mints no authority and causes no external effect.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+    observations:
+      - "A REBUILD RECONSTRUCTS THE COMPLETE PARTY SET"
+      - "THE FIELD IS STILL FROZEN AFTER RECONSTRUCTION"
+      - "replay: 0 resolutions, 0 duplicate conflicts, 0 lost parties, 0 new authority, 0 external effects"
+
+  - risk_category: restart_recovery
+    claim: >-
+      An open Conflict survives a restart, and the frozen field stays blocking until it is resolved. A
+      restart before acknowledgement and a restart after escalation both reach the canonical state,
+      and neither produces a second Conflict nor loses a party.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+    observations:
+      - "A RESTART LEAVES THE OPEN CONFLICT OPEN"
+      - "THE FIELD IS STILL FROZEN AFTER RECONSTRUCTION"
+
+  - risk_category: stale_state
+    claim: >-
+      Nothing closes a Conflict quietly. A party retraction never silently closes it, a resolved
+      Conflict is retained rather than deleted, the resolution basis is retained with it, and a
+      resolution unfreezes the field only because the Conflict itself left the open set. No expiry, no
+      sweep and no reaper exists to make a standing disagreement stop being visible.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented"
+    observations:
+      - "A PARTY RETRACTION NEVER SILENTLY CLOSES THE CONFLICT"
+      - "A RESOLVED CONFLICT IS RETAINED, NEVER DELETED"
+      - "RESOLUTION UNFREEZES THE FIELD"
+      - "expiry columns on conflicts: []"
+
+  - risk_category: approval_required
+    claim: >-
+      An open Conflict on a material field means the M4 approval cannot proceed — `consistent` fails —
+      and the human resolution path itself requires an authenticated human decision. M7 feeds the
+      existing approval and checkpoint seams; it never rebuilds either and never becomes a second one.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "AN OPEN CONFLICT BLOCKS THE APPROVAL"
+      - "AN AUTHENTICATED HUMAN RESOLVES WITH A decision_ref"
+      - "M7 MINTS NO GATE DECISION"
+
+  - risk_category: persistence_failure
+    claim: >-
+      Raising the Conflict and freezing the field are ONE commit, and a persistence failure rolls back
+      both rather than leaving a frozen field nobody can explain or a Conflict the field never heard
+      about. A pre-M7 database taken through the migration reaches the canonical conflict shape, a
+      freshly created canonical database reports no readiness problems, and the invariants that matter
+      — the owner, the resolution basis, the one open conflict, the party provenance — are enforced by
+      the database rather than asserted in a docstring.
+    checks:
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the conflict layer, tenant-first"
+      - "the resolution basis and the owner are CHECK constraints, not conventions"
+      - "every conflict party carries its own canonical provenance_class, tenant-first"
+    observations:
+      - "RAISING THE CONFLICT AND FREEZING THE FIELD ARE ONE COMMIT"
+      - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL CONFLICT SHAPE"
+      - "THE DATABASE ENFORCES THE CONFLICT INVARIANTS"
+      - "problems: []"
+      - "'provenance_class'"
+
+  - risk_category: regression
+    claim: >-
+      M7 adds two tables and edits the canonical schema, so every layer that reads a canonical database
+      is re-run against this change rather than assumed: the P3 kernel, the P4 boundary, the P5
+      transport with its durable timers and canonical event contracts, and the M1–M6 batteries. M6's,
+      M5's and M4's own probes still report their behaviours as specified with M7's tables present;
+      M6's landed `IB-6` conflict seam and M3's landed `EF-4c` readback seam are both unchanged, so
+      neither authority question was answered by editing a landed unit; no M8, M9, M10 or M12 machine
+      arrived along the way; and every M7 guard is proven capable of failing.
+    checks:
+      # The regression claim includes the M7-owned half — that M6 was not rewritten, that M3's
+      # UNKNOWN_OUTCOME semantics are untouched, that no neighbouring machine was built — and the
+      # probe is the command that observes those properties from inside M7's own story. The pytest
+      # anchors below re-run the layers M7 could break; none of them narrates, so none can emit the
+      # three literals this claim requires. Naming the probe here maps the claim to the command that
+      # actually proves that half of it. It is already run once by this scenario; naming it a second
+      # time re-reads its result, never re-runs it.
+      - "drive the Conflict machine through a brokerage narrative, and attack it"
+      - "the P3 checkpoint kernel M7 must not disturb, unbroken"
+      - "the P4 governed effect boundary M7 must not widen, unbroken"
+      - "the P5 transport, replay, timers and canonical event contracts M7 rides, unbroken"
+      - "M1, M2, M3, M4, M5 and M6, whose schema M7 extends, unbroken"
+      - "M6 still behaves as specified with M7's tables in the schema"
+      - "M5 still behaves as specified with M7's tables in the schema"
+      - "M4 still behaves as specified with M7's tables in the schema"
+      - "M6's landed IB-6 conflict seam is not rewritten by M7"
+      - "M3's landed EF-4c readback seam and its UNKNOWN_OUTCOME semantics are unchanged by M7"
+      - "the expectation, exception, compensation and rule seams are fed without M8, M9, M10 or M12 being built"
+      - "the M7 mutation battery"
+    observations:
+      - "mutants caught"
+      - "behaviours as specified, 0 wrong"
+      - "THE M6 CLAIM MACHINE IS UNCHANGED"
+      - "THE M3 UNKNOWN_OUTCOME SEMANTICS ARE UNCHANGED"
+      - "THE M8, M9, M10 AND M12 MACHINES ARE NOT BUILT"
+      - "M6 IB-6 still mints its own conflict id: True"
+      - "M3 EF-4c emits: \"VerificationConflict\","
+      - "mints another machine event: []"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with `tasks/neyma_p6_m7.md`, which
+# states them verbatim to the builder. They are matched as substrings against everything observed —
+# nothing interprets them.
+#
+# Note what is NOT here. There is no required literal about how `IB-6`'s `ConflictRaised`
+# materializes an M7 row, none about whether `EF-4c` must emit one, and none about how a Conflict is
+# cancelled when the disagreement disappears: the repository's own authority does not currently
+# settle any of the three (see the header and `tasks/neyma_p6_m7.md` §3.8). Every literal below is
+# one that every reading agrees on.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "A CONFLICT IS TWO OR MORE MUTUALLY EXCLUSIVE CLAIMS ON ONE FIELD, MADE VISIBLE AND BLOCKING"
+  - "A CONFLICT IS NOT unknown: WE HAVE TOO MUCH INFORMATION, AND IT DISAGREES"
+  - "RAISING THE CONFLICT AND FREEZING THE FIELD ARE ONE COMMIT"
+  - "A CONFLICT HAS A NAMED HUMAN OWNER FROM CREATION"
+  - "AN OWNERLESS CONFLICT IS STRUCTURALLY IMPOSSIBLE"
+  - "A MODEL CANNOT OWN A CONFLICT"
+  - "THE SIX CONFLICT KINDS ARE CLOSED, AND THERE IS NO SEVENTH"
+  - "AN INFERRER_VS_OWNER CONFLICT RECORDS THAT ONE PARTY IS OWNER_ASSERTED"
+  - "A READBACK CONTRADICTING THE APPROVED FACTS IS A CONFLICT, NOT AN ORDINARY FAILURE"
+  - "TWO CONFLICTING STANDING RULES FAIL CLOSED; NEYMA NEVER PICKS A WINNER"
+  - "AN INJECTED COMPETING CLAIM YIELDS A FROZEN ENTITY AND A HUMAN, NEVER CONTROL"
+  - "WHILE A CONFLICT IS OPEN THE FIELD IS conflicting AND BLOCKS EVERY CONSEQUENTIAL ACTION"
+  - "A RAISED CONFLICT ALREADY BLOCKS"
+  - "AN ESCALATED CONFLICT STILL BLOCKS"
+  - "CHECKPOINT STEP 4 REFUSES A MATERIAL FIELD WITH AN OPEN CONFLICT"
+  - "NO EFFECT GRANT IS MINTED ON A CONFLICTED MATERIAL FIELD"
+  - "AN OPEN CONFLICT BLOCKS THE APPROVAL"
+  - "M7 MINTS NO GATE DECISION"
+  - "A REGISTERED, VERSIONED, DETERMINISTIC RULE MAY RESOLVE; AN UNREGISTERED ONE MAY NOT"
+  - "CONFIDENCE NEVER RESOLVES A CONFLICT"
+  - "RECENCY NEVER RESOLVES A CONFLICT"
+  - "SOURCE PRIORITY IS A REGISTERED RULE OR IT IS NOTHING"
+  - "A MODEL NEVER RESOLVES A CONFLICT"
+  - "AN AUTHENTICATED HUMAN RESOLVES WITH A decision_ref"
+  - "A COUNTERPARTY NEVER RESOLVES A CONFLICT"
+  - "A FORGED OR INACTIVE HUMAN FAILS CLOSED"
+  - "A WRONG-TENANT RESOLUTION FAILS CLOSED"
+  - "A RESOLUTION CARRIES EXACTLY ONE OF rule_id OR decision_ref"
+  - "A RESOLUTION WITH NEITHER A RULE NOR A DECISION IS AN ILLEGAL TRANSITION"
+  - "RESOLUTION UNFREEZES THE FIELD"
+  - "A RESOLVED CONFLICT IS RETAINED, NEVER DELETED"
+  - "NEW CONFLICTING EVIDENCE AFTER A RESOLUTION RAISES A NEW CONFLICT"
+  - "A CONFLICT AGES AND ESCALATES"
+  - "A TIMER NEVER RESOLVES A CONFLICT"
+  - "A CONFLICT NEVER EXPIRES"
+  - "AN ESCALATED CONFLICT RESOLVES BY TARGET STATE, NEVER BY POSITION"
+  - "A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT"
+  - "AT MOST ONE OPEN CONFLICT PER TENANT, ENTITY AND FIELD"
+  - "EACH PARTY CARRIES ITS OWN provenance_class, CARRIED NEVER STRENGTHENED"
+  - "CONCURRENT DETECTORS PRODUCE ONE CONFLICT AND LOSE NO PARTY"
+  - "A PARTY RETRACTION NEVER SILENTLY CLOSES THE CONFLICT"
+  - "A REBUILD RECONSTRUCTS THE COMPLETE PARTY SET"
+  - "THE FIELD IS STILL FROZEN AFTER RECONSTRUCTION"
+  - "replay: 0 resolutions, 0 duplicate conflicts, 0 lost parties, 0 new authority, 0 external effects"
+  - "A RESTART LEAVES THE OPEN CONFLICT OPEN"
+  - "THE SAME entity_ref AND field IN TWO TENANTS ARE TWO ISOLATED CONFLICTS"
+  - "A CROSS-TENANT PARTY REFERENCE FAILS CLOSED"
+  - "A LOST UPDATE ON A CONFLICT IS REFUSED"
+  - "COMPETING RESOLUTIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+  - "A REDELIVERED DETECTION IS A NO-OP"
+  - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL CONFLICT SHAPE"
+  - "THE DATABASE ENFORCES THE CONFLICT INVARIANTS"
+  - "THE M6 CLAIM MACHINE IS UNCHANGED"
+  - "THE M3 UNKNOWN_OUTCOME SEMANTICS ARE UNCHANGED"
+  - "THE M8, M9, M10 AND M12 MACHINES ARE NOT BUILT"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M7 exists to prevent has just
+  # happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### CONFLICT AUTO-RESOLVED ###"
+  - "### TIMER RESOLVED A CONFLICT ###"
+  - "### CONFLICT EXPIRED ###"
+  - "### CONFLICT DELETED ###"
+  - "### CONFLICT SILENTLY CANCELLED ###"
+  - "### MODEL RESOLVED A CONFLICT ###"
+  - "### CONFIDENCE RESOLVED A CONFLICT ###"
+  - "### RECENCY RESOLVED A CONFLICT ###"
+  - "### SOURCE PRIORITY RESOLVED WITHOUT A RULE ###"
+  - "### UNREGISTERED RULE RESOLVED A CONFLICT ###"
+  - "### RESOLVED WITHOUT A RULE OR A DECISION ###"
+  - "### TWO RESOLUTION BASES ACCEPTED ###"
+  - "### COUNTERPARTY RESOLVED A CONFLICT ###"
+  - "### FORGED HUMAN ACCEPTED ###"
+  - "### INACTIVE HUMAN ACCEPTED ###"
+  - "### OWNERLESS CONFLICT CREATED ###"
+  - "### MODEL BECAME THE CONFLICT OWNER ###"
+  - "### CONFLICT WITHOUT ITS FROZEN FIELD ###"
+  - "### FIELD FROZEN WITHOUT ITS CONFLICT ###"
+  - "### CONSEQUENTIAL ACTION PROCEEDED ON AN OPEN CONFLICT ###"
+  - "### EFFECT GRANT MINTED ON A CONFLICTED FIELD ###"
+  - "### APPROVAL PROCEEDED ON AN OPEN CONFLICT ###"
+  - "### TWO OPEN CONFLICTS FOR ONE FIELD ###"
+  - "### A SECOND CONFLICT WAS RAISED INSTEAD OF A PARTY ###"
+  - "### PARTY LOST ###"
+  - "### PARTY PROVENANCE STRENGTHENED ###"
+  - "### CROSS-TENANT PARTY ACCEPTED ###"
+  - "### CROSS-TENANT RESOLUTION ACCEPTED ###"
+  - "### ESCALATION RESOLVED BY POSITION ###"
+  - "### NEYMA PICKED A WINNER ###"
+  - "### RULE_VS_RULE AUTO-MERGED ###"
+  - "### READBACK CONTRADICTION LAUNDERED INTO A NORMAL FAILURE ###"
+  - "### UNKNOWN_OUTCOME SILENTLY RESOLVED ###"
+  - "### REPLAY RESOLVED A CONFLICT ###"
+  - "### REPLAY DUPLICATED A CONFLICT ###"
+  - "### REPLAY REBUILT A STALE PARTY SET ###"
+  - "### DOWNSTREAM EFFECT DURING REPLAY ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### M6 CLAIM ROW REWRITTEN BY M7 ###"
+  - "### COMPENSATION FABRICATED ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6 work is
+# largely untracked and those commands would destroy it irrecoverably.
+teardown: []
