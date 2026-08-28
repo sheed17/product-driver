@@ -61,6 +61,7 @@ from .scenario_plan import (
     task_digest,
 )
 from .scenario_validation import (
+    ApprovedInvocationProbe,
     ApprovedCommands,
     ValidationContext,
     established_observations_from,
@@ -265,6 +266,7 @@ class ScenarioPlanner:
         permanent_scenarios: Sequence[Scenario] = (),
         founder: Any = None,
         browser_enabled: bool = False,
+        contract_probe: Callable[[str], Any] | None = None,
         emit: Callable[[str], None] = lambda _m: None,
     ) -> None:
         #: Whether this run can actually drive a browser. Passed to the
@@ -278,6 +280,10 @@ class ScenarioPlanner:
         self.permanent_scenarios = list(permanent_scenarios)
         self.founder = founder
         self.emit = emit
+        #: Overridable so a test can answer from recorded output instead of
+        #: running the real program. Left unset on the real path, where the
+        #: probe is built against the repository under test.
+        self._contract_probe_cache = contract_probe
 
         self.plan = GeneratedScenarioPlan()
         # The base scenario alone: it is the only permanent scenario a run's
@@ -742,6 +748,19 @@ class ScenarioPlanner:
                         return out
         return out
 
+    @property
+    def _contract_probe(self) -> ApprovedInvocationProbe:
+        """One probe per planner, so its cache spans every wave of a run."""
+        probe = self._contract_probe_cache
+        if probe is None:
+            probe = ApprovedInvocationProbe(
+                self.repo,
+                approved=self.approved_commands,
+                timeout_s=self.config.contract_probe_timeout_s,
+            )
+            self._contract_probe_cache = probe
+        return probe
+
     def _validation_context(self) -> ValidationContext:
         return ValidationContext(
             approved_commands=self.approved_commands,
@@ -754,6 +773,11 @@ class ScenarioPlanner:
                     *([self.base_scenario] if self.base_scenario else []),
                 ]
             ),
+            # The one thing no file in either repository can answer: what a
+            # selector-narrowed invocation actually prints. Asked only when the
+            # established map contests an attribution, at most once per
+            # invocation, and only of commands already in the approved set.
+            contract_probe=self._contract_probe,
             grounding_tokens=grounding_tokens_from(self._unit),
             principle_tokens=principle_tokens_from(self.founder),
             existing_signatures=self.plan.signatures()

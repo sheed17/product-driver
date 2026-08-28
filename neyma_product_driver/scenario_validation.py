@@ -26,13 +26,18 @@ wave record, so a rejected proposal is visible evidence rather than a silent gap
 
 from __future__ import annotations
 
+import ast
+import os
 import re
+import signal
+import subprocess
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 from urllib.parse import urlparse
 
 from .command_guard import classify_command, classify_worktree_ownership, is_secret_path
+from .runner import child_env
 from .scenario_plan import (
     EFFECT_FAMILY,
     GeneratedRequest,
@@ -355,6 +360,10 @@ class ValidationContext:
     #: :func:`unattributed_observations`; empty is safe, and simply means the
     #: only basis a generated scenario can offer is its own.
     established_observations: dict[str, frozenset[str]] = field(default_factory=dict)
+    #: Asks one approved invocation what it actually prints. Supplied by the
+    #: planner; ``None`` in a context that cannot run anything, which is safe
+    #: because an unanswerable contest is refused rather than waved through.
+    contract_probe: "Callable[[str], ContractProbeResult] | None" = None
 
     def grounds_requirement(self, reference: str) -> bool:
         text = (reference or "").strip().lower()
@@ -490,6 +499,325 @@ def _attributed_literals(generated: GeneratedScenario) -> set[str]:
     return {text for text in out if str(text).strip()}
 
 
+# --------------------------------------------------------------------------
+# Invocation shape — what a narrowing is, and what it can be asked
+# --------------------------------------------------------------------------
+
+
+def _invocation_tokens(command: str) -> tuple[str, ...]:
+    """The normalized command as whitespace-separated tokens.
+
+    Naive on purpose. A quoted argument containing spaces splits into several
+    tokens, and that is harmless here because both sides of every comparison
+    below are split the same way — the only question ever asked is whether one
+    invocation is the other plus a tail, and that is answered identically
+    whichever way a quoted region is chopped, as long as it is chopped
+    consistently.
+    """
+    normalized = _norm_command(command)
+    return tuple(normalized.split(" ")) if normalized else ()
+
+
+def _narrows(outer: str, inner: str) -> bool:
+    """``outer`` is ``inner`` plus a non-empty, token-aligned argument tail.
+
+    This is the same shape :meth:`ApprovedCommands.approves` accepts — a human
+    approved a command and a model appended arguments — seen from the other
+    side. There it answers "may this run". Here it answers "is this a different
+    observable contract from the one a human wrote down", and the answer is yes:
+    a selector narrows what the program does, so what it prints is a *part* of
+    what the approved form prints, and nothing static can say which part.
+    """
+    outer_tokens, inner_tokens = _invocation_tokens(outer), _invocation_tokens(inner)
+    return (
+        len(outer_tokens) > len(inner_tokens) > 0
+        and outer_tokens[: len(inner_tokens)] == inner_tokens
+    )
+
+
+#: The executor's own assertion label for a `contains` check, as
+#: :meth:`ScenarioExecutor._do_command` writes it: ``f"{name}: contains {needle!r}"``.
+#: A model that reads a result file and copies a target back into a proposal
+#: reproduces this shape, and the prose in front of the literal must not become
+#: a way to assert a literal nothing was asked about.
+_WRAPPED_LITERAL = re.compile(r"^.*?: contains (?P<repr>['\"].*['\"])$", re.DOTALL)
+
+
+def unwrap_literal(text: str) -> str:
+    """The literal an observation wrapper quotes, or ``text`` unchanged.
+
+    Deterministic and exact: the wrapper is recognized only in the one shape the
+    executor emits, and the quoted region is decoded with
+    :func:`ast.literal_eval` rather than by stripping characters, so a literal
+    that itself contains quotes survives. Anything that is not exactly that
+    shape is returned untouched — this normalizes, it never guesses, and it
+    never matches prose.
+    """
+    raw = str(text or "")
+    match = _WRAPPED_LITERAL.match(raw.strip())
+    if not match:
+        return raw
+    try:
+        inner = ast.literal_eval(match.group("repr"))
+    except (ValueError, SyntaxError):
+        return raw
+    return inner if isinstance(inner, str) and inner.strip() else raw
+
+
+def _kill_group(proc: "subprocess.Popen[str]") -> None:
+    """Kill the probe and everything it started, and never raise doing it."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+@dataclass(frozen=True)
+class ContractProbeResult:
+    """What an invocation actually printed, when it could be asked at all."""
+
+    #: False when the invocation could not be run to a conclusion — refused,
+    #: timed out, failed to launch. An undetermined contract is not a licence:
+    #: the caller refuses the oracle, because it still cannot prove it.
+    determined: bool
+    output: str = ""
+    #: Why it could not be determined, in words a human can act on.
+    detail: str = ""
+
+
+class ApprovedInvocationProbe:
+    """Asks one approved invocation what it prints, once, and remembers.
+
+    This is not a second oracle system. It runs the same command string the
+    executor would run, in the same repository, and applies the same
+    exact-substring test the executor applies — the only difference is *when*,
+    and therefore how a mismatch is classified. Asked before the scenario is
+    compiled, a sentence the selected invocation cannot print is a generation
+    contract error. Asked after, it is indistinguishable from a product defect,
+    which is the whole failure this exists to prevent.
+
+    Three constraints make it safe to run a command in order to validate one:
+
+    * **only already-approved invocations.** A command outside the approved set
+      is refused by :meth:`ApprovedCommands.approves` before this is reached, and
+      refused again here, so validation never runs something a scenario would
+      not have been permitted to run anyway;
+    * **bounded.** A hard timeout, and a timeout is an *undetermined* contract,
+      never a satisfied one;
+    * **asked at most once.** Results are cached per normalized invocation, so a
+      wave of scenarios sharing a probe case costs one execution between them.
+    """
+
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        approved: "ApprovedCommands | None" = None,
+        timeout_s: int = 120,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        self.repo = Path(repo)
+        self.approved = approved
+        self.timeout_s = max(1, int(timeout_s))
+        self.env = dict(env or {})
+        self._cache: dict[str, ContractProbeResult] = {}
+
+    def __call__(self, command: str) -> ContractProbeResult:
+        key = _norm_command(command)
+        if key in self._cache:
+            return self._cache[key]
+        result = self._ask(key)
+        self._cache[key] = result
+        return result
+
+    def _ask(self, command: str) -> ContractProbeResult:
+        if not command:
+            return ContractProbeResult(False, detail="empty command")
+        if self.approved is not None:
+            ok, why = self.approved.approves(command)
+            if not ok:
+                return ContractProbeResult(
+                    False, detail=f"not an approved invocation, so it was not run: {why}"
+                )
+        try:
+            # `start_new_session` gives the command its own process group, so the
+            # timeout below can take its children with it. The executor runs this
+            # same string the same way for the same reason: a probe that outlives
+            # its bound and leaves a subprocess behind has not been bounded.
+            proc = subprocess.Popen(  # noqa: S602 - the executor runs this same string
+                command,
+                shell=True,
+                cwd=str(self.repo),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=child_env(self.env) if self.env else None,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            return ContractProbeResult(False, detail=f"failed to launch: {exc}")
+
+        try:
+            stdout, stderr = proc.communicate(timeout=self.timeout_s)
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            proc.communicate()
+            return ContractProbeResult(
+                False,
+                detail=(
+                    f"did not finish within {self.timeout_s}s, so what it prints is unknown"
+                ),
+            )
+        if proc.returncode == 127:
+            # POSIX "command not found". A non-zero exit is otherwise perfectly
+            # normal here — a probe refusing a bad fault exits 2 and printing the
+            # refusal is the whole point — but 127 means the shell never ran
+            # anything, and an empty contract is not evidence of an empty output.
+            return ContractProbeResult(
+                False,
+                detail=(
+                    "the shell could not run it (exit 127), so what it prints is unknown: "
+                    + " ".join((stderr or "").split())[:160]
+                ),
+            )
+        return ContractProbeResult(True, output=f"{stdout}\n{stderr}")
+
+
+def _operation_assertions(
+    generated: GeneratedScenario,
+) -> list[tuple[str, str, str]]:
+    """``(invocation, label, literal)`` for every literal a *command* asserts.
+
+    Only operations that run a command are listed. An HTTP expectation or a
+    browser ``expect_text`` has no invocation to interrogate, and is left to the
+    rules that already cover it.
+    """
+    out: list[tuple[str, str, str]] = []
+
+    def take(command: str, label: str, literals: Iterable[str]) -> None:
+        invocation = _norm_command(command)
+        if not invocation:
+            return
+        for literal in literals:
+            text = unwrap_literal(literal)
+            if text.strip():
+                out.append((invocation, label or invocation, text))
+
+    for action in generated.actions:
+        if action.command:
+            take(action.command, action.name, action.expect_contains)
+        if action.state_check is not None:
+            take(
+                action.state_check.command,
+                action.state_check.name,
+                action.state_check.contains,
+            )
+    for check in generated.persisted_state_checks:
+        take(check.command, check.name, check.contains)
+    return out
+
+
+def contested_producers(
+    invocation: str, literal: str, established: dict[str, frozenset[str]]
+) -> tuple[str, ...]:
+    """Invocations a human bound ``literal`` to that ``invocation`` is not.
+
+    Contested means the repository already says where this sentence comes from,
+    and it does not say it comes from here. Two shapes count, and both are the
+    same fact — a selector was applied and the binding sits on the other side of
+    it:
+
+    * ``invocation`` narrows an approved form the literal is bound to. The
+      approved form runs the whole program; this one runs a selection of it;
+    * ``invocation`` and the bound form are *sibling* narrowings of one approved
+      form — different selections of the same program.
+
+    Silence is still not contested. A literal no file binds to anything returns
+    ``()`` here and keeps the cheap path, which is what leaves a scenario free to
+    name output no human has written down.
+    """
+    normalized = _norm_command(invocation)
+    # A human wrote this exact invocation down and said it prints this. That is
+    # the strongest basis there is, and it outranks any binding on a wider or a
+    # sibling form — there is nothing left to contest.
+    if _emitted_by(literal, established.get(normalized, ())):
+        return ()
+    approved_forms = [key for key in established if _narrows(normalized, key)]
+    if not approved_forms:
+        return ()
+    out: list[str] = []
+    for command, literals in established.items():
+        if command == normalized or not _emitted_by(literal, literals):
+            continue
+        if any(command == form or _narrows(command, form) for form in approved_forms):
+            out.append(command)
+    return tuple(sorted(out))
+
+
+def cross_contract_observations(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[tuple[str, str, str, tuple[str, ...], str]]:
+    """Literals a scenario asserts against an invocation that cannot produce them.
+
+    The hole this closes is the one a scenario walks straight through when it
+    attributes an oracle to its own command. Naming the operation that prints a
+    sentence is free — a model writes the command and the expectation in the same
+    breath — so self-attribution proves only that the model believed it, and a
+    scenario that runs ``--case A`` while requiring the sentence ``--case B``
+    prints fails closed against a perfectly correct product and arrives at the
+    gate as a product defect.
+
+    So when the repository contests the attribution — the literal is bound to a
+    *different* invocation of the same program, on the other side of a selector —
+    belief is not enough and the invocation is asked. It is the only thing that
+    can answer: no static source in this repository maps a selector value to the
+    output that selection prints, and inventing one from the selector's spelling
+    would be exactly the prose matching this rule exists to refuse.
+
+    Returns ``[(invocation, label, literal, contesting producers, detail), ...]``.
+    """
+    established = context.established_observations or {}
+    if not established:
+        return []
+
+    out: list[tuple[str, str, str, tuple[str, ...], str]] = []
+    for invocation, label, literal in _operation_assertions(generated):
+        producers = contested_producers(invocation, literal, established)
+        if not producers:
+            continue
+        probe = context.contract_probe
+        if probe is None:
+            out.append(
+                (
+                    invocation,
+                    label,
+                    literal,
+                    producers,
+                    "this run cannot ask an invocation what it prints, so the "
+                    "attribution cannot be proven",
+                )
+            )
+            continue
+        answer = probe(invocation)
+        if not answer.determined:
+            out.append((invocation, label, literal, producers, answer.detail))
+            continue
+        if literal not in answer.output:
+            out.append(
+                (
+                    invocation,
+                    label,
+                    literal,
+                    producers,
+                    "the invocation was run and did not print it",
+                )
+            )
+    return out
+
+
 def unattributed_observations(
     generated: GeneratedScenario, context: ValidationContext
 ) -> list[tuple[str, tuple[str, ...]]]:
@@ -521,11 +849,27 @@ def unattributed_observations(
     the refusal can say where the literal *does* come from, which is the
     difference between "we refuse this" and a reason a human can act on.
     """
-    asserted = [text for text in generated.expected_observations if str(text).strip()]
+    asserted = [
+        unwrap_literal(text)
+        for text in generated.expected_observations
+        if str(unwrap_literal(text)).strip()
+    ]
     if not asserted:
         return []
 
-    attributed = _attributed_literals(generated)
+    # A literal the invocation was asked about and did not print is no longer
+    # an attribution. Without this subtraction the scenario-level copy of a
+    # refused oracle still finds a basis in the very operation that was just
+    # proven unable to emit it, and the refusal reads as one problem when it is
+    # two: the command asserts what it cannot print, and the run at large is
+    # asked to find it somewhere.
+    refuted = {
+        literal for _invocation, _label, literal, _producers, _detail
+        in cross_contract_observations(generated, context)
+    }
+    attributed = {
+        literal for literal in _attributed_literals(generated) if literal not in refuted
+    }
     established = context.established_observations or {}
     run_verbatim = {
         _norm_command(command) for command in generated.command_strings()
@@ -876,6 +1220,31 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
     # missing, so a scenario could execute the command for one case and require
     # the sentence a different case prints. It fails closed forever, against a
     # perfectly correct product, and the gate reads it as a product defect.
+    # -- an asserted observation must be producible by the invocation that
+    #    was asked for it -------------------------------------------------
+    #
+    # Naming the operation that prints a sentence is free: a model writes the
+    # command and the expectation together, so `expect_contains` proves only
+    # that it believed the two go together. Where the repository already binds
+    # that sentence to a different invocation of the same program — the other
+    # side of a `--case`, an `--inject`, any selector — belief is not enough,
+    # and the invocation is asked what it prints. A sentence it cannot print is
+    # unsatisfiable however correct the product is, and refusing it here is the
+    # difference between a generation contract error and a false product defect.
+    for invocation, label, literal, producers, detail in cross_contract_observations(
+        generated, context
+    ):
+        reasons.append(
+            f"{label!r} runs {invocation!r} and requires {literal!r}, which that "
+            f"invocation has no basis for printing: {detail}. This repository binds "
+            "that literal to " + "; ".join(repr(command) for command in producers[:3])
+            + " — a different invocation of the same program. A selector narrows what a "
+            "command does, so an observation belonging to one selection is not evidence "
+            "about another, and this assertion would fail against a correct product. "
+            "Assert what the invocation this scenario runs actually prints, or run the "
+            "invocation the literal belongs to."
+        )
+
     for literal, producers in unattributed_observations(generated, context):
         where = ""
         if producers:

@@ -91,7 +91,14 @@ from neyma_product_driver.task_scope import (
     standard_exclusions,
 )
 
-from scenario_fixtures import FakeFounder, FakeUnit, ScriptedReasoner, raw_payload, raw_scenario
+from scenario_fixtures import (
+    FakeFounder,
+    FakeUnit,
+    ScriptedReasoner,
+    raw_payload,
+    raw_scenario,
+    recorded_contract_probe,
+)
 from test_integrated_review import FakeBuilder, FakeReviewer, drive, refusing, supported
 from test_scoped_completion import PhaseRepo
 
@@ -1635,6 +1642,17 @@ class TestP6D46StaysClosedForM7:
     an M7 wave. **Nothing about M7 is special-cased inside Product Driver core to achieve that.**
     """
 
+    #: What `--case at-most-one-open-conflict-per-field` actually prints, recorded
+    #: off the real probe. `repo` below is a tmp_path with no Neyma in it, so the
+    #: quality boundary has nothing to interrogate and would refuse the fixture's
+    #: own correct oracle — which is a true answer to the wrong question here.
+    RECORDING = {
+        f"{PROBE} --case at-most-one-open-conflict-per-field": (
+            "AT MOST ONE OPEN CONFLICT PER TENANT, ENTITY AND FIELD\n"
+            "behaviours as specified, 0 wrong\n"
+        ),
+    }
+
     def _planner(self, tmp_path: Path, payloads) -> ScenarioPlanner:
         return ScenarioPlanner(
             repo=tmp_path,
@@ -1643,6 +1661,7 @@ class TestP6D46StaysClosedForM7:
             base_scenario=load_scenario(M7_PATH),
             permanent_scenarios=[load_scenario(M7_PATH)],
             founder=FakeFounder(),
+            contract_probe=recorded_contract_probe(self.RECORDING),
         )
 
     def _m7_raw(self, scenario_id: str, category: str) -> dict:

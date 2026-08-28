@@ -395,6 +395,99 @@ brief's prose about observations, and in `PLAN_SCHEMA`'s `expected_observations`
 description — including the part that actually bit: *a command run with a selector prints
 only what that selection prints.*
 
+## Self-attribution is not a basis where the repository contests it (added 2026-08-27)
+
+Written after run `20260827-223525`, the fresh M7 run taken to confirm the rule above. It
+verified P6/M7 on every axis that measures the product — permanent scenario passed, probe
+`behaviours as specified, 0 wrong`, 16/16 mutants caught, schema, ship-dark and regression
+evidence green, no demonstrated product defect — and did not reach VERIFIED, on one
+generated scenario that could not pass against a correct product.
+
+**What was wrong.** `p6m7-w1-11` ran the M7 probe with
+`--case replay-rebuilds-the-complete-party-set --inject replay --parties 5 --repeat 2
+--seed 29`, which prints `A REBUILD RECONSTRUCTS THE COMPLETE PARTY SET` and exits 0. It
+asserted that — and, *from the same command's own `expect_contains`*,
+`replay: 0 resolutions, 0 duplicate conflicts, 0 lost parties, 0 new authority, 0 external
+effects`, the sentence two other `--case` values of the same program print and this one
+does not.
+
+That is the `S3` shape with one difference, and the difference is the defect. `S3` put the
+foreign sentence only in `expected_observations`, the oracle that names no command, and the
+rule above closed that by requiring a basis. `p6m7-w1-11` wrote the same sentence into the
+command's `expect_contains` first — and **that was accepted as the basis**, because basis 1
+was unconditional. Naming the operation that prints a sentence is free: a model writes the
+command and the expectation in one breath, so `expect_contains` proves only that it believed
+them related. Basis 1 asked a model to certify itself, and self-certification is not
+evidence. The scenario-level copy then found its basis in the very operation that could not
+emit it.
+
+**The rule.** `scenario_validation.cross_contract_observations`, called from the quality
+boundary alongside `unattributed_observations`. Every literal a *command operation* asserts
+is checked against the established map, and a basis is no longer free where the repository
+**contests** it — where that literal is bound to a *different* invocation of the same
+program, on the other side of a selector. Two shapes count, and they are the same fact:
+the invocation narrows an approved form the literal is bound to, or the invocation and the
+bound form are sibling narrowings of one approved form.
+
+Contested, the invocation is **asked what it prints** —
+`ApprovedInvocationProbe`, one bounded execution of a command that is already in the
+approved set, cached per invocation for the whole run. Nothing static can answer: no file
+in either repository maps a `--case` value to the output that selection prints, and deriving
+one from the selector's spelling would be exactly the prose matching this rule exists to
+refuse. This is not a second oracle system — it runs the string the executor would run, in
+the same repository, and applies the same exact-substring test. The only difference is
+*when*, and therefore how a mismatch is classified: asked before compilation, a sentence the
+selected invocation cannot print is a generation contract error; asked after, it is
+indistinguishable from a product defect.
+
+Four properties are load-bearing:
+
+* **An exact human binding outranks any contest.** A human who wrote `probe --case alpha`
+  down *and* said it prints `ALPHA HELD` has settled it; there is nothing left to ask.
+* **An undetermined contract refuses.** A timeout, a refusal, exit 127, a missing checkout,
+  no probe at all — none of them is a licence. "I could not ask" and "it printed nothing"
+  are different answers, and reading the first as the second is the same false green in a
+  quieter costume.
+* **Silence still beats guessing, and still costs nothing.** A literal no file binds to
+  anything is not contested, so the invocation is never run for it. Across the nine
+  scenarios of run `20260827-223525` this rule executes exactly two probes, and refuses
+  exactly one scenario — the one that failed.
+* **Only the narrowing direction, and siblings.** A selector provably runs a *part* of the
+  program, so an inherited literal is unproven. The reverse — a scenario running the general
+  form and asserting a narrowing's literal — is left to `unattributed_observations`, because
+  interrogating an unnarrowed battery costs its full runtime and a timeout there would
+  refuse a scenario for being slow.
+
+**Wrapped literals.** `unwrap_literal` normalizes the one shape
+`ScenarioExecutor._do_command` writes — `f"{name}: contains {needle!r}"` — decoding the
+quoted region with `ast.literal_eval` rather than stripping characters, so a literal
+containing quotes survives. A model that copies an assertion target out of a `result.json`
+reproduces that shape, and the prose in front of the literal must not become a way to assert
+something nothing was asked about. Anything that is not exactly that shape is returned
+untouched: this normalizes, it never guesses, and it never matches prose.
+
+**What it cost the same run.** Coverage-gap closure is gated on `_coverage_gap_only`, which
+requires that nothing failed. `p6m7-w1-11` failed, so no closure wave ran — and the run's
+one uncovered P0 risk, `ambiguous_external_effect`, never got the second chance a closure
+wave exists to give it. The two defects in that run were one causal chain.
+
+## The brief says what grounding it will accept (added 2026-08-27)
+
+Wave 1 of run `20260827-223525` proposed twelve candidates and refused four, all for one
+reason: `requirement_reference 'M7' does not name the active unit, one of its acceptance
+criteria, or an AC-<AREA>-<nnn> id`. One of the four, `p6m7-w1-05`, was the only coverage
+`ambiguous_external_effect` ever got.
+
+The rule is right — a scenario may not invent a requirement — but the brief was silent about
+it. The unit recorded no acceptance criteria, so `GenerationBrief` simply omitted the
+section, and a generator handed `ACTIVE READY UNIT: P6` under a task titled *"Build P6 / M7
+— Conflict"* cited the milestone. Saying nothing there is not neutral.
+
+`GenerationBrief` now says so out loud when there are none: that none are recorded, that the
+active unit id or an `AC-<AREA>-<nnn>` id are the two things that will be accepted, and that
+a milestone, phase or sub-unit name is not a requirement reference. Nothing in validation is
+relaxed. The refusal was correct; only the silence before it was not.
+
 ## A wave is told what the last one got wrong (added 2026-08-27)
 
 The same run refused a candidate in wave 2 for using an unapproved command, and wave 3

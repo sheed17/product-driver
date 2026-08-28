@@ -123,6 +123,24 @@ class GenerationBrief:
         if self.basis.acceptance_criteria:
             parts += ["ACCEPTANCE CRITERIA (the only requirements you may cite):"]
             parts += [f"  - {c}" for c in self.basis.acceptance_criteria]
+        else:
+            # Saying nothing here is not neutral. Wave 1 of run 20260827-223525
+            # was shown no criteria and no note that there were none, and four of
+            # its twelve candidates cited the milestone the task names in its own
+            # title — `M7`, against an active unit of `P6` — and were refused for
+            # inventing a requirement. One of the four was the only coverage the
+            # run's single uncovered P0 risk ever got, and the run ended with that
+            # risk unverified. The rule was right; the brief was silent about it.
+            parts += [
+                "ACCEPTANCE CRITERIA: none are recorded for this unit.",
+                "  So `requirement_reference` must be either the ACTIVE READY UNIT id "
+                "exactly as printed above, or an AC-<AREA>-<nnn> id that the repository "
+                "already contains.",
+                "  A milestone, phase or sub-unit name — the `M7` in a task titled "
+                "'Build P6 / M7' when the active unit is `P6` — is NOT a requirement "
+                "reference, and a scenario citing one is refused whatever else is right "
+                "about it.",
+            ]
         if self.product_principles:
             parts += ["", "PRODUCT PRINCIPLE IDS (the only principles you may cite):"]
             parts += [f"  - {p}" for p in self.product_principles]
@@ -269,6 +287,13 @@ class GenerationBrief:
             "not available to you, however true it is of the program as a whole, and "
             "asserting it makes the scenario fail against a perfectly correct product. "
             "Assert the selection you actually ran, or run the unselected command.",
+            "",
+            "Putting it in the command's own `expect_contains` does NOT make it "
+            "available. Naming the operation is what tells the harness where to look; it "
+            "is not evidence that the operation prints it. Where this repository already "
+            "records that a sentence comes from a different invocation of the same "
+            "program, the harness RUNS the invocation you selected and refuses the "
+            "scenario if it does not print it.",
             "",
             "`forbidden_observations` is deliberately exempt: asserting that something "
             "never appears anywhere needs no command behind it.",
@@ -520,7 +545,11 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "step's expect_text. An entry no operation in this scenario claims "
                         "to emit is refused before execution: it cannot be attributed to "
                         "any command, and a command run with a selector (--case, a "
-                        "subcommand, a filter) prints only what that selection prints.",
+                        "subcommand, a filter) prints only what that selection prints. "
+                        "Declaring another selection's sentence in expect_contains does "
+                        "not make it available: where this repository records the sentence "
+                        "as a different invocation's, the harness runs the invocation you "
+                        "selected and refuses the scenario if it does not print it.",
                     },
                     "forbidden_observations": {
                         "type": "array",
@@ -707,8 +736,12 @@ HARD CONSTRAINTS — a scenario violating any of these is discarded by the harne
     behind it names no command and is refused before execution. A command run
     with a SELECTOR (`--case <name>`, a subcommand, a filter) prints only what
     that selection prints: a sentence belonging to another selection is not
-    available to you, however true it is of the program as a whole.
-    `forbidden_observations` is exempt — an absence needs no producer.
+    available to you, however true it is of the program as a whole. Declaring it
+    in the command's own `expect_contains` does not make it available either —
+    where this repository records the sentence as another invocation's, the
+    harness runs the invocation you selected and refuses the scenario if it does
+    not print it. `forbidden_observations` is exempt — an absence needs no
+    producer.
   - A scenario that mutates local state must declare `cleanup` commands or an
     `isolation_note` explaining why it cannot contaminate the next scenario.
   - Do not duplicate a situation already covered. Adding a different label to the

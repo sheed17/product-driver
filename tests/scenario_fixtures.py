@@ -247,6 +247,31 @@ def make_scenario(
     return GeneratedScenario.model_validate(data)
 
 
+def recorded_contract_probe(recording: dict[str, str]) -> Any:
+    """A contract probe answering from output recorded off the real program.
+
+    A planner built over a ``tmp_path`` has no program to interrogate, so the
+    quality boundary's contest cannot be settled by running anything — and an
+    unsettled contest is a refusal, by design. Tests that construct a planner
+    over a fake repository and expect a *correct* scenario to survive supply one
+    of these instead.
+
+    An unrecorded invocation comes back UNDETERMINED rather than empty: "I did
+    not ask" and "it printed nothing" are different answers, and only one of them
+    is a reason to refuse an oracle on the product's behalf.
+    """
+    from neyma_product_driver.scenario_validation import ContractProbeResult
+
+    table = dict(recording)
+
+    def probe(command: str) -> Any:
+        if command not in table:
+            return ContractProbeResult(False, detail="no recording for this invocation")
+        return ContractProbeResult(True, output=table[command])
+
+    return probe
+
+
 def validation_context(**overrides: Any) -> Any:
     from neyma_product_driver.scenario_validation import (
         ApprovedCommands,
@@ -282,5 +307,6 @@ __all__ = [
     "make_scenario",
     "raw_payload",
     "raw_scenario",
+    "recorded_contract_probe",
     "validation_context",
 ]

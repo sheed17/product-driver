@@ -160,6 +160,12 @@ class ScenarioGenerationConfig(BaseModel):
     max_waves: int = 3
     max_total_scenarios: int = 30
     max_scenarios_per_risk_category: int = 6
+    #: Hard bound on one contract probe — the single run of an already-approved
+    #: invocation the quality boundary makes when the repository binds an
+    #: asserted literal to a *different* invocation of the same program. It is
+    #: not a scenario budget: a probe that outlives it is an UNDETERMINED
+    #: contract, and an undetermined contract refuses the oracle.
+    contract_probe_timeout_s: int = 120
     #: Wall-clock ceiling for one suite execution. Scenarios not reached are
     #: recorded as SKIPPED with that reason, never silently dropped.
     execution_budget_s: int = 1800

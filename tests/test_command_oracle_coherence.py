@@ -67,9 +67,14 @@ from neyma_product_driver.scenario_suite import (
 )
 from neyma_product_driver.scenario_validation import (
     ApprovedCommands,
+    ApprovedInvocationProbe,
+    ContractProbeResult,
     ValidationContext,
+    contested_producers,
+    cross_contract_observations,
     established_observations_from,
     unattributed_observations,
+    unwrap_literal,
     validate_scenario,
 )
 from neyma_product_driver.scenarios import Scenario, ScenarioExecutor, load_scenario
@@ -178,12 +183,45 @@ def s3_scenario(**overrides: Any) -> GeneratedScenario:
     return GeneratedScenario.model_validate(data)
 
 
+#: Output recorded from the real probe, invocation -> what it printed. Recorded,
+#: never invented: `test_the_recording_still_matches_the_live_probe` re-runs each
+#: of these against the Neyma checkout and fails if either drifts, so these tests
+#: stay hermetic without being fiction.
+M7_RECORDING: dict[str, str] = {
+    S3_COMMAND: (
+        "A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT\n"
+        "behaviours as specified, 0 wrong\n"
+    ),
+}
+
+
+def recorded_probe(recording: dict[str, str]) -> Any:
+    """A contract probe answering from recorded output, and only from it.
+
+    An invocation with no recording comes back UNDETERMINED rather than empty,
+    because "I did not ask" and "it printed nothing" are different answers and
+    only one of them is a reason to refuse an oracle on the product's behalf.
+    """
+    asked: list[str] = []
+
+    def probe(command: str) -> ContractProbeResult:
+        asked.append(command)
+        text = recording.get(command)
+        if text is None:
+            return ContractProbeResult(False, detail="no recording for this invocation")
+        return ContractProbeResult(True, output=text)
+
+    probe.asked = asked  # type: ignore[attr-defined]
+    return probe
+
+
 def m7_context(**overrides: Any) -> ValidationContext:
     """Validation as the M7 run had it: the shipped scenario file, and nothing else."""
     m7 = load_scenario(M7_PATH)
     defaults: dict[str, Any] = {
         "approved_commands": ApprovedCommands.from_sources(scenarios=[m7]),
         "established_observations": established_observations_from([m7]),
+        "contract_probe": recorded_probe(M7_RECORDING),
         "grounding_tokens": {"p6/m7", "p6", "m7", "ac-mach-701"},
         "principle_tokens": {"known_vs_inferred"},
     }
@@ -429,6 +467,9 @@ class TestTheM7S3Shape:
             base_scenario=load_scenario(M7_PATH),
             permanent_scenarios=[load_scenario(M7_PATH)],
             founder=FakeFounder(),
+            # `repo` is a tmp_path with no Neyma in it, so the real probe would
+            # find nothing to run. The recording answers for it.
+            contract_probe=recorded_probe(M7_RECORDING),
         )
         plan = planner.plan_initial(task="build P6/M7", unit=FakeUnit("P6/M7"))
         assert plan.scenarios == []
@@ -446,6 +487,9 @@ class TestTheM7S3Shape:
             base_scenario=load_scenario(M7_PATH),
             permanent_scenarios=[load_scenario(M7_PATH)],
             founder=FakeFounder(),
+            # `repo` is a tmp_path with no Neyma in it, so the real probe would
+            # find nothing to run. The recording answers for it.
+            contract_probe=recorded_probe(M7_RECORDING),
         )
         planner.plan_initial(task="build P6/M7", unit=FakeUnit("P6/M7"))
         assert planner.compiled == {}
@@ -576,6 +620,9 @@ class TestAccountingAndAcceptance:
             base_scenario=load_scenario(M7_PATH),
             permanent_scenarios=[load_scenario(M7_PATH)],
             founder=FakeFounder(),
+            # `repo` is a tmp_path with no Neyma in it, so the real probe would
+            # find nothing to run. The recording answers for it.
+            contract_probe=recorded_probe(M7_RECORDING),
         )
         plan = planner.plan_initial(task="build P6/M7", unit=FakeUnit("P6/M7"))
         return planner, plan.waves[0]
@@ -754,6 +801,9 @@ class TestCoverageGapClosureContext:
             base_scenario=load_scenario(M7_PATH),
             permanent_scenarios=[load_scenario(M7_PATH)],
             founder=FakeFounder(),
+            # `repo` is a tmp_path with no Neyma in it, so the real probe would
+            # find nothing to run. The recording answers for it.
+            contract_probe=recorded_probe(M7_RECORDING),
         )
 
     def _gap(self) -> IdentifiedRisk:
