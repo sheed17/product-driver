@@ -1,0 +1,1349 @@
+# P6 / M8 — Expectation.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M8 operation           (the probe, run whole)
+#   2. a safe approved M8 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--coverage`, `--age-ms`, `--seed`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 / M4 / M5 / M6 / M7)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry and
+# the acceptance criteria; stage 2 refines them against the diff the builder actually produced;
+# stage 3 grows neighbours around whatever failed. None of that can author shell — a generated case
+# may only CHOOSE one of the approved commands below, optionally with an argument tail, and decide
+# when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3, M4,
+# M5, M6 and M7. M8 ships dark: no tracking service, no SLA dashboard, no queue, no HTTP surface, no
+# live channel. The executor's only concurrency primitive is `parallel_requests`, which is HTTP — so
+# for this unit the generator has NO way to compose ordering, concurrency, timing, duplication,
+# crash or replay variation from the outside. The axis is a closed, bounded, argument-only
+# vocabulary; the approval boundary is unchanged, because a prefix match already permits argument
+# tails and already refuses shell. See docs/SCENARIO-SPACE.md gap G2.
+#
+# THE TWO AXES THAT ARE THIS UNIT'S OWN. `--coverage` is the axis the whole machine turns on: the
+# same missed deadline is OVERDUE over a healthy window and INDETERMINATE over a blind one, and
+# `absent` is the value a build session gets wrong because "no errors were logged" reads like
+# "everything was fine". `--timezone` is the second: a deadline is stored in UTC and EVALUATED in
+# the facility's local zone, and a DST boundary is a real freight event, not an edge case.
+#
+# WHAT M8 IS, IN THREE SENTENCES, because everything below is a consequence of them:
+#
+#   ### AN EXPECTATION IS A DURABLE COMMITMENT THAT SOMETHING SHOULD BE OBSERVED BY A DEADLINE.
+#   ### `OVERDUE` MEANS THE THING NEVER CAME AND WE CAN PROVE WE WERE WATCHING; `INDETERMINATE`
+#   ### MEANS THE DEADLINE PASSED AND WE WERE BLIND. AN EXPECTATION OWES SOMETHING; IT DOES NOT
+#   ### AUTHORIZE ANYTHING.
+#
+# We do not accuse a counterparty of a failure that was ours (target spec §12.8, M-32, I8). That
+# distinction is the whole unit: collapsing it into one "late" state is exactly the honesty failure
+# this machine exists to prevent, and it is what every `TIMED_OUT`/`STALE` state a build session
+# reaches for actually does.
+#
+# THE FIVE THINGS THIS FILE DELIBERATELY DOES NOT DECIDE. The corpus disagrees with itself in five
+# places, and encoding a resolution here would make Product Driver the author of a canonical
+# decision it has no authority to make (see `tasks/neyma_p6_m8.md` §3.8):
+#
+#   M8-AQ-1  what does "→ Exception" mean while M9 is unbuilt? Entity §14/§26/§37 require an
+#            Exception and the canonical test is NAMED for one; `ExceptionRaised` is EC-1's contract,
+#            M9 is the next unbuilt machine, and a coordination event may not instruct a consumer to
+#            transition (ER-1, registry §9).
+#   M8-AQ-2  who owns `observation_coverage`? Target spec §12.8 M-32 and §33's table list name it and
+#            entity §18 makes coverage_ref a FOREIGN KEY into it; there is no 45-point entity file
+#            for it, it is in no machine in registry §4, and M-32 says a channel health probe writes
+#            it — which is P9+ adapter work.
+#   M8-AQ-3  does the duplicate-prevention index cover `RAISED`, or every non-terminal state? Entity
+#            §17, machine §15 and F8 say `WHERE state='RAISED'`; target spec §12.8 says "while
+#            non-terminal", and the two differ by exactly the window after a missed deadline.
+#   M8-AQ-4  is `subject_ref` an artifact reference (K-2: an observation_id or evidence_id) or a
+#            business-entity reference (entity §10: "the load/document/movement")? §18 makes it a FK
+#            either way, and the two readings point at different tables — one built, one P9+.
+#   M8-AQ-5  is F8 strictly ordered? The family file says "order-tolerant except discharge/expiry";
+#            events/registry.md §8 lists F8 in neither its strict nor its order-tolerant list, and
+#            the contract projection resolves all seven to strict_order false.
+#
+# Every oracle below asserts only what EVERY reading agrees on: a declared channel or no expectation,
+# a deadline stored in UTC with its originating timezone retained, one live RAISED expectation per
+# key enforced by a partial unique index, a discharge that requires a bound Observation, the
+# OVERDUE/INDETERMINATE split with absent coverage failing toward blindness, a late arrival that is
+# always accepted, a re-versioning amendment with its history, an explicit expiry that is never
+# silent, and a replay that rebuilds the split from the RECORDED coverage.
+
+name: p6_m8_expectation
+phase: "P6"
+mode: backend
+description: >
+  P6 M8: the Expectation — a durable commitment that something should be observed by a deadline, and
+  the one machine in Neyma whose whole job is to tell "the POD never came" apart from "we were not
+  watching". There is no tracking service, no SLA dashboard and no live channel (M8 ships dark by
+  contract), so the product is exercised through its real runtime as a brokerage narrative: a load
+  delivers and a POD is owed by 17:00 at the Denver facility, so an Expectation is raised over a
+  DECLARED channel with the deadline stored in UTC and Denver retained beside it; the deadline
+  passes and the mailbox was demonstrably healthy the whole window, so the Expectation is OVERDUE
+  and a named human owns it; the same deadline passes while the tracking feed was down, and it is
+  INDETERMINATE instead, because accusing the carrier of a failure that was ours is the one thing
+  this machine may never do; the POD arrives in month four and it still discharges, because a late
+  POD is still a POD; the appointment moves and the deadline re-versions with its history rather
+  than being edited; the load cancels and the expectation cancels through its one canonical
+  transition; and an aged expectation EXPIRES explicitly and audibly rather than being swept away by
+  a reaper nobody reads. What matters is not that a deadline can fire — it is that nothing turns an
+  unwatched window into an accusation, that no sweep makes an obligation quietly stop existing, and
+  that a rebuild months later reaches the same verdict from the coverage that was recorded at the
+  time.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M8 surface the builder must produce. A missing one is recorded as a failed assertion, so a run
+# against a repository where M8 does not exist yet cannot report a verified M8.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/expectation.py"
+  - "src/freight_recon/migrations/phase6_expectations.py"
+  - "eval/tests/test_phase6_expectation.py"
+  - "scripts/probe_phase6_expectation.py"
+  - "scripts/mutate_phase6_expectation.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if the
+  #    builder ships a probe that cannot exercise one of the canonical risk families, this command
+  #    fails here rather than the family silently going unverified. It is also what tells a reader of
+  #    this file which `--case` values exist.
+  - name: "the M8 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # EX-1 — the raise, the declared channel, the key, the timezone
+      - "raise-creates-raised-with-a-declared-channel"
+      - "an-expectation-cannot-be-raised-without-expected-source"
+      - "an-expectation-cannot-be-raised-without-a-deadline"
+      - "raise-stores-deadline-in-utc-and-retains-the-originating-timezone"
+      - "raise-and-its-durable-timer-are-one-commit"
+      - "the-expectation-key-is-tenant-subject-and-expected-type"
+      - "at-most-one-live-raised-expectation-per-key"
+      - "concurrent-raises-produce-one-live-expectation"
+      - "a-model-may-propose-an-expectation-but-not-set-the-deadline"
+      - "a-model-cannot-assert-coverage-health"
+      - "counterparty-content-cannot-declare-the-channel-healthy"
+      # EX-2 — the bound Observation discharges
+      - "bound-observation-discharges-the-expectation"
+      - "discharge-records-the-discharge-observation-id"
+      - "an-unbound-observation-cannot-discharge"
+      - "a-wrong-subject-observation-cannot-discharge"
+      - "a-wrong-tenant-observation-cannot-discharge"
+      # EX-3 / EX-3i — THE HONESTY SPLIT
+      - "healthy-coverage-and-a-missed-deadline-is-overdue"
+      - "overdue-requires-a-healthy-coverage-ref"
+      - "overdue-without-healthy-coverage-is-structurally-impossible"
+      - "a-blind-window-is-indeterminate-not-overdue"
+      - "unknown-coverage-is-indeterminate-not-overdue"
+      - "absent-coverage-is-not-health"
+      - "partial-coverage-over-the-window-is-not-health"
+      - "indeterminate-records-the-coverage-gap"
+      - "confidence-cannot-turn-indeterminate-into-overdue"
+      - "overdue-and-indeterminate-carry-a-named-human-owner"
+      - "an-ownerless-human-owned-state-is-impossible"
+      # EX-4 — the late arrival
+      - "a-late-arrival-discharges-an-overdue-expectation"
+      - "a-late-arrival-discharges-an-indeterminate-expectation"
+      - "late-discharge-is-marked-late"
+      - "late-evidence-is-never-rejected-because-the-deadline-passed"
+      # EX-5 — the amendment
+      - "deadline-change-re-versions-the-expectation"
+      - "deadline-history-is-retained"
+      - "an-amendment-is-not-a-supersession"
+      - "the-subject-and-expected-type-cannot-be-mutated"
+      - "a-stale-version-cannot-overwrite-newer-state"
+      # EX-6 — cancellation, and the from-set that does not include INDETERMINATE
+      - "reason-disappeared-cancels-a-raised-expectation"
+      - "reason-disappeared-cancels-an-overdue-expectation"
+      - "cancelling-an-indeterminate-expectation-is-illegal"
+      - "a-cancelled-expectation-is-retained-never-deleted"
+      # EX-7 — expiry, explicit and never silent
+      - "terminal-age-expires-an-overdue-expectation"
+      - "terminal-age-expires-an-indeterminate-expectation"
+      - "a-raised-expectation-never-expires"
+      - "expiry-is-never-silent"
+      - "no-sweep-or-reaper-closes-an-expectation"
+      - "there-is-no-timed-out-stale-or-resolved-state"
+      # §16 precedence
+      - "discharge-beats-overdue-when-they-race"
+      - "discharge-beats-indeterminate-when-they-race"
+      # durable timers, restart, atomicity
+      - "the-deadline-is-a-durable-timer-not-a-sleep"
+      - "restart-re-fires-the-deadline-timer"
+      - "restart-preserves-the-raised-expectation"
+      - "restart-after-overdue-reaches-the-canonical-state"
+      - "a-redelivered-timer-is-a-no-op"
+      - "timer-coverage-read-and-state-are-one-commit"
+      - "persistence-failure-rolls-back-the-deadline-decision"
+      - "state-and-event-co-commit"
+      # replay
+      - "replay-reconstructs-overdue-from-the-recorded-coverage"
+      - "replay-reconstructs-indeterminate-from-the-recorded-coverage"
+      - "replay-does-not-read-the-current-channel-state"
+      - "replay-creates-no-new-authority-and-no-effect"
+      # F-25 — facility-local time and DST
+      - "an-appointment-window-is-evaluated-in-facility-local-time"
+      - "a-dst-boundary-does-not-move-the-deadline"
+      - "a-window-evaluated-in-utc-instead-of-facility-local-is-wrong"
+      # gate semantics and the brake
+      - "m8-mints-no-gate-decision"
+      - "an-expectation-owes-it-does-not-authorize"
+      - "an-undischarged-expectation-makes-a-field-unknown-never-consistent"
+      - "discharge-and-indeterminate-detection-continue-under-a-brake"
+      - "a-brake-never-fabricates-overdue-state"
+      # [C-1] — tenancy
+      - "tenant-isolation"
+      - "cross-tenant-identical-expectation-key"
+      - "cross-tenant-observation-cannot-discharge"
+      - "cross-tenant-coverage-record-fails-closed"
+      - "cross-tenant-owner-fails-closed"
+      # GR-2 / GR-3 / GR-4 — concurrency, idempotency, the database
+      - "occ-on-expectation-version"
+      - "inbox-idempotency"
+      - "database-invariants"
+      - "malformed-expectation-fails-closed"
+      # the seams M8 feeds and must not rewrite
+      - "the-m5-observation-machine-is-not-rewritten"
+      - "the-m3-awaiting-observation-seam-is-unchanged"
+      - "the-m7-conflict-machine-is-not-rewritten"
+      - "an-overdue-expectation-is-not-automatically-a-conflict"
+      - "m9-m10-m11-and-m12-are-not-built"
+
+  # 2. THE MUTATION AXIS, ASSERTED. Without this the M8 possibility space is a list of fixed points:
+  #    M8 has no HTTP surface, so `parallel_requests` is unavailable and every ordering, concurrency,
+  #    timing, duplication, crash and replay variation is reachable through arguments or not at all.
+  - name: "the M8 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      - "--concurrency"
+      - "--delay-ms"
+      - "--repeat"
+      - "--tenants"
+      - "--age-ms"
+      - "--coverage"
+      - "--timezone"
+      - "--confidence"
+      - "--seed"
+      - "--inject"
+      # EX-1
+      - "raise"
+      - "missing-expected-source"
+      - "missing-deadline"
+      - "missing-key"
+      - "duplicate-raise"
+      - "concurrent-raise"
+      # EX-2 / EX-4
+      - "bound-discharge"
+      - "unbound-discharge"
+      - "wrong-subject-discharge"
+      - "wrong-tenant-discharge"
+      - "late-discharge"
+      - "reject-late"
+      # EX-3 / EX-3i — the coverage axis, which is the unit
+      - "deadline-passed"
+      - "coverage-healthy"
+      - "coverage-down"
+      - "coverage-unknown"
+      - "coverage-absent"
+      - "coverage-partial"
+      - "model-set-coverage"
+      - "counterparty-coverage"
+      - "confidence-overdue"
+      - "overdue-without-coverage"
+      - "ownerless-overdue"
+      # EX-5
+      - "deadline-change"
+      - "subject-mutation"
+      - "type-mutation"
+      - "stale-version"
+      # EX-6 / EX-7
+      - "reason-disappeared"
+      - "cancel-indeterminate"
+      - "terminal-age"
+      - "expire-raised"
+      - "silent-expiry"
+      - "sweep-close"
+      # precedence, restart, replay
+      - "discharge-vs-deadline-race"
+      - "restart-before-deadline"
+      - "restart-after-overdue"
+      - "replay"
+      - "replay-from-live-channel"
+      # F-25
+      - "dst-boundary"
+      - "utc-window"
+      # the database, tenancy, the boundary
+      - "occ-expectation"
+      - "cross-tenant-observation"
+      - "cross-tenant-coverage"
+      - "cross-tenant-owner"
+      - "malformed-expectation"
+      - "persistence-failure"
+      - "redelivered-timer"
+      - "brake"
+      - "gate-mint"
+      - "reorder-stream"
+
+  # 3. THE FOUR NEGATIVE CONTROLS. A vocabulary that accepts anything is fuzzing in a costume, and
+  #    three of these four hold a canonical "N/A" open rather than letting a probe answer it.
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §27 and machine §24: "Reopening rules. N/A." A probe that ACCEPTED a reopen fault would be
+  # producing passing evidence for a transition the corpus states does not exist — the same shape as
+  # M4's refused `unfreeze`, M5's refused `expire-observation`, M6's refused `expire-claim` and M7's
+  # refused `expire-conflict`.
+  - name: "a reopen fault does not exist, because reopening an expectation is N/A"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --inject reopen-expectation"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §23 and machine §25: "Correction rules. N/A — a wrong expectation is CANCELLED, not
+  # corrected." Correction is the tidy-looking thing a build session adds, and it would let a wrong
+  # deadline be edited out of history instead of re-versioned (EX-5) or cancelled (EX-6).
+  - name: "a correction fault does not exist, because a wrong expectation is cancelled, not corrected"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --inject correct-expectation"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §24 and machine §26: a re-versioned deadline is NOT a supersession. Registry §4 gives M8
+  # no `SUPERSEDED` state and no `ExpectationSuperseded` event is registered anywhere — so accepting
+  # the fault would mint both by implication.
+  - name: "a supersession fault does not exist, because a re-versioned deadline is not a supersession"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py --inject supersede-expectation"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. DETERMINISTIC OPERATION. The probe run whole: every case, its own temporary database per case,
+  #    and a narration that says what it saw rather than what it intended.
+  - name: "drive the Expectation machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M8 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_expectation.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M8 adds two tables and edits `schema.py`, so every layer that reads a
+  #    canonical database can be broken from inside M8. Each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M8 must not disturb, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_schema.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M8 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # M8's deadline IS a durable timer — EX-3, EX-3i and EX-7 are all `T`-triggered — so of every P6
+  # unit so far this is the one whose correctness rests most directly on P5's timer substrate. A
+  # builder that invents a second timer mechanism, a sweep or an in-memory sleep leaves this suite
+  # untouched and is caught by the DDL sweep further down; a builder that BREAKS the substrate is
+  # caught here. M8 also emits seven already-registered F8 names and mints none of its own, so the
+  # canonical event-contract guard is load-bearing rather than incidental.
+  - name: "the P5 transport, replay, durable timers and canonical event contracts M8 rides, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py eval/tests/test_p5_event_contracts.py eval/tests/test_p5_canonical_event_mint.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2, M3, M4, M5, M6 and M7, whose schema M8 extends, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py eval/tests/test_phase6_observation.py eval/tests/test_phase6_identity_binding_claim.py eval/tests/test_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. M5's, M6's and M7's own deterministic probes, re-run. "M8 broke nothing" is a claim about
+  #    THEIR behaviour, so it is measured against THEIR oracles rather than against M8's account of
+  #    it. M5 in particular is the unit M8 is closest to: EX-2 and EX-4 READ its rows, and a binding
+  #    that started requiring an Expectation would be M5 rewritten from inside M8.
+  - name: "M5 still behaves as specified with M8's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M6 still behaves as specified with M8's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M7 still behaves as specified with M8's tables in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # M4's own probe is deliberately NOT re-run, and the absence is reasoned rather than an omission.
+  # M7 re-ran it because an open Conflict BLOCKS an approval, so M4's behaviour was inside M7's own
+  # claim. M8 has no approval relationship at all — machine §28 records human-approval as `none` and
+  # entity §40 says an Expectation "does not itself gate" — so the only way M8 can reach M4 is by
+  # editing the canonical schema they share, and that is exactly what the M1–M7 pytest anchor above
+  # measures. Adding a probe run for a seam that does not exist would buy coverage of another unit
+  # and spend an hour of the execution budget on it.
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M8 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_expectation.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "absent coverage is not health" proves nothing
+# about a table.
+#
+# Every check below reads the DATABASE or the SOURCE TREE, not the probe's narration. That is the
+# point for this unit above all others: "OVERDUE requires a healthy coverage_ref", "there is one live
+# expectation per key", "the human-owned states have a named human" and "the six states are the six
+# states" are each a property of the SCHEMA, and every one of them is a sentence a fully green test
+# suite can state while the database enforces none of them.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because SQLite
+  # silently ignores the pragma inside one — that makes every tenant-consistent foreign key more than
+  # decoration. A probe that skips it measures a database no caller ever gets.
+  #
+  # `durable_timers` is asserted beside the expectation tables because EX-3/EX-3i and EX-7 ride P5's
+  # EXISTING timer substrate; a second timer mechanism invented inside M8 would leave this row
+  # untouched and is caught by the sweep further down. `observation_coverage` is asserted because
+  # `coverage_ref` is a FOREIGN KEY (entity §18) and entity §16's CHECK is unenforceable without a
+  # table to point at — the canonical name is the target specification's own (§12.8 M-32, §33's
+  # table list). Who WRITES it, and what its full contract is, is `M8-AQ-2` and nothing here decides
+  # it.
+  - name: "a freshly created canonical database carries the expectation layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "expectations"
+      - "observation_coverage"
+      - "observations"
+      - "conflicts"
+      - "tenant_humans"
+      - "durable_timers"
+      - "event_outbox"
+      - "effect_grants"
+
+  # THE SIX STATES, STRUCTURALLY. Not a convention, not a Python enum nobody enforces — a CHECK
+  # constraint, so a seventh state and a misspelled sixth are both uninsertable. There is deliberately
+  # no `TIMED_OUT` and no `STALE` (each of them means "the deadline passed" WITHOUT saying whether
+  # anyone was watching, which is the honesty collapse this whole machine exists to prevent), no bare
+  # `RESOLVED` (that is M9 Exception's vocabulary and the likeliest import), no `SUPERSEDED` (entity
+  # §24: a re-versioned deadline is not a supersession) and no `MISSED`/`LATE`/`CLOSED`/`PENDING`.
+  - name: "the six canonical expectation states are a database constraint, and there is no seventh"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='expectations'\").fetchone();
+      sql=row[0] if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('expectation state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the expectations table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'CANCELLED'"
+      - "'DISCHARGED'"
+      - "'EXPIRED'"
+      - "'INDETERMINATE'"
+      - "'OVERDUE'"
+      - "'RAISED'"
+    not_contains:
+      - "'TIMED_OUT'"
+      - "'STALE'"
+      - "'RESOLVED'"
+      - "'SUPERSEDED'"
+      - "'MISSED'"
+      - "'LATE'"
+      - "'CLOSED'"
+      - "'PENDING'"
+
+  # ### THE HONESTY INVARIANT, AS A DATABASE CONSTRAINT. Entity §16 and §37: `OVERDUE` without a
+  # healthy-coverage `coverage_ref` is a STRUCTURALLY IMPOSSIBLE state — not a branch a code path
+  # takes, an insert the database refuses. And the two human-owned states carry a named human, which
+  # `AC-SAFE-028` makes the same kind of fact.
+  #
+  # The parser reads the DDL text, so each constraint the builder writes has to be findable in it. A
+  # `CHECK` that exists only in Python is exactly what this check is here to fail.
+  - name: "OVERDUE requires healthy coverage and the human-owned states require an owner, as CHECKs"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='expectations'\").fetchone();
+      sql=(row[0] if row else '');
+      flat=' '.join(sql.split());
+      cols=sorted(r[1] for r in c.execute('pragma table_info(expectations)'));
+      nn={r[1]: bool(r[3]) for r in c.execute('pragma table_info(expectations)')};
+      checks=[x for x in re.findall(r'CHECK \\((.*?)\\)(?:,|\\s*\\))', flat)];
+      body=' | '.join(checks);
+      print('expectation columns:', cols);
+      print('OVERDUE requires coverage_ref:', ('OVERDUE' in body and 'coverage_ref' in body));
+      print('OVERDUE requires healthy coverage:', ('coverage_healthy' in flat or 'coverage_health' in flat));
+      print('human-owned states require owner_id:', ('INDETERMINATE' in body and 'owner_id' in body));
+      print('expected_source NOT NULL:', nn.get('expected_source', False));
+      print('deadline_utc NOT NULL:', nn.get('deadline_utc', False));
+      print('originating_timezone NOT NULL:', nn.get('originating_timezone', False));
+      print('expectation_key NOT NULL:', nn.get('expectation_key', False));
+      print('subject_ref NOT NULL:', nn.get('subject_ref', False));
+      print('expected_type NOT NULL:', nn.get('expected_type', False))"
+    timeout_s: 300
+    contains:
+      - "OVERDUE requires coverage_ref: True"
+      - "OVERDUE requires healthy coverage: True"
+      - "human-owned states require owner_id: True"
+      - "expected_source NOT NULL: True"
+      - "deadline_utc NOT NULL: True"
+      - "originating_timezone NOT NULL: True"
+      - "expectation_key NOT NULL: True"
+      - "subject_ref NOT NULL: True"
+      - "expected_type NOT NULL: True"
+      - "'coverage_ref'"
+      - "'deadline_history'"
+      - "'discharge_observation_id'"
+      - "'expectation_id'"
+      - "'owner_id'"
+      - "'state'"
+      - "'tenant'"
+      - "'version'"
+
+  # Entity §17, machine §15/§17/§19. "At most one live expectation for this owed observation" is a
+  # hope about a code path until it is a partial unique index, and an application-level
+  # check-then-insert is exactly what two concurrent raisers both pass. `tenant` first (`[C-1]`).
+  #
+  # The `WHERE` clause is asserted to name `RAISED` — the reading entity §17, machine §15 and F8 all
+  # give — and nothing here asserts that it names ONLY `RAISED`, because target spec §12.8 says
+  # "while non-terminal" and that disagreement is `M8-AQ-3`, which this file does not settle.
+  - name: "one live RAISED expectation per key is a PARTIAL UNIQUE index, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      idx=[r[0] for r in c.execute(\"select sql from sqlite_master where type='index'
+      and tbl_name='expectations' and sql is not null\")];
+      live=[s for s in idx if 'UNIQUE' in s.upper() and 'expectation_key' in s];
+      print('live expectation index:', live[0] if live else
+      'MISSING: no unique index over expectation_key');
+      cols=live[0].split('(',1)[1] if live else '';
+      print('tenant first in the live index:', cols.strip().startswith('tenant'))"
+    timeout_s: 300
+    contains:
+      - "CREATE UNIQUE INDEX"
+      - "expectation_key"
+      - "RAISED"
+      - "tenant first in the live index: True"
+
+  # "A named human owns it" and "the discharging observation is a real observation of this tenant"
+  # are decoration while they are text columns. A FOREIGN KEY is the version of those sentences a
+  # database enforces — exactly the argument M1 made for `owner_id`, M4 for `granted_by`, M6 for the
+  # human behind a `decision_ref` and M7 for both.
+  - name: "the owner, the discharging observation and the coverage record are FOREIGN KEYS"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      fks=[(r[2], r[3]) for r in c.execute('pragma foreign_key_list(expectations)')];
+      tables={r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")};
+      print('expectation foreign keys ->', sorted({t for t, _ in fks}));
+      print('owner is FK-backed into tenant_humans:',
+      any(t=='tenant_humans' for t, col in fks));
+      print('discharge_observation_id is FK-backed into observations:',
+      any(col=='discharge_observation_id' for t, col in fks));
+      print('coverage_ref is FK-backed into observation_coverage:',
+      any(t=='observation_coverage' for t, col in fks));
+      print('foreign keys into a table nobody built:', sorted({t for t, _ in fks} - tables))"
+    timeout_s: 300
+    contains:
+      - "owner is FK-backed into tenant_humans: True"
+      - "discharge_observation_id is FK-backed into observations: True"
+      - "coverage_ref is FK-backed into observation_coverage: True"
+      - "foreign keys into a table nobody built: []"
+
+  # ### THE RECORD THE WHOLE MACHINE TURNS ON. `M-32`: an observation-coverage record per
+  # `(channel, window)`. If health is a free-text column with a default, "the channel was
+  # demonstrably HEALTHY throughout the window" is a sentence rather than a fact — and a DEFAULT is
+  # the specific mechanism by which "we did not record anything" silently becomes "it was fine",
+  # which is the exact failure `M-32`'s fail-closed clause exists to prevent.
+  - name: "the observation-coverage record M8 reads is persisted, tenant-first and windowed"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='observation_coverage'\").fetchone();
+      sql=(row[0] if row else '');
+      info=list(c.execute('pragma table_info(observation_coverage)'));
+      nn={r[1]: bool(r[3]) for r in info};
+      dflt={r[1]: r[4] for r in info};
+      health=[n for n in nn if 'health' in n or 'status' in n];
+      print('coverage columns:', sorted(nn));
+      print('coverage health vocabulary present:', ('HEALTHY' in sql and 'DOWN' in sql and 'UNKNOWN' in sql));
+      print('coverage tenant NOT NULL:', nn.get('tenant', False));
+      print('coverage window is bounded:', all(nn.get(k, False) for k in ('window_start','window_end')));
+      print('coverage health is never defaulted:', all(dflt.get(h) is None for h in health) and bool(health))"
+    timeout_s: 300
+    contains:
+      - "'HEALTHY'"
+      - "'DOWN'"
+      - "'UNKNOWN'"
+      - "coverage health vocabulary present: True"
+      - "coverage tenant NOT NULL: True"
+      - "coverage window is bounded: True"
+      - "coverage health is never defaulted: True"
+
+  # And the rule is preserved by a check over the corpus, not a hope.
+  #
+  # The way a build session breaks "an expectation never quietly stops existing" is not by arguing
+  # with it. It is by adding a TTL, a nightly sweep, a stale-expectation reaper or a `TIMED_OUT`
+  # state because those felt like hygiene. The scan is scoped to the MACHINE and its MIGRATION — not
+  # to the probe or the mutation battery, both of which legitimately need those identifiers in order
+  # to ATTEMPT the illegal transition `GR-1` must refuse.
+  - name: "no sweep, reaper, deletion or unregistered expectation state was invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re;
+      m=pathlib.Path('src/freight_recon/expectation.py');
+      g=pathlib.Path('src/freight_recon/migrations/phase6_expectations.py');
+      text=(m.read_text(encoding='utf-8') if m.exists() else '');
+      migtext=(g.read_text(encoding='utf-8') if g.exists() else '');
+      src=text + migtext;
+      print('machine source:', 'present' if m.exists() and g.exists() else 'MISSING');
+      print('invented sweep/reaper surfaces:',
+      sorted(set(re.findall(r'\\bdef (?!_?refuse|_?reject|_?illegal)[a-z_]*(?:sweep|reap|purge|prune)[a-z_]*\\b',
+      src))));
+      print('unregistered expectation states in the migration:',
+      sorted(set(re.findall(r'[\x27\x22](TIMED_OUT|STALE|MISSED|SUPERSEDED|CLOSED|PENDING)[\x27\x22]',
+      migtext))));
+      print('invented or foreign event names in the machine:',
+      sorted(set(re.findall(r'\\bExpectationTimedOut\\b|\\bExpectationMissed\\b|\\bExpectationClosed\\b'
+      r'|\\bExpectationReopened\\b|\\bExpectationSuperseded\\b|\\bExpectationAutoDischarged\\b', src))));
+      print('invented expiry/extra transition rows:',
+      sorted(set(re.findall(r'\\bEX-(?:8|9|10|3x|7x)\\b', src))));
+      print('expectation deletion statements:',
+      sorted(set(re.findall(r'DELETE FROM expectations|DROP TABLE expectations', src))))"
+    timeout_s: 300
+    contains:
+      - "machine source: present"
+      - "invented sweep/reaper surfaces: []"
+      - "unregistered expectation states in the migration: []"
+      - "invented or foreign event names in the machine: []"
+      - "invented expiry/extra transition rows: []"
+      - "expectation deletion statements: []"
+
+  # The event names M8 uses, read out of the canonical contract projection rather than out of prose.
+  # `events/registry.md` is by its own header THE SOLE CANONICAL LIST, and
+  # `event_contracts_data.json` is its mechanical projection — so a name outside the seven is
+  # defective by the registry's own definition, and the two REQUIRED payload fields below are the
+  # honesty split expressed as a contract: `ExpectationOverdue` cannot exist without the
+  # `coverage_ref` that proves health, and `ExpectationIndeterminate` cannot exist without its
+  # `coverage_gap`. That guard already exists in P5; M8 inherits it rather than inventing it.
+  - name: "M8 uses the seven registered F8 contracts and invents no eighth"
+    command: >-
+      .venv/bin/python -c "import json,pathlib,re;
+      data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8'));
+      rows=data.get('contracts') or [];
+      byname={r['name']: r for r in rows} if isinstance(rows,list) else {};
+      req=lambda n: sorted(f['name'] for f in (byname.get(n,{}).get('fields') or []) if f.get('required'));
+      print('registered F8 contracts:', sorted(n for n,r in byname.items() if r.get('family')=='F8'));
+      print('ExpectationRaised requires:', req('ExpectationRaised'));
+      print('ExpectationOverdue requires:', req('ExpectationOverdue'));
+      print('ExpectationIndeterminate requires:', req('ExpectationIndeterminate'));
+      print('ExpectationDischarged requires:', req('ExpectationDischarged'));
+      print('ExpectationDischarged producers:',
+      sorted(byname.get('ExpectationDischarged',{}).get('producers') or []));
+      print('ExpectationOverdue producers:',
+      sorted(byname.get('ExpectationOverdue',{}).get('producers') or []));
+      print('synonym events registered:', sorted(n for n in ('ExpectationTimedOut','ExpectationMissed',
+      'ExpectationClosed','ExpectationReopened','ExpectationSuperseded','ExpectationAutoDischarged')
+      if n in byname));
+      src=pathlib.Path('src/freight_recon/expectation.py');
+      print('machine source:', 'present' if src.exists() else 'MISSING expectation.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      used=sorted(set(re.findall(r'\\b(?:Expectation|Exception|Compensation)[A-Z][A-Za-z]*\\b', text)));
+      print('Expectation*/Exception*/Compensation* names in the machine:', used);
+      print('unregistered names in the machine:', [u for u in used if u not in byname])"
+    timeout_s: 300
+    contains:
+      - "'ExpectationRaised'"
+      - "'ExpectationDischarged'"
+      - "'ExpectationOverdue'"
+      - "'ExpectationIndeterminate'"
+      - "'ExpectationReVersioned'"
+      - "'ExpectationCancelled'"
+      - "'ExpectationExpired'"
+      - "ExpectationRaised requires: ['deadline_utc', 'expectation_key', 'expected_source', 'originating_timezone']"
+      - "ExpectationOverdue requires: ['coverage_ref']"
+      - "ExpectationIndeterminate requires: ['coverage_gap']"
+      - "ExpectationDischarged producers: ['EX-2', 'EX-4']"
+      - "synonym events registered: []"
+      - "machine source: present"
+      - "unregistered names in the machine: []"
+
+  # `EX-3`/`EX-7` end "→ Exception" (M9), a blocking expectation looks like a Policy obligation (M11),
+  # entity §14's 1:1 Exception is the most tempting sentence in the corpus, and machine §27's absence
+  # of a compensation row is the one place a builder adds M10 to be helpful. None of the four is M8's.
+  - name: "the exception, compensation, policy and rule seams are fed without M9, M10, M11 or M12 being built"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      src=pathlib.Path('src/freight_recon/expectation.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_expectations.py');
+      migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      print('machine and migration present:', bool(text) and bool(migtext));
+      print('mints another machine event:',
+      sorted(set(re.findall(r'\\bExceptionRaised\\b|\\bExceptionAcknowledged\\b|\\bExceptionEscalated\\b'
+      r'|\\bExceptionResolved\\b|\\bExceptionSeverityChanged\\b|\\bCompensationRequired\\b'
+      r'|\\bCompensationApproved\\b|\\bCompensationCompleted\\b|\\bPolicyProposed\\b'
+      r'|\\bPolicyActivated\\b|\\bRuleProposed\\b|\\bRuleActivated\\b|\\bConflictRaised\\b'
+      r'|\\bEC-[0-9]+\\b|\\bCM-[0-9]+\\b|\\bPO-[0-9]+\\b|\\bRU-[0-9]+\\b|\\bCF-[0-9]+\\b',
+      text+migtext))));
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\"));
+      print('m9/m10/m11/m12 tables created by m8:',
+      [t for t in tables if t in ('exceptions','compensations','policies','policy_versions',
+      'rules','rule_versions','evidence','evidence_spans')])"
+    timeout_s: 300
+    contains:
+      - "machine and migration present: True"
+      - "mints another machine event: []"
+      - "m9/m10/m11/m12 tables created by m8: []"
+
+  # The dark posture, measured over the shipped package rather than asserted about it.
+  - name: "M8 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      files=[f for f in root.rglob('*.py')];
+      hits=sorted(str(f) for f in files
+      if f.name!='expectation.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='expectation')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='expectation' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production modules scanned:', len(files));
+      print('production importers of expectation:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of expectation: []"
+
+  - name: "the only thing outside the package that reaches M8 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='expectation')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='expectation' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching expectation:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching expectation: ['probe_phase6_expectation.py']"
+
+  # M8's product form is a live tracking / SLA / "what is late" surface. That surface is precisely the
+  # thing that must not arrive with the engine primitive — and neither may the channel health probe
+  # that would write real coverage rows (task §3.6).
+  - name: "no live tracking or SLA surface, and no channel health probe, ships with M8"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      CHANNELS={'ingestion','email_adapter','imap_mailbox','email_corpus','email_triage',
+      'inbox_brain','inbox_discovery','extraction','extraction_bridge','browser_use_adapter',
+      'browser_use_write','cdp_readonly','cdp_session','cdp_actuator','tms_adapter','tms_write',
+      'slack_adapter','slack_delegate','channels','alert_channel','action_callback','ops_control',
+      'follow_up','mailbox_intake'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8'))), f.read_text(encoding='utf-8'))
+      for f in root.rglob('*.py')];
+      print('modules scanned for a channel join:', len(seen));
+      print('modules joining the expectation machine to a channel:',
+      sorted(name for name,m,src in seen if 'expectation' in m and (m & CHANNELS)));
+      print('production coverage health probes:',
+      sorted(name for name,m,src in seen if 'observation_coverage' in src
+      and ('def poll' in src or 'health_probe' in src or 'def probe_health' in src)))"
+    timeout_s: 300
+    contains:
+      - "modules joining the expectation machine to a channel: []"
+      - "production coverage health probes: []"
+
+  # Entity §4/§38/§40 and target spec §20.5: an Expectation OWES, it does not AUTHORIZE. It is an
+  # INPUT to checkpoint step 4 and never a second gate. `CLAUDE.md` rule 17.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # EX-3, EX-3i and EX-7 are all `T`-triggered, so of every P6 unit this is the one whose correctness
+  # rests most directly on P5's durable-timer substrate (machine §37: "durable timers, not sweeps",
+  # M-36). A second timer table, or an in-memory sleep, is the shape a sweep arrives in.
+  - name: "the deadline rides P5's existing durable timers rather than a second timer mechanism"
+    command: >-
+      .venv/bin/python -c "import pathlib,sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      m=pathlib.Path('src/freight_recon/expectation.py');
+      g=pathlib.Path('src/freight_recon/migrations/phase6_expectations.py');
+      src=m.read_text() if m.exists() else '';
+      mig=g.read_text() if g.exists() else '';
+      print('machine source:', 'present' if m.exists() else 'MISSING');
+      print('M8 schedules through DurableTimers:', 'DurableTimers' in src);
+      print('M8 consumes TimerFired:', 'TimerFired' in src);
+      sleeps=sorted({t for t in ('time.sleep','asyncio.sleep','threading.Timer','sched.scheduler')
+      if t in src});
+      print('in-memory sleep in the machine:', sleeps);
+      second=sorted(set(re.findall(r'CREATE TABLE (\\w*timer\\w*)', mig, re.I)));
+      print('second timer table created by m8:', second);
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('timer tables in the canonical schema:',
+      sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'
+      and name like '%timer%'\")))"
+    timeout_s: 300
+    contains:
+      - "machine source: present"
+      - "M8 schedules through DurableTimers: True"
+      - "M8 consumes TimerFired: True"
+      - "in-memory sleep in the machine: []"
+      - "second timer table created by m8: []"
+      - "timer tables in the canonical schema: ['durable_timers']"
+
+  # The three landed units M8 reads from and must not reach back into. M5 is the closest: EX-2 and
+  # EX-4 READ its rows, so a binding that started requiring an Expectation would be M5 rewritten from
+  # inside M8. M3 is the one whose §26.1 `AWAITING_OBSERVATION` outcome entity §39 points at, and M3
+  # is tier-1 and landed. M7 is the one an overdue Expectation is NOT.
+  - name: "M5's, M3's and M7's landed machines are not rewritten by M8"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      src=lambda n: (root / (n + '.py')).read_text(encoding='utf-8');
+      imports=lambda n: {(x.module or '').split('.')[-1] for x in ast.walk(ast.parse(src(n)))
+      if isinstance(x,ast.ImportFrom)} | {a.name.split('.')[-1] for x in ast.walk(ast.parse(src(n)))
+      if isinstance(x,ast.Import) for a in x.names};
+      print('landed machines scanned:',
+      sorted(n for n in ('observation','external_effect','conflict') if (root / (n + '.py')).exists()));
+      print('observation.py imports expectation:', 'expectation' in imports('observation'));
+      print('external_effect.py imports expectation:', 'expectation' in imports('external_effect'));
+      print('conflict.py imports expectation:', 'expectation' in imports('conflict'));
+      print('M5 OB-3 binds without an expectation:', 'expectation' not in imports('observation'));
+      print('M3 UNKNOWN_OUTCOME semantics present:', 'UNKNOWN_OUTCOME' in src('external_effect'));
+      print('M3 AWAITING_OBSERVATION seam untouched by M8:',
+      'expectation' not in imports('external_effect'));
+      print('M7 raises no conflict from an expectation:', 'expectation' not in imports('conflict'))"
+    timeout_s: 300
+    contains:
+      - "observation.py imports expectation: False"
+      - "external_effect.py imports expectation: False"
+      - "conflict.py imports expectation: False"
+      - "M5 OB-3 binds without an expectation: True"
+      - "M3 UNKNOWN_OUTCOME semantics present: True"
+      - "M3 AWAITING_OBSERVATION seam untouched by M8: True"
+      - "M7 raises no conflict from an expectation: True"
+
+# ---------------------------------------------------------------------------
+# The declared risk coverage. Every claim names the checks that can actually EMIT the observations it
+# requires — a claim naming commands that cannot produce its literal fails closed forever, on every
+# run, no matter how correct the product is, and it fails wearing the costume of a product defect.
+# ---------------------------------------------------------------------------
+verifies:
+  - risk_category: safety_invariant
+    claim: >-
+      The honesty split is the unit. A missed deadline over a demonstrably HEALTHY window is
+      `OVERDUE`; a missed deadline over a window that was DOWN, UNKNOWN, ABSENT or only PARTIALLY
+      covered is `INDETERMINATE`. `OVERDUE` without a healthy `coverage_ref` is structurally
+      impossible — a database CHECK, not a branch — and the absence of a coverage record is never
+      read as health. We do not accuse a counterparty of a failure that was ours.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "OVERDUE requires healthy coverage and the human-owned states require an owner, as CHECKs"
+      - "the observation-coverage record M8 reads is persisted, tenant-first and windowed"
+    observations:
+      - "OVERDUE MEANS IT NEVER CAME; INDETERMINATE MEANS WE WERE NOT WATCHING"
+      - "A MISSED DEADLINE OVER A DEMONSTRABLY HEALTHY WINDOW IS OVERDUE"
+      - "A MISSED DEADLINE OVER A BLIND WINDOW IS INDETERMINATE, NOT OVERDUE"
+      - "UNKNOWN COVERAGE IS INDETERMINATE, NOT OVERDUE"
+      - "THE ABSENCE OF A COVERAGE RECORD IS NOT HEALTH"
+      - "PARTIAL COVERAGE OVER THE WINDOW IS NOT HEALTH"
+      - "OVERDUE WITHOUT A HEALTHY coverage_ref IS STRUCTURALLY IMPOSSIBLE"
+      - "WE DO NOT ACCUSE A COUNTERPARTY OF A FAILURE THAT WAS OURS"
+      - "OVERDUE requires healthy coverage: True"
+      - "coverage health is never defaulted: True"
+
+  - risk_category: authorization
+    claim: >-
+      A model may PROPOSE that an Expectation is owed; the deadline and the coverage are
+      runtime-set. Counterparty or model content never asserts that the channel was healthy,
+      confidence never turns `INDETERMINATE` into `OVERDUE` at any value including 1.0, and an
+      Expectation OWES something rather than authorizing anything — `checkpoint.py` remains the only
+      thing that mints a gate decision and M3 remains the single effect authority.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+    observations:
+      - "A MODEL MAY PROPOSE AN EXPECTATION; THE DEADLINE AND THE COVERAGE ARE RUNTIME-SET"
+      - "COUNTERPARTY CONTENT NEVER ASSERTS THAT THE CHANNEL WAS HEALTHY"
+      - "CONFIDENCE NEVER TURNS INDETERMINATE INTO OVERDUE"
+      - "AN EXPECTATION OWES SOMETHING; IT DOES NOT AUTHORIZE ANYTHING"
+      - "M8 MINTS NO GATE DECISION"
+      - "AN UNDISCHARGED EXPECTATION MAKES A FIELD unknown, NEVER consistent"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  - risk_category: missing_data
+    claim: >-
+      A required basis that is absent fails closed rather than being assumed. An Expectation cannot
+      be raised without a declared `expected_source` or without a deadline; an `OVERDUE` or
+      `INDETERMINATE` Expectation cannot exist without a named human owner; a discharge cannot happen
+      without a bound Observation; and an Expectation is never treated as `conflicting` — we do not
+      have too much information, we have too little, and `unknown` is not `conflicting`.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "OVERDUE requires healthy coverage and the human-owned states require an owner, as CHECKs"
+      - "the owner, the discharging observation and the coverage record are FOREIGN KEYS"
+    observations:
+      - "THE OBSERVABILITY CHANNEL IS DECLARED AT CREATION OR THERE IS NO EXPECTATION"
+      - "AN OVERDUE OR INDETERMINATE EXPECTATION HAS A NAMED HUMAN OWNER"
+      - "AN OWNERLESS HUMAN-OWNED STATE IS STRUCTURALLY IMPOSSIBLE"
+      - "AN UNBOUND OBSERVATION NEVER DISCHARGES"
+      - "AN UNDISCHARGED EXPECTATION MAKES A FIELD unknown, NEVER consistent"
+      - "expected_source NOT NULL: True"
+      - "human-owned states require owner_id: True"
+      - "owner is FK-backed into tenant_humans: True"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The six canonical states are a database CHECK with no seventh — no `TIMED_OUT`, no `STALE`, no
+      bare `RESOLVED` imported from M9, no `SUPERSEDED` — and the eight `EX-*` rows are the whole
+      lifecycle. The from-sets are read literally: cancelling an `INDETERMINATE` Expectation is an
+      illegal transition because `EX-6`'s from-set is `{RAISED, OVERDUE}`, and a `RAISED` Expectation
+      never expires because `EX-7`'s is `{OVERDUE, INDETERMINATE}`. Expiry is explicit and never
+      silent, and no sweep, reaper or scan closes an Expectation.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "the six canonical expectation states are a database constraint, and there is no seventh"
+      - "no sweep, reaper, deletion or unregistered expectation state was invented"
+    observations:
+      - "CANCELLING AN INDETERMINATE EXPECTATION IS AN ILLEGAL TRANSITION"
+      - "A RAISED EXPECTATION NEVER EXPIRES"
+      - "TERMINAL AGE EXPIRES AN OVERDUE OR INDETERMINATE EXPECTATION"
+      - "EXPIRY IS NEVER SILENT"
+      - "NO SWEEP, REAPER OR SCAN CLOSES AN EXPECTATION"
+      - "THERE IS NO TIMED_OUT, STALE OR RESOLVED STATE"
+      - "unregistered expectation states in the migration: []"
+      - "invented sweep/reaper surfaces: []"
+      - "invented expiry/extra transition rows: []"
+
+  - risk_category: boundary
+    claim: >-
+      A deadline is stored in UTC and EVALUATED in the facility's local timezone, and a DST boundary
+      is a real freight event rather than an edge case. `deadline_utc` is UTC, `originating_timezone`
+      is retained beside it, an appointment window crossing a DST boundary lands where the facility
+      says it lands, and evaluating the window in UTC instead of facility-local is an illegal
+      transition rather than an approximation.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "OVERDUE requires healthy coverage and the human-owned states require an owner, as CHECKs"
+      - "the M8 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "A DEADLINE IS STORED IN UTC AND THE ORIGINATING TIMEZONE IS RETAINED"
+      - "AN APPOINTMENT WINDOW IS EVALUATED IN THE FACILITY'S LOCAL TIMEZONE"
+      - "A DST BOUNDARY DOES NOT MOVE THE DEADLINE"
+      - "EVALUATING THE WINDOW IN UTC INSTEAD OF FACILITY-LOCAL IS WRONG"
+      - "deadline_utc NOT NULL: True"
+      - "originating_timezone NOT NULL: True"
+      - "--timezone"
+      - "dst-boundary"
+      - "utc-window"
+
+  - risk_category: concurrency
+    claim: >-
+      At most one live `RAISED` Expectation exists per `(tenant, expectation_key)`, and that is a
+      PARTIAL UNIQUE index rather than an application-level check two writers both pass. Concurrent
+      raisers produce one live Expectation; a discharge racing a deadline is won by the discharge, as
+      §16's precedence requires, proved under real concurrency rather than by calling the two in a
+      convenient order; and a stale expected version raises rather than silently overwriting.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "one live RAISED expectation per key is a PARTIAL UNIQUE index, tenant-first"
+    observations:
+      - "AT MOST ONE LIVE RAISED EXPECTATION PER TENANT AND EXPECTATION KEY"
+      - "CONCURRENT RAISES PRODUCE ONE LIVE EXPECTATION"
+      - "DISCHARGE BEATS OVERDUE AND INDETERMINATE WHEN THEY RACE"
+      - "A LOST UPDATE ON AN EXPECTATION IS REFUSED"
+      - "CREATE UNIQUE INDEX"
+      - "RAISED"
+
+  - risk_category: cross_tenant
+    claim: >-
+      The same `expectation_key` in two tenants is two isolated Expectations, and no Expectation is
+      read, discharged, judged or owned across a tenant boundary. A cross-tenant Observation, a
+      cross-tenant coverage record and a cross-tenant owner each fail closed. Tenant is the first
+      partition dimension — in the live index, in the foreign keys and in every query.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the expectation layer, tenant-first"
+      - "one live RAISED expectation per key is a PARTIAL UNIQUE index, tenant-first"
+      - "the observation-coverage record M8 reads is persisted, tenant-first and windowed"
+    observations:
+      - "THE SAME EXPECTATION KEY IN TWO TENANTS ARE TWO ISOLATED EXPECTATIONS"
+      - "A WRONG-TENANT OBSERVATION NEVER DISCHARGES"
+      - "A CROSS-TENANT COVERAGE RECORD FAILS CLOSED"
+      - "problems: []"
+      - "tenant first in the live index: True"
+      - "coverage tenant NOT NULL: True"
+
+  - risk_category: malformed_input
+    claim: >-
+      A malformed expectation, a wrong-subject observation and a model-authored coverage assertion
+      all fail closed rather than becoming half-written rows or authority. An invented fault name is
+      refused with a non-zero exit and a readable message; so are a reopen fault, a correction fault
+      and a supersession fault, because entity §27, §23 and §24 each say `N/A` and a probe that
+      accepted one would be producing passing evidence for a transition that does not exist.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "a reopen fault does not exist, because reopening an expectation is N/A"
+      - "a correction fault does not exist, because a wrong expectation is cancelled, not corrected"
+      - "a supersession fault does not exist, because a re-versioned deadline is not a supersession"
+      - "the M8 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+      - "A WRONG-SUBJECT OBSERVATION NEVER DISCHARGES"
+      - "COUNTERPARTY CONTENT NEVER ASSERTS THAT THE CHANNEL WAS HEALTHY"
+      - "--coverage"
+      - "malformed-expectation"
+
+  - risk_category: idempotency
+    claim: >-
+      A redelivered `TimerFired` is a no-op through the consumer inbox, a duplicate raise of the same
+      owed observation produces no second live Expectation, and a timer that fires at least once
+      still moves the machine exactly once. Duplicate pressure produces no second Expectation and no
+      lost obligation.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "one live RAISED expectation per key is a PARTIAL UNIQUE index, tenant-first"
+    observations:
+      - "A REDELIVERED TIMER IS A NO-OP"
+      - "AT MOST ONE LIVE RAISED EXPECTATION PER TENANT AND EXPECTATION KEY"
+      - "CONCURRENT RAISES PRODUCE ONE LIVE EXPECTATION"
+      - "expectation_key"
+
+  - risk_category: retry_safety
+    claim: >-
+      Replay rebuilds the verdict, not a new one. A full-history rebuild reconstructs `OVERDUE` and
+      `INDETERMINATE` from the coverage that was RECORDED at the time rather than from the channel's
+      state now — the honesty distinction survives replay, and it reaches the same answer next
+      Tuesday. Replay mints no authority, constructs no witness, claims no grant and causes no
+      external effect.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+    observations:
+      - "REPLAY REBUILDS OVERDUE AND INDETERMINATE FROM THE RECORDED COVERAGE"
+      - "REPLAY NEVER READS THE CURRENT CHANNEL STATE"
+      - "replay: 0 new authority, 0 external effects, 0 coverage rewritten, 0 state flips"
+
+  - risk_category: restart_recovery
+    claim: >-
+      The deadline is a durable timer, never an in-memory sleep or a background sweep, so a restart
+      re-fires it rather than losing it. A restart before the deadline leaves the Expectation
+      `RAISED` with its timer intact; a restart after `OVERDUE` reaches the canonical state; and
+      neither produces a second Expectation nor loses an obligation.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "the deadline rides P5's existing durable timers rather than a second timer mechanism"
+    observations:
+      - "THE DEADLINE IS A DURABLE TIMER, NEVER AN IN-MEMORY SLEEP OR SWEEP"
+      - "A RESTART RE-FIRES THE DEADLINE TIMER"
+      - "A RESTART LEAVES THE RAISED EXPECTATION RAISED"
+      - "M8 schedules through DurableTimers: True"
+      - "in-memory sleep in the machine: []"
+      - "second timer table created by m8: []"
+
+  - risk_category: stale_state
+    claim: >-
+      Nothing about an Expectation is quietly edited or quietly forgotten. A deadline amendment
+      re-versions and retains its history rather than overwriting; the subject and expected type
+      cannot be mutated; a stale version never overwrites newer state; a late arrival is ALWAYS
+      accepted, however long after the deadline; and a cancelled or expired Expectation is retained
+      rather than deleted. There is no expiry sweep and no reaper to make a standing obligation stop
+      being visible.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "no sweep, reaper, deletion or unregistered expectation state was invented"
+    observations:
+      - "A DEADLINE AMENDMENT RE-VERSIONS AND IS NOT A SUPERSESSION"
+      - "THE DEADLINE HISTORY IS RETAINED"
+      - "THE SUBJECT AND THE EXPECTED TYPE CANNOT BE MUTATED"
+      - "A STALE VERSION NEVER OVERWRITES NEWER STATE"
+      - "A LATE ARRIVAL IS ALWAYS ACCEPTED"
+      - "LATE EVIDENCE IS NEVER REJECTED BECAUSE THE DEADLINE PASSED"
+      - "A CANCELLED EXPECTATION IS RETAINED, NEVER DELETED"
+      - "expectation deletion statements: []"
+
+  - risk_category: persistence_failure
+    claim: >-
+      The `TimerFired` arrival, the coverage read and the resulting state and event are ONE
+      transactional decision, and a persistence failure rolls back all of it rather than leaving a
+      half-decided deadline — an Expectation marked `OVERDUE` whose coverage nobody can produce, or a
+      coverage read whose verdict nobody recorded. A pre-M8 database taken through the migration
+      reaches the canonical expectation shape, a freshly created canonical database reports no
+      readiness problems, and the invariants that matter — the healthy-coverage CHECK, the owner, the
+      live-expectation index, the coverage window — are enforced by the database rather than asserted
+      in a docstring.
+    checks:
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the expectation layer, tenant-first"
+      - "OVERDUE requires healthy coverage and the human-owned states require an owner, as CHECKs"
+      - "the owner, the discharging observation and the coverage record are FOREIGN KEYS"
+      - "the observation-coverage record M8 reads is persisted, tenant-first and windowed"
+    observations:
+      - "RAISING THE EXPECTATION AND SCHEDULING ITS DURABLE TIMER ARE ONE COMMIT"
+      - "THE TIMER, THE COVERAGE READ AND THE RESULTING STATE ARE ONE COMMIT"
+      - "A PERSISTENCE FAILURE LEAVES NO HALF-DECIDED DEADLINE"
+      - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+      - "A LEGACY DATABASE MIGRATES TO THE CANONICAL EXPECTATION SHAPE"
+      - "THE DATABASE ENFORCES THE EXPECTATION INVARIANTS"
+      - "problems: []"
+      - "foreign keys into a table nobody built: []"
+      - "coverage window is bounded: True"
+
+  - risk_category: regression
+    claim: >-
+      M8 adds two tables and edits the canonical schema, so every layer that reads a canonical
+      database is re-run against this change rather than assumed: the P3 kernel, the P4 boundary, the
+      P5 transport with its durable timers and canonical event contracts, and the M1–M7 batteries.
+      M5's, M6's and M7's own probes still report their behaviours as specified with M8's tables
+      present; M5's landed observation machine, M3's landed `AWAITING_OBSERVATION` seam and M7's
+      landed conflict machine are all unchanged, so no authority question was answered by editing a
+      landed unit; an overdue Expectation did not quietly become a Conflict; no M9, M10, M11 or M12
+      machine arrived along the way; and every M8 guard is proven capable of failing.
+    checks:
+      # The regression claim includes the M8-owned half — that M5, M3 and M7 were not rewritten, that
+      # an overdue Expectation is not a Conflict, that no neighbouring machine was built — and the
+      # probe is the command that observes those properties from inside M8's own story. The pytest
+      # anchors below re-run the layers M8 could break; none of them narrates, so none can emit the
+      # four literals this claim requires. Naming the probe here maps the claim to the command that
+      # actually proves that half of it. It is already run once by this scenario; naming it a second
+      # time re-reads its result, never re-runs it.
+      - "drive the Expectation machine through a brokerage narrative, and attack it"
+      - "the P3 checkpoint kernel M8 must not disturb, unbroken"
+      - "the P4 governed effect boundary M8 must not widen, unbroken"
+      - "the P5 transport, replay, durable timers and canonical event contracts M8 rides, unbroken"
+      - "M1, M2, M3, M4, M5, M6 and M7, whose schema M8 extends, unbroken"
+      - "M5 still behaves as specified with M8's tables in the schema"
+      - "M6 still behaves as specified with M8's tables in the schema"
+      - "M7 still behaves as specified with M8's tables in the schema"
+      - "M5's, M3's and M7's landed machines are not rewritten by M8"
+      - "the exception, compensation, policy and rule seams are fed without M9, M10, M11 or M12 being built"
+      - "M8 uses the seven registered F8 contracts and invents no eighth"
+      - "the M8 mutation battery"
+    observations:
+      - "mutants caught"
+      - "behaviours as specified, 0 wrong"
+      - "THE M5 OBSERVATION MACHINE IS UNCHANGED"
+      - "THE M3 AWAITING_OBSERVATION SEAM IS UNCHANGED"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "AN OVERDUE EXPECTATION IS NOT AUTOMATICALLY A CONFLICT"
+      - "THE M9, M10, M11 AND M12 MACHINES ARE NOT BUILT"
+      - "M5 OB-3 binds without an expectation: True"
+      - "M3 AWAITING_OBSERVATION seam untouched by M8: True"
+      - "M7 raises no conflict from an expectation: True"
+      - "mints another machine event: []"
+      - "synonym events registered: []"
+
+# ---------------------------------------------------------------------------
+# Literal strings the probe must print. These are a CONTRACT with `tasks/neyma_p6_m8.md`, which
+# states them verbatim to the builder. They are matched as substrings against everything observed —
+# nothing interprets them.
+#
+# Note what is NOT here. There is no required literal about an Exception being raised, none about who
+# writes `observation_coverage`, none about whether the live index covers every non-terminal state,
+# none about what `subject_ref` points at, and none about F8's ordering class: the repository's own
+# authority does not currently settle any of the five (see the header and `tasks/neyma_p6_m8.md`
+# §3.8). Every literal below is one that every reading agrees on.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "AN EXPECTATION IS A DURABLE COMMITMENT THAT SOMETHING SHOULD BE OBSERVED BY A DEADLINE"
+  - "OVERDUE MEANS IT NEVER CAME; INDETERMINATE MEANS WE WERE NOT WATCHING"
+  - "AN EXPECTATION OWES SOMETHING; IT DOES NOT AUTHORIZE ANYTHING"
+  - "THE OBSERVABILITY CHANNEL IS DECLARED AT CREATION OR THERE IS NO EXPECTATION"
+  - "A DEADLINE IS STORED IN UTC AND THE ORIGINATING TIMEZONE IS RETAINED"
+  - "RAISING THE EXPECTATION AND SCHEDULING ITS DURABLE TIMER ARE ONE COMMIT"
+  - "AT MOST ONE LIVE RAISED EXPECTATION PER TENANT AND EXPECTATION KEY"
+  - "CONCURRENT RAISES PRODUCE ONE LIVE EXPECTATION"
+  - "A BOUND OBSERVATION DISCHARGES THE EXPECTATION"
+  - "AN UNBOUND OBSERVATION NEVER DISCHARGES"
+  - "A WRONG-SUBJECT OBSERVATION NEVER DISCHARGES"
+  - "A WRONG-TENANT OBSERVATION NEVER DISCHARGES"
+  - "A MISSED DEADLINE OVER A DEMONSTRABLY HEALTHY WINDOW IS OVERDUE"
+  - "A MISSED DEADLINE OVER A BLIND WINDOW IS INDETERMINATE, NOT OVERDUE"
+  - "UNKNOWN COVERAGE IS INDETERMINATE, NOT OVERDUE"
+  - "THE ABSENCE OF A COVERAGE RECORD IS NOT HEALTH"
+  - "PARTIAL COVERAGE OVER THE WINDOW IS NOT HEALTH"
+  - "OVERDUE WITHOUT A HEALTHY coverage_ref IS STRUCTURALLY IMPOSSIBLE"
+  - "WE DO NOT ACCUSE A COUNTERPARTY OF A FAILURE THAT WAS OURS"
+  - "AN OVERDUE OR INDETERMINATE EXPECTATION HAS A NAMED HUMAN OWNER"
+  - "AN OWNERLESS HUMAN-OWNED STATE IS STRUCTURALLY IMPOSSIBLE"
+  - "CONFIDENCE NEVER TURNS INDETERMINATE INTO OVERDUE"
+  - "A MODEL MAY PROPOSE AN EXPECTATION; THE DEADLINE AND THE COVERAGE ARE RUNTIME-SET"
+  - "COUNTERPARTY CONTENT NEVER ASSERTS THAT THE CHANNEL WAS HEALTHY"
+  - "A LATE ARRIVAL IS ALWAYS ACCEPTED"
+  - "A LATE ARRIVAL DISCHARGES AN OVERDUE EXPECTATION"
+  - "A LATE ARRIVAL DISCHARGES AN INDETERMINATE EXPECTATION"
+  - "LATE EVIDENCE IS NEVER REJECTED BECAUSE THE DEADLINE PASSED"
+  - "A DEADLINE AMENDMENT RE-VERSIONS AND IS NOT A SUPERSESSION"
+  - "THE DEADLINE HISTORY IS RETAINED"
+  - "THE SUBJECT AND THE EXPECTED TYPE CANNOT BE MUTATED"
+  - "A STALE VERSION NEVER OVERWRITES NEWER STATE"
+  - "A DISAPPEARED REASON CANCELS THROUGH EX-6 AND NOTHING ELSE"
+  - "CANCELLING AN INDETERMINATE EXPECTATION IS AN ILLEGAL TRANSITION"
+  - "A CANCELLED EXPECTATION IS RETAINED, NEVER DELETED"
+  - "TERMINAL AGE EXPIRES AN OVERDUE OR INDETERMINATE EXPECTATION"
+  - "A RAISED EXPECTATION NEVER EXPIRES"
+  - "EXPIRY IS NEVER SILENT"
+  - "NO SWEEP, REAPER OR SCAN CLOSES AN EXPECTATION"
+  - "THERE IS NO TIMED_OUT, STALE OR RESOLVED STATE"
+  - "DISCHARGE BEATS OVERDUE AND INDETERMINATE WHEN THEY RACE"
+  - "THE DEADLINE IS A DURABLE TIMER, NEVER AN IN-MEMORY SLEEP OR SWEEP"
+  - "A RESTART RE-FIRES THE DEADLINE TIMER"
+  - "A RESTART LEAVES THE RAISED EXPECTATION RAISED"
+  - "A REDELIVERED TIMER IS A NO-OP"
+  - "THE TIMER, THE COVERAGE READ AND THE RESULTING STATE ARE ONE COMMIT"
+  - "A PERSISTENCE FAILURE LEAVES NO HALF-DECIDED DEADLINE"
+  - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+  - "REPLAY REBUILDS OVERDUE AND INDETERMINATE FROM THE RECORDED COVERAGE"
+  - "REPLAY NEVER READS THE CURRENT CHANNEL STATE"
+  - "replay: 0 new authority, 0 external effects, 0 coverage rewritten, 0 state flips"
+  - "AN APPOINTMENT WINDOW IS EVALUATED IN THE FACILITY'S LOCAL TIMEZONE"
+  - "A DST BOUNDARY DOES NOT MOVE THE DEADLINE"
+  - "EVALUATING THE WINDOW IN UTC INSTEAD OF FACILITY-LOCAL IS WRONG"
+  - "M8 MINTS NO GATE DECISION"
+  - "AN UNDISCHARGED EXPECTATION MAKES A FIELD unknown, NEVER consistent"
+  - "DISCHARGE AND INDETERMINATE DETECTION CONTINUE UNDER A BRAKE"
+  - "A BRAKE NEVER FABRICATES OVERDUE STATE"
+  - "THE SAME EXPECTATION KEY IN TWO TENANTS ARE TWO ISOLATED EXPECTATIONS"
+  - "A CROSS-TENANT COVERAGE RECORD FAILS CLOSED"
+  - "A LOST UPDATE ON AN EXPECTATION IS REFUSED"
+  - "THE DATABASE ENFORCES THE EXPECTATION INVARIANTS"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL EXPECTATION SHAPE"
+  - "THE M5 OBSERVATION MACHINE IS UNCHANGED"
+  - "THE M3 AWAITING_OBSERVATION SEAM IS UNCHANGED"
+  - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+  - "AN OVERDUE EXPECTATION IS NOT AUTOMATICALLY A CONFLICT"
+  - "THE M9, M10, M11 AND M12 MACHINES ARE NOT BUILT"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M8 exists to prevent has just
+  # happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### OVERDUE WITHOUT HEALTHY COVERAGE ###"
+  - "### ABSENT COVERAGE TREATED AS HEALTHY ###"
+  - "### UNKNOWN COVERAGE BECAME OVERDUE ###"
+  - "### BLIND WINDOW BECAME OVERDUE ###"
+  - "### PARTIAL COVERAGE TREATED AS HEALTHY ###"
+  - "### CONFIDENCE TURNED INDETERMINATE INTO OVERDUE ###"
+  - "### MODEL SET COVERAGE TRUTH ###"
+  - "### COUNTERPARTY ASSERTED CHANNEL HEALTH ###"
+  - "### EXPECTATION RAISED WITHOUT A DECLARED CHANNEL ###"
+  - "### EXPECTATION RAISED WITHOUT A DEADLINE ###"
+  - "### TWO LIVE RAISED EXPECTATIONS FOR ONE KEY ###"
+  - "### UNBOUND OBSERVATION DISCHARGED ###"
+  - "### WRONG-SUBJECT OBSERVATION DISCHARGED ###"
+  - "### WRONG-TENANT OBSERVATION DISCHARGED ###"
+  - "### LATE ARRIVAL REFUSED ###"
+  - "### LATE DISCHARGE LOST ITS late MARKER ###"
+  - "### DEADLINE AMENDED WITHOUT RE-VERSIONING ###"
+  - "### DEADLINE HISTORY LOST ###"
+  - "### SUBJECT SILENTLY MUTATED ###"
+  - "### EXPECTED TYPE SILENTLY MUTATED ###"
+  - "### STALE VERSION OVERWROTE NEWER STATE ###"
+  - "### INDETERMINATE SILENTLY CANCELLED ###"
+  - "### EXPECTATION SILENTLY EXPIRED ###"
+  - "### EXPECTATION DELETED ###"
+  - "### RAISED EXPECTATION EXPIRED ###"
+  - "### SWEEP CLOSED AN EXPECTATION ###"
+  - "### REAPER DELETED AN EXPECTATION ###"
+  - "### UNREGISTERED STATE MINTED ###"
+  - "### OVERDUE BEAT A DISCHARGE ###"
+  - "### IN-MEMORY SLEEP DECIDED THE DEADLINE ###"
+  - "### TIMER LOST ACROSS RESTART ###"
+  - "### HALF-DECIDED DEADLINE PERSISTED ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### REPLAY READ THE LIVE CHANNEL ###"
+  - "### REPLAY FLIPPED OVERDUE AND INDETERMINATE ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### DOWNSTREAM EFFECT DURING REPLAY ###"
+  - "### WINDOW EVALUATED IN UTC ###"
+  - "### DST BOUNDARY MOVED THE DEADLINE ###"
+  - "### M8 MINTED A GATE DECISION ###"
+  - "### EXPECTATION AUTHORIZED AN ACTION ###"
+  - "### BRAKE FABRICATED OVERDUE ###"
+  - "### BRAKE STOPPED INDETERMINATE DETECTION ###"
+  - "### CROSS-TENANT OBSERVATION ACCEPTED ###"
+  - "### CROSS-TENANT COVERAGE ACCEPTED ###"
+  - "### OWNERLESS HUMAN-OWNED STATE CREATED ###"
+  - "### M5 OBSERVATION ROW REWRITTEN BY M8 ###"
+  - "### M3 AWAITING_OBSERVATION SEAM REWRITTEN ###"
+  - "### M7 CONFLICT ROW REWRITTEN BY M8 ###"
+  - "### EXCEPTION FABRICATED ###"
+  - "### M9 EVENT MINTED ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6 work is
+# largely untracked and those commands would destroy it irrecoverably.
+teardown: []
