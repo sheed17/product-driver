@@ -603,6 +603,24 @@ expect_state:
   # demonstrably HEALTHY throughout the window" is a sentence rather than a fact — and a DEFAULT is
   # the specific mechanism by which "we did not record anything" silently becomes "it was fine",
   # which is the exact failure `M-32`'s fail-closed clause exists to prevent.
+  #
+  # ### THE VOCABULARY IS PRINTED, NOT ASSUMED. This check used to assert the raw literals
+  # `'HEALTHY'`, `'DOWN'` and `'UNKNOWN'` against a command that emitted only a BOOLEAN about them —
+  # three oracles no command here could ever satisfy, which is a scenario-definition defect and not
+  # a product one (run `20260829-035117` blocked on exactly that, with M8 itself correct). The
+  # command now PARSES the closed vocabulary out of the persisted `CHECK` and prints it, so the
+  # literals are emitted by the thing that enforces them:
+  #
+  #   * SQL comments are stripped BEFORE the parse. The DDL's own prose says HEALTHY and PARTIAL,
+  #     and prose is not enforcement — a vocabulary read out of a comment would pass while the
+  #     column accepted anything.
+  #   * the parse is anchored on `health IN (...)`, so a missing or renamed CHECK yields `[]` and
+  #     every literal below goes red. Nothing is echoed unconditionally.
+  #   * the values print in the order the CHECK DECLARES them, not sorted — sorted order here would
+  #     be DOWN, HEALTHY, PARTIAL, UNKNOWN, so the printed line is itself evidence of derivation.
+  #   * `PARTIAL` is in the assertion because it is in the canonical CHECK: a HEALTHY row must span
+  #     the whole required window or the machine reads the window as PARTIAL, which is the half of
+  #     `EX-3` a partial defeats. There is deliberately no `ABSENT` member — absence is NO ROW.
   - name: "the observation-coverage record M8 reads is persisted, tenant-first and windowed"
     command: >-
       .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
@@ -612,21 +630,30 @@ expect_state:
       c=sqlite3.connect(p); create_canonical_schema(c);
       row=c.execute(\"select sql from sqlite_master where name='observation_coverage'\").fetchone();
       sql=(row[0] if row else '');
+      ddl=re.sub(r'--.*', '', sql);
       info=list(c.execute('pragma table_info(observation_coverage)'));
       nn={r[1]: bool(r[3]) for r in info};
       dflt={r[1]: r[4] for r in info};
       health=[n for n in nn if 'health' in n or 'status' in n];
+      m=re.search(r'\bhealth\b\s+IN\s*\(([^)]*)\)', ddl, re.I);
+      vocab=re.findall('\\x27([A-Z_]+)\\x27', m.group(1)) if m else [];
       print('coverage columns:', sorted(nn));
-      print('coverage health vocabulary present:', ('HEALTHY' in sql and 'DOWN' in sql and 'UNKNOWN' in sql));
+      print('coverage health vocabulary is enforced by a CHECK:', bool(m));
+      print('coverage health vocabulary:', ', '.join(repr(v) for v in vocab));
+      print('coverage health vocabulary present:', {'HEALTHY','DOWN','UNKNOWN'}.issubset(vocab));
+      print('coverage health has no ABSENT member:', 'ABSENT' not in vocab and bool(vocab));
       print('coverage tenant NOT NULL:', nn.get('tenant', False));
       print('coverage window is bounded:', all(nn.get(k, False) for k in ('window_start','window_end')));
       print('coverage health is never defaulted:', all(dflt.get(h) is None for h in health) and bool(health))"
     timeout_s: 300
     contains:
+      - "coverage health vocabulary is enforced by a CHECK: True"
+      - "coverage health vocabulary: 'HEALTHY', 'DOWN', 'UNKNOWN', 'PARTIAL'"
       - "'HEALTHY'"
       - "'DOWN'"
       - "'UNKNOWN'"
       - "coverage health vocabulary present: True"
+      - "coverage health has no ABSENT member: True"
       - "coverage tenant NOT NULL: True"
       - "coverage window is bounded: True"
       - "coverage health is never defaulted: True"
