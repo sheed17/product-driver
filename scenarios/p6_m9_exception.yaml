@@ -1,0 +1,1623 @@
+# P6 / M9 — Exception.
+#
+# THIS FILE IS THE PERMANENT BASE, NOT THE SUITE. It gives the dynamic scenario generator five
+# things and nothing more:
+#
+#   1. deterministic basic M9 operation           (the probe, run whole)
+#   2. a safe approved M9 command vocabulary      (`probe --case <case>`, argument tails only)
+#   3. a bounded MUTATION AXIS to vary cases along (`--inject`, `--actor`, `--decision-ref`, …)
+#   4. persisted-state oracles                    (`expect_state`, below)
+#   5. focused regression anchors                 (P3 / P4 / P5 / M1 / M2 / M3 / M4 / M5 / M6 / M7 / M8)
+#
+# Breadth is the generator's job. Stage 1 draws risk-driven cases from the task, the registry and
+# the acceptance criteria; stage 2 refines them against the diff the builder actually produced;
+# stage 3 grows neighbours around whatever failed. None of that can author shell — a generated case
+# may only CHOOSE one of the approved commands below, optionally with an argument tail, and decide
+# when it runs and what must be observable afterwards.
+#
+# WHY THE MUTATION AXIS IS NOT OPTIONAL HERE, for the same reason it was not optional for M3, M4,
+# M5, M6, M7 and M8. M9 ships dark: no oversight queue, no dashboard, no notifier, no HTTP surface.
+# The executor's only concurrency primitive is `parallel_requests`, which is HTTP — so for this unit
+# the generator has NO way to compose ordering, concurrency, timing, duplication, crash or replay
+# variation from the outside. The axis is a closed, bounded, argument-only vocabulary; the approval
+# boundary is unchanged, because a prefix match already permits argument tails and already refuses
+# shell. See docs/SCENARIO-SPACE.md gap G2.
+#
+# THE TWO AXES THAT ARE THIS UNIT'S OWN. `--actor` is the axis the whole machine turns on: M9's
+# entire safety property is a question about WHO MAY ACT — a human acknowledges, a human resolves, a
+# timer ages and never resolves, and a model does none of it. `--decision-ref` is the second, and
+# `absent` is its load-bearing value: it is the flag that asks whether closure by silence is possible
+# at all, which is `F-30`, `GR-14`, `AC-SAFE-024` and `AC-MACH-903` in one argument.
+#
+# WHAT M9 IS, IN THREE SENTENCES, because everything below is a consequence of them:
+#
+#   ### AN EXCEPTION IS SOMETHING THAT NEEDS A HUMAN.
+#   ### IT REACHES A NAMED HUMAN OWNER FROM CREATION, AND IT IS NEVER CLOSED BY SILENCE.
+#   ### AN EXCEPTION CLOSED WITHOUT A DECISION IS NOT CLOSED — IT IS FORGOTTEN.
+#
+# M9 is the machine every other machine's human-owned state points at: M3's `UNKNOWN_OUTCOME`, M5's
+# `UNPARSEABLE`, M6's `AMBIGUOUS`, M7's `OPEN`, M8's `OVERDUE` and `INDETERMINATE`. Collapsing it
+# into an alert, a log line or an auto-closable ticket row is exactly the forgetting this machine
+# exists to prevent — and each of those is a mechanism for forgetting wearing the costume of hygiene.
+#
+# THE SIX THINGS THIS FILE DELIBERATELY DOES NOT DECIDE. The corpus disagrees with itself in six
+# places, and encoding a resolution here would make Product Driver the author of a canonical
+# decision it has no authority to make (see `tasks/neyma_p6_m9.md` §3.8):
+#
+#   M9-AQ-1  does resolution require a HUMAN, or a human OR an ACTIVE rule? Entity §35, machine §16
+#            and §40 say a human; GR-14, K-1, F9's ExceptionResolved row and AC-SAFE-024 all say
+#            "an audit_events human-decision row OR an ACTIVE rule_id".
+#   M9-AQ-2  what is cancellation? Entity §25 and machine §22 both say a retracted cause cancels
+#            "still an event, still a decision_ref"; registry §4 gives M9 five states with no
+#            CANCELLED, F9 six contracts with no ExceptionCancelled, and machine §14 seven rows.
+#   M9-AQ-3  source_ref is a FOREIGN KEY (entity §18) to what? Entity §9 and §21 enumerate eight-plus
+#            aggregate types, four of which have no table, one of which is not keyed by a single id,
+#            and three of which are detector findings rather than rows.
+#   M9-AQ-4  who wires the five landed "→ Exception" seams? M9's consumed set (machine §33, entity
+#            §32) is exactly Acknowledged/Resolved/TimerFired, and EC-1's trigger is S|R — yet five
+#            landed machines each deferred their seam to M9 by name.
+#   M9-AQ-5  what IS the freeze that EC-1 commits atomically with the raise? Entity §15/§38 and
+#            machine §4/§28/§34/§35 require it "where applicable"; every landed freeze
+#            representation belongs to another unit and no landed transition an Exception can drive
+#            exists (WI-6's triggers are EvidenceMissing/ConflictRaised).
+#   M9-AQ-6  does EC-4 age from {OPEN, ACKNOWLEDGED} or from `any`? Machine §14 says the pair; target
+#            spec §12.9's row says `any`, and 00-conventions makes the target spec the senior
+#            document.
+#
+# Every oracle below asserts only what EVERY reading agrees on: a named human owner from creation, a
+# closure that requires a decision_ref which RESOLVES, five lifecycle states and no sixth, sub_status
+# as a field rather than a state, no expiry and no AutoClose, a timer that ages and escalates and
+# never resolves, a severity vocabulary of exactly three members whose changes carry their previous
+# value, a replay that rebuilds the current severity from the recorded events, and a tenant that is
+# first everywhere.
+
+name: p6_m9_exception
+phase: "P6"
+mode: backend
+description: >
+  P6 M9: the Exception — something that needs a human, and the one machine in Neyma whose whole job
+  is to make sure it reaches a named person and is never quietly forgotten. There is no oversight
+  queue, no dashboard and no notifier (M9 ships dark by contract), so the product is exercised
+  through its real runtime as a brokerage narrative: a TMS write times out and the outcome is
+  unknown, so an Exception is raised with a named human owner from the moment it exists and a
+  severity recorded beside it; an authenticated human acknowledges it, which proves they SAW it and
+  proves nothing else, and it keeps ageing; nobody acts, so a durable timer moves it to AGEING and
+  then ESCALATED — louder, still owned, and never resolved by the clock; someone tries to close it
+  with the string "done" and the database refuses, because closure is an event with a decision_ref
+  that RESOLVES to an authenticated human decision, and an exception closed without a decision is
+  not closed, it is FORGOTTEN; a model tries to clear it and is refused at any confidence; the
+  severity is reassessed and that is a FIELD change carrying the value it moved from, so a rebuild
+  months later reproduces the severity that is live rather than the one it was born with. What
+  matters is not that a row can be created — it is that no inactivity, no AutoClose, no expiry, no
+  sweep and no timer can ever close it, that no exception exists without a human whose name is on
+  it, and that a carrier's £2,850 nobody can account for reaches a person instead of a log file.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The M9 surface the builder must produce. A missing one is recorded as a failed assertion, so a run
+# against a repository where M9 does not exist yet cannot report a verified M9.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/exception.py"
+  - "src/freight_recon/migrations/phase6_exceptions.py"
+  - "eval/tests/test_phase6_exception.py"
+  - "scripts/probe_phase6_exception.py"
+  - "scripts/mutate_phase6_exception.py"
+
+services: []
+readiness: []
+app_url: ""
+
+commands:
+  # 1. THE VOCABULARY, ASSERTED. `--list-cases` is cheap and it is a real coverage oracle: if the
+  #    builder ships a probe that cannot exercise one of the canonical risk families, this command
+  #    fails here rather than the family silently going unverified. It is also what tells a reader of
+  #    this file which `--case` values exist.
+  - name: "the M9 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      # EC-1 — the raise, and the named human who owns it from creation
+      - "raise-creates-open-with-a-named-human-owner"
+      - "an-exception-cannot-be-raised-without-an-owner"
+      - "an-ownerless-exception-is-structurally-impossible"
+      - "the-owner-is-an-active-human-of-this-tenant"
+      - "an-offboarded-human-cannot-own-a-new-exception"
+      - "a-model-cannot-own-an-exception"
+      - "raise-records-severity-and-the-source-that-raised-it"
+      - "an-exception-cannot-be-raised-without-a-severity"
+      - "an-exception-cannot-be-raised-without-a-source-ref"
+      - "the-source-kind-is-a-closed-vocabulary"
+      # EC-1 — the PERMANENT-failure half (L-D, M-74)
+      - "a-permanent-auth-failure-raises-immediately-with-zero-retries"
+      - "a-permanent-config-failure-raises-immediately-with-zero-retries"
+      - "a-transient-failure-is-not-a-permanent-classification"
+      - "the-failure-classification-is-supplied-never-inferred-from-a-message"
+      # EC-2 — acknowledgement proves SEEN, not resolved
+      - "an-authenticated-human-acknowledges-the-exception"
+      - "acknowledgement-records-the-actor"
+      - "acknowledgement-proves-seen-not-resolved"
+      - "a-model-cannot-acknowledge-an-exception"
+      - "a-system-actor-cannot-acknowledge-an-exception"
+      - "an-acknowledged-exception-still-ages"
+      # EC-3 / EC-6 — RESOLUTION AUTHORITY, which is the unit
+      - "resolution-requires-a-decision-ref"
+      - "closure-without-a-decision-ref-is-structurally-impossible"
+      - "a-decision-ref-that-resolves-to-nothing-is-refused"
+      - "a-decision-ref-naming-a-non-human-decision-event-is-refused"
+      - "a-decision-ref-recorded-by-automation-is-refused"
+      - "a-model-can-never-resolve-an-exception"
+      - "an-escalated-exception-resolves-through-ec-6"
+      - "resolving-from-ageing-is-an-illegal-transition"
+      - "resolved-is-the-only-terminal-state"
+      - "a-resolved-exception-is-retained-never-deleted"
+      # NEVER CLOSED BY SILENCE
+      - "inactivity-never-closes-an-exception"
+      - "autoclose-is-an-illegal-transition"
+      - "an-exception-never-expires"
+      - "an-exception-cannot-be-outlived"
+      - "no-sweep-or-reaper-closes-an-exception"
+      - "a-timer-can-age-or-escalate-but-never-resolve"
+      # EC-4 / EC-5 — ageing and escalation on a DURABLE timer
+      - "an-open-exception-ages-through-a-durable-timer"
+      - "an-acknowledged-exception-ages-through-a-durable-timer"
+      - "ageing-escalates-through-a-durable-timer-not-a-sweep"
+      - "ageing-and-escalated-remain-human-owned"
+      - "the-ageing-threshold-is-caller-supplied-not-a-business-default"
+      - "ageing-an-escalated-exception-is-illegal"
+      - "nothing-moves-a-resolved-exception"
+      - "restart-re-fires-the-ageing-timer"
+      - "restart-preserves-the-open-exception"
+      - "restart-after-escalation-reaches-the-canonical-state"
+      - "a-redelivered-timer-is-a-no-op"
+      # EC-7 — severity is a FIELD
+      - "severity-change-is-a-field-mutation-not-a-lifecycle-state"
+      - "severity-change-records-previous-and-new-severity-and-who"
+      - "severity-change-requires-a-reason"
+      - "a-model-cannot-change-severity"
+      - "severity-is-sev0-sev1-or-sev2-and-nothing-else"
+      - "changing-the-severity-of-an-ageing-exception-is-illegal"
+      - "a-sev0-exception-engages-no-brake-from-inside-m9"
+      # the lifecycle vocabulary, and the sub_status trap
+      - "the-five-canonical-states-and-no-sixth"
+      - "sub-status-is-a-field-never-a-lifecycle-state"
+      - "there-is-no-cancelled-expired-or-timed-out-state"
+      - "a-retracted-cause-still-requires-an-event-and-a-decision-ref"
+      # the freeze, and the checkpoint it feeds
+      - "a-freezing-exception-blocks-consequential-actions-on-the-entity"
+      - "not-every-exception-freezes-an-entity"
+      - "raise-and-freeze-commit-together-where-applicable"
+      - "a-persistence-failure-leaves-no-half-raised-exception"
+      - "state-and-event-co-commit"
+      - "resolution-unblocks-the-frozen-entity"
+      - "m9-mints-no-gate-decision"
+      - "an-exception-is-an-input-to-the-checkpoint-never-a-gate"
+      # GR-3 / GR-4 — idempotency and concurrency, and the OPTIONAL dedup index
+      - "a-redelivered-raise-through-the-inbox-is-a-no-op"
+      - "the-open-exception-dedup-index-is-optional-and-recorded"
+      - "concurrent-raises-are-serialized-by-the-database"
+      - "occ-on-exception-version"
+      - "a-stale-version-cannot-overwrite-newer-state"
+      # replay
+      - "replay-reconstructs-the-open-exception"
+      - "replay-rebuilds-the-current-severity-from-the-recorded-events"
+      - "replay-does-not-read-severity-from-the-current-row"
+      - "replay-keeps-a-frozen-entity-blocked"
+      - "replay-can-never-manufacture-resolution-authority"
+      - "replay-creates-no-new-authority-and-no-effect"
+      # the brake, which M9 observes and never operates
+      - "exceptions-still-raise-under-a-brake"
+      - "m9-engages-no-brake-and-narrows-none"
+      # [C-1] — tenancy
+      - "tenant-isolation"
+      - "cross-tenant-identical-source-ref"
+      - "cross-tenant-owner-fails-closed"
+      - "cross-tenant-source-fails-closed"
+      - "cross-tenant-decision-ref-fails-closed"
+      - "cross-tenant-queue-read-fails-closed"
+      # the database and GR-1
+      - "inbox-idempotency"
+      - "database-invariants"
+      - "malformed-exception-fails-closed"
+      - "an-illegal-transition-persists-nothing-and-is-recorded"
+      # the seams M9 feeds and must not rewrite
+      - "the-m1-work-item-machine-is-not-rewritten"
+      - "the-m3-effect-authority-is-unchanged"
+      - "the-m5-observation-machine-is-not-rewritten"
+      - "the-m7-conflict-machine-is-not-rewritten"
+      - "the-m8-expectation-machine-is-not-rewritten"
+      - "m10-m11-and-m12-are-not-built"
+
+  # 2. THE MUTATION AXIS, ASSERTED. Without this the M9 possibility space is a list of fixed points.
+  - name: "the M9 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 120
+    expect_contains:
+      - "--concurrency"
+      - "--delay-ms"
+      - "--repeat"
+      - "--tenants"
+      - "--age-ms"
+      - "--severity"
+      - "--actor"
+      - "--decision-ref"
+      - "--freeze"
+      - "--seed"
+      - "--inject"
+      # EC-1
+      - "raise"
+      - "ownerless-raise"
+      - "model-owner"
+      - "offboarded-owner"
+      - "cross-tenant-owner"
+      - "missing-severity"
+      - "missing-source-ref"
+      - "cross-tenant-source"
+      - "invented-source-kind"
+      # EC-1 — the PERMANENT half
+      - "permanent-auth-failure"
+      - "permanent-config-failure"
+      - "transient-failure"
+      - "inferred-permanence"
+      - "retry-permanent"
+      # EC-2
+      - "acknowledge"
+      - "model-acknowledge"
+      - "system-acknowledge"
+      # EC-3 / EC-6 — the resolution-authority axis, which is the unit
+      - "resolve"
+      - "resolve-without-decision-ref"
+      - "unresolvable-decision-ref"
+      - "non-human-decision-ref"
+      - "automated-decision-ref"
+      - "cross-tenant-decision-ref"
+      - "model-resolve"
+      - "resolve-from-ageing"
+      # never closed by silence
+      - "autoclose"
+      - "inactivity-close"
+      - "expire-exception"
+      - "sweep-close"
+      - "timer-resolve"
+      - "delete-exception"
+      # EC-4 / EC-5
+      - "age"
+      - "escalate"
+      - "age-escalated"
+      - "age-resolved"
+      # EC-7
+      - "severity-change"
+      - "severity-change-no-reason"
+      - "severity-change-no-previous"
+      - "model-severity-change"
+      - "invented-severity"
+      - "severity-change-ageing"
+      # the lifecycle vocabulary
+      - "sub-status-as-state"
+      - "sixth-state"
+      - "cancel-exception"
+      # the freeze and the gate
+      - "freeze"
+      - "no-freeze"
+      - "freeze-split-commit"
+      - "unfreeze-without-resolution"
+      - "persistence-failure"
+      - "gate-mint"
+      - "brake-engage"
+      # concurrency, idempotency, restart, replay
+      - "duplicate-raise"
+      - "concurrent-raise"
+      - "redelivered-raise"
+      - "redelivered-timer"
+      - "occ-exception"
+      - "stale-version"
+      - "restart-before-ageing"
+      - "restart-after-escalated"
+      - "replay"
+      - "replay-severity-from-row"
+      - "replay-manufacture-decision"
+      # tenancy and the database
+      - "cross-tenant-queue"
+      - "malformed-exception"
+      - "reorder-stream"
+
+  # 3. THE FOUR NEGATIVE CONTROLS. A vocabulary that accepts anything is fuzzing in a costume, and
+  #    three of these four hold a canonical "N/A" open rather than letting a probe answer it.
+  - name: "an invented fault is refused, so the vocabulary is genuinely closed"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --inject not-a-real-fault"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §27 and machine §24: "Reopening rules. N/A (a recurrence is a new Exception)." A probe that
+  # ACCEPTED a reopen fault would be producing passing evidence for a transition the corpus states
+  # does not exist — the same shape as M4's refused `unfreeze`, M5's refused `expire-observation`,
+  # M6's refused `expire-claim`, M7's refused `expire-conflict` and M8's refused `reopen-expectation`.
+  - name: "a reopen fault does not exist, because a recurrence is a new Exception"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --inject reopen-exception"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §23 and machine §25: "Correction rules. N/A." Correction is the tidy-looking thing a build
+  # session adds, and it would let a wrong severity or a wrong owner be edited out of history rather
+  # than carried through EC-7's event or resolved through EC-3/EC-6.
+  - name: "a correction fault does not exist, because correction is N/A for an exception"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --inject correct-exception"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # Entity §24 and machine §26: "Supersession rules. N/A." Registry §4 gives M9 no `SUPERSEDED` state
+  # and no `ExceptionSuperseded` event is registered anywhere — so accepting the fault would mint both
+  # by implication.
+  - name: "a supersession fault does not exist, because supersession is N/A for an exception"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py --inject supersede-exception"
+    expect_exit_code: 2
+    timeout_s: 120
+    expect_contains:
+      - "unknown fault"
+
+  # 4. DETERMINISTIC OPERATION. The probe run whole: every case, its own temporary database per case,
+  #    and a narration that says what it saw rather than what it intended.
+  - name: "drive the Exception machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_exception.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 5. Tests are a signal, never the basis for acceptance.
+  - name: "the M9 acceptance and hostile battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_exception.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # 6. REGRESSION ANCHORS. M9 adds a table and edits `schema.py`, so every layer that reads a
+  #    canonical database can be broken from inside M9. Each is re-run rather than assumed.
+  - name: "the P3 checkpoint kernel M9 must not disturb, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_witness.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py eval/tests/test_phase3_brake.py eval/tests/test_phase3_fingerprint.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_schema.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "the P4 governed effect boundary M9 must not widen, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_import_gate.py eval/tests/test_adapter_boundary_acceptance.py eval/tests/test_p4_governed_write_route.py eval/tests/test_no_mock_effect_in_production.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  # EC-4 and EC-5 are both `T`-triggered and they are the only thing that may move an Exception
+  # without a human, so P5's timer substrate is where "it ages and escalates rather than being swept
+  # away" actually lives. A builder that invents a sweep leaves this suite untouched and is caught by
+  # the DDL/source sweep further down; a builder that BREAKS the substrate is caught here. M9 also
+  # emits six already-registered F9 names and mints none of its own, so the canonical event-contract
+  # guard is load-bearing rather than incidental.
+  - name: "the P5 transport, replay, durable timers and canonical event contracts M9 rides, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase5_event_transport.py eval/tests/test_p5_replay_and_audit.py eval/tests/test_p5_durable_timers.py eval/tests/test_p5_event_contracts.py eval/tests/test_p5_canonical_event_mint.py"
+    expect_exit_code: 0
+    timeout_s: 900
+
+  - name: "M1, M2, M3, M4, M5, M6, M7 and M8, whose schema M9 extends, unbroken"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py eval/tests/test_phase6_observation.py eval/tests/test_phase6_identity_binding_claim.py eval/tests/test_phase6_conflict.py eval/tests/test_phase6_expectation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # 7. The neighbouring units' OWN deterministic probes, re-run. "M9 broke nothing" is a claim about
+  #    THEIR behaviour, so it is measured against THEIR oracles rather than against M9's account of
+  #    it. M8's matters most here: it is the most recent landing, its OVERDUE/INDETERMINATE/EXPIRED
+  #    rows are three of the five seams that point at M9, and it is the unit a builder is likeliest
+  #    to reach into in order to "wire up" the exception seam from the wrong side.
+  - name: "M8 still behaves as specified with M9's table in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_expectation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M7 still behaves as specified with M9's table in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_conflict.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  - name: "M5 still behaves as specified with M9's table in the schema"
+    run: ".venv/bin/python scripts/probe_phase6_observation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+
+  # M6's probe is deliberately NOT re-run, and the absence is reasoned rather than an omission. M9
+  # has no read of an identity binding at all — machine §33's consumed set is Acknowledged/Resolved/
+  # TimerFired — so the only way M9 can reach M6 is by editing the canonical schema they share, and
+  # that is exactly what the M1..M8 pytest anchor above measures. M5's, M7's and M8's probes ARE
+  # re-run because their machines carry the "→ Exception" seams M9 is the other half of, which is the
+  # one relationship a builder is tempted to close from the wrong side.
+
+  # 8. Every guard proven capable of failing, against a reintroduced defect.
+  - name: "the M9 mutation battery"
+    run: ".venv/bin/python scripts/mutate_phase6_exception.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+
+requests: []
+
+# ---------------------------------------------------------------------------
+# Persisted state is the oracle. A probe that prints "an exception is never closed by silence"
+# proves nothing about a table.
+#
+# Every check below reads the DATABASE or the SOURCE TREE, not the probe's narration. That is the
+# point for this unit above all others: "RESOLVED requires a decision_ref", "an ownerless exception
+# is impossible", "there are five states and no sixth" and "severity is exactly three values" are
+# each a property of the SCHEMA, and every one of them is a sentence a fully green test suite can
+# state while the database enforces none of them.
+# ---------------------------------------------------------------------------
+expect_state:
+  # Built the way production builds it: `create_canonical_schema` is DDL, and it is
+  # `enable_and_verify_foreign_keys` — issued OUTSIDE a transaction and read back, because SQLite
+  # silently ignores the pragma inside one — that makes every tenant-consistent foreign key more than
+  # decoration. A probe that skips it measures a database no caller ever gets.
+  #
+  # `durable_timers` is asserted beside the exception table because EC-4 and EC-5 ride P5's EXISTING
+  # timer substrate; a second timer mechanism invented inside M9 would leave this row untouched and
+  # is caught by the sweep further down. `tenant_humans` is asserted because `owner_id` is a FOREIGN
+  # KEY into it (entity §18) and entity §16's ownership CHECK is unenforceable without a table to
+  # point at. `event_outbox` is asserted because that is where M1's landed K-1 resolver RESOLVES a
+  # decision_ref against — the canonical event log, not a second audit store.
+  - name: "a freshly created canonical database carries the exception layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "exceptions"
+      - "tenant_humans"
+      - "audit_events"
+      - "event_outbox"
+      - "durable_timers"
+      - "work_items"
+      - "observations"
+      - "conflicts"
+      - "expectations"
+
+  # THE FIVE STATES, STRUCTURALLY. Not a convention, not a Python enum nobody enforces — a CHECK
+  # constraint, so a sixth state and a misspelled fifth are both uninsertable. There is deliberately
+  # no `CANCELLED` (registry §4 gives M9 five states, and M9-AQ-2 is not settled by minting one), no
+  # `EXPIRED` (entity §26: it NEVER expires), no `TIMED_OUT`/`STALE`/`CLOSED`/`AUTO_CLOSED`/
+  # `DISMISSED` (each of them a mechanism for forgetting), no `REOPENED` (§27: a recurrence is a new
+  # Exception) and no `SUPERSEDED` (§24: N/A).
+  #
+  # ### AND NO PROMOTED sub_status. The machine's own header says the brief's finer terms are FIELDS,
+  # not lifecycle states — so `TRIAGE`, `ASSIGNED`, `INVESTIGATING`, `AWAITING_EXTERNAL`,
+  # `RESOLUTION_PROPOSED` and above all `AWAITING_HUMAN` (which is M1's REGISTERED state, and
+  # registry's binding header forbids a local synonym) are each a sixth state arriving under a
+  # reasonable-sounding name.
+  - name: "the five canonical exception states are a database constraint, and there is no sixth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
+      sql=re.sub(r'--.*', '', row[0]) if row else '';
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', sql, re.S) if sql else None;
+      print('exception state vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(','))
+      if m else 'MISSING: the exceptions table declares no CHECK on state')"
+    timeout_s: 300
+    contains:
+      - "'ACKNOWLEDGED'"
+      - "'AGEING'"
+      - "'ESCALATED'"
+      - "'OPEN'"
+      - "'RESOLVED'"
+    not_contains:
+      - "'CANCELLED'"
+      - "'EXPIRED'"
+      - "'TIMED_OUT'"
+      - "'STALE'"
+      - "'CLOSED'"
+      - "'AUTO_CLOSED'"
+      - "'DISMISSED'"
+      - "'REOPENED'"
+      - "'SUPERSEDED'"
+      - "'TRIAGE'"
+      - "'ASSIGNED'"
+      - "'INVESTIGATING'"
+      - "'AWAITING_EXTERNAL'"
+      - "'AWAITING_HUMAN'"
+      - "'RESOLUTION_PROPOSED'"
+
+  # ### THE TWO INVARIANTS THE WHOLE ENTITY EXISTS FOR, AS DATABASE CONSTRAINTS. Entity §16 states
+  # both by hand: `owner_id NOT NULL` FROM CREATION, and `state = RESOLVED` requires a non-null
+  # `decision_ref`. Entity §37 makes each of them a STRUCTURALLY IMPOSSIBLE state — an insert the
+  # database refuses, not a branch a code path takes — and `AC-MACH-903` merge-gates the second.
+  #
+  # The parser reads the DDL text, so each constraint the builder writes has to be findable in it. A
+  # CHECK that exists only in Python is exactly what this check is here to fail. Note that the
+  # database can only enforce "there is a decision_ref"; "it RESOLVES" is K-1's resolver, asserted
+  # separately below — and the two together are what `AC-SAFE-024` asks for.
+  - name: "an owner is required from creation and RESOLVED requires a decision_ref, as CHECKs"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
+      sql=re.sub(r'--.*', '', row[0]) if row else '';
+      flat=' '.join(sql.split());
+      info=list(c.execute('pragma table_info(exceptions)'));
+      cols=sorted(r[1] for r in info);
+      nn={r[1]: bool(r[3]) for r in info};
+      checks=re.findall(r'CHECK \\((.*?)\\)(?:,|\\s*\\))', flat);
+      body=' | '.join(checks);
+      print('exception columns:', cols);
+      print('table present:', bool(row));
+      print('owner_id NOT NULL:', nn.get('owner_id', False));
+      print('RESOLVED requires decision_ref:',
+      any('RESOLVED' in b and re.search(r'\\bdecision_ref\\b', b) for b in checks));
+      print('tenant NOT NULL:', nn.get('tenant', False));
+      print('severity NOT NULL:', nn.get('severity', False));
+      print('source_ref NOT NULL:', nn.get('source_ref', False));
+      print('type NOT NULL:', nn.get('type', False));
+      print('state NOT NULL:', nn.get('state', False));
+      print('version NOT NULL:', nn.get('version', False))"
+    timeout_s: 300
+    contains:
+      - "table present: True"
+      - "owner_id NOT NULL: True"
+      - "RESOLVED requires decision_ref: True"
+      - "tenant NOT NULL: True"
+      - "severity NOT NULL: True"
+      - "source_ref NOT NULL: True"
+      - "type NOT NULL: True"
+      - "state NOT NULL: True"
+      - "version NOT NULL: True"
+      - "'decision_ref'"
+      - "'exception_id'"
+      - "'owner_id'"
+      - "'severity'"
+      - "'source_ref'"
+      - "'state'"
+      - "'tenant'"
+      - "'version'"
+
+  # ### THE INVARIANTS ATTEMPTED AGAINST A LIVE DATABASE, NOT READ OUT OF ITS DDL. The check above
+  # reads text; this one ISSUES the forbidden writes and records that the engine refuses them, with a
+  # positive control first so a refusal cannot be an artefact of a table that rejects everything.
+  # `P6-D56` recorded "the migration invariants verified by READING the DDL rather than introspecting
+  # a live database" as the M8 run's one weaker instrument. This is that instrument, repaired.
+  # ### THE INVARIANTS ATTEMPTED AGAINST A LIVE DATABASE, NOT READ OUT OF ITS DDL. The check above
+  # reads text; this one ISSUES the forbidden writes and records that the engine refuses them.
+  #
+  # ### THE POSITIVE CONTROL IS THE POINT, AND IT IS DERIVED RATHER THAN HARD-CODED. A row that the
+  # database refuses for some unrelated reason would make every "refused" line below true of a table
+  # that rejects everything, which is a vacuous negative corpus wearing the costume of enforcement.
+  # So the well-formed row is BUILT FROM THE SHIPPED DDL — every NOT NULL column takes its own
+  # DEFAULT if it has one, else the first member of its own CHECK vocabulary, else a placeholder —
+  # and it must be ACCEPTED before any refusal below counts. `rows that survived: 1` is that proof
+  # restated as a count: exactly the positive control persisted, and not one forbidden row did.
+  #
+  # `P6-D56` recorded "the migration invariants verified by READING the DDL rather than introspecting
+  # a live database" as the M8 run's one weaker instrument. This is that instrument, repaired.
+  - name: "the live database refuses an ownerless exception and a resolution with no decision_ref"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
+      ddl=re.sub(r'--.*', '', row[0]) if row else '';
+      opts=dict(re.findall(r'\\b(\\w+)\\b[^,\\n]*?\\bIN\\s*\\(([^)]*)\\)', ddl));
+      first=lambda col: (re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), opts[col])
+      or [None])[0] if col in opts else None;
+      info=list(c.execute('pragma table_info(exceptions)'));
+      cols=[r[1] for r in info];
+      pick=lambda name,ty,dflt: (str(dflt).strip(chr(39)) if dflt is not None
+      else (first(name) if first(name) is not None
+      else (1 if 'INT' in (ty or '').upper() else 'x')));
+      base=dict([(r[1], pick(r[1], r[2], r[4])) for r in info if r[3]]);
+      c.execute('insert into tenant_humans (tenant,human_id,display_name,authority_role,state,
+      recorded_at,recorded_by,recorded_by_kind) values (?,?,?,?,?,?,?,?)',
+      ('T_A','dispatch-lead','Dispatch Lead','AUTHORIZED_HUMAN','ACTIVE','2026-08-29T00:00:00Z',
+      'founder','human'));
+      known={'tenant':'T_A','owner_id':'dispatch-lead','state':'OPEN','severity':'SEV1',
+      'version':1,'created_at':'2026-08-29T00:00:00Z','updated_at':'2026-08-29T00:00:00Z',
+      'exception_id':'exc-1'};
+      base.update(dict([(k,v) for k,v in known.items() if k in base]));
+      env={'c':c,'sqlite3':sqlite3};
+      exec('def attempt(label, d):\n try:\n  c.execute(\'savepoint s\'); c.execute(\'insert into exceptions (\' + \',\'.join(d) + \') values (\' + \',\'.join([\'?\']*len(d)) + \')\', list(d.values())); c.execute(\'release s\'); print(label + \': ACCEPTED\')\n except sqlite3.Error as exc:\n  c.execute(\'rollback to s\'); c.execute(\'release s\'); print(label + \': refused (\' + type(exc).__name__ + \')\')', env);
+      attempt=env['attempt'];
+      variants=[('positive control, a well-formed OPEN exception', {}),
+      ('an ownerless exception', {'exception_id':'exc-2','owner_id':None}),
+      ('an owner who is not a recorded human', {'exception_id':'exc-3','owner_id':'someone-else'}),
+      ('an owner from another tenant', {'exception_id':'exc-4','tenant':'T_B'}),
+      ('RESOLVED with no decision_ref', {'exception_id':'exc-5','state':'RESOLVED',
+      'decision_ref':None,'decision_ref_kind':'AUDIT_EVENT','decision_human_id':'dispatch-lead'}),
+      ('second positive control, RESOLVED WITH a decision_ref', {'exception_id':'exc-5b',
+      'state':'RESOLVED','decision_ref':'evt-1','decision_ref_kind':'AUDIT_EVENT',
+      'decision_human_id':'dispatch-lead'}),
+      ('a CANCELLED lifecycle state', {'exception_id':'exc-6','state':'CANCELLED'}),
+      ('an EXPIRED lifecycle state', {'exception_id':'exc-7','state':'EXPIRED'}),
+      ('an invented SEV3 severity', {'exception_id':'exc-8','severity':'SEV3'})];
+      print('exceptions table present:', bool(cols));
+      print('the derived positive-control row:', sorted(base.items()));
+      [attempt(label, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in cols]))
+      for label, over in (variants if cols else [])];
+      print('rows that survived:',
+      c.execute('select count(*) from exceptions').fetchone()[0] if cols else 'n/a')"
+    timeout_s: 300
+    contains:
+      - "exceptions table present: True"
+      - "positive control, a well-formed OPEN exception: ACCEPTED"
+      - "an ownerless exception: refused"
+      - "an owner who is not a recorded human: refused"
+      - "an owner from another tenant: refused"
+      - "RESOLVED with no decision_ref: refused"
+      - "a CANCELLED lifecycle state: refused"
+      - "an EXPIRED lifecycle state: refused"
+      - "an invented SEV3 severity: refused"
+      - "second positive control, RESOLVED WITH a decision_ref: ACCEPTED"
+      - "rows that survived: 2"
+
+  # ### SEVERITY IS A CLOSED THREE-MEMBER VOCABULARY, AND IT IS NEVER DEFAULTED. Entity §12:
+  # `severity ∈ {SEV0, SEV1, SEV2}`. Three members, and no fourth — no `SEV3`, no `CRITICAL`, no
+  # `HIGH`/`MEDIUM`/`LOW`, no `INFO`, no `WARNING`. A DEFAULT would be worse than a missing CHECK: it
+  # is the mechanism by which "nobody said how bad this is" silently becomes a value, and since a
+  # Sev-0 auto-engages a brake at its source, a defaulted severity is a safety statement nobody made.
+  #
+  # The values print in the order the CHECK DECLARES them, so the printed line is itself evidence of
+  # derivation rather than of an echo.
+  - name: "severity is a closed three-member vocabulary, enforced and never defaulted"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
+      ddl=re.sub(r'--.*', '', row[0]) if row else '';
+      info=list(c.execute('pragma table_info(exceptions)'));
+      dflt={r[1]: r[4] for r in info};
+      m=re.search(r'\\bseverity\\b[^,]*?\\bIN\\s*\\(([^)]*)\\)', ddl, re.I);
+      vocab=re.findall('\\x27([A-Z0-9_]+)\\x27', m.group(1)) if m else [];
+      print('severity vocabulary is enforced by a CHECK:', bool(m));
+      print('severity vocabulary:', ', '.join(repr(v) for v in vocab));
+      print('severity vocabulary is exactly three members:', vocab == ['SEV0','SEV1','SEV2']);
+      print('severity is never defaulted:', dflt.get('severity') is None and bool(info))"
+    timeout_s: 300
+    contains:
+      - "severity vocabulary is enforced by a CHECK: True"
+      - "severity vocabulary: 'SEV0', 'SEV1', 'SEV2'"
+      - "'SEV0'"
+      - "'SEV1'"
+      - "'SEV2'"
+      - "severity vocabulary is exactly three members: True"
+      - "severity is never defaulted: True"
+
+  # ### THE sub_status TRAP, MEASURED. The machine's header paragraph is the whole point: the brief's
+  # finer terms (triage / assigned / investigating / awaiting-external / awaiting-human /
+  # resolution-proposed) are FIELDS, and adding lifecycle states for them "would diverge from the
+  # entity spec".
+  #
+  # sub_status is OPTIONAL (EC-1 writes `sub_status?`, F9 lists it as an optional payload field), so
+  # this check does NOT require it to exist. What it requires is the property that holds either way:
+  # ### none of those six names is a value of `state`. Building the column is a choice; promoting one
+  # of its values to a lifecycle state is a defect, and it is a defect whether the column exists or
+  # not.
+  - name: "sub_status is a field if it exists at all, and never a lifecycle state"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
+      ddl=re.sub(r'--.*', '', row[0]) if row else '';
+      info=list(c.execute('pragma table_info(exceptions)'));
+      cols={r[1] for r in info};
+      m=re.search(r'state TEXT NOT NULL CHECK \\(state IN \\(([^)]*)\\)', ddl, re.S);
+      states={t.strip().strip(chr(39)).upper() for t in m.group(1).split(',')} if m else set();
+      FINER={'TRIAGE','ASSIGNED','INVESTIGATING','AWAITING_EXTERNAL','AWAITING-EXTERNAL',
+      'AWAITING_HUMAN','AWAITING-HUMAN','RESOLUTION_PROPOSED','RESOLUTION-PROPOSED'};
+      print('exceptions table present:', bool(row));
+      print('lifecycle states declared:', sorted(states));
+      print('sub_status implemented as a column:', 'sub_status' in cols);
+      print('finer brief terms promoted to lifecycle states:', sorted(states & FINER));
+      print('sub_status is never a lifecycle state:', not (states & FINER) and bool(states))"
+    timeout_s: 300
+    contains:
+      - "exceptions table present: True"
+      - "finer brief terms promoted to lifecycle states: []"
+      - "sub_status is never a lifecycle state: True"
+
+  # "A named human", "the human who acknowledged it" and "the human behind the decision" are all
+  # decoration while they are text columns. Entity §18 names `owner_id` a foreign key into an
+  # authenticated tenant user; M1, M4, M6, M7 and M8 each made the same argument for their own, and
+  # M7's `decision_human_id` is the exact precedent for naming the ACTIVE human behind a decision_ref.
+  - name: "the owner and every human named on the row are FOREIGN KEYS into tenant_humans"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      fks=[(r[2], r[3]) for r in c.execute('pragma foreign_key_list(exceptions)')];
+      tables={r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")};
+      cols={r[1] for r in c.execute('pragma table_info(exceptions)')};
+      human_cols={col for t, col in fks if t=='tenant_humans'};
+      print('exception foreign keys ->', sorted({t for t, _ in fks}));
+      print('owner is FK-backed into tenant_humans:', 'owner_id' in human_cols);
+      print('human columns FK-backed into tenant_humans:', sorted(human_cols));
+      print('human-named columns on the row:',
+      sorted(k for k in cols if k in ('owner_id','acknowledged_by','decision_human_id','changed_by')));
+      print('every human-named column is FK-backed:',
+      {k for k in cols if k in ('owner_id','acknowledged_by','decision_human_id')} <= human_cols);
+      print('foreign keys into a table nobody built:', sorted({t for t, _ in fks} - tables))"
+    timeout_s: 300
+    contains:
+      - "owner is FK-backed into tenant_humans: True"
+      - "every human-named column is FK-backed: True"
+      - "foreign keys into a table nobody built: []"
+
+  # ### THE OPTIONAL DEDUP INDEX, RECORDED RATHER THAN REQUIRED. Entity §17, machine §17 and F9's
+  # cross-cutting section each call `UNIQUE (tenant, source_ref, type) WHERE state != 'RESOLVED'`
+  # OPTIONAL, in that word. Turning an explicitly optional constraint into a mandatory acceptance
+  # criterion would be Product Driver inventing a canonical requirement, so this check asserts the
+  # property that holds under BOTH readings: whatever indexes exist on `exceptions` are tenant-first,
+  # and if the dedup index was built its `WHERE` names `RESOLVED`.
+  #
+  # What IS mandatory is the queue read (entity §42, machine §38): the owner queue must be one
+  # tenant-first index rather than a scan, which is what makes "the open exceptions this brokerage's
+  # named human owns" a read rather than a table sweep. M7's `ix_conflicts_owner_queue` and M8's
+  # `ix_expectations_owner_queue` are the landed shape.
+  - name: "every exception index is tenant-first, and the optional dedup index is recorded not required"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      idx=[r[0] for r in c.execute(\"select sql from sqlite_master where type='index'
+      and tbl_name='exceptions' and sql is not null\")];
+      flat=[' '.join(s.split()) for s in idx];
+      first=lambda s: (re.search(r'\\(([^)]*)\\)', s).group(1).split(',')[0].strip()
+      if re.search(r'\\(([^)]*)\\)', s) else '');
+      dedup=[s for s in flat if 'source_ref' in s and 'UNIQUE' in s.upper()];
+      owner=[s for s in flat if 'owner_id' in s];
+      print('exception indexes:', len(flat));
+      print('every index is tenant-first:', bool(flat) and all(first(s)=='tenant' for s in flat));
+      print('the owner queue is one tenant-first index:', bool(owner));
+      print('open-exception dedup index built:', bool(dedup));
+      print('dedup index, if built, is partial on RESOLVED:',
+      all('RESOLVED' in s for s in dedup));
+      print('dedup index declaration:', dedup if dedup else
+      ['not built (entity 17, machine 17 and F9 each call it OPTIONAL)'])"
+    timeout_s: 300
+    contains:
+      - "every index is tenant-first: True"
+      - "the owner queue is one tenant-first index: True"
+      - "dedup index, if built, is partial on RESOLVED: True"
+
+  # And the rule is preserved by a check over the corpus, not a hope.
+  #
+  # The way a build session breaks "an exception is never closed by silence" is not by arguing with
+  # it. It is by adding a TTL, a nightly sweep, a stale-exception reaper, an inactivity auto-close or
+  # an `EXPIRED` state because those felt like hygiene — every one of which is how an operational
+  # queue stays tidy and how a £2,850 nobody can account for stops being anybody's problem. The scan
+  # is scoped to the MACHINE and its MIGRATION — not to the probe or the mutation battery, both of
+  # which legitimately need those identifiers in order to ATTEMPT the illegal transition GR-1 must
+  # refuse.
+  - name: "no expiry, sweep, reaper, auto-close or deletion was invented"
+    command: >-
+      .venv/bin/python -c "import pathlib,re;
+      m=pathlib.Path('src/freight_recon/exception.py');
+      g=pathlib.Path('src/freight_recon/migrations/phase6_exceptions.py');
+      text=(m.read_text(encoding='utf-8') if m.exists() else '');
+      migtext=(g.read_text(encoding='utf-8') if g.exists() else '');
+      src=text + migtext;
+      print('machine source:', 'present' if m.exists() and g.exists() else 'MISSING');
+      print('invented sweep/reaper/autoclose surfaces:',
+      sorted(set(re.findall(r'\\bdef (?!_?refuse|_?reject|_?illegal)[a-z_]*'
+      r'(?:sweep|reap|purge|prune|autoclose|auto_close|expire)[a-z_]*\\b', src))));
+      print('unregistered exception states in the migration:',
+      sorted(set(re.findall(r'[\x27\x22](CANCELLED|EXPIRED|TIMED_OUT|STALE|CLOSED|AUTO_CLOSED'
+      r'|DISMISSED|REOPENED|SUPERSEDED|TRIAGE|ASSIGNED|INVESTIGATING|AWAITING_EXTERNAL'
+      r'|AWAITING_HUMAN|RESOLUTION_PROPOSED)[\x27\x22]', migtext))));
+      print('invented or foreign event names in the machine:',
+      sorted(set(re.findall(r'\\bExceptionCancelled\\b|\\bExceptionExpired\\b|\\bExceptionClosed\\b'
+      r'|\\bExceptionReopened\\b|\\bExceptionAutoClosed\\b|\\bExceptionTimedOut\\b'
+      r'|\\bExceptionSuperseded\\b|\\bExceptionDismissed\\b', src))));
+      print('invented extra transition rows:',
+      sorted(set(re.findall(r'\\bEC-(?:8|9|10|3a|4a|7a)\\b', src))));
+      print('exception deletion statements:',
+      sorted(set(re.findall(r'DELETE FROM exceptions|DROP TABLE exceptions', src))));
+      print('in-memory sleep in the machine:',
+      sorted({t for t in ('time.sleep','asyncio.sleep','threading.Timer','sched.scheduler')
+      if t in text}))"
+    timeout_s: 300
+    contains:
+      - "machine source: present"
+      - "invented sweep/reaper/autoclose surfaces: []"
+      - "unregistered exception states in the migration: []"
+      - "invented or foreign event names in the machine: []"
+      - "invented extra transition rows: []"
+      - "exception deletion statements: []"
+      - "in-memory sleep in the machine: []"
+
+  # The event names M9 uses, read out of the canonical contract projection rather than out of prose.
+  # `events/registry.md` is by its own header THE SOLE CANONICAL LIST, and
+  # `event_contracts_data.json` is its mechanical projection — so a name outside the six is defective
+  # by the registry's own definition, and `ExceptionSeverityChanged`'s FOUR required fields are the
+  # rebuild guarantee expressed as a contract: without `previous_severity` a fold cannot tell a
+  # missing link from a severity that never moved, and F9 says why that matters (a Sev-0 exception
+  # auto-engages the brake at its source, so an under-stated severity is a safety loss). That guard
+  # already exists in P5; M9 inherits it rather than inventing it.
+  - name: "M9 uses the six registered F9 contracts and invents no seventh"
+    command: >-
+      .venv/bin/python -c "import json,pathlib,re;
+      data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8'));
+      rows=data.get('contracts') or [];
+      byname={r['name']: r for r in rows} if isinstance(rows,list) else {};
+      req=lambda n: sorted(f['name'] for f in (byname.get(n,{}).get('fields') or []) if f.get('required'));
+      print('registered F9 contracts:', sorted(n for n,r in byname.items() if r.get('family')=='F9'));
+      print('ExceptionRaised requires:', req('ExceptionRaised'));
+      print('ExceptionResolved requires:', req('ExceptionResolved'));
+      print('ExceptionSeverityChanged requires:', req('ExceptionSeverityChanged'));
+      print('ExceptionAcknowledged requires:', req('ExceptionAcknowledged'));
+      print('ExceptionResolved producers:',
+      sorted(byname.get('ExceptionResolved',{}).get('producers') or []));
+      print('ExceptionAgeing producers:',
+      sorted(byname.get('ExceptionAgeing',{}).get('producers') or []));
+      print('synonym events registered:', sorted(n for n in ('ExceptionCancelled','ExceptionExpired',
+      'ExceptionClosed','ExceptionReopened','ExceptionAutoClosed','ExceptionTimedOut',
+      'ExceptionSuperseded','ExceptionDismissed') if n in byname));
+      src=pathlib.Path('src/freight_recon/exception.py');
+      print('machine source:', 'present' if src.exists() else 'MISSING exception.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      used=sorted(set(re.findall(r'\\b(?:Exception|Expectation|Compensation)[A-Z][A-Za-z]*\\b', text)));
+      print('Exception*/Expectation*/Compensation* names in the machine:', used);
+      print('unregistered names in the machine:', [u for u in used if u not in byname])"
+    timeout_s: 300
+    contains:
+      - "'ExceptionRaised'"
+      - "'ExceptionAcknowledged'"
+      - "'ExceptionAgeing'"
+      - "'ExceptionEscalated'"
+      - "'ExceptionSeverityChanged'"
+      - "'ExceptionResolved'"
+      - "ExceptionRaised requires: ['severity', 'source_ref']"
+      - "ExceptionResolved requires: ['decision_ref']"
+      - "ExceptionSeverityChanged requires: ['changed_by', 'previous_severity', 'reason', 'severity']"
+      - "ExceptionResolved producers: ['EC-3', 'EC-6']"
+      - "ExceptionAgeing producers: ['EC-4']"
+      - "synonym events registered: []"
+      - "machine source: present"
+      - "unregistered names in the machine: []"
+
+  # ### THE ONE K-1 RESOLVER, IMPORTED RATHER THAN REWRITTEN. `GR-14` and `AC-SAFE-024` require that
+  # a decision_ref RESOLVE — to an `audit_events` human-decision row recording an authenticated human,
+  # or to an ACTIVE rule_id. M1 already ships that resolver, M3 already imports it for EF-5, and M7
+  # already uses its `DECISION_REF_KINDS`. A second implementation of "does this decision_ref
+  # resolve" is two places for one of them to start accepting the string `done`, which is exactly
+  # what K-1 exists to close — and `CLAUDE.md` rule 17 forbids a second authority in its own domain.
+  #
+  # Nothing here asserts WHICH of the two K-1 referents M9 accepts: that is `M9-AQ-1`, and the landed
+  # resolver already refuses the RULE branch with a named reason while M12 is unbuilt (`P6-D4`,
+  # closing at M12). What is asserted is that M9 uses THE resolver rather than a private one.
+  - name: "the decision_ref resolver is M1's, imported rather than rewritten"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib,re;
+      src=pathlib.Path('src/freight_recon/exception.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      print('machine source:', 'present' if src.exists() else 'MISSING exception.py');
+      tree=ast.parse(text) if text else ast.parse('');
+      imported={a.name for n in ast.walk(tree) if isinstance(n,ast.ImportFrom)
+      and (n.module or '').split('.')[-1]=='work_item' for a in n.names};
+      print('names imported from M1:', sorted(imported));
+      print('M9 imports the K-1 resolver:', 'resolve_decision_ref' in imported);
+      print('M9 imports the K-1 kind vocabulary:', 'DECISION_REF_KINDS' in imported);
+      print('a second resolver defined in the machine:',
+      sorted(n.name for n in ast.walk(tree) if isinstance(n,ast.FunctionDef)
+      and re.search(r'resolve.*decision|decision.*resolve', n.name, re.I)));
+      others=sorted(f.name for f in pathlib.Path('src/freight_recon').rglob('*.py')
+      if f.name!='work_item.py' and re.search(r'^def resolve_decision_ref', f.read_text(encoding='utf-8'), re.M));
+      print('modules defining resolve_decision_ref outside M1:', others)"
+    timeout_s: 300
+    contains:
+      - "machine source: present"
+      - "M9 imports the K-1 resolver: True"
+      - "a second resolver defined in the machine: []"
+      - "modules defining resolve_decision_ref outside M1: []"
+
+  # `EC-1`'s raise causes reach for M10 (a failed compensation), entity §41's repeatedly-overridden
+  # rule reaches for M11 and M12, and entity §21's Sev-0 causes reach for F14 detectors and M13's
+  # brake. None of the five is M9's, and each is a machine a build session adds to be helpful.
+  - name: "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or M13 being built"
+    command: >-
+      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon/exception.py');
+      text=src.read_text(encoding='utf-8') if src.exists() else '';
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_exceptions.py');
+      migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
+      print('machine and migration present:', bool(text) and bool(migtext));
+      print('mints another machine event:',
+      sorted(set(re.findall(r'\\bCompensationRequired\\b|\\bCompensationApproved\\b'
+      r'|\\bCompensationCompleted\\b|\\bCompensationFailed\\b|\\bCompensationImpossible\\b'
+      r'|\\bPolicyActivated\\b|\\bPolicyProposed\\b|\\bRuleActivated\\b|\\bRuleProposed\\b'
+      r'|\\bBrakeEngaged\\b|\\bBrakeWidened\\b|\\bBrakeNarrowed\\b|\\bBrakeReleased\\b'
+      r'|\\bOrphanAdapterInvocation\\b|\\bCrossTenantAccessAttempted\\b'
+      r'|\\bProjectionRebuildDiverged\\b|\\bOwnerAssertedOverwriteAttempted\\b'
+      r'|\\bProvenanceStrengtheningAttempted\\b', text))));
+      print('writes another machine transition:',
+      sorted(set(re.findall(r'\\b(?:CM|PO|RU|BR)-[0-9]+[a-z]?\\b', text))));
+      print('engages a brake from inside M9:',
+      sorted(set(re.findall(r'\\.engage\\w*\\(|engage_platform', text))));
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables={r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")};
+      print('m10/m11/m12 tables created by m9:',
+      sorted(tables & {'compensations','policies','rules','policy_versions','rule_versions',
+      'evidence','exception_queue','notifications'}))"
+    timeout_s: 300
+    contains:
+      - "machine and migration present: True"
+      - "mints another machine event: []"
+      - "writes another machine transition: []"
+      - "engages a brake from inside M9: []"
+      - "m10/m11/m12 tables created by m9: []"
+
+  - name: "M9 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      files=[f for f in root.rglob('*.py')];
+      hits=sorted(str(f) for f in files
+      if f.name!='exception.py' and any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='exception')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='exception' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production modules scanned:', len(files));
+      print('production importers of exception:', hits)"
+    timeout_s: 300
+    contains:
+      - "production importers of exception: []"
+
+  - name: "the only thing outside the package that reaches M9 is the verification probe itself"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('scripts');
+      hits=sorted(f.name for f in root.rglob('*.py') if any(
+      (isinstance(n,ast.ImportFrom) and (n.module or '').split('.')[-1]=='exception')
+      or (isinstance(n,ast.Import) and any(a.name.split('.')[-1]=='exception' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('scripts reaching exception:', hits)"
+    timeout_s: 300
+    contains:
+      - "scripts reaching exception: ['probe_phase6_exception.py']"
+
+  # M9's product form is an operational exception queue with owners, notifications and an MTTR
+  # dashboard — the registry says so in terms. That surface is precisely the thing that must not
+  # arrive with the engine primitive (task §3.6), and neither may an alerting or paging integration:
+  # an Exception that pages someone is an alert, and an alert is the thing entity §4 says this is not.
+  - name: "no oversight queue, alerting, notification or paging surface ships with M9"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      CHANNELS={'ingestion','email_adapter','imap_mailbox','email_corpus','email_triage',
+      'inbox_brain','inbox_discovery','extraction','extraction_bridge','browser_use_adapter',
+      'browser_use_write','cdp_readonly','cdp_session','cdp_actuator','tms_adapter','tms_write',
+      'slack_adapter','slack_delegate','channels','alert_channel','action_callback','ops_control',
+      'follow_up','mailbox_intake','delivery','delivery_dispatch','operator_console','review',
+      'review_actions','thread_reply','summary','render'};
+      mods=lambda tree: {(n.module or '').split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.ImportFrom)} | {a.name.split('.')[-1] for n in ast.walk(tree)
+      if isinstance(n,ast.Import) for a in n.names};
+      seen=[(f.name, mods(ast.parse(f.read_text(encoding='utf-8'))), f.read_text(encoding='utf-8'))
+      for f in root.rglob('*.py')];
+      print('modules scanned for a channel join:', len(seen));
+      print('modules joining the exception machine to a channel:',
+      sorted(name for name,m,src in seen if 'exception' in m and (m & CHANNELS)));
+      print('notification or paging surfaces built for exceptions:',
+      sorted(name for name,m,src in seen if 'exception' in m
+      and ('def notify' in src or 'def page' in src or 'def alert' in src or 'def send' in src)))"
+    timeout_s: 300
+    contains:
+      - "modules joining the exception machine to a channel: []"
+      - "notification or paging surfaces built for exceptions: []"
+
+  # Entity §38 and machine §28: an Exception is an INPUT to checkpoint step 4 and never a second gate.
+  # `CLAUDE.md` rule 17.
+  - name: "the checkpoint is still the only thing that mints a gate decision"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      mints=[f.name for f in root.rglob('*.py') if any(
+      isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+
+  # EC-4 and EC-5 are the ONLY transitions that may move an Exception without a human, and machine
+  # §37 makes them durable timers and nothing else — "never a resolution timer", and `M-36`: "never a
+  # background sweep, never a scan for things that look old". A second timer table, an in-memory
+  # sleep or a periodic scan is not a style choice: it is the mechanism by which an obligation stops
+  # being durable, and it is exactly the shape "the queue got tidy" arrives in.
+  - name: "ageing and escalation ride P5's existing durable timers rather than a second timer mechanism"
+    command: >-
+      .venv/bin/python -c "import pathlib,sqlite3,tempfile,os,sys,re;
+      sys.path.insert(0,'src');
+      m=pathlib.Path('src/freight_recon/exception.py');
+      g=pathlib.Path('src/freight_recon/migrations/phase6_exceptions.py');
+      src=m.read_text(encoding='utf-8') if m.exists() else '';
+      mig=g.read_text(encoding='utf-8') if g.exists() else '';
+      print('machine source:', 'present' if m.exists() else 'MISSING');
+      print('M9 schedules through DurableTimers:', 'DurableTimers' in src);
+      print('M9 consumes TimerFired:', 'TimerFired' in src);
+      sleeps=sorted({t for t in ('time.sleep','asyncio.sleep','threading.Timer','sched.scheduler')
+      if t in src});
+      print('in-memory sleep in the machine:', sleeps);
+      second=sorted(set(re.findall(r'CREATE TABLE (\\w*timer\\w*)', mig, re.I)));
+      print('second timer table created by m9:', second);
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('timer tables in the canonical schema:',
+      sorted(r[0] for r in c.execute(\"select name from sqlite_master where type='table'
+      and name like '%timer%'\")))"
+    timeout_s: 300
+    contains:
+      - "machine source: present"
+      - "M9 schedules through DurableTimers: True"
+      - "M9 consumes TimerFired: True"
+      - "in-memory sleep in the machine: []"
+      - "second timer table created by m9: []"
+      - "timer tables in the canonical schema: ['durable_timers']"
+
+  # The five landed units whose human-owned states point AT M9, and which M9 must not reach back
+  # into. M1 is the closest and the most dangerous: M9 IMPORTS its K-1 resolver and its
+  # `tenant_humans` FK, so a change that made M1's resolver more permissive to suit M9 would be M1
+  # rewritten from inside M9 — and `WI-6`'s trigger set is where "an exception blocks a Work Item"
+  # would be quietly added (`M9-AQ-5`). M3 is the single effect authority. M5, M7 and M8 each
+  # deferred a "→ Exception" seam here by name, and wiring one from this side means editing theirs.
+  - name: "M1's, M3's, M5's, M7's and M8's landed machines are not rewritten by M9"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      root=pathlib.Path('src/freight_recon');
+      names=('work_item','external_effect','observation','conflict','expectation','approval',
+      'identity_binding_claim');
+      read=lambda n: (root / (n + '.py')).read_text(encoding='utf-8');
+      imports=lambda n: {(x.module or '').split('.')[-1] for x in ast.walk(ast.parse(read(n)))
+      if isinstance(x,ast.ImportFrom)} | {a.name.split('.')[-1] for x in ast.walk(ast.parse(read(n)))
+      if isinstance(x,ast.Import) for a in x.names};
+      present=sorted(n for n in names if (root / (n + '.py')).exists());
+      print('landed machines scanned:', present);
+      print('landed machines importing exception:',
+      sorted(n for n in present if 'exception' in imports(n)));
+      print('work_item.py imports exception:', 'exception' in imports('work_item'));
+      print('external_effect.py imports exception:', 'exception' in imports('external_effect'));
+      print('observation.py imports exception:', 'exception' in imports('observation'));
+      print('conflict.py imports exception:', 'exception' in imports('conflict'));
+      print('expectation.py imports exception:', 'exception' in imports('expectation'));
+      print('M1 still owns the K-1 resolver:', 'def resolve_decision_ref' in read('work_item'));
+      print('M3 UNKNOWN_OUTCOME semantics present:', 'UNKNOWN_OUTCOME' in read('external_effect'));
+      print('M8 OVERDUE/INDETERMINATE semantics present:',
+      'INDETERMINATE' in read('expectation') and 'OVERDUE' in read('expectation'))"
+    timeout_s: 300
+    contains:
+      - "landed machines importing exception: []"
+      - "work_item.py imports exception: False"
+      - "external_effect.py imports exception: False"
+      - "observation.py imports exception: False"
+      - "conflict.py imports exception: False"
+      - "expectation.py imports exception: False"
+      - "M1 still owns the K-1 resolver: True"
+      - "M3 UNKNOWN_OUTCOME semantics present: True"
+      - "M8 OVERDUE/INDETERMINATE semantics present: True"
+
+# ---------------------------------------------------------------------------
+# The declared risk coverage. Every claim names the checks that can actually EMIT the observations it
+# requires — a claim naming commands that cannot produce its literal fails closed forever, on every
+# run, no matter how correct the product is, and it fails wearing the costume of a product defect.
+# ---------------------------------------------------------------------------
+verifies:
+  - risk_category: safety_invariant
+    claim: >-
+      An Exception is never closed by silence. Closure requires a `decision_ref` that RESOLVES — a
+      database CHECK plus `K-1`'s resolver, not a non-null test — and inactivity, `AutoClose`,
+      expiry, a sweep, a reaper and a timer are each incapable of closing one. A timer may AGE or
+      ESCALATE and never resolves. An exception closed without a decision is not closed; it is
+      forgotten.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "an owner is required from creation and RESOLVED requires a decision_ref, as CHECKs"
+      - "the live database refuses an ownerless exception and a resolution with no decision_ref"
+      - "no expiry, sweep, reaper, auto-close or deletion was invented"
+      - "the decision_ref resolver is M1's, imported rather than rewritten"
+    observations:
+      - "AN EXCEPTION CLOSED WITHOUT A DECISION IS NOT CLOSED, IT IS FORGOTTEN"
+      - "CLOSURE WITHOUT A decision_ref IS STRUCTURALLY IMPOSSIBLE"
+      - "RESOLUTION REQUIRES A decision_ref THAT RESOLVES"
+      - "INACTIVITY NEVER CLOSES AN EXCEPTION"
+      - "AUTOCLOSE IS AN ILLEGAL TRANSITION"
+      - "AN EXCEPTION NEVER EXPIRES AND CANNOT BE OUTLIVED"
+      - "NO SWEEP, REAPER OR SCAN CLOSES AN EXCEPTION"
+      - "A TIMER MAY AGE OR ESCALATE; A TIMER NEVER RESOLVES"
+      - "RESOLVED requires decision_ref: True"
+      - "RESOLVED with no decision_ref: refused"
+      - "invented sweep/reaper/autoclose surfaces: []"
+      - "M9 imports the K-1 resolver: True"
+
+  - risk_category: authorization
+    claim: >-
+      Only an authenticated human may acknowledge or resolve an Exception, and a model may never
+      own, acknowledge, resolve, auto-clear or re-severity one at any confidence. A `decision_ref`
+      recorded by automation is authority laundering and is refused. An Exception OWES a human's
+      attention rather than authorizing anything: `checkpoint.py` remains the only thing that mints
+      a gate decision, M3 remains the single effect authority, and M9 engages no brake.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "the checkpoint is still the only thing that mints a gate decision"
+      - "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or M13 being built"
+      - "the owner and every human named on the row are FOREIGN KEYS into tenant_humans"
+    observations:
+      - "AN AUTHENTICATED HUMAN ACKNOWLEDGES AN EXCEPTION"
+      - "A MODEL CAN NEVER ACKNOWLEDGE AN EXCEPTION"
+      - "A MODEL CAN NEVER RESOLVE OR AUTO-CLEAR AN EXCEPTION"
+      - "A MODEL CAN NEVER CHANGE SEVERITY"
+      - "A MODEL IS NOT A HUMAN AND MAY NOT OWN AN EXCEPTION"
+      - "A decision_ref RECORDED BY AUTOMATION IS NOT A HUMAN DECISION"
+      - "M9 MINTS NO GATE DECISION"
+      - "AN EXCEPTION IS AN INPUT TO THE CHECKPOINT AND NEVER A GATE"
+      - "M9 ENGAGES NO BRAKE AND NARROWS NONE"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "engages a brake from inside M9: []"
+      - "every human-named column is FK-backed: True"
+
+  - risk_category: missing_data
+    claim: >-
+      A required basis that is absent fails closed rather than being assumed. An Exception cannot be
+      raised without a named human owner, a severity or a source; an ownerless Exception is
+      structurally impossible at the database boundary; a `decision_ref` that references nothing is
+      not a `decision_ref`; and a severity change without its previous value or its reason is
+      refused, because a rebuild that cannot see what the severity moved from can under-state the
+      live one.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "an owner is required from creation and RESOLVED requires a decision_ref, as CHECKs"
+      - "the live database refuses an ownerless exception and a resolution with no decision_ref"
+      - "the owner and every human named on the row are FOREIGN KEYS into tenant_humans"
+      - "M9 uses the six registered F9 contracts and invents no seventh"
+    observations:
+      - "AN EXCEPTION HAS A NAMED HUMAN OWNER FROM CREATION"
+      - "AN OWNERLESS EXCEPTION IS STRUCTURALLY IMPOSSIBLE"
+      - "THE OWNER IS AN ACTIVE HUMAN OF THIS TENANT"
+      - "THE RAISE RECORDS ITS SEVERITY AND THE SOURCE THAT RAISED IT"
+      - "A decision_ref THAT REFERENCES NOTHING IS NOT A decision_ref"
+      - "A SEVERITY CHANGE REQUIRES A REASON"
+      - "owner_id NOT NULL: True"
+      - "an ownerless exception: refused"
+      - "an owner who is not a recorded human: refused"
+      - "owner is FK-backed into tenant_humans: True"
+      - "ExceptionSeverityChanged requires: ['changed_by', 'previous_severity', 'reason', 'severity']"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The five canonical states are a database CHECK with no sixth — no `CANCELLED`, no `EXPIRED`,
+      no `TIMED_OUT`, no `STALE`, no `CLOSED` — and the seven `EC-*` rows are the whole lifecycle.
+      The brief's finer terms are `sub_status` FIELDS and never lifecycle states. The from-sets are
+      read literally: resolving an `AGEING` Exception is illegal because `EC-3`'s from-set is
+      `{OPEN, ACKNOWLEDGED}` and `EC-6`'s is `{ESCALATED}`; nothing at all moves a `RESOLVED` one;
+      and a severity change is a field mutation rather than a state.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "the five canonical exception states are a database constraint, and there is no sixth"
+      - "sub_status is a field if it exists at all, and never a lifecycle state"
+      - "the live database refuses an ownerless exception and a resolution with no decision_ref"
+      - "no expiry, sweep, reaper, auto-close or deletion was invented"
+    observations:
+      - "THE FIVE CANONICAL STATES ARE THE WHOLE LIFECYCLE"
+      - "sub_status IS A FIELD, NEVER A LIFECYCLE STATE"
+      - "THERE IS NO CANCELLED, EXPIRED OR TIMED_OUT STATE"
+      - "RESOLVING FROM AGEING IS AN ILLEGAL TRANSITION"
+      - "RESOLVED IS THE ONLY TERMINAL STATE"
+      - "NOTHING MOVES A RESOLVED EXCEPTION"
+      - "A SEVERITY CHANGE IS A FIELD MUTATION, NOT A LIFECYCLE STATE"
+      - "AN ILLEGAL TRANSITION PERSISTS NOTHING AND IS RECORDED"
+      - "finer brief terms promoted to lifecycle states: []"
+      - "a CANCELLED lifecycle state: refused"
+      - "unregistered exception states in the migration: []"
+
+  - risk_category: boundary
+    claim: >-
+      Severity is a closed three-member vocabulary — `SEV0`, `SEV1`, `SEV2` — enforced by a CHECK
+      and never defaulted, because a defaulted severity is a safety statement nobody made and a
+      Sev-0 auto-engages a brake at its source. The ageing and escalation thresholds are
+      caller-supplied with no business default: `V10` is an open validation item and choosing a
+      number for it would be inventing a customer's operating policy.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "severity is a closed three-member vocabulary, enforced and never defaulted"
+      - "the live database refuses an ownerless exception and a resolution with no decision_ref"
+      - "the M9 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "SEVERITY IS SEV0, SEV1 OR SEV2 AND NOTHING ELSE"
+      - "THE AGEING THRESHOLD IS CALLER-SUPPLIED, NOT A BUSINESS DEFAULT"
+      - "A SEV0 EXCEPTION ENGAGES NO BRAKE FROM INSIDE M9"
+      - "severity vocabulary is exactly three members: True"
+      - "severity is never defaulted: True"
+      - "an invented SEV3 severity: refused"
+      - "--severity"
+      - "invented-severity"
+
+  - risk_category: concurrency
+    claim: >-
+      A lost update on an Exception is refused: every mutation carries an optimistic version check,
+      a stale expected version writes zero rows and raises rather than silently overwriting, and
+      concurrent raisers are serialized by the database rather than by an application-level
+      check-then-insert. Every index on the table is tenant-first, and the open-exception dedup index
+      is recorded as the OPTIONAL constraint three authorities call it rather than asserted as a
+      requirement.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "every exception index is tenant-first, and the optional dedup index is recorded not required"
+    observations:
+      - "A LOST UPDATE ON AN EXCEPTION IS REFUSED"
+      - "A STALE VERSION NEVER OVERWRITES NEWER STATE"
+      - "THE OPEN-EXCEPTION DEDUP INDEX IS OPTIONAL, AND THIS BUILD RECORDS ITS CHOICE"
+      - "every index is tenant-first: True"
+      - "dedup index, if built, is partial on RESOLVED: True"
+
+  - risk_category: cross_tenant
+    claim: >-
+      The same source in two tenants are two isolated Exceptions, and no Exception is owned,
+      resolved, sourced or READ across a tenant boundary. A cross-tenant owner, a cross-tenant
+      source, a cross-tenant `decision_ref` and a cross-tenant queue read each fail closed. Tenant is
+      the first partition dimension — in the primary key, in every index, in the foreign keys and in
+      every query — and the owner queue is the surface that makes it concrete: "show me the open
+      exceptions" must never return another brokerage's.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "a freshly created canonical database carries the exception layer, tenant-first"
+      - "every exception index is tenant-first, and the optional dedup index is recorded not required"
+      - "the owner and every human named on the row are FOREIGN KEYS into tenant_humans"
+    observations:
+      - "THE SAME SOURCE IN TWO TENANTS ARE TWO ISOLATED EXCEPTIONS"
+      - "A CROSS-TENANT OWNER FAILS CLOSED"
+      - "A CROSS-TENANT SOURCE FAILS CLOSED"
+      - "A CROSS-TENANT decision_ref FAILS CLOSED"
+      - "A CROSS-TENANT QUEUE READ FAILS CLOSED"
+      - "problems: []"
+      - "every index is tenant-first: True"
+      - "the owner queue is one tenant-first index: True"
+      - "foreign keys into a table nobody built: []"
+
+  - risk_category: malformed_input
+    claim: >-
+      A malformed exception, an unresolvable `decision_ref`, an invented severity and an invented
+      source kind all fail closed rather than becoming half-written rows or authority. An invented
+      fault name is refused with a non-zero exit and a readable message; so are a reopen fault, a
+      correction fault and a supersession fault, because entity §27, §23 and §24 each say `N/A` and
+      a probe that accepted one would be producing passing evidence for a transition that does not
+      exist.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "an invented fault is refused, so the vocabulary is genuinely closed"
+      - "a reopen fault does not exist, because a recurrence is a new Exception"
+      - "a correction fault does not exist, because correction is N/A for an exception"
+      - "a supersession fault does not exist, because supersession is N/A for an exception"
+      - "the M9 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "unknown fault"
+      - "THE SOURCE KIND IS A CLOSED VOCABULARY"
+      - "A decision_ref THAT REFERENCES NOTHING IS NOT A decision_ref"
+      - "--decision-ref"
+      - "malformed-exception"
+      - "invented-source-kind"
+
+  - risk_category: idempotency
+    claim: >-
+      `GR-4`'s consumer inbox is the mandatory idempotency mechanism: a redelivered `TimerFired` is
+      a no-op, a redelivered raise is a no-op, and a timer that fires at least once still moves the
+      machine exactly once. Duplicate pressure produces no second transition and no lost obligation.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "every exception index is tenant-first, and the optional dedup index is recorded not required"
+    observations:
+      - "A REDELIVERED TIMER IS A NO-OP"
+      - "A REDELIVERED RAISE THROUGH THE INBOX IS A NO-OP"
+      - "THE OPEN-EXCEPTION DEDUP INDEX IS OPTIONAL, AND THIS BUILD RECORDS ITS CHOICE"
+      - "exception indexes:"
+
+  - risk_category: retry_safety
+    claim: >-
+      A PERMANENT failure — authentication, authorization, configuration, protocol — raises an
+      Exception IMMEDIATELY with ZERO retries, and a transient failure is not a permanent
+      classification. The classification is SUPPLIED as an enumerated value and never inferred from
+      an error message, a status code or model output: a permanent credential failure retried
+      forever is a system hiding a fixable problem from the only person who can fix it.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "the M9 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    observations:
+      - "A PERMANENT AUTH OR CONFIG FAILURE RAISES IMMEDIATELY WITH ZERO RETRIES"
+      - "A TRANSIENT FAILURE IS NOT A PERMANENT CLASSIFICATION"
+      - "THE FAILURE CLASSIFICATION IS SUPPLIED, NEVER INFERRED FROM A MESSAGE"
+      - "permanent-auth-failure"
+      - "permanent-config-failure"
+      - "inferred-permanence"
+      - "retry-permanent"
+
+  - risk_category: persistence_failure
+    claim: >-
+      Where the source condition materially freezes work, the Exception row, the freeze and the
+      emitted event are ONE commit — a persistence failure rolls the whole decision back and leaves
+      no half-raised exception, no event without its state and no state without its event. And NOT
+      every Exception freezes an entity: the materiality condition is stated and recorded rather
+      than assumed, because an engine that froze everything it could not resolve would stop the
+      brokerage rather than help it.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "an owner is required from creation and RESOLVED requires a decision_ref, as CHECKs"
+    observations:
+      - "THE RAISE AND THE FREEZE COMMIT TOGETHER WHERE APPLICABLE"
+      - "NOT EVERY EXCEPTION FREEZES AN ENTITY"
+      - "A FREEZING EXCEPTION BLOCKS CONSEQUENTIAL ACTIONS ON THE ENTITY"
+      - "A PERSISTENCE FAILURE LEAVES NO HALF-RAISED EXCEPTION"
+      - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+      - "RESOLUTION UNBLOCKS THE FROZEN ENTITY"
+      - "table present: True"
+
+  - risk_category: restart_recovery
+    claim: >-
+      A restart loses nothing. An open Exception persists across it and stays open with its named
+      human; its ageing timer is durable and re-fires rather than being lost with the process; a
+      crash between the age threshold and the transition reaches the canonical state; and the frozen
+      entity stays blocked until a resolution unblocks it. Machine §36: an open Exception persists,
+      and the frozen entity stays blocked until resolved.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "ageing and escalation ride P5's existing durable timers rather than a second timer mechanism"
+    observations:
+      - "A RESTART RE-FIRES THE AGEING TIMER"
+      - "A RESTART LEAVES THE OPEN EXCEPTION OPEN"
+      - "AN OPEN EXCEPTION AGES THROUGH A DURABLE TIMER"
+      - "AGEING ESCALATES THROUGH A DURABLE TIMER, NEVER A SWEEP"
+      - "AGEING AND ESCALATED REMAIN HUMAN-OWNED"
+      - "M9 schedules through DurableTimers: True"
+      - "M9 consumes TimerFired: True"
+      - "in-memory sleep in the machine: []"
+      - "second timer table created by m9: []"
+
+  - risk_category: stale_state
+    claim: >-
+      Replay rebuilds the verdict, not a new one. A full-history rebuild reconstructs the Exception
+      and its CURRENT severity by folding the recorded `ExceptionSeverityChanged` events at the
+      highest aggregate version — never by reading the live row, which is the difference between a
+      rebuild that reproduces a Sev-0 and one that quietly reports the Sev-2 it was born as. An open
+      Exception stays open, a frozen entity stays blocked, and replay mints no authority and can
+      never manufacture a `decision_ref`.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "M9 uses the six registered F9 contracts and invents no seventh"
+    observations:
+      - "REPLAY RECONSTRUCTS THE OPEN EXCEPTION"
+      - "REPLAY REBUILDS THE CURRENT SEVERITY FROM THE RECORDED EVENTS"
+      - "REPLAY NEVER READS SEVERITY FROM THE CURRENT ROW"
+      - "REPLAY KEEPS A FROZEN ENTITY BLOCKED"
+      - "REPLAY CAN NEVER MANUFACTURE RESOLUTION AUTHORITY"
+      - "replay: 0 new authority, 0 external effects, 0 decision_refs minted, 0 state flips"
+      - "A SEVERITY CHANGE RECORDS THE PREVIOUS SEVERITY, THE NEW ONE AND WHO CHANGED IT"
+      - "ExceptionSeverityChanged requires: ['changed_by', 'previous_severity', 'reason', 'severity']"
+
+  - risk_category: regression
+    claim: >-
+      M1 through M8 are landed and M9 rewrites none of them. M1 keeps sole ownership of the `K-1`
+      resolver and M9 IMPORTS it rather than writing a second; M3 remains the single effect
+      authority with its `UNKNOWN_OUTCOME` semantics intact; and M5's, M7's and M8's human-owned
+      states are the seams that point at M9 rather than files M9 edits. No M10, M11 or M12 machine
+      is built along the way, and M9 ships dark with no production caller and no queue surface.
+    checks:
+      - "drive the Exception machine through a brokerage narrative, and attack it"
+      - "M1's, M3's, M5's, M7's and M8's landed machines are not rewritten by M9"
+      - "the decision_ref resolver is M1's, imported rather than rewritten"
+      - "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or M13 being built"
+      - "M9 has no production caller — the dark posture, measured over the shipped package"
+      - "no oversight queue, alerting, notification or paging surface ships with M9"
+    observations:
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M5 OBSERVATION MACHINE IS UNCHANGED"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "THE M8 EXPECTATION MACHINE IS UNCHANGED"
+      - "THE M10, M11 AND M12 MACHINES ARE NOT BUILT"
+      - "landed machines importing exception: []"
+      - "M1 still owns the K-1 resolver: True"
+      - "modules defining resolve_decision_ref outside M1: []"
+      - "m10/m11/m12 tables created by m9: []"
+      - "production importers of exception: []"
+      - "modules joining the exception machine to a channel: []"
+
+# ---------------------------------------------------------------------------
+# The literals the run must observe. `tasks/neyma_p6_m9.md` states them verbatim to the builder as
+# the probe's output contract. They are matched as substrings against everything observed — nothing
+# interprets them.
+#
+# Note what is NOT here. There is no required literal about whether an ACTIVE rule may resolve an
+# Exception, none about what cancellation maps to, none about which source kinds carry a foreign key,
+# none about who wires the five landed "→ Exception" seams, none about what the persisted freeze
+# write IS, and none about whether EC-4 ages from `any` state: the repository's own authority does
+# not currently settle any of the six (see the header and `tasks/neyma_p6_m9.md` §3.8). Every literal
+# below is one that every reading agrees on.
+# ---------------------------------------------------------------------------
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "AN EXCEPTION IS SOMETHING THAT NEEDS A HUMAN"
+  - "EVERY EXCEPTION REACHES A NAMED HUMAN OWNER AND IS NEVER CLOSED BY SILENCE"
+  - "AN EXCEPTION IS NOT AN ERROR LOG, AN ALERT OR AN ISSUE TRACKER ROW"
+  - "AN EXCEPTION HAS A NAMED HUMAN OWNER FROM CREATION"
+  - "AN OWNERLESS EXCEPTION IS STRUCTURALLY IMPOSSIBLE"
+  - "THE OWNER IS AN ACTIVE HUMAN OF THIS TENANT"
+  - "A MODEL IS NOT A HUMAN AND MAY NOT OWN AN EXCEPTION"
+  - "THE RAISE RECORDS ITS SEVERITY AND THE SOURCE THAT RAISED IT"
+  - "THE SOURCE KIND IS A CLOSED VOCABULARY"
+  - "A PERMANENT AUTH OR CONFIG FAILURE RAISES IMMEDIATELY WITH ZERO RETRIES"
+  - "A TRANSIENT FAILURE IS NOT A PERMANENT CLASSIFICATION"
+  - "THE FAILURE CLASSIFICATION IS SUPPLIED, NEVER INFERRED FROM A MESSAGE"
+  - "AN AUTHENTICATED HUMAN ACKNOWLEDGES AN EXCEPTION"
+  - "ACKNOWLEDGEMENT RECORDS THE ACTOR"
+  - "ACKNOWLEDGEMENT PROVES IT WAS SEEN, NOT THAT IT WAS RESOLVED"
+  - "A MODEL CAN NEVER ACKNOWLEDGE AN EXCEPTION"
+  - "AN ACKNOWLEDGED EXCEPTION IS STILL OPEN WORK AND STILL AGES"
+  - "RESOLUTION REQUIRES A decision_ref THAT RESOLVES"
+  - "CLOSURE WITHOUT A decision_ref IS STRUCTURALLY IMPOSSIBLE"
+  - "AN EXCEPTION CLOSED WITHOUT A DECISION IS NOT CLOSED, IT IS FORGOTTEN"
+  - "A decision_ref THAT REFERENCES NOTHING IS NOT A decision_ref"
+  - "A decision_ref RECORDED BY AUTOMATION IS NOT A HUMAN DECISION"
+  - "A MODEL CAN NEVER RESOLVE OR AUTO-CLEAR AN EXCEPTION"
+  - "AN ESCALATED EXCEPTION RESOLVES THROUGH EC-6 WITH A decision_ref"
+  - "RESOLVING FROM AGEING IS AN ILLEGAL TRANSITION"
+  - "RESOLVED IS THE ONLY TERMINAL STATE"
+  - "A RESOLVED EXCEPTION IS RETAINED, NEVER DELETED"
+  - "INACTIVITY NEVER CLOSES AN EXCEPTION"
+  - "AUTOCLOSE IS AN ILLEGAL TRANSITION"
+  - "AN EXCEPTION NEVER EXPIRES AND CANNOT BE OUTLIVED"
+  - "NO SWEEP, REAPER OR SCAN CLOSES AN EXCEPTION"
+  - "A TIMER MAY AGE OR ESCALATE; A TIMER NEVER RESOLVES"
+  - "AN OPEN EXCEPTION AGES THROUGH A DURABLE TIMER"
+  - "AGEING ESCALATES THROUGH A DURABLE TIMER, NEVER A SWEEP"
+  - "AGEING AND ESCALATED REMAIN HUMAN-OWNED"
+  - "THE AGEING THRESHOLD IS CALLER-SUPPLIED, NOT A BUSINESS DEFAULT"
+  - "NOTHING MOVES A RESOLVED EXCEPTION"
+  - "A RESTART RE-FIRES THE AGEING TIMER"
+  - "A RESTART LEAVES THE OPEN EXCEPTION OPEN"
+  - "A REDELIVERED TIMER IS A NO-OP"
+  - "A SEVERITY CHANGE IS A FIELD MUTATION, NOT A LIFECYCLE STATE"
+  - "A SEVERITY CHANGE RECORDS THE PREVIOUS SEVERITY, THE NEW ONE AND WHO CHANGED IT"
+  - "A SEVERITY CHANGE REQUIRES A REASON"
+  - "A MODEL CAN NEVER CHANGE SEVERITY"
+  - "SEVERITY IS SEV0, SEV1 OR SEV2 AND NOTHING ELSE"
+  - "A SEV0 EXCEPTION ENGAGES NO BRAKE FROM INSIDE M9"
+  - "THE FIVE CANONICAL STATES ARE THE WHOLE LIFECYCLE"
+  - "sub_status IS A FIELD, NEVER A LIFECYCLE STATE"
+  - "THERE IS NO CANCELLED, EXPIRED OR TIMED_OUT STATE"
+  - "A RETRACTED CAUSE STILL REQUIRES AN EVENT AND A decision_ref"
+  - "A FREEZING EXCEPTION BLOCKS CONSEQUENTIAL ACTIONS ON THE ENTITY"
+  - "NOT EVERY EXCEPTION FREEZES AN ENTITY"
+  - "THE RAISE AND THE FREEZE COMMIT TOGETHER WHERE APPLICABLE"
+  - "A PERSISTENCE FAILURE LEAVES NO HALF-RAISED EXCEPTION"
+  - "THE STATE ROW AND ITS EVENT COMMIT TOGETHER"
+  - "RESOLUTION UNBLOCKS THE FROZEN ENTITY"
+  - "M9 MINTS NO GATE DECISION"
+  - "AN EXCEPTION IS AN INPUT TO THE CHECKPOINT AND NEVER A GATE"
+  - "A REDELIVERED RAISE THROUGH THE INBOX IS A NO-OP"
+  - "THE OPEN-EXCEPTION DEDUP INDEX IS OPTIONAL, AND THIS BUILD RECORDS ITS CHOICE"
+  - "A LOST UPDATE ON AN EXCEPTION IS REFUSED"
+  - "A STALE VERSION NEVER OVERWRITES NEWER STATE"
+  - "REPLAY RECONSTRUCTS THE OPEN EXCEPTION"
+  - "REPLAY REBUILDS THE CURRENT SEVERITY FROM THE RECORDED EVENTS"
+  - "REPLAY NEVER READS SEVERITY FROM THE CURRENT ROW"
+  - "REPLAY KEEPS A FROZEN ENTITY BLOCKED"
+  - "REPLAY CAN NEVER MANUFACTURE RESOLUTION AUTHORITY"
+  - "replay: 0 new authority, 0 external effects, 0 decision_refs minted, 0 state flips"
+  - "EXCEPTIONS STILL RAISE UNDER A BRAKE"
+  - "M9 ENGAGES NO BRAKE AND NARROWS NONE"
+  - "THE SAME SOURCE IN TWO TENANTS ARE TWO ISOLATED EXCEPTIONS"
+  - "A CROSS-TENANT OWNER FAILS CLOSED"
+  - "A CROSS-TENANT SOURCE FAILS CLOSED"
+  - "A CROSS-TENANT decision_ref FAILS CLOSED"
+  - "A CROSS-TENANT QUEUE READ FAILS CLOSED"
+  - "AN ILLEGAL TRANSITION PERSISTS NOTHING AND IS RECORDED"
+  - "THE DATABASE ENFORCES THE EXCEPTION INVARIANTS"
+  - "A LEGACY DATABASE MIGRATES TO THE CANONICAL EXCEPTION SHAPE"
+  - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+  - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+  - "THE M5 OBSERVATION MACHINE IS UNCHANGED"
+  - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+  - "THE M8 EXPECTATION MACHINE IS UNCHANGED"
+  - "THE M10, M11 AND M12 MACHINES ARE NOT BUILT"
+  - "mutants caught"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # Each of these is a sentence the probe prints only when the thing M9 exists to prevent has just
+  # happened. Any one of them appearing anywhere in the run is the whole unit failing.
+  - "### EXCEPTION RAISED WITHOUT AN OWNER ###"
+  - "### OWNERLESS EXCEPTION CREATED ###"
+  - "### A MODEL OWNED AN EXCEPTION ###"
+  - "### AN OFFBOARDED HUMAN OWNED AN EXCEPTION ###"
+  - "### CROSS-TENANT OWNER ACCEPTED ###"
+  - "### CROSS-TENANT SOURCE ACCEPTED ###"
+  - "### CROSS-TENANT decision_ref ACCEPTED ###"
+  - "### CROSS-TENANT QUEUE READ ###"
+  - "### EXCEPTION CLOSED WITHOUT A DECISION ###"
+  - "### CLOSURE BY SILENCE ###"
+  - "### INACTIVITY CLOSED AN EXCEPTION ###"
+  - "### AUTOCLOSE CLOSED AN EXCEPTION ###"
+  - "### EXCEPTION EXPIRED ###"
+  - "### EXCEPTION OUTLIVED ###"
+  - "### SWEEP CLOSED AN EXCEPTION ###"
+  - "### REAPER DELETED AN EXCEPTION ###"
+  - "### EXCEPTION DELETED ###"
+  - "### TIMER RESOLVED AN EXCEPTION ###"
+  - "### MODEL RESOLVED AN EXCEPTION ###"
+  - "### MODEL ACKNOWLEDGED AN EXCEPTION ###"
+  - "### MODEL CHANGED SEVERITY ###"
+  - "### UNRESOLVABLE decision_ref ACCEPTED ###"
+  - "### AUTOMATED ACTOR PASSED AS A HUMAN DECISION ###"
+  - "### AGEING EXCEPTION RESOLVED DIRECTLY ###"
+  - "### SEVERITY CHANGE BECAME A LIFECYCLE STATE ###"
+  - "### PREVIOUS SEVERITY LOST ###"
+  - "### SEVERITY CHANGE WITHOUT A REASON ###"
+  - "### REPLAY REBUILT SEVERITY FROM THE CURRENT ROW ###"
+  - "### UNREGISTERED SEVERITY MINTED ###"
+  - "### UNREGISTERED STATE MINTED ###"
+  - "### sub_status BECAME A LIFECYCLE STATE ###"
+  - "### SIXTH LIFECYCLE STATE MINTED ###"
+  - "### CANCELLED STATE MINTED ###"
+  - "### RAISE AND FREEZE SPLIT ACROSS COMMITS ###"
+  - "### HALF-RAISED EXCEPTION PERSISTED ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### FROZEN ENTITY UNBLOCKED WITHOUT A RESOLUTION ###"
+  - "### EVERY EXCEPTION FROZE AN ENTITY ###"
+  - "### M9 MINTED A GATE DECISION ###"
+  - "### EXCEPTION AUTHORIZED AN ACTION ###"
+  - "### M9 ENGAGED A BRAKE ###"
+  - "### RESOLVED EXCEPTION MOVED ###"
+  - "### STALE VERSION OVERWROTE NEWER STATE ###"
+  - "### REPLAY MANUFACTURED RESOLUTION AUTHORITY ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### DOWNSTREAM EFFECT DURING REPLAY ###"
+  - "### TIMER LOST ACROSS RESTART ###"
+  - "### EXCEPTION LOST ACROSS RESTART ###"
+  - "### PERMANENT FAILURE RETRIED ###"
+  - "### PERMANENCE INFERRED FROM A MESSAGE ###"
+  - "### M1 WORK ITEM ROW REWRITTEN BY M9 ###"
+  - "### M5 OBSERVATION ROW REWRITTEN BY M9 ###"
+  - "### M7 CONFLICT ROW REWRITTEN BY M9 ###"
+  - "### M8 EXPECTATION ROW REWRITTEN BY M9 ###"
+  - "### M3 EFFECT SEAM REWRITTEN ###"
+  - "### M10 EVENT MINTED ###"
+  - "### COMPENSATION FABRICATED ###"
+
+# Non-destructive by construction. NEVER `git stash/restore/clean/checkout --` here: the P6 work is
+# largely untracked and those commands would destroy it irrecoverably.
+teardown: []

@@ -58,7 +58,24 @@ from .scenario_plan import (
 #: probe was enumerated — so the tail of one unit's operating vocabulary stopped
 #: reaching the generator, with no record that it had. Raised well clear of any
 #: realistic set, and a truncation now says so in the brief itself.
-MAX_RENDERED_COMMANDS = 250
+#:
+#: ### IT HAPPENED AGAIN AT 250, AND THE CAUSE IS STRUCTURAL RATHER THAN A BAD
+#: GUESS. The approved set is the UNION of every permanent scenario's commands
+#: plus the configured vocabulary of the unit under test, and P6 adds a permanent
+#: scenario per landed machine — so the set grows monotonically with the corpus
+#: while this number does not. At the M9 bootstrap the union measured 272 against
+#: a bound of 250, and the 22 it withheld were chosen by ASCII sort rather than by
+#: relevance: M3's own bare probe — a landed unit's deterministic entry point —
+#: fell off the end. Six readiness files caught it at once, which is the guard
+#: working; the number was simply stale.
+#:
+#: Raised to 400: the union is 272 today, each further P6 unit adds roughly one
+#: scenario file's worth of commands (the retarget swaps one unit's enumerated
+#: `--case` vocabulary for the next rather than accumulating both), so the steady
+#: state through M13 is near 340. ### THIS IS A DISPLAY BOUND AND NOTHING ELSE:
+#: what may RUN is decided by `scenario_validation`, unchanged, and a truncation
+#: still announces itself in the brief.
+MAX_RENDERED_COMMANDS = 400
 
 
 class GenerationBrief:

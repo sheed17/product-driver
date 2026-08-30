@@ -538,3 +538,104 @@ class TestRiskFamilies:
 
     def test_a_category_in_no_family_neighbours_only_itself(self):
         assert neighbours(RiskCategory.HAPPY_PATH) == frozenset({RiskCategory.HAPPY_PATH})
+
+
+# --------------------------------------------------------------------------
+# The render bound, stated once for the whole corpus
+# --------------------------------------------------------------------------
+
+
+class TestTheRenderBoundKeepsUpWithTheCorpus:
+    """`MAX_RENDERED_COMMANDS` is a display bound, and it goes stale on its own.
+
+    The approved set is the UNION of every permanent scenario's commands plus the configured
+    vocabulary of the unit under test, and P6 adds a permanent scenario per landed machine — so the
+    set grows monotonically with the corpus while the bound does not. It has now gone stale twice:
+    at **60**, when the first per-case verification probe was enumerated (62 approved), and at
+    **250**, at the M9 bootstrap (272 approved), where the 22 commands it withheld were chosen by
+    ASCII sort rather than by relevance and included **M3's own bare probe** — a landed unit's
+    deterministic entry point, invisible to the generator.
+
+    Both times the failure was found by six near-identical copies of the same arithmetic guard, one
+    per unit readiness file, all turning red at once for a reason none of them owned. ### **This is
+    that guard, stated ONCE, over the shipped corpus rather than per unit** — so the next time the
+    bound goes stale it is one failure that names the number, not six that name a unit.
+
+    It asserts a DISPLAY property and nothing about safety: what may RUN is decided by
+    `scenario_validation` and is unaffected by this number.
+    """
+
+    def _approved(self):
+        import yaml
+        from pathlib import Path
+
+        from neyma_product_driver.scenarios import load_scenario
+
+        root = Path(__file__).resolve().parents[1]
+        scenarios = [load_scenario(p) for p in sorted((root / "scenarios").glob("*.y*ml"))]
+        configured: list[str] = []
+        local = root / "driver.config.yaml"
+        if local.exists():
+            raw = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
+            configured = list(
+                (raw.get("scenario_generation") or {}).get("approved_commands") or []
+            )
+        return ApprovedCommands.from_sources(scenarios=scenarios, configured=configured)
+
+    def test_the_shipped_corpus_fits_inside_the_brief(self):
+        """The whole point: with the bound correct, NOTHING is withheld and no unit's vocabulary
+        depends on where its filename sorts."""
+        from neyma_product_driver.scenario_generator import MAX_RENDERED_COMMANDS
+
+        approved = self._approved()
+        assert len(approved) <= MAX_RENDERED_COMMANDS, (
+            f"the approved set is {len(approved)} commands and the generation brief renders only "
+            f"the first {MAX_RENDERED_COMMANDS}. The excess is chosen by ASCII SORT, not by "
+            "relevance, so what goes invisible is whichever unit happens to sort last — raise "
+            "MAX_RENDERED_COMMANDS in scenario_generator.py rather than trimming a unit's "
+            "vocabulary to fit."
+        )
+
+    def test_every_permanent_scenarios_bare_entry_point_is_rendered(self):
+        """The harm the count stands in for, measured directly.
+
+        A landed unit's bare probe is its deterministic entry point and the prefix every `--case`
+        tail is approved by. Losing it to truncation is how a whole unit stops being composable —
+        which is exactly what happened to M3 at the M9 bootstrap.
+        """
+        from neyma_product_driver.scenario_generator import MAX_RENDERED_COMMANDS
+
+        entries = list(self._approved().entries)
+        shown = set(entries[:MAX_RENDERED_COMMANDS])
+        probes = [e for e in entries if "scripts/probe_" in e and "--" not in e]
+        assert probes, "no permanent scenario declares a bare probe entry point"
+        lost = sorted(e for e in probes if e not in shown)
+        assert not lost, (
+            f"{len(lost)} bare probe entry point(s) fall past the brief's "
+            f"{MAX_RENDERED_COMMANDS}-command render bound and are invisible to the generator: "
+            f"{lost}"
+        )
+
+    def test_a_truncated_brief_still_says_it_was_truncated(self):
+        """Raising the bound does not remove the need for the notice.
+
+        The bound will go stale again; when it does, the brief must say what it withheld rather than
+        narrowing the generator's vocabulary invisibly.
+        """
+        from neyma_product_driver.scenario_generator import (
+            MAX_RENDERED_COMMANDS,
+            GenerationBasis,
+            GenerationBrief,
+        )
+
+        brief = GenerationBrief(
+            stage="initial",
+            wave=1,
+            basis=GenerationBasis(task="t"),
+            max_scenarios=3,
+            available_commands=[f"./probe.sh case-{i}" for i in range(MAX_RENDERED_COMMANDS + 5)],
+            available_services=[],
+            app_url="",
+            browser_enabled=False,
+        ).render()
+        assert "and 5 further approved command(s) NOT LISTED HERE" in brief
