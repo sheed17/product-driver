@@ -593,19 +593,45 @@ expect_state:
   # positive control first so a refusal cannot be an artefact of a table that rejects everything.
   # `P6-D56` recorded "the migration invariants verified by READING the DDL rather than introspecting
   # a live database" as the M8 run's one weaker instrument. This is that instrument, repaired.
-  # ### THE INVARIANTS ATTEMPTED AGAINST A LIVE DATABASE, NOT READ OUT OF ITS DDL. The check above
-  # reads text; this one ISSUES the forbidden writes and records that the engine refuses them.
   #
   # ### THE POSITIVE CONTROL IS THE POINT, AND IT IS DERIVED RATHER THAN HARD-CODED. A row that the
   # database refuses for some unrelated reason would make every "refused" line below true of a table
   # that rejects everything, which is a vacuous negative corpus wearing the costume of enforcement.
   # So the well-formed row is BUILT FROM THE SHIPPED DDL — every NOT NULL column takes its own
-  # DEFAULT if it has one, else the first member of its own CHECK vocabulary, else a placeholder —
-  # and it must be ACCEPTED before any refusal below counts. `rows that survived: 1` is that proof
-  # restated as a count: exactly the positive control persisted, and not one forbidden row did.
+  # DEFAULT if it has one, else the first member of ITS OWN CHECK vocabulary, else a placeholder —
+  # and it must be ACCEPTED before any refusal below counts. `rows that survived: 2` is that proof
+  # restated as a count: exactly the two positive controls persisted, and not one forbidden row did.
   #
-  # `P6-D56` recorded "the migration invariants verified by READING the DDL rather than introspecting
-  # a live database" as the M8 run's one weaker instrument. This is that instrument, repaired.
+  # ### DERIVING A ROW IS NOT ENOUGH: THE ROW'S OWN PREREQUISITES MUST BE CREATED FIRST, AND THAT IS
+  # ### THE DEFECT RUN 20260830-034455 FOUND. A column-at-a-time derivation reads each column in
+  # isolation, so it cannot satisfy a constraint that SPANS two of them, and M9 has two:
+  # `source_kind` is a discriminator whose per-kind MIRROR column must equal `source_ref` AND carry a
+  # real foreign key (### M9-AQ-3), and `freezes_entity` requires `entity_ref` + `frozen_field` when
+  # it is set. Read column-wise, the first source kind arrived with no row to point at and the freeze
+  # flag defaulted to a placeholder `1` with nothing frozen — so a CORRECT M9 refused the positive
+  # control, exactly as it refuses the true negatives, and the scenario reported the product failing
+  # a check no correct implementation could pass. Both halves are fixed WITHOUT hard-coding:
+  #
+  #   * `freezes_entity` now takes the first member of its own `CHECK (freezes_entity IN (0, 1))`
+  #     vocabulary — `0` — because the vocabulary sweep now reads a STANDALONE CHECK line as well as
+  #     one written inline on the column. A non-freezing exception needs no frozen field.
+  #   * the SOURCE PREREQUISITE IS CREATED, derived end to end: the first `source_kind` is read off
+  #     the DDL, its mirror column off the per-kind mirror CHECK, and the mirror's REFERENT table and
+  #     primary key off `pragma foreign_key_list(exceptions)` — then a row is BUILT IN THAT TABLE by
+  #     the same generic derivation and the exception points at it. Nothing here names `observations`;
+  #     the printed line does, because the DDL said so.
+  #
+  # ### AND THE PREREQUISITE MUST NOT MAKE THE FK VACUOUS. Creating the source row is what lets the
+  # positive control pass; three refusals are what keep it honest — a `source_ref` NO ROW BACKS, a
+  # source row belonging to ANOTHER TENANT (the composite `(tenant, mirror)` FK), and the cross-tenant
+  # OWNER, which is now refused for the owner alone because tenant `T_B` gets its own source row.
+  # Drop the mirror FK from the migration and four asserted lines turn red at once.
+  #
+  # Recorded and NOT asserted (### M9-AQ-3, SQL three-valued logic): a row that names an FK-backed
+  # `source_kind` and leaves the mirror column NULL is ACCEPTED, because `mirror = source_ref` is NULL
+  # rather than false and a CHECK only refuses false. Asserting a refusal there would assert behaviour
+  # the shipped design does not have — the same defect this comment exists to record — so it is
+  # reported instead. Every kind whose table exists is FK-backed the moment the mirror is set.
   - name: "the live database refuses an ownerless exception and a resolution with no decision_ref"
     command: >-
       .venv/bin/python -c "import sqlite3,tempfile,os,sys,re;
@@ -613,32 +639,33 @@ expect_state:
       from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
       p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
       c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
-      row=c.execute(\"select sql from sqlite_master where name='exceptions'\").fetchone();
-      ddl=re.sub(r'--.*', '', row[0]) if row else '';
-      opts=dict(re.findall(r'\\b(\\w+)\\b[^,\\n]*?\\bIN\\s*\\(([^)]*)\\)', ddl));
-      first=lambda col: (re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), opts[col])
-      or [None])[0] if col in opts else None;
-      info=list(c.execute('pragma table_info(exceptions)'));
-      cols=[r[1] for r in info];
-      pick=lambda name,ty,dflt: (str(dflt).strip(chr(39)) if dflt is not None
-      else (first(name) if first(name) is not None
-      else (1 if 'INT' in (ty or '').upper() else 'x')));
-      base=dict([(r[1], pick(r[1], r[2], r[4])) for r in info if r[3]]);
-      c.execute('insert into tenant_humans (tenant,human_id,display_name,authority_role,state,
-      recorded_at,recorded_by,recorded_by_kind) values (?,?,?,?,?,?,?,?)',
-      ('T_A','dispatch-lead','Dispatch Lead','AUTHORIZED_HUMAN','ACTIVE','2026-08-29T00:00:00Z',
-      'founder','human'));
-      known={'tenant':'T_A','owner_id':'dispatch-lead','state':'OPEN','severity':'SEV1',
-      'version':1,'created_at':'2026-08-29T00:00:00Z','updated_at':'2026-08-29T00:00:00Z',
-      'exception_id':'exc-1'};
-      base.update(dict([(k,v) for k,v in known.items() if k in base]));
+      ddl=lambda t: (lambda r: re.sub('--.*', '', r[0]) if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(r'\\x27([^\\x27]*)\\x27', m[2]) or [x.strip() for x in m[2].split(',')]) for m in reversed(re.findall(r'\\b(\\w+)\\s+(NOT\\s+)?IN\\s*\\(([^)]*)\\)', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')'));
+      colsof=lambda t: [r[1] for r in info(t)];
+      pick=lambda v,r: (str(r[4]).strip(chr(39)) if r[4] is not None else ((int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]) if r[1] in v else (1 if 'INT' in (r[2] or '').upper() else 'x')));
+      build=lambda t,known: dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]] + [(k,val) for k,val in known.items() if k in colsof(t)]);
       env={'c':c,'sqlite3':sqlite3};
-      exec('def attempt(label, d):\n try:\n  c.execute(\'savepoint s\'); c.execute(\'insert into exceptions (\' + \',\'.join(d) + \') values (\' + \',\'.join([\'?\']*len(d)) + \')\', list(d.values())); c.execute(\'release s\'); print(label + \': ACCEPTED\')\n except sqlite3.Error as exc:\n  c.execute(\'rollback to s\'); c.execute(\'release s\'); print(label + \': refused (\' + type(exc).__name__ + \')\')', env);
-      attempt=env['attempt'];
+      exec('def ins(t, d):\n c.execute(\'insert into \' + t + \' (\' + \',\'.join(d) + \') values (\' + \',\'.join([\'?\']*len(d)) + \')\', list(d.values()))\ndef attempt(label, d):\n try:\n  c.execute(\'savepoint s\'); ins(\'exceptions\', d); c.execute(\'release s\'); print(label + \': ACCEPTED\')\n except sqlite3.Error as exc:\n  c.execute(\'rollback to s\'); c.execute(\'release s\'); print(label + \': refused (\' + type(exc).__name__ + \')\')', env);
+      ins=env['ins']; attempt=env['attempt'];
+      cols=colsof('exceptions');
+      kind=(vocab('exceptions').get('source_kind') or [None])[0];
+      mirror=dict(re.findall(r'source_kind <> \\x27(\\w+)\\x27 OR (\\w+) = source_ref', ddl('exceptions')));
+      mcol=mirror.get(kind);
+      fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(exceptions)')]);
+      stbl,spk=fks.get(mcol, (None,None));
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,'Dispatch Lead','AUTHORIZED_HUMAN','ACTIVE','2026-08-29T00:00:00Z','founder','human')))) for t,h in (('T_A','dispatch-lead'),('T_B','other-tenant-lead'))];
+      [ins(stbl, build(stbl, dict([('tenant',t),(spk,sid),('owner_id',h)]))) for t,sid,h in (('T_A','src-1','dispatch-lead'),('T_B','src-2','other-tenant-lead'))] if stbl and spk else None;
+      print('the source kind under test:', str(kind), '->', str(stbl) + '.' + str(spk), 'mirrored by', str(mcol));
+      print('the FK-backed source prerequisite:', ('created in ' + str(stbl)) if stbl and c.execute('select count(*) from ' + str(stbl)).fetchone()[0] == 2 else 'MISSING');
+      known=dict([('tenant','T_A'),('owner_id','dispatch-lead'),('exception_id','exc-1'),('version',1),('created_at','2026-08-29T00:00:00Z'),('updated_at','2026-08-29T00:00:00Z'),('source_ref','src-1')] + ([(mcol,'src-1')] if mcol else []));
+      base=build('exceptions', known);
       variants=[('positive control, a well-formed OPEN exception', {}),
       ('an ownerless exception', {'exception_id':'exc-2','owner_id':None}),
       ('an owner who is not a recorded human', {'exception_id':'exc-3','owner_id':'someone-else'}),
-      ('an owner from another tenant', {'exception_id':'exc-4','tenant':'T_B'}),
+      ('an owner from another tenant', {'exception_id':'exc-4','tenant':'T_B','source_ref':'src-2',mcol:'src-2'}),
+      ('a source no row backs', {'exception_id':'exc-9','source_ref':'src-nope',mcol:'src-nope'}),
+      ('a source from another tenant', {'exception_id':'exc-10','source_ref':'src-2',mcol:'src-2'}),
       ('RESOLVED with no decision_ref', {'exception_id':'exc-5','state':'RESOLVED',
       'decision_ref':None,'decision_ref_kind':'AUDIT_EVENT','decision_human_id':'dispatch-lead'}),
       ('second positive control, RESOLVED WITH a decision_ref', {'exception_id':'exc-5b',
@@ -649,17 +676,19 @@ expect_state:
       ('an invented SEV3 severity', {'exception_id':'exc-8','severity':'SEV3'})];
       print('exceptions table present:', bool(cols));
       print('the derived positive-control row:', sorted(base.items()));
-      [attempt(label, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in cols]))
-      for label, over in (variants if cols else [])];
-      print('rows that survived:',
-      c.execute('select count(*) from exceptions').fetchone()[0] if cols else 'n/a')"
+      [attempt(label, dict(list(base.items()) + [(k,val) for k,val in over.items() if k in cols] + ([('type', 'cause-' + str(i))] if 'type' in cols else []))) for i,(label,over) in enumerate(variants) if cols];
+      print('rows that survived:', c.execute('select count(*) from exceptions').fetchone()[0] if cols else 'n/a')"
     timeout_s: 300
     contains:
       - "exceptions table present: True"
+      - "the source kind under test: observation -> observations.observation_id mirrored by source_observation_ref"
+      - "the FK-backed source prerequisite: created in observations"
       - "positive control, a well-formed OPEN exception: ACCEPTED"
       - "an ownerless exception: refused"
       - "an owner who is not a recorded human: refused"
       - "an owner from another tenant: refused"
+      - "a source no row backs: refused"
+      - "a source from another tenant: refused"
       - "RESOLVED with no decision_ref: refused"
       - "a CANCELLED lifecycle state: refused"
       - "an EXPIRED lifecycle state: refused"
@@ -940,15 +969,41 @@ expect_state:
   # `EC-1`'s raise causes reach for M10 (a failed compensation), entity §41's repeatedly-overridden
   # rule reaches for M11 and M12, and entity §21's Sev-0 causes reach for F14 detectors and M13's
   # brake. None of the five is M9's, and each is a machine a build session adds to be helpful.
+  #
+  # ### THE SWEEP READS CODE, NOT PROSE, AND THE DIFFERENCE IS STRUCTURAL — the second defect
+  # ### run 20260830-034455 found. A `re.findall` over a module's SOURCE TEXT cannot tell a mint
+  # from a sentence saying the machine does not mint: M9's own module docstring names the three F14
+  # detectors (`OrphanAdapterInvocation`, `CrossTenantAccessAttempted`, `ProjectionRebuildDiverged`)
+  # precisely to record that they are NOT M9's — and the substring sweep read that disclaimer as the
+  # act it disclaims, failing a correct machine for documenting itself. Deleting the sentence to
+  # appease the scan would have made the documentation worse and the check no better.
+  #
+  # So the text under the regex is now the module PARSED and re-rendered: `ast.parse`, every module,
+  # class and function docstring replaced by `pass`, then `ast.unparse`. Comments never survive a
+  # parse at all, so they are excluded by construction rather than by a heuristic. What is left is
+  # exactly the executable machine — every name, call and string literal a mint could hide in — and
+  # a foreign event named in code is caught in the same breath that a foreign event named in prose
+  # is ignored. The `named >= {the six F9 contracts}` line is that scan's positive control: a strip
+  # that gutted the module would report `[]` for the same reason a clean machine does, so the sweep
+  # must first prove the code it read still names the events M9 DOES mint.
   - name: "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or M13 being built"
     command: >-
-      .venv/bin/python -c "import pathlib,re,sqlite3,tempfile,os,sys;
+      .venv/bin/python -c "import ast,pathlib,re,sqlite3,tempfile,os,sys;
       sys.path.insert(0,'src');
       src=pathlib.Path('src/freight_recon/exception.py');
       text=src.read_text(encoding='utf-8') if src.exists() else '';
       mig=pathlib.Path('src/freight_recon/migrations/phase6_exceptions.py');
       migtext=mig.read_text(encoding='utf-8') if mig.exists() else '';
       print('machine and migration present:', bool(text) and bool(migtext));
+      env={'ast':ast};
+      exec('def code_of(t):\n tree=ast.parse(t)\n holders=(ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)\n for n in ast.walk(tree):\n  b=getattr(n, \'body\', None)\n  if isinstance(n, holders) and b and isinstance(b[0], ast.Expr) and isinstance(b[0].value, ast.Constant) and isinstance(b[0].value.value, str):\n   b[0]=ast.Pass()\n return ast.unparse(tree)', env);
+      code=env['code_of'](text) if text else '';
+      print('the machine as executable code, docstrings and comments structurally removed:', bool(code));
+      named=set(re.findall(r'\\bException[A-Z]\\w+\\b', code));
+      print('the events the machine names in code:', sorted(named));
+      print('the stripped code still names the six F9 events:',
+      named >= {'ExceptionRaised','ExceptionAcknowledged','ExceptionAgeing','ExceptionEscalated',
+      'ExceptionResolved','ExceptionSeverityChanged'});
       print('mints another machine event:',
       sorted(set(re.findall(r'\\bCompensationRequired\\b|\\bCompensationApproved\\b'
       r'|\\bCompensationCompleted\\b|\\bCompensationFailed\\b|\\bCompensationImpossible\\b'
@@ -956,21 +1011,23 @@ expect_state:
       r'|\\bBrakeEngaged\\b|\\bBrakeWidened\\b|\\bBrakeNarrowed\\b|\\bBrakeReleased\\b'
       r'|\\bOrphanAdapterInvocation\\b|\\bCrossTenantAccessAttempted\\b'
       r'|\\bProjectionRebuildDiverged\\b|\\bOwnerAssertedOverwriteAttempted\\b'
-      r'|\\bProvenanceStrengtheningAttempted\\b', text))));
+      r'|\\bProvenanceStrengtheningAttempted\\b', code))));
       print('writes another machine transition:',
-      sorted(set(re.findall(r'\\b(?:CM|PO|RU|BR)-[0-9]+[a-z]?\\b', text))));
+      sorted(set(re.findall(r'\\b(?:CM|PO|RU|BR)-[0-9]+[a-z]?\\b', code))));
       print('engages a brake from inside M9:',
-      sorted(set(re.findall(r'\\.engage\\w*\\(|engage_platform', text))));
+      sorted(set(re.findall(r'\\.engage\\w*\\(|engage_platform', code))));
       from freight_recon.schema import create_canonical_schema;
       p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
       c=sqlite3.connect(p); create_canonical_schema(c);
-      tables={r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")};
+      tables={r[0] for r in c.execute('select name from sqlite_master where type=\'table\'')};
       print('m10/m11/m12 tables created by m9:',
       sorted(tables & {'compensations','policies','rules','policy_versions','rule_versions',
       'evidence','exception_queue','notifications'}))"
     timeout_s: 300
     contains:
       - "machine and migration present: True"
+      - "the machine as executable code, docstrings and comments structurally removed: True"
+      - "the stripped code still names the six F9 events: True"
       - "mints another machine event: []"
       - "writes another machine transition: []"
       - "engages a brake from inside M9: []"

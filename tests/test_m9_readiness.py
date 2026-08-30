@@ -1193,6 +1193,8 @@ class TestPersistedStateIsTheOracle:
         for refusal in ("an ownerless exception: refused",
                         "an owner who is not a recorded human: refused",
                         "an owner from another tenant: refused",
+                        "a source no row backs: refused",
+                        "a source from another tenant: refused",
                         "RESOLVED with no decision_ref: refused",
                         "a CANCELLED lifecycle state: refused",
                         "an EXPIRED lifecycle state: refused",
@@ -1210,6 +1212,23 @@ class TestPersistedStateIsTheOracle:
         assert "the derived positive-control row" in command, (
             "the positive control is hard-coded rather than derived from the shipped DDL, so a "
             "builder's own column set could make it fail for an unrelated reason"
+        )
+        assert (
+            "the source kind under test: observation -> observations.observation_id mirrored by "
+            "source_observation_ref" in guard
+        ), (
+            "nothing states WHICH source kind the positive control exercises or what backs it, so "
+            "the mirror-FK half of M9-AQ-3 could be dropped with every line still green"
+        )
+        assert "the FK-backed source prerequisite: created in observations" in guard, (
+            "the positive control names a source the harness never created. A column-at-a-time "
+            "derivation cannot satisfy a constraint spanning two columns, so the well-formed row is "
+            "refused for the harness's own reason and a CORRECT M9 fails a check no implementation "
+            "could pass -- the run 20260830-034455 defect this line exists to prevent recurring"
+        )
+        assert "pragma foreign_key_list(exceptions)" in command, (
+            "the source prerequisite is not derived from the shipped foreign keys, so a renamed "
+            "mirror column or a re-pointed referent would be invisible to it"
         )
 
     def test_the_severity_vocabulary_is_asserted_closed_and_never_defaulted(self, state_checks):
@@ -1428,7 +1447,7 @@ class TestPersistedStateIsTheOracle:
                         "operator_console", "delivery", "follow_up"):
             assert channel in command, f"the queue-surface sweep does not look at {channel}"
 
-    def test_m9_authorizes_nothing_and_engages_no_brake(self, state_checks):
+    def test_m9_authorizes_nothing_and_engages_no_brake(self, m9, state_checks):
         """Entity §38 and machine §28: an Exception is an INPUT to checkpoint step 4 and never a
         second gate. And F9's cross-cutting section puts the Sev-0 brake AT THE SOURCE DETECTOR, not
         here — `events/registry.md` §11 gives the three detectors their auto-brake scope, and none of
@@ -1448,6 +1467,25 @@ class TestPersistedStateIsTheOracle:
         assert "machine and migration present: True" in brake, (
             "the foreign-machine sweep has no proven population"
         )
+        assert (
+            "the machine as executable code, docstrings and comments structurally removed: True"
+            in brake
+        ), (
+            "the sweep reads the module's SOURCE TEXT, so a docstring recording that the three F14 "
+            "detectors are NOT M9's reads as the mint it disclaims -- the defect run 20260830-034455 "
+            "found. Prose and "
+            "code must be separated structurally, not by wording the prose around a regex"
+        )
+        assert "the stripped code still names the six F9 events: True" in brake, (
+            "the code-only sweep has no positive control: a strip that gutted the module would "
+            "report an empty foreign-event list for the same reason a clean machine does"
+        )
+        command = [c for c in m9.expect_state if c.contains == brake][0].command
+        for structural in ("ast.parse", "ast.unparse", "ast.Pass()"):
+            assert structural in command, (
+                f"the sweep does not {structural} the machine, so comments and docstrings are "
+                "excluded by wording rather than by construction"
+            )
 
     def test_ageing_is_asserted_to_ride_p5s_durable_timers(self, state_checks):
         """Machine §37: durable timers, and never a resolution timer (`M-36`). `EC-4` and `EC-5` are
@@ -3094,6 +3132,93 @@ class TestThisFileFailsWhenTheGuardIsRemoved:
                 mutant, checks
             )
 
+    def test_dropping_the_source_prerequisite_turns_the_live_attempt_assertion_red(self):
+        """Run 20260830-034455's positive-control defect, as a guard. The positive control may only
+        pass because the row it inserts is
+        genuinely well-formed — which means the FK-backed source it names has to EXIST. Stop
+        asserting that the harness created it and the check goes back to demanding that a correct
+        M9 accept a row pointing at nothing."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the live database refuses an ownerless exception and a resolution with no "
+                "decision_ref",
+            )
+            check["contains"] = [
+                c for c in check["contains"]
+                if c != "the FK-backed source prerequisite: created in observations"
+            ]
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="20260830-034455"):
+            TestPersistedStateIsTheOracle().test_the_forbidden_writes_are_attempted_against_a_live_database(
+                mutant, checks
+            )
+
+    def test_dropping_the_unbacked_source_refusal_turns_the_live_attempt_assertion_red(self):
+        """The other half of the same fix. Creating the source row is what lets the positive control
+        pass; refusing a `source_ref` NO ROW BACKS is what keeps the mirror FK from being scenery.
+        Without it, dropping `FOREIGN KEY (tenant, source_observation_ref)` from the migration would
+        leave every line green."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the live database refuses an ownerless exception and a resolution with no "
+                "decision_ref",
+            )
+            check["contains"] = [
+                c for c in check["contains"] if c != "a source no row backs: refused"
+            ]
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="never asked to refuse"):
+            TestPersistedStateIsTheOracle().test_the_forbidden_writes_are_attempted_against_a_live_database(
+                mutant, checks
+            )
+
+    def test_dropping_the_cross_tenant_source_refusal_turns_the_live_attempt_assertion_red(self):
+        """`[C-1]`: the mirror FK is COMPOSITE — `(tenant, mirror)`. A per-tenant source row exists in
+        both tenants precisely so this refusal isolates the tenant half."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the live database refuses an ownerless exception and a resolution with no "
+                "decision_ref",
+            )
+            check["contains"] = [
+                c for c in check["contains"] if c != "a source from another tenant: refused"
+            ]
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="never asked to refuse"):
+            TestPersistedStateIsTheOracle().test_the_forbidden_writes_are_attempted_against_a_live_database(
+                mutant, checks
+            )
+
+    def test_deriving_the_prerequisite_by_hand_turns_the_live_attempt_assertion_red(self):
+        """Naming `observations` in the harness would make the positive control a hard-coded row
+        wearing a derivation's clothes: rename the mirror column or re-point the referent and the
+        check would keep asserting the old shape."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the live database refuses an ownerless exception and a resolution with no "
+                "decision_ref",
+            )
+            check["command"] = check["command"].replace(
+                "pragma foreign_key_list(exceptions)", "pragma table_info(exceptions)"
+            )
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="derived from the shipped foreign keys"):
+            TestPersistedStateIsTheOracle().test_the_forbidden_writes_are_attempted_against_a_live_database(
+                mutant, checks
+            )
+
     def test_dropping_the_k1_resolver_import_turns_that_assertion_red(self):
         """A second resolver is two places for one of them to start accepting the string `done`."""
         def edit(raw):
@@ -3256,7 +3381,56 @@ class TestThisFileFailsWhenTheGuardIsRemoved:
         mutant = _mutate(edit)
         checks = {c.name: list(c.contains) for c in mutant.expect_state}
         with pytest.raises(AssertionError):
-            TestPersistedStateIsTheOracle().test_m9_authorizes_nothing_and_engages_no_brake(checks)
+            TestPersistedStateIsTheOracle().test_m9_authorizes_nothing_and_engages_no_brake(
+                mutant, checks
+            )
+
+    def test_scanning_source_text_instead_of_parsed_code_turns_the_mint_assertion_red(self):
+        """Run 20260830-034455's foreign-event defect, as a guard. A `re.findall` over a module's
+        SOURCE TEXT cannot tell a mint from a
+        sentence saying the machine does not mint — M9's docstring names the three F14 detectors to
+        record that they are NOT its own, and the substring sweep read the disclaimer as the act."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or "
+                "M13 being built",
+            )
+            command = check["command"]
+            start = command.index("exec('def code_of")
+            end = command.index("', env);", start) + len("', env);")
+            check["command"] = (
+                command[:start] + command[end:]
+            ).replace("code=env['code_of'](text) if text else '';", "code=text;")
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="by wording rather than by construction"):
+            TestPersistedStateIsTheOracle().test_m9_authorizes_nothing_and_engages_no_brake(
+                mutant, checks
+            )
+
+    def test_dropping_the_stripped_code_control_turns_the_mint_assertion_red(self):
+        """A strip that gutted the module would report an empty foreign-event list for exactly the
+        same reason a clean machine does. The sweep must first prove the code it read still names
+        the six events M9 DOES mint."""
+        def edit(raw):
+            check = _named(
+                raw, "expect_state",
+                "the compensation, policy, rule and brake seams are fed without M10, M11, M12 or "
+                "M13 being built",
+            )
+            check["contains"] = [
+                c for c in check["contains"]
+                if c != "the stripped code still names the six F9 events: True"
+            ]
+
+        mutant = _mutate(edit)
+        checks = {c.name: list(c.contains) for c in mutant.expect_state}
+        with pytest.raises(AssertionError, match="no positive control"):
+            TestPersistedStateIsTheOracle().test_m9_authorizes_nothing_and_engages_no_brake(
+                mutant, checks
+            )
 
     # ---- the optional constraint, and the claim mapping ---------------------------------------
 
