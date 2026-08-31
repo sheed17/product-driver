@@ -211,12 +211,45 @@ class ApprovedCommands:
     That is a real constraint, and it is the point. Generated scenarios get their
     power from ordering, concurrency, repetition, restarts, HTTP payloads and
     expectations; they do not get it from authoring shell.
+
+    **A command has two forms here, and they are not the same string.**
+    :attr:`entries` is the *matching key* — whitespace-collapsed, so that two
+    spellings of one invocation compare equal. :attr:`verbatim` is the *text*,
+    exactly as a human wrote it. Only the key may be compared; only the text may
+    be shown to anything that will copy it.
+
+    Collapsing whitespace is lossless for matching and lossy for text, because
+    :func:`_norm_command` cannot see quoting: a run of spaces inside a quoted
+    argument is program syntax, not separation. Run 20260830-034455 is what
+    conflating the two costs. The generation brief rendered the *keys* as the
+    list of approved commands, an approved command embedded a Python body whose
+    nested block was indented by two spaces, the key held one, and the generated
+    scenario m9-w2-01 copied the key faithfully and died at parse with
+    ``IndentationError: expected an indented block after 'try' statement``
+    without ever reaching the product. The command was approved, the copy was
+    honest, and the string a human wrote had already been destroyed upstream.
     """
 
     def __init__(self, entries: Iterable[str]) -> None:
-        self.entries: tuple[str, ...] = tuple(
-            sorted({_norm_command(e) for e in entries if _norm_command(e)})
-        )
+        # Deduplicated by key, so two spellings of one invocation stay one
+        # entry; the first spelling wins the text, and `verbatim` is emitted in
+        # `entries` order so the two tuples index the same command.
+        by_key: dict[str, str] = {}
+        for raw in entries:
+            key = _norm_command(raw)
+            if not key:
+                continue
+            text = str(raw).strip()
+            # A control character in the text would split one rendered command
+            # across two lines wherever it is shown, which is the same
+            # corruption from the other end. Such a command is refused by
+            # `approves` anyway, so the key — which cannot contain one — is the
+            # honest thing to show for it.
+            by_key.setdefault(key, key if _control_character_problem(text) else text)
+        self.entries: tuple[str, ...] = tuple(sorted(by_key))
+        #: The same commands, in :attr:`entries` order, as a human wrote them.
+        #: This is what gets rendered anywhere a reader or a model may copy it.
+        self.verbatim: tuple[str, ...] = tuple(by_key[key] for key in self.entries)
 
     def __bool__(self) -> bool:
         return bool(self.entries)

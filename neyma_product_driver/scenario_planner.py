@@ -562,7 +562,12 @@ class ScenarioPlanner:
             wave=self._wave,
             basis=basis,
             max_scenarios=allowed,
-            available_commands=list(self.approved_commands.entries),
+            # `verbatim`, never `entries`: this list is copied into a proposal
+            # character for character, so it must be the string a human wrote
+            # and not the whitespace-collapsed key it is matched by. See
+            # ApprovedCommands — the collapse is invisible until an approved
+            # command carries syntax that spaces are part of.
+            available_commands=list(self.approved_commands.verbatim),
             available_services=[s.name for s in (self.base_scenario.services if self.base_scenario else [])],
             app_url=self.base_scenario.app_url if self.base_scenario else "",
             # What is actually available, not what would be convenient. Telling
