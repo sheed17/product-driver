@@ -1,0 +1,1319 @@
+name: p6_m10_compensation
+phase: P6
+mode: backend
+description: >-
+  P6 M10: the Compensation — undoing an external effect that should not have happened, and the one
+  machine in Neyma whose whole job is to prove that an undo gets NO privileged path. A carrier's POD
+  was bound to the wrong load, an invoice for GBP 2,850 went out to the customer on the strength of
+  it, and a human has now corrected the binding: that invoice rests on a fact known to be wrong, and
+  the money has to be credited back. The tempting fix is a rollback — find the effect, call the TMS
+  void endpoint, mark the row undone — and that is a second ungated write route into a customer's
+  accounting system, reached at the exact moment the system is already known to be wrong about
+  something. So M10 does the opposite: the credit note is a NEW external effect, with its own
+  pipeline, its own human approval, its own checkpoint, its own single-use grant, its own commit key
+  and its own readback. And when the original outcome is UNKNOWN — the TMS timed out and nobody can
+  say whether the invoice was issued — compensation is REFUSED outright, because a compensating
+  write can CREATE the very state it meant to remove. COMPENSATION_FAILED and NOT_POSSIBLE are the
+  most dangerous states the system can be in, so they stay loud, keep a named human owner and carry
+  the money at stake, and no timer, sweep or retry ever clears them. M10 ships dark: no oversight
+  queue, no notifier, no production write enabled. This scenario measures the DATABASE and the EVENT
+  REGISTRY, not the probe's narration.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/compensation.py"
+  - "src/freight_recon/migrations/phase6_compensations.py"
+  - "eval/tests/test_phase6_compensation.py"
+  - "scripts/probe_phase6_compensation.py"
+  - "scripts/mutate_phase6_compensation.py"
+
+commands:
+  # ------------------------------------------------------------------ coverage and axis oracles
+  - name: "the M10 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      - "required-from-a-verified-original-effect"
+      - "the-original-state-is-read-from-the-ledger-not-a-caller-flag"
+      - "compensation-cannot-be-created-from-an-unknown-outcome"
+      - "refusal-on-unknown-emits-compensationrefused-and-zero-rows"
+      - "refusal-on-unknown-mints-no-pipeline-no-grant-and-no-effect"
+      - "a-failed-original-creates-no-compensation"
+      - "a-revoked-original-creates-no-compensation"
+      - "an-expired-unclaimed-original-creates-no-compensation"
+      - "a-merely-attempted-original-creates-no-compensation"
+      - "a-granted-or-claimed-original-creates-no-compensation"
+      - "no-refusal-variant-is-minted-for-the-other-six-states"
+      - "a-model-inferred-invalidation-is-refused"
+      - "confidence-one-does-not-substitute-for-authority"
+      - "the-invalidating-decision-ref-must-resolve"
+      - "an-automation-emitted-human-decision-event-is-refused"
+      - "a-rule-kind-decision-ref-refuses-today"
+      - "the-invalidating-decision-ref-rides-the-compensationrequired-event"
+      - "m10-imports-the-k1-resolver"
+      - "a-compensation-carries-a-named-human-owner-from-required"
+      - "an-ownerless-compensation-is-structurally-impossible"
+      - "a-model-cannot-own-a-compensation"
+      - "a-cross-tenant-owner-is-refused"
+      - "an-offboarded-human-cannot-own-a-new-compensation"
+      - "exposure-is-required-from-required"
+      - "exposure-is-integer-minor-units-and-a-currency"
+      - "a-float-exposure-is-refused"
+      - "a-decimal-exposure-is-refused"
+      - "exposure-survives-into-compensation-failed"
+      - "exposure-survives-into-not-possible"
+      - "the-six-canonical-states-and-no-seventh"
+      - "completed-is-the-only-terminal-state"
+      - "compensation-failed-and-not-possible-stay-human-owned"
+      - "a-compensation-never-expires"
+      - "a-compensation-is-never-cancelled"
+      - "a-compensation-row-cannot-be-deleted"
+      - "no-timer-moves-compensation-failed"
+      - "no-timer-moves-any-compensation-state"
+      - "there-is-no-automatic-retry-from-compensation-failed"
+      - "no-sweep-reaper-or-scan-moves-a-compensation"
+      - "required-to-approved-requires-an-authenticated-human"
+      - "the-approval-id-resolves-to-a-same-tenant-m4-approval"
+      - "the-approval-is-bound-to-this-compensations-commit-key"
+      - "a-stale-or-wrong-approval-is-refused"
+      - "a-cross-tenant-approval-is-refused"
+      - "a-model-cannot-approve-a-compensation"
+      - "confidence-cannot-approve-a-compensation"
+      - "m10-builds-no-second-approval-system"
+      - "compensation-approved-is-not-approval-granted"
+      - "execution-starts-a-new-m2-pipeline-instance"
+      - "the-executing-pipeline-is-not-the-original"
+      - "executing-requires-a-bound-pipeline-instance-id"
+      - "the-compensating-effect-passes-the-full-checkpoint"
+      - "the-compensating-effect-claims-its-own-grant"
+      - "the-original-effect-grant-is-never-reused"
+      - "m10-invokes-no-adapter-directly"
+      - "m10-performs-no-direct-system-write"
+      - "the-compensating-effect-has-its-own-commit-key"
+      - "the-commit-key-is-the-canonical-compensation-occurrence"
+      - "the-commit-key-is-not-derived-from-the-originals"
+      - "retrying-the-same-compensation-converges-on-one-commit-key"
+      - "the-original-and-compensating-effects-stay-distinct"
+      - "an-active-brake-blocks-a-compensating-write"
+      - "an-urgent-compensation-does-not-bypass-the-brake"
+      - "a-human-narrows-the-brake-through-the-landed-mechanism"
+      - "m10-engages-no-brake-and-narrows-none"
+      - "m10-mints-no-gate-decision"
+      - "the-money-gate-defaults-to-human-approval-required"
+      - "m10-registers-no-gate"
+      - "completed-requires-a-verified-compensating-effect"
+      - "adapter-success-alone-does-not-complete-a-compensation"
+      - "write-acceptance-is-not-completion"
+      - "a-timeout-is-not-a-failure"
+      - "a-failed-executing-pipeline-reaches-compensation-failed"
+      - "a-needs-verification-pipeline-reaches-compensation-failed"
+      - "compensation-failed-carries-the-exposure"
+      - "not-possible-keeps-its-owner-and-exposure"
+      - "not-possible-writes-nothing-to-the-world"
+      - "impossibility-is-never-inferred-from-model-output"
+      - "a-human-establishes-reality-with-a-resolving-decision-ref"
+      - "cm5-emits-the-shared-f3-realityestablished-with-subject-compensation"
+      - "m10-mints-no-second-realityestablished-contract"
+      - "reality-establishment-from-not-possible-fabricates-no-pipeline"
+      - "a-model-cannot-establish-reality"
+      - "one-active-compensation-per-invalidated-effect"
+      - "the-uniqueness-predicate-excludes-not-possible-exactly-as-written"
+      - "concurrent-creation-yields-exactly-one-compensation"
+      - "n-invalidated-effects-raise-n-individually-gated-compensations"
+      - "there-is-no-bulk-effect-grant"
+      - "there-is-no-bulk-approval"
+      - "there-is-no-one-undo-all-adapter-call"
+      - "aggregate-exposure-is-computed-before-approval"
+      - "tenant-is-first-in-the-compensation-primary-key"
+      - "a-cross-tenant-original-effect-is-refused"
+      - "a-cross-tenant-pipeline-is-refused"
+      - "a-cross-tenant-decision-ref-is-refused"
+      - "state-and-event-co-commit-in-one-transaction"
+      - "a-persistence-failure-leaves-no-half-created-compensation"
+      - "there-is-no-approved-without-its-event"
+      - "there-is-no-executing-without-its-pipeline-binding"
+      - "a-crash-after-claim-reaches-needs-verification-then-compensation-failed"
+      - "a-compensation-survives-a-restart"
+      - "replay-reconstructs-compensation-state-only"
+      - "replay-mints-zero-pipelines-grants-claims-and-effects"
+      - "m10-ships-dark-with-zero-production-importers"
+      - "m10-joins-no-outbound-channel"
+      - "m10-builds-no-oversight-queue-or-notifier"
+      - "m11-m12-and-m13-are-not-built"
+      - "the-m9-escalation-seam-is-named-and-left-unwired"
+      - "m1-through-m9-are-unchanged"
+
+  - name: "the M10 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      - "--concurrency"
+      - "--delay-ms"
+      - "--repeat"
+      - "--tenants"
+      - "--seed"
+      - "--inject"
+      - "--actor"
+      - "--decision-ref"
+      - "--original-state"
+      - "--exposure"
+      - "--brake"
+
+  # ------------------------------------------------------------------ the machine, driven
+  - name: "drive the Compensation machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --all"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains:
+      - "behaviours as specified, 0 wrong"
+      - "A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"
+      - "THERE IS NO FAST PATH FOR UNDO"
+      - "YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID"
+      - "COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME"
+      - "A COMPENSATING EFFECT NEVER REUSES THE ORIGINAL EFFECT GRANT"
+      - "THE COMPENSATING EFFECT HAS ITS OWN COMMIT KEY"
+      - "COMPLETION REQUIRES READBACK, NOT AN ADAPTER RETURN CODE"
+      - "A TIMEOUT IS NOT A FAILURE"
+      - "COMPENSATION_FAILED NEVER AUTO-RESOLVES"
+      - "NO TIMER MOVES COMPENSATION_FAILED"
+      - "THERE IS NO AUTOMATIC RETRY OF A FAILED COMPENSATION"
+      - "NOT_POSSIBLE IS HONEST AND KEEPS ITS EXPOSURE"
+      - "THERE IS NO BULK UNDO"
+      - "A COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"
+      - "A MODEL CAN NEVER APPROVE A COMPENSATION"
+      - "A MODEL CAN NEVER OWN A COMPENSATION"
+      - "A MODEL CAN NEVER ESTABLISH REALITY"
+      - "M10 MINTS NO GATE DECISION"
+      - "M10 ENGAGES NO BRAKE AND NARROWS NONE"
+      - "M10 MINTS NO SECOND RealityEstablished CONTRACT"
+      - "REPLAY PRODUCES NO COMPENSATING EFFECT"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11, M12 AND M13 MACHINES ARE NOT BUILT"
+
+  # ------------------------------------------------------------------ the mutation battery
+  - name: "every M10 mutation is caught by the acceptance battery"
+    run: ".venv/bin/python scripts/mutate_phase6_compensation.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains:
+      - "mutations caught"
+      - "0 escaped"
+
+  # ------------------------------------------------------------------ acceptance batteries
+  - name: "the M10 acceptance battery"
+    run: ".venv/bin/pytest eval/tests/test_phase6_compensation.py -q"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  - name: "M1, M2, M3 and M4 stay green beside M10"
+    run: ".venv/bin/pytest eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py -q"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains: ["passed"]
+
+  - name: "M9, the machine M10's failure states escalate to, stays green"
+    run: ".venv/bin/pytest eval/tests/test_phase6_exception.py -q"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the checkpoint kernel and the claim CAS are unchanged by M10"
+    run: ".venv/bin/pytest eval/tests/test_phase3_checkpoint.py eval/tests/test_phase3_step_order.py -q"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the false-green defences, including the population-proof guard M9's build tripped"
+    run: ".venv/bin/pytest eval/tests/test_false_green_defenses.py -q"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  # ------------------------------------------------------------------ the M10 case vocabulary
+  - name: "M-33: a compensation of an unknown outcome is refused, and nothing is written"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case compensation-cannot-be-created-from-an-unknown-outcome"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME"]
+
+  - name: "the refusal on an unknown outcome mints no pipeline, no grant and no effect"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case refusal-on-unknown-mints-no-pipeline-no-grant-and-no-effect"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID"]
+
+  - name: "execution is a full M2 pipeline, not a privileged undo"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case the-compensating-effect-passes-the-full-checkpoint"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"]
+
+  - name: "the compensating effect never reuses the original Effect Grant"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case the-original-effect-grant-is-never-reused"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A COMPENSATING EFFECT NEVER REUSES THE ORIGINAL EFFECT GRANT"]
+
+  - name: "the compensating effect carries its own commit key"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case the-compensating-effect-has-its-own-commit-key"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE COMPENSATING EFFECT HAS ITS OWN COMMIT KEY"]
+
+  - name: "completion requires readback, and an adapter return code is not completion"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case completed-requires-a-verified-compensating-effect"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["COMPLETION REQUIRES READBACK, NOT AN ADAPTER RETURN CODE"]
+
+  - name: "no timer moves COMPENSATION_FAILED, and nothing retries it"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case no-timer-moves-compensation-failed"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["NO TIMER MOVES COMPENSATION_FAILED"]
+
+  - name: "NOT_POSSIBLE is honest and keeps its owner and its exposure"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case not-possible-keeps-its-owner-and-exposure"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["NOT_POSSIBLE IS HONEST AND KEEPS ITS EXPOSURE"]
+
+  - name: "a correction storm raises N individually gated compensations, never a bulk undo"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case n-invalidated-effects-raise-n-individually-gated-compensations"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["THERE IS NO BULK UNDO"]
+
+  - name: "an active brake blocks a compensating write, urgent or not"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case an-active-brake-blocks-a-compensating-write"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"]
+
+  - name: "a model may neither own, approve, nor establish reality for a compensation"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case a-model-cannot-approve-a-compensation"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A MODEL CAN NEVER APPROVE A COMPENSATION"]
+
+  - name: "replay reconstructs the compensation record and produces no compensating effect"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case replay-mints-zero-pipelines-grants-claims-and-effects"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["REPLAY PRODUCES NO COMPENSATING EFFECT"]
+
+  - name: "concurrent creation for one invalidated effect yields exactly one compensation"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case concurrent-creation-yields-exactly-one-compensation --concurrency 8 --repeat 20"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "every original-effect state is exercised across the eight-member M3 ledger"
+    run: ".venv/bin/python scripts/probe_phase6_compensation.py --case required-from-a-verified-original-effect --original-state all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+expect_state:
+  # 1 ---------------------------------------------------------------------------------------
+  - name: "a freshly created canonical database carries the compensation layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys); p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39))))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "compensations"
+      - "tenant_humans"
+      - "effect_grants"
+      - "approvals"
+      - "pipeline_instances"
+      - "checkpoint_witnesses"
+      - "event_outbox"
+      - "exceptions"
+
+  # 2 ---------------------------------------------------------------------------------------
+  - name: "the six canonical compensation states are a database constraint, and there is no seventh"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      ddl=(lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', ('compensations',)).fetchone());
+      v=dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl)) if not m[1]]);
+      s=v.get('state') or [];
+      print('the state vocabulary is a CHECK:', bool(s));
+      print('canonical six:', sorted(s));
+      print('state count:', len(s));
+      print('forbidden states present:', sorted([x for x in s if x in ('CANCELLED','EXPIRED','TIMED_OUT','ROLLED_BACK','RETRYING','RESOLVED','SUPERSEDED','REVERSED','UNDONE','PENDING','FAILED','ABANDONED')]));
+      print('an expiry column:', sorted([col for col in [r[1] for r in c.execute('pragma table_info(compensations)')] if 'expire' in col.lower() or 'expiry' in col.lower() or 'ttl' in col.lower() or 'deleted' in col.lower()]))"
+    timeout_s: 300
+    contains:
+      - "the state vocabulary is a CHECK: True"
+      - "canonical six: ['APPROVED', 'COMPENSATION_FAILED', 'COMPLETED', 'EXECUTING', 'NOT_POSSIBLE', 'REQUIRED']"
+      - "state count: 6"
+      - "forbidden states present: []"
+      - "an expiry column: []"
+
+  # 3 ---------------------------------------------------------------------------------------
+  - name: "the live database refuses an ownerless compensation, a seventh state, and EXECUTING with no pipeline"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='compensations';
+      print('compensations table present:', bool(c.execute('select 1 from sqlite_master where type=' + chr(39) + 'table' + chr(39) + ' and name=?', (T,)).fetchone()));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')'));
+      colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if 'currency' in n: return 'GBP'\",\" if n.endswith('_at'): return '2026-09-01T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\" c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused (' + type(exc).__name__ + ')')\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,'Billing Lead','AUTHORIZED_HUMAN','ACTIVE','2026-09-01T00:00:00Z','founder','human')))) for t,h in (('T_A','billing-lead'),('T_B','other-tenant-lead'))];
+      fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(' + T + ')')]);
+      print('the original_effect FK target:', str(fks.get('original_effect_id')));
+      [ins('effect_grants', build('effect_grants', {'tenant':t,'grant_id':g,'commit_key':'ck-' + g})) for t,g in (('T_A','grant-verified'),('T_A','grant-unknown'),('T_B','grant-other-tenant'))];
+      print('the FK-backed original prerequisite:', 'created in effect_grants' if c.execute('select count(*) from effect_grants').fetchone()[0] == 3 else 'MISSING');
+      base=build(T, {'tenant':'T_A','compensation_id':'cmp-1','original_effect_id':'grant-verified','owner_id':'billing-lead','version':1,'created_at':'2026-09-01T00:00:00Z','updated_at':'2026-09-01T00:00:00Z'});
+      print('the derived NOT NULL column set:', sorted(base));
+      [attempt(lbl, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in colsof(T)])) for lbl, over in [('positive control, a well-formed REQUIRED compensation', {'state':'REQUIRED'}), ('an ownerless compensation', {'compensation_id':'cmp-2','original_effect_id':'grant-unknown','owner_id':None}), ('an owner who is not a recorded human', {'compensation_id':'cmp-3','original_effect_id':'grant-unknown','owner_id':'someone-else'}), ('an owner from another tenant', {'compensation_id':'cmp-4','tenant':'T_B','original_effect_id':'grant-other-tenant','owner_id':'billing-lead'}), ('an original effect from another tenant', {'compensation_id':'cmp-5','original_effect_id':'grant-other-tenant'}), ('an original effect no row backs', {'compensation_id':'cmp-6','original_effect_id':'grant-nope'}), ('a CANCELLED lifecycle state', {'compensation_id':'cmp-7','original_effect_id':'grant-unknown','state':'CANCELLED'}), ('an EXPIRED lifecycle state', {'compensation_id':'cmp-8','original_effect_id':'grant-unknown','state':'EXPIRED'}), ('a RETRYING lifecycle state', {'compensation_id':'cmp-9','original_effect_id':'grant-unknown','state':'RETRYING'}), ('EXECUTING with no bound pipeline', {'compensation_id':'cmp-10','original_effect_id':'grant-unknown','state':'EXECUTING','pipeline_instance_id':None}), ('second positive control, a NOT_POSSIBLE compensation keeping its exposure', {'compensation_id':'cmp-11','original_effect_id':'grant-unknown','state':'NOT_POSSIBLE'})]];
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "compensations table present: True"
+      - "the FK-backed original prerequisite: created in effect_grants"
+      - "positive control, a well-formed REQUIRED compensation: ACCEPTED"
+      - "an ownerless compensation: refused"
+      - "an owner who is not a recorded human: refused"
+      - "an owner from another tenant: refused"
+      - "an original effect from another tenant: refused"
+      - "an original effect no row backs: refused"
+      - "a CANCELLED lifecycle state: refused"
+      - "an EXPIRED lifecycle state: refused"
+      - "a RETRYING lifecycle state: refused"
+      - "EXECUTING with no bound pipeline: refused"
+      - "second positive control, a NOT_POSSIBLE compensation keeping its exposure: ACCEPTED"
+      - "rows that survived: 2"
+
+  # 4 ---------------------------------------------------------------------------------------
+  - name: "the unique-active-compensation index is tenant-first and carries the canonical NOT_POSSIBLE predicate"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='compensations';
+      idx=[r[0] for r in c.execute('select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=? and sql is not null', (T,))];
+      print('compensation indexes discovered:', len(idx));
+      uniq=[s for s in idx if 'UNIQUE' in s.upper()];
+      print('a UNIQUE index exists:', bool(uniq));
+      print('every compensation index is tenant-first:', all(re.search('[(] *tenant', s) for s in idx));
+      print('the active predicate names NOT_POSSIBLE:', any('NOT_POSSIBLE' in s for s in uniq));
+      print('the active predicate is an exclusion, not an inclusion:', any(re.search('state *(!=|<>)', s) for s in uniq));
+      print('the uniqueness columns are tenant and the original effect:', any(re.search('[(] *tenant *, *original_effect_id *[)]', s) for s in uniq));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if 'currency' in n: return 'GBP'\",\" if n.endswith('_at'): return '2026-09-01T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\" c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused (' + type(exc).__name__ + ')')\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), ('T_A','billing-lead','Billing Lead','AUTHORIZED_HUMAN','ACTIVE','2026-09-01T00:00:00Z','founder','human'))));
+      ins('effect_grants', build('effect_grants', {'tenant':'T_A','grant_id':'grant-1','commit_key':'ck-1'}));
+      base=build(T, {'tenant':'T_A','original_effect_id':'grant-1','owner_id':'billing-lead','version':1,'created_at':'2026-09-01T00:00:00Z','updated_at':'2026-09-01T00:00:00Z'});
+      attempt('positive control, the first active compensation for an invalidated effect', dict(list(base.items()) + [('compensation_id','cmp-1'),('state','REQUIRED')]));
+      attempt('a SECOND active compensation for the same invalidated effect', dict(list(base.items()) + [('compensation_id','cmp-2'),('state','REQUIRED')]));
+      c.execute('update compensations set state=? where compensation_id=?', ('NOT_POSSIBLE','cmp-1')); c.commit();
+      attempt('a second compensation while the first is NOT_POSSIBLE (M10-AQ-9)', dict(list(base.items()) + [('compensation_id','cmp-3'),('state','REQUIRED')]));
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "a UNIQUE index exists: True"
+      - "every compensation index is tenant-first: True"
+      - "the active predicate names NOT_POSSIBLE: True"
+      - "the active predicate is an exclusion, not an inclusion: True"
+      - "the uniqueness columns are tenant and the original effect: True"
+      - "positive control, the first active compensation for an invalidated effect: ACCEPTED"
+      - "a SECOND active compensation for the same invalidated effect: refused"
+      - "a second compensation while the first is NOT_POSSIBLE (M10-AQ-9): ACCEPTED"
+
+  # 5 ---------------------------------------------------------------------------------------
+  - name: "a compensation row cannot be deleted, and no expiry, sweep, reaper or auto-retry was invented"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re,ast; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      trg=[r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name=?', ('compensations',))];
+      print('compensation triggers discovered:', len(trg));
+      print('a BEFORE DELETE guard exists:', any('delete' in t.lower() for t in trg));
+      src=open('src/freight_recon/compensation.py').read();
+      tree=ast.parse(src);
+      docs=set([id(n.body[0].value) for n in ast.walk(tree) if isinstance(n,(ast.Module,ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)) and n.body and isinstance(n.body[0],ast.Expr) and isinstance(n.body[0].value,ast.Constant) and isinstance(n.body[0].value.value,str)]);
+      lits=set([n.value for n in ast.walk(tree) if isinstance(n,ast.Constant) and isinstance(n.value,str) and id(n) not in docs]);
+      names=set([n.id for n in ast.walk(tree) if isinstance(n,ast.Name)]) | set([n.attr for n in ast.walk(tree) if isinstance(n,ast.Attribute)]) | set([n.name for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]);
+      print('code identifiers scanned (comments and docstrings excluded):', len(names));
+      print('string literals scanned (comments and docstrings excluded):', len(lits));
+      print('the machine class was found:', any(n.startswith('M10') or n.endswith('Machine') for n in names));
+      bad=sorted([n for n in (names | lits) if re.search('sweep|reaper|auto_close|autoclose|auto_retry|autoretry|purge|expire_compensation|reap_', n, re.I)]);
+      print('invented sweep, reaper, auto-close or auto-retry surfaces:', bad)"
+    timeout_s: 600
+    contains:
+      - "a BEFORE DELETE guard exists: True"
+      - "the machine class was found: True"
+      - "invented sweep, reaper, auto-close or auto-retry surfaces: []"
+
+  # 6 ---------------------------------------------------------------------------------------
+  - name: "M10 uses the seven registered F10 contracts, invents no eighth, and mints no second RealityEstablished"
+    command: >-
+      .venv/bin/python -c "import ast,json,sys; sys.path.insert(0,'src');
+      reg=json.load(open('src/freight_recon/event_contracts_data.json'));
+      names=set([x['name'] for x in reg['contracts']]);
+      f10=sorted([x['name'] for x in reg['contracts'] if x.get('family')=='F10']);
+      print('registered contracts:', len(names));
+      print('the registered F10 family:', f10);
+      print('F10 member count:', len(f10));
+      src=open('src/freight_recon/compensation.py').read(); tree=ast.parse(src);
+      docs=set([id(n.body[0].value) for n in ast.walk(tree) if isinstance(n,(ast.Module,ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)) and n.body and isinstance(n.body[0],ast.Expr) and isinstance(n.body[0].value,ast.Constant) and isinstance(n.body[0].value.value,str)]);
+      lits=set([n.value for n in ast.walk(tree) if isinstance(n,ast.Constant) and isinstance(n.value,str) and id(n) not in docs]);
+      print('string literals scanned (comments and docstrings excluded):', len(lits));
+      print('the F10 names M10 actually carries in code:', sorted([n for n in lits if n in f10]));
+      import re as _re;
+      print('unregistered Compensation-shaped event names in M10 code:', sorted([n for n in lits if _re.match('Compensation[A-Z]', n) and n not in names]));
+      import freight_recon.compensation as m;
+      declared=sorted(set([r.event_name for r in m.TRANSITIONS if getattr(r, 'event_name', None)]));
+      print('event names the nine transitions declare:', declared);
+      print('every declared event name is registered:', all(n in names for n in declared));
+      print('the declared set is the seven F10 contracts plus the shared RealityEstablished:', declared == sorted(f10 + ['RealityEstablished']));
+      re_c=[x for x in reg['contracts'] if x['name']=='RealityEstablished'];
+      print('RealityEstablished contracts in the registry:', len(re_c));
+      print('RealityEstablished family:', re_c[0]['family']);
+      print('RealityEstablished producers:', sorted(re_c[0]['producers']));
+      print('RealityEstablished subject enum:', sorted([f for f in re_c[0]['fields'] if f['name']=='subject'][0]['enum']));
+      print('RealityEstablished is a coordination event:', re_c[0]['coordination'])"
+    timeout_s: 300
+    contains:
+      - "the registered F10 family: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted']"
+      - "F10 member count: 7"
+      - "the F10 names M10 actually carries in code: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted']"
+      - "unregistered Compensation-shaped event names in M10 code: []"
+      - "every declared event name is registered: True"
+      - "the declared set is the seven F10 contracts plus the shared RealityEstablished: True"
+      - "RealityEstablished contracts in the registry: 1"
+      - "RealityEstablished family: F3"
+      - "RealityEstablished producers: ['CM-5', 'EF-5']"
+      - "RealityEstablished subject enum: ['compensation', 'effect']"
+      - "RealityEstablished is a coordination event: True"
+
+  # 7 ---------------------------------------------------------------------------------------
+  - name: "the decision_ref resolver is M1's, imported rather than rewritten"
+    command: >-
+      .venv/bin/python -c "import ast,sys; sys.path.insert(0,'src');
+      src=open('src/freight_recon/compensation.py').read(); tree=ast.parse(src);
+      imported=set(); [imported.add(a.name) for n in ast.walk(tree) if isinstance(n,ast.ImportFrom) for a in n.names];
+      froms=sorted(set([n.module for n in ast.walk(tree) if isinstance(n,ast.ImportFrom) and n.module]));
+      print('modules M10 imports from:', froms);
+      print('M10 imports the K-1 resolver:', 'resolve_decision_ref' in imported);
+      print('M10 imports it from M1:', any(m.endswith('work_item') for m in froms));
+      defs=sorted([n.name for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]);
+      print('functions M10 defines:', len(defs));
+      print('M10 defines a second K-1 resolver:', any('resolve_decision_ref' == d for d in defs))"
+    timeout_s: 300
+    contains:
+      - "M10 imports the K-1 resolver: True"
+      - "M10 imports it from M1: True"
+      - "M10 defines a second K-1 resolver: False"
+
+  # 8 ---------------------------------------------------------------------------------------
+  - name: "the compensating effect's commit key is the canonical Compensation occurrence, not the original's key"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      from freight_recon.commit_key import (LogicalEffect, CanonicalOccurrence, occurrence_key_for,
+      CANONICAL_OCCURRENCE_SOURCES, OCCURRENCE_RULES, UnresolvedCanonicalOccurrence);
+      src=CANONICAL_OCCURRENCE_SOURCES['adjust_invoice'];
+      print('the canonical occurrence field for adjust_invoice:', src.field);
+      print('the canonical occurrence entity for adjust_invoice:', src.entity);
+      print('the occurrence rule for adjust_invoice:', OCCURRENCE_RULES['adjust_invoice']);
+      occ=CanonicalOccurrence(entity='Compensation', occurrence_id='cmp-1');
+      k=occurrence_key_for('adjust_invoice', resolved=occ);
+      print('the resolved occurrence key:', k);
+      comp=LogicalEffect(tenant='T_A', action_class='adjust_invoice', target_system='tms',
+      target_resource_id='inv-560010', target_operation='credit', occurrence_key=k).key();
+      orig=LogicalEffect(tenant='T_A', action_class='raise_invoice', target_system='tms',
+      target_resource_id='inv-560010', target_operation='create', occurrence_key='').key();
+      print('the compensating commit key differs from the original:', comp != orig);
+      occ2=CanonicalOccurrence(entity='Compensation', occurrence_id='cmp-1');
+      again=LogicalEffect(tenant='T_A', action_class='adjust_invoice', target_system='tms',
+      target_resource_id='inv-560010', target_operation='credit',
+      occurrence_key=occurrence_key_for('adjust_invoice', resolved=occ2)).key();
+      print('a retry of the SAME compensation converges on one commit key:', comp == again);
+      occ3=CanonicalOccurrence(entity='Compensation', occurrence_id='cmp-2');
+      other=LogicalEffect(tenant='T_A', action_class='adjust_invoice', target_system='tms',
+      target_resource_id='inv-560010', target_operation='credit',
+      occurrence_key=occurrence_key_for('adjust_invoice', resolved=occ3)).key();
+      print('a DIFFERENT compensation of the same invoice is a distinct effect:', comp != other);
+      print('the original commit key is not a substring of the compensating one:', orig not in comp);
+      import traceback;
+      r='refused' ;
+      exec('try:' + chr(10) + \" occurrence_key_for('adjust_invoice')\" + chr(10) + ' r=\"ACCEPTED\"' + chr(10) + 'except UnresolvedCanonicalOccurrence:' + chr(10) + ' r=\"refused\"', globals());
+      print('an unresolved Compensation occurrence still fails closed:', r)"
+    timeout_s: 300
+    contains:
+      - "the canonical occurrence field for adjust_invoice: compensation_id"
+      - "the canonical occurrence entity for adjust_invoice: Compensation"
+      - "the occurrence rule for adjust_invoice: CANONICAL_OCCURRENCE_REQUIRED"
+      - "the resolved occurrence key: compensation:cmp-1"
+      - "the compensating commit key differs from the original: True"
+      - "a retry of the SAME compensation converges on one commit key: True"
+      - "a DIFFERENT compensation of the same invoice is a distinct effect: True"
+      - "the original commit key is not a substring of the compensating one: True"
+      - "an unresolved Compensation occurrence still fails closed: refused"
+
+  # 9 ---------------------------------------------------------------------------------------
+  - name: "exposure is canonical money, and a float exposure is refused at construction"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      from freight_recon.fingerprint import Money, MoneyMustNotFloat, FingerprintError;
+      from decimal import Decimal;
+      env={'Money':Money,'MoneyMustNotFloat':MoneyMustNotFloat,'FingerprintError':FingerprintError,'Decimal':Decimal,'out':{}};
+      exec(chr(10).join(['def attempt(label, fn):',' try:','  v = fn()','  out[label] = ' + chr(39) + 'ACCEPTED ' + chr(39) + ' + str(v)',' except (MoneyMustNotFloat, FingerprintError, TypeError) as exc:','  out[label] = ' + chr(39) + 'refused (' + chr(39) + ' + type(exc).__name__ + ' + chr(39) + ')' + chr(39)]), env);
+      attempt=env['attempt']; out=env['out'];
+      attempt('positive control, integer minor units and an ISO-4217 code', lambda: Money(285000, 'GBP').canonical());
+      attempt('a float exposure', lambda: Money(2850.00, 'GBP'));
+      attempt('a Decimal exposure', lambda: Money(Decimal('2850.00'), 'GBP'));
+      attempt('a boolean exposure', lambda: Money(True, 'GBP'));
+      attempt('a lowercase currency code', lambda: Money(285000, 'gbp'));
+      [print(k + ': ' + v) for k, v in out.items()]"
+    timeout_s: 300
+    contains:
+      - "positive control, integer minor units and an ISO-4217 code: ACCEPTED 285000|GBP"
+      - "a float exposure: refused"
+      - "a Decimal exposure: refused"
+      - "a boolean exposure: refused"
+      - "a lowercase currency code: refused"
+
+  # 10 --------------------------------------------------------------------------------------
+  - name: "M10 has no production caller — the dark posture, measured over the shipped package"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib; root=pathlib.Path('src/freight_recon');
+      files=[f for f in root.rglob('*.py')];
+      hits=sorted(str(f) for f in files if f.name != 'compensation.py' and any(
+      (isinstance(n, ast.ImportFrom) and (n.module or '').split('.')[-1] == 'compensation')
+      or (isinstance(n, ast.Import) and any(a.name.split('.')[-1] == 'compensation' for a in n.names))
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8')))));
+      print('production modules scanned:', len(files));
+      print('the M10 machine module is present:', (root / 'compensation.py').exists());
+      print('production importers of compensation:', hits)"
+    timeout_s: 300
+    contains:
+      - "the M10 machine module is present: True"
+      - "production importers of compensation: []"
+
+  # 11 --------------------------------------------------------------------------------------
+  - name: "the only thing outside the package that reaches M10 is its own probe"
+    command: >-
+      .venv/bin/python -c "import os,sys; roots=['scripts','eval'];
+      found=[]; scanned=0;
+      exec(chr(10).join(['for r in roots:',' for d, _, fs in os.walk(r):',\"  for f in fs:\",\"   if not f.endswith('.py'): continue\",'   scanned += 1',\"   p = os.path.join(d, f)\",\"   if 'freight_recon.compensation' in open(p).read() or 'freight_recon import compensation' in open(p).read(): found.append(p)\"]), globals());
+      print('files outside the package scanned:', scanned);
+      print('files outside the package that reach M10:', sorted(found))"
+    timeout_s: 300
+    contains:
+      - "files outside the package that reach M10: ['eval/tests/test_phase6_compensation.py', 'scripts/mutate_phase6_compensation.py', 'scripts/probe_phase6_compensation.py']"
+
+  # 12 --------------------------------------------------------------------------------------
+  - name: "no oversight queue, dashboard, notifier or channel join ships with M10"
+    command: >-
+      .venv/bin/python -c "import ast,re,sys; sys.path.insert(0,'src');
+      src=open('src/freight_recon/compensation.py').read(); tree=ast.parse(src);
+      docs=set([id(n.body[0].value) for n in ast.walk(tree) if isinstance(n,(ast.Module,ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)) and n.body and isinstance(n.body[0],ast.Expr) and isinstance(n.body[0].value,ast.Constant) and isinstance(n.body[0].value.value,str)]);
+      lits=set([n.value for n in ast.walk(tree) if isinstance(n,ast.Constant) and isinstance(n.value,str) and id(n) not in docs]);
+      names=set([n.id for n in ast.walk(tree) if isinstance(n,ast.Name)]) | set([n.attr for n in ast.walk(tree) if isinstance(n,ast.Attribute)]) | set([n.name for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]);
+      froms=sorted(set([n.module for n in ast.walk(tree) if isinstance(n,ast.ImportFrom) and n.module]));
+      print('modules M10 imports from:', froms);
+      print('code identifiers scanned:', len(names));
+      print('string literals scanned:', len(lits));
+      print('the machine class was found:', any(n.endswith('Machine') for n in names));
+      chan=sorted([m for m in froms if re.search('slack|email|imap|sms|notifier|console|dashboard|thread_reply|delivery_dispatch|mailbox', m, re.I)]);
+      print('channel-capable modules M10 imports:', chan);
+      surf=sorted([n for n in (names | lits) if re.search('oversight_queue|dashboard|notify|notifier|paging|pagerduty|send_email|send_sms|slack_', n, re.I)]);
+      print('oversight, notification or paging surfaces in M10:', surf)"
+    timeout_s: 300
+    contains:
+      - "the machine class was found: True"
+      - "channel-capable modules M10 imports: []"
+      - "oversight, notification or paging surfaces in M10: []"
+
+  # 13 --------------------------------------------------------------------------------------
+  - name: "the checkpoint is still the only thing that mints a gate decision, and M10 registers none"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib,re; root=pathlib.Path('src/freight_recon');
+      files=[f for f in root.rglob('*.py')];
+      print('production modules scanned:', len(files));
+      mints=[f.name for f in files if any(isinstance(n, ast.Call) and
+      getattr(n.func, 'id', getattr(n.func, 'attr', None)) in ('GateRegistry', 'GateEntry')
+      for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))];
+      print('modules that MINT a gate decision:', sorted(mints));
+      src=open('src/freight_recon/compensation.py').read();
+      print('M10 constructs a GateRegistry:', 'compensation.py' in mints);
+      print('M10 engages, narrows, widens or releases a brake:', bool(re.search('[.]engage[(]|[.]narrow[(]|[.]release[(]|[.]widen[(]', src)))"
+    timeout_s: 300
+    contains:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "M10 constructs a GateRegistry: False"
+      - "M10 engages, narrows, widens or releases a brake: False"
+
+  # 14 --------------------------------------------------------------------------------------
+  - name: "M11, M12 and M13 are not built, and M10 creates no table but its own"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)));
+      print('canonical tables after M10:', len(tables));
+      print('compensations present:', 'compensations' in tables);
+      print('M11/M12/M13 tables created by M10:', sorted([t for t in tables if t in ('policies','rules','policy_versions','rule_versions')]));
+      import os as o;
+      mods=sorted(o.listdir('src/freight_recon'));
+      print('M11/M12/M13 machine modules present:', sorted([m for m in mods if m in ('policy.py','rule.py','brake_machine.py')]));
+      mig=sorted(o.listdir('src/freight_recon/migrations'));
+      print('M11/M12/M13 migrations present:', sorted([m for m in mig if 'polic' in m or 'rule' in m]));
+      src=open('src/freight_recon/compensation.py').read();
+      print('M10 emits a F13 BrakeNarrowed:', 'BrakeNarrowed' in src)"
+    timeout_s: 300
+    contains:
+      - "compensations present: True"
+      - "M11/M12/M13 tables created by M10: []"
+      - "M11/M12/M13 machine modules present: []"
+      - "M11/M12/M13 migrations present: []"
+      - "M10 emits a F13 BrakeNarrowed: False"
+
+  # 15 --------------------------------------------------------------------------------------
+  - name: "M10 arms no durable timer, because this machine has no deadline anywhere in it"
+    command: >-
+      .venv/bin/python -c "import ast,sys,re; sys.path.insert(0,'src');
+      src=open('src/freight_recon/compensation.py').read(); tree=ast.parse(src);
+      froms=sorted(set([n.module for n in ast.walk(tree) if isinstance(n,ast.ImportFrom) and n.module]));
+      names=set([n.id for n in ast.walk(tree) if isinstance(n,ast.Name)]) | set([n.attr for n in ast.walk(tree) if isinstance(n,ast.Attribute)]);
+      print('modules M10 imports from:', froms);
+      print('code identifiers scanned:', len(names));
+      print('M10 imports the durable timer service:', any('event_timers' in m for m in froms));
+      print('M10 schedules a timer:', 'schedule' in names);
+      print('M10 sleeps in process:', bool(re.search('time[.]sleep|asyncio[.]sleep', src)));
+      print('TimerFired is modelled as a trigger with no legal row:', 'TimerFired' in src)"
+    timeout_s: 300
+    contains:
+      - "M10 imports the durable timer service: False"
+      - "M10 schedules a timer: False"
+      - "M10 sleeps in process: False"
+      - "TimerFired is modelled as a trigger with no legal row: True"
+
+  # 16 --------------------------------------------------------------------------------------
+  - name: "M1's, M2's, M3's, M4's and M9's landed machines are not rewritten by M10"
+    command: >-
+      .venv/bin/python -c "import subprocess,sys;
+      files=['src/freight_recon/work_item.py','src/freight_recon/pipeline_instance.py',
+      'src/freight_recon/external_effect.py','src/freight_recon/approval.py',
+      'src/freight_recon/observation.py','src/freight_recon/identity_binding_claim.py',
+      'src/freight_recon/conflict.py','src/freight_recon/expectation.py',
+      'src/freight_recon/exception.py','src/freight_recon/checkpoint.py','src/freight_recon/brake.py'];
+      print('landed machine files checked:', len(files));
+      out=subprocess.run(['git','diff','--name-only','2e5dcb262e91e690b1ecf1d753eec888e46dfea4','--'] + files,
+      capture_output=True, text=True).stdout.strip();
+      print('landed machines modified since the M9 head:', sorted([x for x in out.splitlines() if x]))"
+    timeout_s: 300
+    contains:
+      - "landed machine files checked: 11"
+      - "landed machines modified since the M9 head: []"
+
+  # 17 --------------------------------------------------------------------------------------
+  - name: "the nine canonical CM transitions are an exact set match with the specification"
+    command: >-
+      .venv/bin/python -c "import re,sys; sys.path.insert(0,'src');
+      spec=open('docs/specifications/state-machines/10-compensation.machine.md').read();
+      body=spec.split('## 14. Transition table')[1].split(chr(10) + '## ')[0];
+      strip=lambda s: s.strip().strip(chr(42) + chr(96) + chr(35) + ' ').strip();
+      rows=[l for l in body.splitlines() if l.strip().startswith('|') and not set(l.strip()) <= set('|-: ')];
+      ids=[strip(l.split('|')[1]) for l in rows];
+      ids=[i for i in ids if i and i != 'ID'];
+      print('transition rows in the specification:', len(ids));
+      print('the canonical CM transition ids:', sorted(set(ids)));
+      import freight_recon.compensation as m;
+      built=sorted(set([r.id for r in m.TRANSITIONS]));
+      print('transition rows the machine declares:', len(m.TRANSITIONS));
+      print('the machine transition ids:', built);
+      print('exact set match:', built == sorted(set(ids)));
+      print('the six canonical states the machine declares:', sorted([s.value for s in m.CmState]))"
+    timeout_s: 300
+    contains:
+      - "transition rows in the specification: 9"
+      - "the canonical CM transition ids: ['CM-1', 'CM-1r', 'CM-2', 'CM-2n', 'CM-3', 'CM-4', 'CM-4f', 'CM-5', 'CM-5x']"
+      - "transition rows the machine declares: 9"
+      - "the machine transition ids: ['CM-1', 'CM-1r', 'CM-2', 'CM-2n', 'CM-3', 'CM-4', 'CM-4f', 'CM-5', 'CM-5x']"
+      - "exact set match: True"
+      - "the six canonical states the machine declares: ['APPROVED', 'COMPENSATION_FAILED', 'COMPLETED', 'EXECUTING', 'NOT_POSSIBLE', 'REQUIRED']"
+
+  - name: "the compensations table joins the tenant-first partition, and declares no tenant-exempt table"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      from freight_recon.migrations.phase6_compensations import (P6CM_TENANT_TABLES, P6CM_EXEMPT_TABLES);
+      print('M10 tenant-first tables:', sorted(P6CM_TENANT_TABLES));
+      print('M10 tenant-exempt tables:', sorted(P6CM_EXEMPT_TABLES));
+      import sqlite3,tempfile,os;
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=[r[1] for r in c.execute('pragma table_info(compensations)')];
+      pk=[r[1] for r in sorted(c.execute('pragma table_info(compensations)'), key=lambda r: r[5]) if r[5]];
+      print('the compensation primary key, in order:', pk);
+      print('tenant is first in the primary key:', bool(pk) and pk[0] == 'tenant')"
+    timeout_s: 300
+    contains:
+      - "M10 tenant-first tables: ['compensations']"
+      - "M10 tenant-exempt tables: []"
+      - "tenant is first in the primary key: True"
+
+verifies:
+  - risk_category: safety_invariant
+    claim: >-
+      A compensation receives NO privileged path. It is itself a separately gated external effect —
+      its own M2 Pipeline Instance, its own checkpoint, its own M3 grant, its own commit key, its own
+      readback — and there is no rollback, no privileged undo, no raw correction, no adapter fast
+      path and no bulk undo anywhere in it. An "undo" that bypasses the gates is an ungated write
+      with a good excuse.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "execution is a full M2 pipeline, not a privileged undo"
+      - "the compensating effect never reuses the original Effect Grant"
+      - "the checkpoint is still the only thing that mints a gate decision, and M10 registers none"
+      - "a correction storm raises N individually gated compensations, never a bulk undo"
+    observations:
+      - "A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"
+      - "THERE IS NO FAST PATH FOR UNDO"
+      - "A COMPENSATING EFFECT NEVER REUSES THE ORIGINAL EFFECT GRANT"
+      - "THERE IS NO BULK UNDO"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "M10 constructs a GateRegistry: False"
+
+  - risk_category: ambiguous_external_effect
+    claim: >-
+      M-33. Compensation is FORBIDDEN on an UNKNOWN_OUTCOME. You cannot undo what you cannot prove
+      you did, and a compensating write can CREATE the very state it meant to remove. The refusal is
+      complete: zero compensation rows, one CompensationRefused carrying the single canonical cause,
+      and zero pipelines, grants, claims and external effects. Eligibility is read from the persisted
+      M3 ledger, never from a caller flag.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "M-33: a compensation of an unknown outcome is refused, and nothing is written"
+      - "the refusal on an unknown outcome mints no pipeline, no grant and no effect"
+      - "every original-effect state is exercised across the eight-member M3 ledger"
+    observations:
+      - "YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID"
+      - "COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME"
+
+  - risk_category: approval_required
+    claim: >-
+      Money-affecting compensation is ALWAYS HUMAN_APPROVAL_REQUIRED. CM-2 is human-triggered, the
+      approval_id resolves to a same-tenant M4 approval bound to this compensation's own commit key,
+      and a stale, wrong or cross-tenant approval is refused. M10 builds no second approval system,
+      and Compensation.APPROVED is not the same fact as Approval.GRANTED.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "a model may neither own, approve, nor establish reality for a compensation"
+    observations:
+      - "A MODEL CAN NEVER APPROVE A COMPENSATION"
+
+  - risk_category: authorization
+    claim: >-
+      Authority is never laundered. A model can never own, approve, or establish reality for a
+      compensation, at any confidence including 1.0; a compensation is never raised from a
+      MODEL_INFERRED conclusion; the invalidating decision_ref resolves through M1's landed K-1
+      executor rather than a second implementation; and M10 mints no gate decision and engages no
+      brake.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "the decision_ref resolver is M1's, imported rather than rewritten"
+      - "the checkpoint is still the only thing that mints a gate decision, and M10 registers none"
+    observations:
+      - "A MODEL CAN NEVER OWN A COMPENSATION"
+      - "A MODEL CAN NEVER ESTABLISH REALITY"
+      - "M10 MINTS NO GATE DECISION"
+      - "M10 ENGAGES NO BRAKE AND NARROWS NONE"
+      - "M10 imports the K-1 resolver: True"
+      - "M10 imports it from M1: True"
+      - "M10 defines a second K-1 resolver: False"
+
+  - risk_category: missing_data
+    claim: >-
+      A compensation carries a named human owner and the dollar exposure from the moment it exists.
+      An ownerless compensation is structurally impossible — NOT NULL plus a composite FOREIGN KEY
+      into tenant_humans, refused by the live database — and EXECUTING without a bound
+      pipeline_instance_id is refused by a CHECK.
+    checks:
+      - "the live database refuses an ownerless compensation, a seventh state, and EXECUTING with no pipeline"
+    observations:
+      - "positive control, a well-formed REQUIRED compensation: ACCEPTED"
+      - "an ownerless compensation: refused"
+      - "an owner who is not a recorded human: refused"
+      - "EXECUTING with no bound pipeline: refused"
+
+  - risk_category: malformed_input
+    claim: >-
+      Exposure is canonical money — integer minor units and an ISO-4217 code — and a float, a
+      Decimal, a boolean and a lowercase currency code are each refused at construction rather than
+      coerced. 2850.00 and 2850.0 are the same money and different bytes.
+    checks:
+      - "exposure is canonical money, and a float exposure is refused at construction"
+    observations:
+      - "positive control, integer minor units and an ISO-4217 code: ACCEPTED 285000|GBP"
+      - "a float exposure: refused"
+      - "a Decimal exposure: refused"
+      - "a boolean exposure: refused"
+      - "a lowercase currency code: refused"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      Exactly six states, enforced by a database CHECK, and no seventh. No CANCELLED, no EXPIRED, no
+      RETRYING. COMPLETED is the only terminal state. No timer moves COMPENSATION_FAILED and no
+      timer moves any compensation state, because TimerFired is a trigger with no legal row anywhere.
+    checks:
+      - "the six canonical compensation states are a database constraint, and there is no seventh"
+      - "the live database refuses an ownerless compensation, a seventh state, and EXECUTING with no pipeline"
+      - "no timer moves COMPENSATION_FAILED, and nothing retries it"
+      - "M10 arms no durable timer, because this machine has no deadline anywhere in it"
+    observations:
+      - "state count: 6"
+      - "forbidden states present: []"
+      - "an expiry column: []"
+      - "a CANCELLED lifecycle state: refused"
+      - "an EXPIRED lifecycle state: refused"
+      - "a RETRYING lifecycle state: refused"
+      - "NO TIMER MOVES COMPENSATION_FAILED"
+      - "M10 schedules a timer: False"
+      - "TimerFired is modelled as a trigger with no legal row: True"
+
+  - risk_category: retry_safety
+    claim: >-
+      COMPENSATION_FAILED is loud, sticky and human-owned. Nothing auto-resolves it — no timer, no
+      retry loop, no sweep, no reaper, no model — and there is no automatic best-effort retry. It
+      keeps its exposure and its named owner until a human establishes reality through CM-5, and a
+      compensation row can never be deleted.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "no timer moves COMPENSATION_FAILED, and nothing retries it"
+      - "a compensation row cannot be deleted, and no expiry, sweep, reaper or auto-retry was invented"
+    observations:
+      - "COMPENSATION_FAILED NEVER AUTO-RESOLVES"
+      - "THERE IS NO AUTOMATIC RETRY OF A FAILED COMPENSATION"
+      - "a BEFORE DELETE guard exists: True"
+      - "invented sweep, reaper, auto-close or auto-retry surfaces: []"
+
+  - risk_category: timeout_after_effect
+    claim: >-
+      Completion requires readback. An adapter returning 200 is not completion, write acceptance is
+      not completion, and a timeout is not a failure. An executing pipeline that FAILED or reached
+      NEEDS_VERIFICATION routes to COMPENSATION_FAILED — never to COMPLETED and never to a silent
+      success — and NOT_POSSIBLE is stated honestly rather than dressed as a completed undo.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "completion requires readback, and an adapter return code is not completion"
+      - "NOT_POSSIBLE is honest and keeps its owner and its exposure"
+    observations:
+      - "COMPLETION REQUIRES READBACK, NOT AN ADAPTER RETURN CODE"
+      - "A TIMEOUT IS NOT A FAILURE"
+      - "NOT_POSSIBLE IS HONEST AND KEEPS ITS EXPOSURE"
+
+  - risk_category: idempotency
+    claim: >-
+      The compensating effect carries its own commit key, taken from the canonical Compensation
+      occurrence that commit_key.py already names for adjust_invoice — never negated, prefixed or
+      otherwise derived from the original's key. A retry of the SAME compensation converges on one
+      key, a different compensation of the same invoice is a distinct effect, and the original and
+      compensating effects stay distinct.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "the compensating effect carries its own commit key"
+      - "the compensating effect's commit key is the canonical Compensation occurrence, not the original's key"
+    observations:
+      - "THE COMPENSATING EFFECT HAS ITS OWN COMMIT KEY"
+      - "the canonical occurrence field for adjust_invoice: compensation_id"
+      - "the canonical occurrence entity for adjust_invoice: Compensation"
+      - "the compensating commit key differs from the original: True"
+      - "a retry of the SAME compensation converges on one commit key: True"
+      - "a DIFFERENT compensation of the same invoice is a distinct effect: True"
+      - "the original commit key is not a substring of the compensating one: True"
+
+  - risk_category: boundary
+    claim: >-
+      One active compensation per invalidated effect, tenant-first, with the canonical predicate
+      built exactly as written — UNIQUE (tenant, original_effect_id) WHERE state != 'NOT_POSSIBLE'.
+      The consequence is measured rather than asserted: a second compensation for the same original
+      IS insertable once the first is NOT_POSSIBLE, which is M10-AQ-9 and is reported, not silently
+      corrected.
+    checks:
+      - "the unique-active-compensation index is tenant-first and carries the canonical NOT_POSSIBLE predicate"
+    observations:
+      - "a UNIQUE index exists: True"
+      - "the active predicate names NOT_POSSIBLE: True"
+      - "the active predicate is an exclusion, not an inclusion: True"
+      - "the uniqueness columns are tenant and the original effect: True"
+      - "positive control, the first active compensation for an invalidated effect: ACCEPTED"
+      - "a SECOND active compensation for the same invalidated effect: refused"
+      - "a second compensation while the first is NOT_POSSIBLE (M10-AQ-9): ACCEPTED"
+
+  - risk_category: concurrency
+    claim: >-
+      Two racing raisers for one invalidated effect produce exactly one Compensation. The partial
+      unique index is the serialization point, and the loser is refused by the database rather than
+      producing a second obligation over the same exposure.
+    checks:
+      - "concurrent creation for one invalidated effect yields exactly one compensation"
+      - "the unique-active-compensation index is tenant-first and carries the canonical NOT_POSSIBLE predicate"
+    observations:
+      - "behaviours as specified, 0 wrong"
+      - "a SECOND active compensation for the same invalidated effect: refused"
+
+  - risk_category: cross_tenant
+    claim: >-
+      Tenant is first in the compensation primary key and in every lookup, and every cross-tenant
+      reference fails closed at the database — the original effect, the owner, the approval, the
+      pipeline and the decision_ref alike.
+    checks:
+      - "the live database refuses an ownerless compensation, a seventh state, and EXECUTING with no pipeline"
+      - "the compensations table joins the tenant-first partition, and declares no tenant-exempt table"
+      - "the unique-active-compensation index is tenant-first and carries the canonical NOT_POSSIBLE predicate"
+    observations:
+      - "an owner from another tenant: refused"
+      - "an original effect from another tenant: refused"
+      - "an original effect no row backs: refused"
+      - "tenant is first in the primary key: True"
+      - "M10 tenant-first tables: ['compensations']"
+      - "M10 tenant-exempt tables: []"
+      - "every compensation index is tenant-first: True"
+
+  - risk_category: persistence_failure
+    claim: >-
+      Each M10 transition writes its state change and its required event in ONE commit. A
+      persistence failure leaves no APPROVED without its event, no EXECUTING without its pipeline
+      binding, no COMPLETED without a verified effect and no half-created compensation. CM-3 starts
+      a SEPARATE M2 pipeline, and the scenario does not pretend the whole lifecycle is one
+      transaction.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "the live database refuses an ownerless compensation, a seventh state, and EXECUTING with no pipeline"
+      - "the M10 acceptance battery"
+    observations:
+      - "EXECUTING with no bound pipeline: refused"
+      - "A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"
+
+  - risk_category: restart_recovery
+    claim: >-
+      Replay reconstructs the compensation record and nothing else. Replaying any F10 event mints
+      zero pipelines, zero checkpoint witnesses, zero grants, zero claims, zero adapter invocations
+      and zero external effects — the compensating effect, like any effect, is never produced by
+      replay. A crash after claim reaches NEEDS_VERIFICATION and then COMPENSATION_FAILED, never a
+      silent re-execution.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "replay reconstructs the compensation record and produces no compensating effect"
+    observations:
+      - "REPLAY PRODUCES NO COMPENSATING EFFECT"
+
+  - risk_category: stale_state
+    claim: >-
+      M10 emits the seven registered F10 contracts and no eighth, and CM-5 emits the SHARED F3
+      RealityEstablished coordination event with subject=compensation rather than minting a second
+      contract for one semantic fact. The names M10's prose calls "events consumed" are checked
+      against the registry rather than believed: four of the six are trigger labels or states, and
+      no contract is invented to make a prose list true.
+    checks:
+      - "M10 uses the seven registered F10 contracts, invents no eighth, and mints no second RealityEstablished"
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+    observations:
+      - "F10 member count: 7"
+      - "unregistered Compensation-shaped event names in M10 code: []"
+      - "every declared event name is registered: True"
+      - "the declared set is the seven F10 contracts plus the shared RealityEstablished: True"
+      - "RealityEstablished contracts in the registry: 1"
+      - "RealityEstablished family: F3"
+      - "RealityEstablished producers: ['CM-5', 'EF-5']"
+      - "M10 MINTS NO SECOND RealityEstablished CONTRACT"
+
+  - risk_category: regression
+    claim: >-
+      M10 ships dark and lands beside M1–M9 without touching them. Zero production importers, no
+      channel join, no oversight queue, dashboard or notifier, checkpoint.py still the sole gate
+      minter, M3 still the sole effect authority, and no M11, M12 or M13 table, module or event
+      emission. The nine landed machines are byte-unchanged since the M9 head.
+    checks:
+      - "drive the Compensation machine through a brokerage narrative, and attack it"
+      - "M10 has no production caller — the dark posture, measured over the shipped package"
+      - "the only thing outside the package that reaches M10 is its own probe"
+      - "no oversight queue, dashboard, notifier or channel join ships with M10"
+      - "M11, M12 and M13 are not built, and M10 creates no table but its own"
+      - "M1's, M2's, M3's, M4's and M9's landed machines are not rewritten by M10"
+      - "the nine canonical CM transitions are an exact set match with the specification"
+      - "M1, M2, M3 and M4 stay green beside M10"
+      - "M9, the machine M10's failure states escalate to, stays green"
+      - "the checkpoint kernel and the claim CAS are unchanged by M10"
+    observations:
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11, M12 AND M13 MACHINES ARE NOT BUILT"
+      - "the M10 machine module is present: True"
+      - "production importers of compensation: []"
+      - "channel-capable modules M10 imports: []"
+      - "oversight, notification or paging surfaces in M10: []"
+      - "M11/M12/M13 tables created by M10: []"
+      - "M11/M12/M13 machine modules present: []"
+      - "M10 emits a F13 BrakeNarrowed: False"
+      - "landed machines modified since the M9 head: []"
+      - "exact set match: True"
+
+expect_visible:
+  - "behaviours as specified, 0 wrong"
+  - "A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"
+  - "THERE IS NO FAST PATH FOR UNDO"
+  - "YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID"
+  - "COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME"
+  - "A COMPENSATING EFFECT NEVER REUSES THE ORIGINAL EFFECT GRANT"
+  - "THE COMPENSATING EFFECT HAS ITS OWN COMMIT KEY"
+  - "COMPLETION REQUIRES READBACK, NOT AN ADAPTER RETURN CODE"
+  - "A TIMEOUT IS NOT A FAILURE"
+  - "COMPENSATION_FAILED NEVER AUTO-RESOLVES"
+  - "NO TIMER MOVES COMPENSATION_FAILED"
+  - "THERE IS NO AUTOMATIC RETRY OF A FAILED COMPENSATION"
+  - "NOT_POSSIBLE IS HONEST AND KEEPS ITS EXPOSURE"
+  - "THERE IS NO BULK UNDO"
+  - "A COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"
+  - "A MODEL CAN NEVER APPROVE A COMPENSATION"
+  - "A MODEL CAN NEVER OWN A COMPENSATION"
+  - "A MODEL CAN NEVER ESTABLISH REALITY"
+  - "M10 MINTS NO GATE DECISION"
+  - "M10 ENGAGES NO BRAKE AND NARROWS NONE"
+  - "M10 MINTS NO SECOND RealityEstablished CONTRACT"
+  - "REPLAY PRODUCES NO COMPENSATING EFFECT"
+  - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+  - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+  - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+  - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+  - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+  - "THE M11, M12 AND M13 MACHINES ARE NOT BUILT"
+  - "problems: []"
+  - "compensations"
+  - "tenant_humans"
+  - "effect_grants"
+  - "approvals"
+  - "pipeline_instances"
+  - "checkpoint_witnesses"
+  - "event_outbox"
+  - "exceptions"
+  - "the state vocabulary is a CHECK: True"
+  - "canonical six: ['APPROVED', 'COMPENSATION_FAILED', 'COMPLETED', 'EXECUTING', 'NOT_POSSIBLE', 'REQUIRED']"
+  - "state count: 6"
+  - "forbidden states present: []"
+  - "an expiry column: []"
+  - "compensations table present: True"
+  - "the FK-backed original prerequisite: created in effect_grants"
+  - "positive control, a well-formed REQUIRED compensation: ACCEPTED"
+  - "an ownerless compensation: refused"
+  - "an owner who is not a recorded human: refused"
+  - "an owner from another tenant: refused"
+  - "an original effect from another tenant: refused"
+  - "an original effect no row backs: refused"
+  - "a CANCELLED lifecycle state: refused"
+  - "an EXPIRED lifecycle state: refused"
+  - "a RETRYING lifecycle state: refused"
+  - "EXECUTING with no bound pipeline: refused"
+  - "second positive control, a NOT_POSSIBLE compensation keeping its exposure: ACCEPTED"
+  - "rows that survived: 2"
+  - "a UNIQUE index exists: True"
+  - "every compensation index is tenant-first: True"
+  - "the active predicate names NOT_POSSIBLE: True"
+  - "the active predicate is an exclusion, not an inclusion: True"
+  - "the uniqueness columns are tenant and the original effect: True"
+  - "positive control, the first active compensation for an invalidated effect: ACCEPTED"
+  - "a SECOND active compensation for the same invalidated effect: refused"
+  - "a second compensation while the first is NOT_POSSIBLE (M10-AQ-9): ACCEPTED"
+  - "a BEFORE DELETE guard exists: True"
+  - "the machine class was found: True"
+  - "invented sweep, reaper, auto-close or auto-retry surfaces: []"
+  - "the registered F10 family: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted']"
+  - "F10 member count: 7"
+  - "the F10 names M10 actually carries in code: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted']"
+  - "unregistered Compensation-shaped event names in M10 code: []"
+  - "every declared event name is registered: True"
+  - "the declared set is the seven F10 contracts plus the shared RealityEstablished: True"
+  - "RealityEstablished contracts in the registry: 1"
+  - "RealityEstablished family: F3"
+  - "RealityEstablished producers: ['CM-5', 'EF-5']"
+  - "RealityEstablished subject enum: ['compensation', 'effect']"
+  - "RealityEstablished is a coordination event: True"
+  - "M10 imports the K-1 resolver: True"
+  - "M10 imports it from M1: True"
+  - "M10 defines a second K-1 resolver: False"
+  - "the canonical occurrence field for adjust_invoice: compensation_id"
+  - "the canonical occurrence entity for adjust_invoice: Compensation"
+  - "the occurrence rule for adjust_invoice: CANONICAL_OCCURRENCE_REQUIRED"
+  - "the resolved occurrence key: compensation:cmp-1"
+  - "the compensating commit key differs from the original: True"
+  - "a retry of the SAME compensation converges on one commit key: True"
+  - "a DIFFERENT compensation of the same invoice is a distinct effect: True"
+  - "the original commit key is not a substring of the compensating one: True"
+  - "an unresolved Compensation occurrence still fails closed: refused"
+  - "positive control, integer minor units and an ISO-4217 code: ACCEPTED 285000|GBP"
+  - "a float exposure: refused"
+  - "a Decimal exposure: refused"
+  - "a boolean exposure: refused"
+  - "a lowercase currency code: refused"
+  - "the M10 machine module is present: True"
+  - "production importers of compensation: []"
+  - "files outside the package that reach M10: ['eval/tests/test_phase6_compensation.py', 'scripts/mutate_phase6_compensation.py', 'scripts/probe_phase6_compensation.py']"
+  - "channel-capable modules M10 imports: []"
+  - "oversight, notification or paging surfaces in M10: []"
+  - "modules that MINT a gate decision: ['checkpoint.py']"
+  - "M10 constructs a GateRegistry: False"
+  - "M10 engages, narrows, widens or releases a brake: False"
+  - "compensations present: True"
+  - "M11/M12/M13 tables created by M10: []"
+  - "M11/M12/M13 machine modules present: []"
+  - "M11/M12/M13 migrations present: []"
+  - "M10 emits a F13 BrakeNarrowed: False"
+  - "M10 imports the durable timer service: False"
+  - "M10 schedules a timer: False"
+  - "M10 sleeps in process: False"
+  - "TimerFired is modelled as a trigger with no legal row: True"
+  - "landed machine files checked: 11"
+  - "landed machines modified since the M9 head: []"
+  - "transition rows in the specification: 9"
+  - "the canonical CM transition ids: ['CM-1', 'CM-1r', 'CM-2', 'CM-2n', 'CM-3', 'CM-4', 'CM-4f', 'CM-5', 'CM-5x']"
+  - "transition rows the machine declares: 9"
+  - "the machine transition ids: ['CM-1', 'CM-1r', 'CM-2', 'CM-2n', 'CM-3', 'CM-4', 'CM-4f', 'CM-5', 'CM-5x']"
+  - "exact set match: True"
+  - "the six canonical states the machine declares: ['APPROVED', 'COMPENSATION_FAILED', 'COMPLETED', 'EXECUTING', 'NOT_POSSIBLE', 'REQUIRED']"
+  - "M10 tenant-first tables: ['compensations']"
+  - "M10 tenant-exempt tables: []"
+  - "tenant is first in the primary key: True"
+
+forbidden:
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  - "### COMPENSATION CREATED FROM AN UNKNOWN OUTCOME ###"
+  - "### UNKNOWN OUTCOME COMPENSATED ###"
+  - "### COMPENSATING WRITE ON AN UNKNOWN OUTCOME ###"
+  - "### REFUSAL VARIANT MINTED ###"
+  - "### COMPENSATION CREATED FROM A FAILED EFFECT ###"
+  - "### CALLER FLAG DECIDED ELIGIBILITY ###"
+  - "### MODEL INFERRED INVALIDATION ACCEPTED ###"
+  - "### CONFIDENCE SUBSTITUTED FOR AUTHORITY ###"
+  - "### UNRESOLVABLE decision_ref ACCEPTED ###"
+  - "### AUTOMATED ACTOR PASSED AS A HUMAN DECISION ###"
+  - "### SECOND K-1 RESOLVER BUILT ###"
+  - "### COMPENSATION RAISED WITHOUT AN OWNER ###"
+  - "### OWNERLESS COMPENSATION CREATED ###"
+  - "### A MODEL OWNED A COMPENSATION ###"
+  - "### CROSS-TENANT OWNER ACCEPTED ###"
+  - "### AN OFFBOARDED HUMAN OWNED A COMPENSATION ###"
+  - "### COMPENSATION CREATED WITHOUT EXPOSURE ###"
+  - "### FLOAT EXPOSURE ACCEPTED ###"
+  - "### EXPOSURE ZEROED ON FAILURE ###"
+  - "### EXPOSURE LOST ON IMPOSSIBILITY ###"
+  - "### SEVENTH LIFECYCLE STATE MINTED ###"
+  - "### CANCELLED STATE MINTED ###"
+  - "### EXPIRED STATE MINTED ###"
+  - "### RETRYING STATE MINTED ###"
+  - "### COMPENSATION EXPIRED ###"
+  - "### COMPENSATION CANCELLED ###"
+  - "### COMPENSATION ROW DELETED ###"
+  - "### SWEEP MOVED A COMPENSATION ###"
+  - "### REAPER DELETED A COMPENSATION ###"
+  - "### TIMER MOVED COMPENSATION_FAILED ###"
+  - "### TIMER MOVED A COMPENSATION ###"
+  - "### AUTOMATIC RETRY FROM COMPENSATION_FAILED ###"
+  - "### COMPENSATION_FAILED AUTO-RESOLVED ###"
+  - "### MODEL APPROVED A COMPENSATION ###"
+  - "### CROSS-TENANT APPROVAL ACCEPTED ###"
+  - "### STALE APPROVAL ACCEPTED ###"
+  - "### WRONG-COMMIT-KEY APPROVAL ACCEPTED ###"
+  - "### SECOND APPROVAL SYSTEM BUILT ###"
+  - "### M4 SEMANTICS MODIFIED ###"
+  - "### CHECKPOINT BYPASSED ###"
+  - "### PRIVILEGED UNDO PATH ###"
+  - "### DIRECT ADAPTER INVOCATION ###"
+  - "### DIRECT DATABASE WRITE TO A TARGET SYSTEM ###"
+  - "### ORIGINAL EFFECT GRANT REUSED ###"
+  - "### ORIGINAL PIPELINE AUTHORITY REUSED ###"
+  - "### ORIGINAL COMMIT KEY REUSED ###"
+  - "### COMMIT KEY DERIVED FROM THE ORIGINAL ###"
+  - "### EXECUTING WITHOUT A BOUND PIPELINE ###"
+  - "### SECOND COMPENSATION PIPELINE BUILT ###"
+  - "### M2 STATE MACHINE EDITED ###"
+  - "### BRAKE BYPASSED BY AN URGENT COMPENSATION ###"
+  - "### M10 ENGAGED A BRAKE ###"
+  - "### M10 NARROWED A BRAKE ###"
+  - "### M10 MINTED A GATE DECISION ###"
+  - "### M10 REGISTERED A GATE ###"
+  - "### M11 POLICY MACHINE BUILT ###"
+  - "### M12 RULE MACHINE BUILT ###"
+  - "### M13 BRAKE MACHINE BUILT ###"
+  - "### BrakeNarrowed EMITTED ###"
+  - "### COMPLETED WITHOUT READBACK ###"
+  - "### ADAPTER SUCCESS TREATED AS COMPLETION ###"
+  - "### WRITE ACCEPTANCE TREATED AS COMPLETION ###"
+  - "### TIMEOUT TREATED AS FAILURE ###"
+  - "### UNKNOWN OUTCOME TREATED AS COMPLETED ###"
+  - "### FAKE COMPLETED ###"
+  - "### FAKE WRITE ON IMPOSSIBILITY ###"
+  - "### MODEL DECIDED IMPOSSIBILITY ###"
+  - "### MODEL ESTABLISHED REALITY ###"
+  - "### SECOND RealityEstablished CONTRACT MINTED ###"
+  - "### F10 RealityEstablished MINTED ###"
+  - "### DUMMY PIPELINE FABRICATED ###"
+  - "### DUPLICATE ACTIVE COMPENSATION ###"
+  - "### UNIQUENESS PREDICATE ALTERED ###"
+  - "### BULK EFFECT GRANT ###"
+  - "### BULK UNDO ###"
+  - "### SHARED APPROVAL AUTHORIZED N WRITES ###"
+  - "### ONE ADAPTER CALL UNDID N EFFECTS ###"
+  - "### CROSS-TENANT ORIGINAL EFFECT ACCEPTED ###"
+  - "### CROSS-TENANT PIPELINE ACCEPTED ###"
+  - "### CROSS-TENANT decision_ref ACCEPTED ###"
+  - "### TENANT MISSING FROM THE PRIMARY KEY ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### HALF-CREATED COMPENSATION PERSISTED ###"
+  - "### APPROVED WITHOUT ITS EVENT ###"
+  - "### REPLAY MINTED A GRANT ###"
+  - "### REPLAY MINTED A PIPELINE ###"
+  - "### REPLAY PRODUCED AN EXTERNAL EFFECT ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### UNREGISTERED EVENT MINTED ###"
+  - "### CorrectionInvalidatedAnEffect MINTED ###"
+  - "### NoCompensatingActionExists MINTED ###"
+  - "### M9 EXCEPTION ROW CREATED BY M10 ###"
+  - "### OVERSIGHT QUEUE BUILT ###"
+  - "### NOTIFIER WIRED ###"
+  - "### CHANNEL JOINED ###"
+  - "### M1 ROW REWRITTEN BY M10 ###"
+  - "### M3 EFFECT SEAM REWRITTEN ###"
+  - "### M9 MACHINE EDITED ###"
+  - "### PRODUCTION IMPORTER OF COMPENSATION ###"
