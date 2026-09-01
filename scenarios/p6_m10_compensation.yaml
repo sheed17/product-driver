@@ -209,32 +209,52 @@ commands:
       - "0 escaped"
 
   # ------------------------------------------------------------------ acceptance batteries
+  #
+  # EVERY BATTERY BELOW IS INVOKED AS `python -m pytest`, NEVER AS THE `pytest` CONSOLE SCRIPT.
+  # This is not a style preference, it is the difference between running the suite and running a
+  # different suite. `python -m pytest` puts the invocation directory on `sys.path`; the console
+  # script does not. Neyma's `pyproject.toml` sets `pythonpath = ["src"]` and nothing more, so a
+  # test that reaches for the repository's own harness — `from eval.phase0 import import_probe`,
+  # which `test_phase6_pipeline_instance.py` uses to decide the M2 dark-surface guard — raises
+  # `ModuleNotFoundError: No module named 'eval'` under the console script and passes under
+  # `-m`. Run 20260901-082602 reported that as "12 failures in M2, only in combination", and it
+  # was neither: the same twelve fail with the file run ALONE under `.venv/bin/pytest`, and all
+  # 158 pass alone under `-m`. Every other scenario in this directory already invokes pytest
+  # this way; this file was the exception, and the exception was the defect.
+  #
+  # `-p no:cacheprovider` matches Neyma's own CI so ambient state cannot reshape the run.
   - name: "the M10 acceptance battery"
-    run: ".venv/bin/pytest eval/tests/test_phase6_compensation.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_compensation.py"
     expect_exit_code: 0
     timeout_s: 1800
     expect_contains: ["passed"]
 
   - name: "M1, M2, M3 and M4 stay green beside M10"
-    run: ".venv/bin/pytest eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py"
     expect_exit_code: 0
     timeout_s: 2400
     expect_contains: ["passed"]
 
   - name: "M9, the machine M10's failure states escalate to, stays green"
-    run: ".venv/bin/pytest eval/tests/test_phase6_exception.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_exception.py"
     expect_exit_code: 0
     timeout_s: 1200
     expect_contains: ["passed"]
 
+  # THE CANONICAL CHECKPOINT SUITE IS `test_phase3_checkpoint_matrix.py`. This check used to name
+  # `eval/tests/test_phase3_checkpoint.py`, which has never existed in the landed tree: pytest
+  # answered `ERROR: file or directory not found` and exited 4, so the strongest regression
+  # anchor M10 has over the P3 kernel measured nothing at all. A missing path is a check that
+  # cannot fail for the reason it was written, which is worse than no check. The claim CAS is
+  # now actually run too, because the check's own name promises it.
   - name: "the checkpoint kernel and the claim CAS are unchanged by M10"
-    run: ".venv/bin/pytest eval/tests/test_phase3_checkpoint.py eval/tests/test_phase3_step_order.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py"
     expect_exit_code: 0
     timeout_s: 1200
     expect_contains: ["passed"]
 
   - name: "the false-green defences, including the population-proof guard M9's build tripped"
-    run: ".venv/bin/pytest eval/tests/test_false_green_defenses.py -q"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_false_green_defenses.py"
     expect_exit_code: 0
     timeout_s: 900
     expect_contains: ["passed"]
@@ -246,17 +266,26 @@ commands:
     timeout_s: 300
     expect_contains: ["COMPENSATION IS FORBIDDEN ON AN UNKNOWN OUTCOME"]
 
+  # EACH LITERAL BELOW IS THE HEADLINE OF THE CASE ACTUALLY NAMED ON THE LINE ABOVE IT. Both of
+  # these used to require a headline a DIFFERENT case emits — "YOU CANNOT UNDO WHAT YOU CANNOT
+  # PROVE YOU DID" belongs to `refusal-on-unknown-emits-compensationrefused-and-zero-rows`, and
+  # "A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT" to
+  # `required-from-a-verified-original-effect`. The probe answered both cases correctly and the
+  # scenario called it a failure, which is the mirror image of a false green and just as bad: an
+  # oracle that cannot pass on a correct product teaches the builder to change the product. Both
+  # headlines are still required of the run as a whole — they are in `expect_visible` and the
+  # narrative command declares them — so nothing here drops an obligation.
   - name: "the refusal on an unknown outcome mints no pipeline, no grant and no effect"
     run: ".venv/bin/python scripts/probe_phase6_compensation.py --case refusal-on-unknown-mints-no-pipeline-no-grant-and-no-effect"
     expect_exit_code: 0
     timeout_s: 300
-    expect_contains: ["YOU CANNOT UNDO WHAT YOU CANNOT PROVE YOU DID"]
+    expect_contains: ["THE UNKNOWN-OUTCOME REFUSAL MINTS ZERO PIPELINES, GRANTS AND EFFECTS"]
 
   - name: "execution is a full M2 pipeline, not a privileged undo"
     run: ".venv/bin/python scripts/probe_phase6_compensation.py --case the-compensating-effect-passes-the-full-checkpoint"
     expect_exit_code: 0
     timeout_s: 300
-    expect_contains: ["A COMPENSATION IS ITSELF A SEPARATELY GATED EXTERNAL EFFECT"]
+    expect_contains: ["THE COMPENSATING EFFECT PASSES THE FULL CHECKPOINT"]
 
   - name: "the compensating effect never reuses the original Effect Grant"
     run: ".venv/bin/python scripts/probe_phase6_compensation.py --case the-original-effect-grant-is-never-reused"
@@ -420,6 +449,7 @@ expect_state:
       print('compensation indexes discovered:', len(idx));
       uniq=[s for s in idx if 'UNIQUE' in s.upper()];
       print('a UNIQUE index exists:', bool(uniq));
+      print('the UNIQUE index under test:', sorted([re.search('INDEX +([A-Za-z0-9_]+)', s).group(1) for s in uniq]));
       print('every compensation index is tenant-first:', all(re.search('[(] *tenant', s) for s in idx));
       print('the active predicate names NOT_POSSIBLE:', any('NOT_POSSIBLE' in s for s in uniq));
       print('the active predicate is an exclusion, not an inclusion:', any(re.search('state *(!=|<>)', s) for s in uniq));
@@ -428,26 +458,55 @@ expect_state:
       vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
       info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
       env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
-      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if 'currency' in n: return 'GBP'\",\" if n.endswith('_at'): return '2026-09-01T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\" c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused (' + type(exc).__name__ + ')')\"]), env);
-      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if 'currency' in n: return 'GBP'\",\" if n.endswith('_at'): return '2026-09-01T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\" c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\",'def sql(label, stmt, params):',' try:',\"  c.execute('savepoint m'); c.execute(stmt, params); c.execute('release m'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to m'); c.execute('release m'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt']; sql=env['sql'];
       ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), ('T_A','billing-lead','Billing Lead','AUTHORIZED_HUMAN','ACTIVE','2026-09-01T00:00:00Z','founder','human'))));
       ins('effect_grants', build('effect_grants', {'tenant':'T_A','grant_id':'grant-1','commit_key':'ck-1'}));
       base=build(T, {'tenant':'T_A','original_effect_id':'grant-1','owner_id':'billing-lead','version':1,'created_at':'2026-09-01T00:00:00Z','updated_at':'2026-09-01T00:00:00Z'});
       attempt('positive control, the first active compensation for an invalidated effect', dict(list(base.items()) + [('compensation_id','cmp-1'),('state','REQUIRED')]));
       attempt('a SECOND active compensation for the same invalidated effect', dict(list(base.items()) + [('compensation_id','cmp-2'),('state','REQUIRED')]));
-      c.execute('update compensations set state=? where compensation_id=?', ('NOT_POSSIBLE','cmp-1')); c.commit();
+      sql('the OCC guard on a state change that does not advance the version', 'update compensations set state=? where compensation_id=?', ('NOT_POSSIBLE','cmp-1'));
+      before=c.execute('select version, state from compensations where compensation_id=?', ('cmp-1',)).fetchone();
+      print('the first compensation before the transition:', list(before));
+      sql('the canonical OCC-respecting transition of the first compensation to NOT_POSSIBLE', 'update compensations set state=?, version=version+1, updated_at=? where compensation_id=? and version=?', ('NOT_POSSIBLE','2026-09-01T00:01:00Z','cmp-1',before[0])); c.commit();
+      after=c.execute('select version, state from compensations where compensation_id=?', ('cmp-1',)).fetchone();
+      print('the first compensation after the transition:', list(after));
+      print('the first compensation is now NOT_POSSIBLE:', after[1] == 'NOT_POSSIBLE');
+      print('the version advanced by exactly one:', after[0] == before[0] + 1);
       attempt('a second compensation while the first is NOT_POSSIBLE (M10-AQ-9)', dict(list(base.items()) + [('compensation_id','cmp-3'),('state','REQUIRED')]));
-      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0])"
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      print('active rows for the invalidated effect:', c.execute('select count(*) from ' + T + ' where tenant=? and original_effect_id=? and state != ?', ('T_A','grant-1','NOT_POSSIBLE')).fetchone()[0])"
     timeout_s: 600
     contains:
       - "a UNIQUE index exists: True"
+      - "the UNIQUE index under test: ['ix_compensations_one_active_per_effect']"
       - "every compensation index is tenant-first: True"
       - "the active predicate names NOT_POSSIBLE: True"
       - "the active predicate is an exclusion, not an inclusion: True"
       - "the uniqueness columns are tenant and the original effect: True"
       - "positive control, the first active compensation for an invalidated effect: ACCEPTED"
-      - "a SECOND active compensation for the same invalidated effect: refused"
+      # THE REFUSAL IS ATTRIBUTED, NOT ASSUMED. An IntegrityError is not proof of uniqueness —
+      # a NOT NULL, a foreign key, a CHECK and a version trigger all raise the same class, and
+      # run 20260901-082602 failed this very check because one of them did. The refusal must
+      # name the columns of the partial unique index, and no other constraint covers that pair.
+      - "a SECOND active compensation for the same invalidated effect: refused by UNIQUE constraint failed: compensations.tenant, compensations.original_effect_id"
+      # THE OCC GUARD IS STILL ARMED. The previous probe reached NOT_POSSIBLE with a raw UPDATE
+      # that left the version standing still, M10's canonical version-advance trigger correctly
+      # aborted it, and the uniqueness question was never asked. That illegal mutation is now a
+      # NEGATIVE CONTROL: it must still be refused, by the version trigger, by name.
+      - "the OCC guard on a state change that does not advance the version: refused by compensations.version advances by exactly one per state transition"
+      - "the canonical OCC-respecting transition of the first compensation to NOT_POSSIBLE: ACCEPTED"
+      - "the first compensation before the transition: [1, 'REQUIRED']"
+      - "the first compensation after the transition: [2, 'NOT_POSSIBLE']"
+      - "the first compensation is now NOT_POSSIBLE: True"
+      - "the version advanced by exactly one: True"
+      # THE CANONICAL PREDICATE'S CONSEQUENCE, OBSERVED HONESTLY. `WHERE state != 'NOT_POSSIBLE'`
+      # means a second compensation IS insertable once the first is NOT_POSSIBLE. That is
+      # M10-AQ-9, it is reported rather than improved away, and the row count is read back so
+      # "accepted" cannot mean "silently discarded".
       - "a second compensation while the first is NOT_POSSIBLE (M10-AQ-9): ACCEPTED"
+      - "rows that survived: 2"
+      - "active rows for the invalidated effect: 1"
 
   # 5 ---------------------------------------------------------------------------------------
   - name: "a compensation row cannot be deleted, and no expiry, sweep, reaper or auto-retry was invented"
@@ -493,9 +552,12 @@ expect_state:
       import re as _re;
       print('unregistered Compensation-shaped event names in M10 code:', sorted([n for n in lits if _re.match('Compensation[A-Z]', n) and n not in names]));
       import freight_recon.compensation as m;
-      declared=sorted(set([r.event_name for r in m.TRANSITIONS if getattr(r, 'event_name', None)]));
+      declared=sorted(set([e for r in m.TRANSITIONS for e in (getattr(r, 'events', ()) or ())]));
+      print('transition rows read from the landed machine:', len(m.TRANSITIONS));
+      print('transition rows that declare at least one event:', len([r for r in m.TRANSITIONS if getattr(r, 'events', ())]));
+      print('transition rows that declare no event:', sorted([r.id for r in m.TRANSITIONS if not getattr(r, 'events', ())]));
       print('event names the nine transitions declare:', declared);
-      print('every declared event name is registered:', all(n in names for n in declared));
+      print('every declared event name is registered:', bool(declared) and all(n in names for n in declared));
       print('the declared set is the seven F10 contracts plus the shared RealityEstablished:', declared == sorted(f10 + ['RealityEstablished']));
       re_c=[x for x in reg['contracts'] if x['name']=='RealityEstablished'];
       print('RealityEstablished contracts in the registry:', len(re_c));
@@ -509,6 +571,18 @@ expect_state:
       - "F10 member count: 7"
       - "the F10 names M10 actually carries in code: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted']"
       - "unregistered Compensation-shaped event names in M10 code: []"
+      # THE POPULATION, BEFORE THE VERDICT. This extraction read `r.event_name`, an attribute
+      # `TransitionRow` does not have — the real one is `r.events`, a tuple — so the declared set
+      # was EMPTY, `all([])` was True, and "every declared event name is registered" passed over
+      # nothing at all, while the set equality below failed and was read as an M10 defect. The
+      # population is asserted first now, so an empty extraction can never again be a green.
+      - "transition rows read from the landed machine: 9"
+      # Eight of the nine rows produce an event. The ninth is CM-5x, the NON_PRODUCING illegal
+      # row that exists to say a model may not establish reality, and an illegal row producing
+      # an event would itself be the defect. Named, so "some row was empty" cannot pass as this.
+      - "transition rows that declare at least one event: 8"
+      - "transition rows that declare no event: ['CM-5x']"
+      - "event names the nine transitions declare: ['CompensationApproved', 'CompensationCompleted', 'CompensationFailed', 'CompensationImpossible', 'CompensationRefused', 'CompensationRequired', 'CompensationStarted', 'RealityEstablished']"
       - "every declared event name is registered: True"
       - "the declared set is the seven F10 contracts plus the shared RealityEstablished: True"
       - "RealityEstablished contracts in the registry: 1"
@@ -631,7 +705,18 @@ expect_state:
       print('files outside the package that reach M10:', sorted(found))"
     timeout_s: 300
     contains:
-      - "files outside the package that reach M10: ['eval/tests/test_phase6_compensation.py', 'scripts/mutate_phase6_compensation.py', 'scripts/probe_phase6_compensation.py']"
+      # THE LIST IS EXACT AND IT IS A CEILING. Nothing outside `src/freight_recon/` may IMPORT
+      # M10 except its own verification harness, and the harness is enumerated so a production
+      # caller cannot hide inside "a couple of test files".
+      #
+      # This oracle asks the IMPORT question — it matches `freight_recon.compensation` and
+      # `freight_recon import compensation`. The mutation battery is deliberately not an
+      # importer: it mutates the machine's TEXT and shells out to pytest, and says so in its own
+      # header. It names the module as a PATH, so Neyma's own probe (whose broader scan is
+      # asserted separately, in `expect_visible`) still reports it while this scan does not.
+      # Listing it here made an import-shaped oracle fail on a tree with no importer; a two-name
+      # import ceiling is STRICTER than the three-name one it replaces, not weaker.
+      - "files outside the package that reach M10: ['eval/tests/test_phase6_compensation.py', 'scripts/probe_phase6_compensation.py']"
 
   # 12 --------------------------------------------------------------------------------------
   - name: "no oversight queue, dashboard, notifier or channel join ships with M10"
@@ -1213,6 +1298,13 @@ forbidden:
   - "Traceback (most recent call last)"
   - "no such table"
   - "no such column"
+  # A REGRESSION ANCHOR THAT RAN NOTHING IS NOT A REGRESSION ANCHOR. pytest answers a path that
+  # does not exist with `ERROR: file or directory not found` and exit 4, and an empty selection
+  # with `no tests ran` and exit 5. Both are now loud everywhere the run looked, so a battery
+  # can never again report the absence of a failure as the absence of a defect.
+  - "ERROR: file or directory not found"
+  - "no tests ran"
+  - "ModuleNotFoundError: No module named 'eval'"
   - "### MISS ###"
   - "### NOT REFUSED"
   - "### WRONGLY REFUSED"

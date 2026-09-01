@@ -356,9 +356,57 @@ class TestTheM10BaseScenario:
             "test_phase6_external_effect.py",
             "test_phase6_approval.py",
             "test_phase6_exception.py",
-            "test_phase3_checkpoint.py",
+            # THE CANONICAL CHECKPOINT SUITE, BY ITS REAL NAME. This read
+            # "test_phase3_checkpoint.py" — a file that has never existed in the
+            # landed tree — and run 20260901-082602 spent an iteration on the
+            # exit-4 that produced. The suffix matters: `test_phase3_checkpoint.py`
+            # is a substring of `test_phase3_checkpoint_matrix.py`, so the loose
+            # spelling could not tell the real anchor from the phantom one.
+            "test_phase3_checkpoint_matrix.py",
+            "test_phase3_claim_cas.py",
         ):
             assert neighbour in runs, f"{neighbour} is not run beside M10"
+
+    def test_no_battery_can_be_satisfied_by_a_suite_that_never_ran(self, m10):
+        """pytest exits 4 on a path that is not there and 5 on an empty
+        selection, and prints a summary line in neither case. Reading the exit
+        code alone lets an anchor that collected nothing stand in for a green
+        one — which is what the phantom `test_phase3_checkpoint.py` did for as
+        long as it was written down. Every battery requires the summary word,
+        and the scenario forbids pytest's own three ways of saying it ran
+        nothing, anywhere the run looked."""
+        batteries = [c for c in m10.commands if "-m pytest" in c.run]
+        assert len(batteries) >= 5, "the acceptance batteries are not being swept"
+        for spec in batteries:
+            assert spec.expect_exit_code == 0, f"{spec.name!r} does not require exit 0"
+            assert any("passed" in n for n in spec.expect_contains), (
+                f"{spec.name!r} reads only the exit code"
+            )
+        for marker in (
+            "ERROR: file or directory not found",
+            "no tests ran",
+            "ModuleNotFoundError: No module named 'eval'",
+        ):
+            assert marker in m10.forbidden, f"the scenario does not forbid {marker!r}"
+
+    def test_every_battery_is_entered_through_the_interpreter(self, m10):
+        """`python -m pytest`, never the console script. The console script
+        leaves the invocation directory off `sys.path`, and Neyma's own
+        `pythonpath` is `["src"]` alone, so a test importing the repository's
+        harness (`from eval.phase0 import import_probe`) fails under one and
+        passes under the other. That difference cost run 20260901-082602 twelve
+        phantom M2 failures and an ordering hypothesis that was never true —
+        `pytest-randomly` is not installed in that repository at all.
+
+        The general form of this rule, swept over every scenario in the corpus
+        and proven from the interpreter's behaviour, is
+        `tests/test_scenario_pytest_invocation.py`."""
+        for spec in m10.commands:
+            if "pytest" not in spec.run:
+                continue
+            assert "-m pytest" in spec.run, (
+                f"{spec.name!r} runs the pytest console script: {spec.run[:120]}"
+            )
 
     def test_it_runs_the_false_green_guard_that_m9s_build_tripped(self, m10):
         """CI printed a real `F` on the M9 build for
