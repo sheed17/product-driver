@@ -27,11 +27,13 @@ wave record, so a rejected proposal is visible evidence rather than a silent gap
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import re
 import signal
 import subprocess
 from dataclasses import dataclass, field, replace
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 from urllib.parse import urlparse
@@ -106,6 +108,12 @@ MAX_WAIT_MS = 60_000
 MAX_TIMEOUT_S = 900
 MIN_PURPOSE_CHARS = 20
 
+#: How alike a refused command must be to an approved one before the refusal
+#: says "you nearly had it, cite it instead". A near miss is still a miss and
+#: this decides nothing about approval; it only decides how the refusal is
+#: phrased.
+_NEAR_MISS_RATIO = 0.9
+
 
 # --------------------------------------------------------------------------
 # The approved command set
@@ -135,6 +143,37 @@ def _norm_command(command: str) -> str:
     """Collapse whitespace runs. Only ever called after control chars are refused,
     so this can no longer hide a separator inside what looks like a space."""
     return re.sub(r"\s+", " ", (command or "").strip())
+
+
+#: How an approved command is CITED rather than retyped: ``@`` and the command's
+#: token, optionally followed by an argument tail.
+#:
+#: ### WHY A CITATION EXISTS AT ALL. A generated scenario may only run a command a
+#: human already approved, and until now the only way to say *which* one was to
+#: reproduce it byte for byte. That is a transcription task, and it is performed
+#: by a model answering in JSON. It scales with the command: `pytest -q eval/...`
+#: survives it; a 4,545-character ``python -c`` oracle carrying ``\\b``, ``\\(``,
+#: ``\x27``, nested quoting and implicitly concatenated string literals does not.
+#:
+#: Run 20260901-015631 is what that costs. Three coverage-gap waves proposed
+#: cases for three P0/P1 risks, every one of them built on an approved oracle the
+#: generator had correctly chosen, and four of the six were refused as "not in the
+#: approved set" for differences of two to sixteen characters of backslash depth.
+#: The run ended NOT READY with those risks unexercised. Nothing was wrong with
+#: the proposals except the typing.
+#:
+#: A citation removes the transcription instead of forgiving it. The token is
+#: eight hex characters; what RUNS is the human's own text, looked up here. So
+#: this is not a widening of the approval boundary — it narrows it, because a
+#: cited command can no longer carry a model's spelling of the approved part at
+#: all. There is no fuzzy matching anywhere in it: a token either names an
+#: approved command or it does not.
+_CITATION = re.compile(r"^@([0-9a-f]{8})(?=\s|$)")
+
+
+def citation_token(command: str) -> str:
+    """The stable token an approved command is cited by. Derived from its key."""
+    return hashlib.sha256(_norm_command(command).encode("utf-8")).hexdigest()[:8]
 
 
 #: Shell syntax that composes one command out of several, or substitutes the
@@ -250,6 +289,15 @@ class ApprovedCommands:
         #: The same commands, in :attr:`entries` order, as a human wrote them.
         #: This is what gets rendered anywhere a reader or a model may copy it.
         self.verbatim: tuple[str, ...] = tuple(by_key[key] for key in self.entries)
+        #: The same commands, in :attr:`entries` order, as the eight characters
+        #: they are CITED by. Derived from the key, so it is stable across runs
+        #: and across the two spellings of one invocation.
+        self.tokens: tuple[str, ...] = tuple(citation_token(key) for key in self.entries)
+        #: token -> the human's text. A citation resolves through here and
+        #: nowhere else, so what runs is always a string a human wrote.
+        self.by_token: dict[str, str] = {
+            token: text for token, text in zip(self.tokens, self.verbatim)
+        }
 
     def __bool__(self) -> bool:
         return bool(self.entries)
@@ -277,6 +325,62 @@ class ApprovedCommands:
                 if step.state_check is not None:
                     entries.append(step.state_check.command)
         return cls(entries)
+
+    def expand(self, command: str) -> str:
+        """Resolve a citation to the human's own text. Any other string is returned as is.
+
+        ``@a3f1c2e9 --case foo`` becomes the approved command that token names,
+        followed by ``--case foo``. The argument tail is the model's and is
+        judged exactly as an appended tail always was; the approved part is no
+        longer the model's at all.
+
+        An unrecognised token is deliberately NOT expanded and NOT repaired
+        here. It travels on to :meth:`approves`, which refuses it by name — a
+        citation of nothing must fail closed and say so, not quietly become a
+        command that happens to parse.
+        """
+        text = (command or "").strip()
+        match = _CITATION.match(text)
+        if match is None:
+            return command
+        resolved = self.by_token.get(match.group(1))
+        if resolved is None:
+            return command
+        tail = text[match.end() :]
+        return f"{resolved}{tail}"
+
+    def nearest(self, command: str) -> tuple[str, str] | None:
+        """The approved entry a refused command most nearly is, and its token.
+
+        Used only to phrase a refusal. Nothing decides approval from it: a near
+        miss is still a miss, and the answer to one is to cite the command
+        rather than to retype it more carefully.
+        """
+        normalized = _norm_command(command)
+        if not normalized or not self.entries:
+            return None
+        # Similarity, not shared prefix. The drift a retyped command suffers is
+        # a handful of characters in the MIDDLE — a backslash that lost a level,
+        # a space that vanished inside a quoted program — and a prefix measure
+        # reports a two-character miss on a 1,119-character oracle as no
+        # relationship at all. Called only on the refusal path, so the cost of
+        # comparing against the whole approved set is paid once per refusal.
+        matcher = SequenceMatcher(a="", b=normalized, autojunk=False)
+        best, best_ratio = "", 0.0
+        for entry in self.entries:
+            matcher.set_seq1(entry)
+            if matcher.real_quick_ratio() < _NEAR_MISS_RATIO:
+                continue
+            if matcher.quick_ratio() < _NEAR_MISS_RATIO:
+                continue
+            ratio = matcher.ratio()
+            if ratio > best_ratio:
+                best, best_ratio = entry, ratio
+        # High, deliberately: "same program, different script" must not be
+        # reported as "you nearly had it".
+        if best_ratio < _NEAR_MISS_RATIO:
+            return None
+        return best, citation_token(best)
 
     def approves(self, command: str) -> tuple[bool, str]:
         """Whether ``command`` may run, and why not when it may not."""
@@ -334,9 +438,37 @@ class ApprovedCommands:
                 )
             return True, ""
 
+        # An unresolved citation, named. `expand` leaves an unknown token alone
+        # precisely so it arrives here: a token naming no approved command is a
+        # reference to nothing, and the honest answer says which token failed
+        # rather than reporting the raw `@…` string as an unapproved command.
+        # Placed last, after every approval path has already declined, so it can
+        # only ever refine a refusal — never cause one.
+        dangling = _CITATION.match(normalized)
+        if dangling is not None and dangling.group(1) not in self.by_token:
+            return False, (
+                f"command cites the approved-command token {dangling.group(1)!r}, which "
+                "names no approved command. A citation must be one of the tokens listed "
+                "beside the approved commands."
+            )
+
+        # The refusal names the citation form, because retyping is the thing
+        # that failed. Run 20260901-015631 spent three coverage-gap waves being
+        # told only "not in the approved set" about commands it was two
+        # characters away from, and repeated the shape each time.
+        near = self.nearest(normalized)
+        hint = ""
+        if near is not None:
+            entry, token = near
+            hint = (
+                f" This is very nearly the approved command @{token} — "
+                f"{entry[:120]!r}… — so cite it as `@{token}` (plus any argument tail) "
+                "instead of reproducing it."
+            )
         return False, (
             f"command is not in the approved set: {normalized!r}. Generated scenarios may "
-            "only run commands a human already approved."
+            "only run commands a human already approved, either verbatim or by citing "
+            "its `@token`." + hint
         )
 
     def resolve(self, commands: Iterable[str]) -> tuple[set[str], list[str]]:

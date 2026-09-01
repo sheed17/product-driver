@@ -100,6 +100,7 @@ class GenerationBrief:
         existing_coverage: list[str] | None = None,
         failure_clusters: list[str] | None = None,
         product_principles: list[str] | None = None,
+        available_tokens: list[str] | None = None,
         uncovered_risks: list[str] | None = None,
         prior_rejections: list[str] | None = None,
     ) -> None:
@@ -108,6 +109,12 @@ class GenerationBrief:
         self.basis = basis
         self.max_scenarios = max_scenarios
         self.available_commands = available_commands
+        #: The citation token of each approved command, in the same order.
+        #: Defaulted rather than required so a caller that has no token source
+        #: still renders a usable brief — it simply offers no citation form.
+        self.available_tokens = list(available_tokens or []) + [""] * max(
+            0, len(available_commands) - len(available_tokens or [])
+        )
         self.available_services = available_services
         self.app_url = app_url
         self.browser_enabled = browser_enabled
@@ -250,10 +257,22 @@ class GenerationBrief:
             "when, and what must be observable afterwards.",
             "",
             "APPROVED COMMANDS (a `command` or `state_check` may use exactly one of these, "
-            "optionally with extra arguments; anything else is rejected):",
+            "optionally with extra arguments; anything else is rejected). Each is listed "
+            "with the token it is CITED by:",
+            "",
+            "    [a1b2c3d4] .venv/bin/python scripts/probe.py --case foo",
+            "",
+            "CITE, DO NOT RETYPE. Write the command as `@` and the token — `@a1b2c3d4`, or "
+            "`@a1b2c3d4 --seed 7` to append an argument tail — and Product Driver "
+            "substitutes the approved text itself. A citation is exact by construction; a "
+            "reproduction of a long command is a transcription task that one wrong "
+            "backslash or space fails, and a refused command closes no gap. Copying a "
+            "command verbatim still works and is fine for short ones, but where the "
+            "command carries regular expressions, embedded program text, nested quoting "
+            "or escapes, CITE IT.",
         ]
-        shown = self.available_commands[:MAX_RENDERED_COMMANDS]
-        parts += [f"  - {c}" for c in shown] or ["  (none)"]
+        shown = list(zip(self.available_commands, self.available_tokens))[:MAX_RENDERED_COMMANDS]
+        parts += [f"  [{token}] {c}" for c, token in shown] or ["  (none)"]
         withheld = len(self.available_commands) - len(shown)
         if withheld:
             # SAID, not swallowed. This list is the generator's entire operating

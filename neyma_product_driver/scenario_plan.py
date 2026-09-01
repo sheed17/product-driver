@@ -30,7 +30,7 @@ from __future__ import annotations
 import hashlib
 import re
 from enum import Enum
-from typing import Any, Literal, Sequence
+from typing import Any, Callable, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -567,6 +567,34 @@ class GeneratedScenario(BaseModel):
             a.kind == "state_check" for a in self.actions
         )
 
+    def rewrite_commands(self, resolve: "Callable[[str], str]") -> list[tuple[str, str]]:
+        """Rewrite every command string in place through ``resolve``.
+
+        One place that knows where a command can live in a proposal, so a caller
+        that has to touch all of them — the planner resolving approved-command
+        citations before anything judges or compiles them — cannot miss a field.
+        Returns the ``(before, after)`` pairs it actually changed, so the run can
+        record what it resolved rather than silently substituting.
+        """
+        changed: list[tuple[str, str]] = []
+
+        def apply(text: str) -> str:
+            out = resolve(text)
+            if out != text:
+                changed.append((text, out))
+            return out
+
+        self.setup = [apply(c) for c in self.setup]
+        self.cleanup = [apply(c) for c in self.cleanup]
+        for action in self.actions:
+            if action.kind == "command" and action.command:
+                action.command = apply(action.command)
+            if action.kind == "state_check" and action.state_check is not None:
+                action.state_check.command = apply(action.state_check.command)
+        for check in self.persisted_state_checks:
+            check.command = apply(check.command)
+        return changed
+
     def command_strings(self) -> list[str]:
         """Every command string this scenario would run, from any field."""
         out = list(self.setup) + list(self.cleanup)
@@ -746,6 +774,12 @@ class WaveRecord(BaseModel):
     rejected: list[RejectedScenario] = Field(default_factory=list)
     budget_notes: list[str] = Field(default_factory=list)
     reasoner_error: str = ""
+    #: Approved-command citations this wave resolved, as
+    #: ``"<scenario id>: @<token> -> <the human's command>"``. Recorded because
+    #: a citation means the string that RAN is not the string the generator
+    #: returned, and a reader of the plan must be able to see that substitution
+    #: rather than infer it.
+    resolved_citations: list[str] = Field(default_factory=list)
 
     @property
     def accepted_count(self) -> int:

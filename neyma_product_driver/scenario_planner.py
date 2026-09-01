@@ -568,6 +568,9 @@ class ScenarioPlanner:
             # ApprovedCommands — the collapse is invisible until an approved
             # command carries syntax that spaces are part of.
             available_commands=list(self.approved_commands.verbatim),
+            # The token beside each one, so a proposal can NAME an approved
+            # command instead of reproducing it. Same order, same length.
+            available_tokens=list(self.approved_commands.tokens),
             available_services=[s.name for s in (self.base_scenario.services if self.base_scenario else [])],
             app_url=self.base_scenario.app_url if self.base_scenario else "",
             # What is actually available, not what would be convenient. Telling
@@ -627,6 +630,16 @@ class ScenarioPlanner:
         )
         parsed, malformed = parse_scenarios(payload, provenance=provenance)
         record.proposed = len(parsed) + len(malformed)
+        # Citations become the human's own text BEFORE anything judges,
+        # compiles, signs or runs the proposal, so every stage downstream sees
+        # one kind of command string and none of them has to know a citation
+        # exists. Recorded, never silent: the plan states which command a
+        # generator named rather than reproduced.
+        for scenario in parsed:
+            for before, after in scenario.rewrite_commands(self.approved_commands.expand):
+                record.resolved_citations.append(
+                    f"{scenario.id}: {before.split()[0]} -> {after}"
+                )
         # Which STAGE rejected a candidate is what classifies it, not what the
         # reason string happens to say. Everything in `malformed` failed before
         # it was ever a model: the payload did not satisfy the structured schema
