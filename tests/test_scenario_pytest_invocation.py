@@ -128,6 +128,15 @@ ALL_COMMANDS = [
     for label, command in _labelled_commands(scenario)
 ]
 
+#: What each scenario declares its unit is expected to PRODUCE. A scenario's
+#: ``fixtures:`` list is the driver's own statement of the deliverable — the
+#: executor checks each entry for existence at run time and records a missing one
+#: as a setup failure — so a path a scenario names in BOTH a command and its own
+#: ``fixtures:`` is this unit's output, not a regression anchor into landed code.
+DECLARED_FIXTURES: dict[Path, frozenset[str]] = {
+    path: frozenset(scenario.fixtures) for path, scenario in _scenarios()
+}
+
 PYTEST_COMMANDS = [
     (path, label, command)
     for path, label, command in ALL_COMMANDS
@@ -229,15 +238,95 @@ def test_every_test_path_a_scenario_names_exists_in_the_repository(
     anchor and has never existed; pytest exited 4 and the anchor measured
     nothing. This is the check that would have said so, in the scenario's own
     words, before the run started.
+
+    ### ONE EXEMPTION, AND IT IS THE SCENARIO'S OWN DECLARED DELIVERABLE.
+    A permanent scenario is written BEFORE the unit it measures — that is what a
+    bootstrap is — so the unit's own acceptance battery cannot exist yet by
+    definition. Written without an exemption this rule makes every future
+    bootstrap unwritable, which is not a stricter rule but a different one: it
+    would have forbidden `p6_m10_compensation.yaml` on the day it was authored.
+
+    The exemption is NARROW and the scenario has to declare it in advance: a path
+    is excused only when the SAME scenario lists it in its own `fixtures:` — the
+    driver's existing statement of what this unit must produce, which the
+    executor separately checks for existence at run time and records as a setup
+    failure when it is missing. So an excused path is not unchecked; it is checked
+    by the executor against the built tree instead of by this file against the
+    pre-build tree.
+
+    ### THE DEFECT THIS FILE WAS WRITTEN FOR IS UNTOUCHED.
+    `eval/tests/test_phase3_checkpoint.py` was never in M10's `fixtures:` — M10
+    declared `test_phase6_compensation.py` there and nothing else — so the typo
+    that made M10's strongest P3 anchor measure nothing is still caught, in the
+    same words, on the same line. `test_a_mistyped_regression_anchor_is_still_caught`
+    below proves that on the exact historical pair rather than asserting it.
     """
     assert NEYMA is not None
+    deliverables = DECLARED_FIXTURES.get(path, frozenset())
     for match in _TEST_PATH.finditer(" ".join(command.split())):
         named = match.group(1)
+        if named in deliverables:
+            continue
         assert (NEYMA / named).exists(), (
             f"{path.name} names {named!r} in {label!r}, and no such file exists in "
             f"{NEYMA}. pytest answers a missing path with "
-            "`ERROR: file or directory not found` and exit 4 — a check that cannot run."
+            "`ERROR: file or directory not found` and exit 4 — a check that cannot run. "
+            f"If this path is what {path.stem}'s unit is meant to BUILD, declare it in "
+            "that scenario's `fixtures:` list; if it is a regression anchor into landed "
+            "code, it is misspelled."
         )
+
+
+def test_a_mistyped_regression_anchor_is_still_caught():
+    """The control the exemption above owes.
+
+    An exemption is only defensible if the defect it was carved out of is still
+    caught, so both halves are proven on the exact historical pair rather than
+    argued. `eval/tests/test_phase3_checkpoint.py` — M10's mistyped P3 anchor,
+    which has never existed — is NOT in any scenario's `fixtures:`, so it is not
+    excused; `eval/tests/test_phase6_compensation.py` — M10's own deliverable —
+    IS, and was excused on the day the M10 bootstrap was written.
+    """
+    declared: set[str] = set()
+    for fixtures in DECLARED_FIXTURES.values():
+        declared |= set(fixtures)
+
+    assert declared, (
+        "no scenario declares any fixture, so the exemption applies to nothing and "
+        "this control proves nothing about it"
+    )
+    assert "eval/tests/test_phase3_checkpoint.py" not in declared, (
+        "the mistyped M10 P3 anchor is declared as a deliverable somewhere, which "
+        "would excuse the exact defect this file exists to catch"
+    )
+    assert "eval/tests/test_phase6_compensation.py" in declared, (
+        "M10's own acceptance battery is not declared in its scenario's fixtures, so "
+        "the exemption is not doing the job it was carved out for and a future "
+        "bootstrap would still be unwritable"
+    )
+
+
+def test_every_declared_fixture_is_a_path_the_unit_must_build():
+    """An exemption that grew a wildcard would be a hole rather than a carve-out.
+
+    `fixtures:` is a short, explicit list of concrete relative paths — never a
+    glob, never an absolute path, never a directory — so a scenario cannot excuse
+    a family of paths by declaring one pattern.
+    """
+    for path, fixtures in DECLARED_FIXTURES.items():
+        for entry in fixtures:
+            assert not entry.startswith("/"), (
+                f"{path.name} declares an absolute fixture {entry!r}; fixtures are "
+                "repository-relative deliverables"
+            )
+            assert not any(ch in entry for ch in "*?["), (
+                f"{path.name} declares a glob fixture {entry!r}; the exemption is per "
+                "explicit path, so a pattern could excuse paths nobody listed"
+            )
+            assert not entry.endswith("/"), (
+                f"{path.name} declares a directory fixture {entry!r}; a directory would "
+                "excuse every path beneath it"
+            )
 
 
 # ==========================================================================

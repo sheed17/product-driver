@@ -1231,47 +1231,109 @@ class TestTheM10Vocabulary:
         assert not ok, "an invented command is approved; the approval set constrains nothing"
         assert "approved set" in reason
 
-    def test_the_local_config_targets_m10_when_it_exists(self):
+    #: The P6 units in build order, by the scenario name each one's bootstrap targets. The local
+    #: config carries ONE of these at a time, and it only ever moves FORWARD.
+    P6_UNIT_ORDER: tuple[str, ...] = (
+        "p6_work_item_ownership",
+        "p6_pipeline_instance",
+        "p6_m3_external_effect",
+        "p6_m4_approval",
+        "p6_m5_observation",
+        "p6_m6_identity_binding_claim",
+        "p6_m7_conflict",
+        "p6_m8_expectation",
+        "p6_m9_exception",
+        "p6_m10_compensation",
+        "p6_m11_policy",
+    )
+
+    def test_the_local_config_never_targets_a_unit_before_m10(self):
         """The retarget is the established convention: `driver.config.yaml` carries one unit at a
         time, and a stale target is how a run verifies the previous unit while claiming this one.
 
-        `test_m9_readiness` holds the same guard in its DIRECTION form — it may sit on M9 or later,
-        never earlier. This is the forward half: while M10 is the unit under test, the config names
-        M10 exactly.
+        ### **The direction is what matters, not the exact name.** This guard was written at the
+        M10 bootstrap and pinned `p6_m10_compensation` exactly — which made it fail the moment the
+        M11 bootstrap retargeted the config, i.e. at precisely the moment the convention was being
+        followed correctly. **A guard that fires on the correct move is a guard that gets deleted
+        rather than fixed**, so it is restated as the invariant it always meant, exactly as
+        `test_m9_readiness` restated its own at this bootstrap's predecessor: the config may sit on
+        M10 or on any LATER unit, and may never fall BACK to one M10 has already superseded.
+
+        The protective value is unchanged — a config left on M9 while a session claims to verify
+        M10 is still caught — and no forward knowledge of M11's name is required for that.
+        `test_the_direction_rule_still_catches_a_config_left_behind` proves it on a synthesised
+        config rather than asserting it.
         """
         local = DRIVER_ROOT / "driver.config.yaml"
         if not local.exists():
             pytest.skip("no local driver.config.yaml on this checkout")
         raw = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
-        assert raw.get("scenario") == "p6_m10_compensation", (
-            f"the local config targets {raw.get('scenario')!r}; a run would verify a different "
-            "unit and report this one"
+        target = raw.get("scenario")
+        assert target, "the local config names no scenario at all"
+        earlier = self.P6_UNIT_ORDER[: self.P6_UNIT_ORDER.index("p6_m10_compensation")]
+        assert target not in earlier, (
+            f"the local config targets {target!r}, a unit M10 has already superseded; a run would "
+            "verify the previous unit and report this one"
         )
 
-    def test_the_local_vocabulary_enumerates_m10_and_not_the_superseded_unit(self):
-        """M9's probe is a REGRESSION ANCHOR in the M10 scenario, and a prefix match already
-        approves every `--case` tail of it. Enumerating M9's cases again would only spend the
-        generation brief's render budget on the previous unit."""
+    def test_the_direction_rule_still_catches_a_config_left_behind(self):
+        """The control the restatement above owes.
+
+        Loosening a pinned equality into a direction rule is only defensible if the defect it was
+        pinned for is still caught. Both halves are proven on synthesised configs: a target BEFORE
+        M10 is refused, and a target at or after M10 is accepted.
+        """
+        earlier = self.P6_UNIT_ORDER[: self.P6_UNIT_ORDER.index("p6_m10_compensation")]
+        assert "p6_m9_exception" in earlier, "M9 is not recognised as a unit M10 superseded"
+        assert "p6_m8_expectation" in earlier
+        assert "p6_m10_compensation" not in earlier, "M10 would refuse its own name"
+        assert "p6_m11_policy" not in earlier, "the rule would refuse a forward move"
+
+    def test_no_superseded_units_case_vocabulary_is_still_enumerated(self):
+        """The other half of a stale config, and the one that quietly spends the render budget.
+
+        A prior unit's probe is a REGRESSION ANCHOR inside the current permanent scenario, and a
+        prefix match already approves every `--case` tail of it. Enumerating its cases again only
+        pushes the unit actually under test toward the brief's render bound — which is exactly how
+        M3's bare probe went invisible at the M9 bootstrap.
+        """
         local = DRIVER_ROOT / "driver.config.yaml"
         if not local.exists():
             pytest.skip("no local driver.config.yaml on this checkout")
         raw = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
         vocabulary = raw.get("scenario_generation", {}).get("approved_commands") or []
-        m10 = [c for c in vocabulary if "probe_phase6_compensation.py" in c]
-        assert m10, "the M10 vocabulary is not enumerated in the local config at all"
-        stale = [c for c in vocabulary if "probe_phase6_exception.py --case" in c]
-        assert not stale, (
-            f"{len(stale)} M9 `--case` entries are still enumerated in the local vocabulary"
-        )
+        target = raw.get("scenario")
+        if target == "p6_m10_compensation":
+            m10 = [c for c in vocabulary if "probe_phase6_compensation.py" in c]
+            assert m10, "the M10 vocabulary is not enumerated in the local config at all"
+            stale = [c for c in vocabulary if "probe_phase6_exception.py --case" in c]
+            assert not stale, (
+                f"{len(stale)} M9 `--case` entries are still enumerated in the local vocabulary"
+            )
+        else:
+            # The config has moved past M10. M10's own `--case` vocabulary is now the superseded
+            # one, and the same rule applies to it.
+            stale = [c for c in vocabulary if "probe_phase6_compensation.py --case" in c]
+            assert not stale, (
+                f"{len(stale)} M10 `--case` entries are still enumerated in the local vocabulary "
+                f"while the config targets {target!r}. M10's probe is a regression anchor now, and "
+                "a prefix match already approves every tail of it"
+            )
 
     def test_every_enumerated_local_case_is_one_the_scenario_declares(self, cases):
         """The config and the scenario must agree on the vocabulary. An enumerated `--case` the
         probe was never asked to implement is a command the generator will compose and the product
-        will refuse — a run that fails as a product defect for a configuration reason."""
+        will refuse — a run that fails as a product defect for a configuration reason.
+
+        Scoped to the config that actually targets M10: once it has moved on, M10's cases are not
+        expected to be enumerated at all, and the sibling above is the check that applies.
+        """
         local = DRIVER_ROOT / "driver.config.yaml"
         if not local.exists():
             pytest.skip("no local driver.config.yaml on this checkout")
         raw = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
+        if raw.get("scenario") != "p6_m10_compensation":
+            pytest.skip("the local config has moved past M10")
         vocabulary = raw.get("scenario_generation", {}).get("approved_commands") or []
         enumerated = [
             m.group(1) for m in

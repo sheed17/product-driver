@@ -1,0 +1,1938 @@
+name: p6_m11_policy
+phase: P6
+mode: backend
+description: >-
+  P6 M11: the Policy — the typed, versioned, scoped, deterministic tenant posture evaluated at
+  CHECKPOINT STEP 6, returning a NEVER-NULL canonical gate decision. This is the machine that
+  answers "what may Neyma do alone, for whom, and up to what caps", and the one place in the
+  architecture where the answer must be a value the owner can see, version and revoke rather than a
+  sentence in a prompt. An owner types "never bill without a POD"; the old system replied
+  "noted the procedure" and installed a suggestion. M11 is the mechanism that makes the difference
+  real: a policy is a row with a gate decision that cannot be null, a predicate that cannot read a
+  guess, a version that is bound into every witness and grant, and an activation that only an
+  authenticated human can perform. The tenant posture may only ever NARROW the product ceiling —
+  never broaden it — and nothing automatic may move authority in the unsafe direction: not a model
+  at confidence 1.0, not a retry handler, not a timer, not an inbound email announcing a new company
+  rule. M11 IS checkpoint step 6; it does not build a second checkpoint and it mints no gate
+  decision of its own, because a second gate authority is the same defect as no gate authority.
+  M11 ships dark. This scenario measures the DATABASE, the EVENT REGISTRY and the AST, not the
+  probe's narration.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The files this unit is expected to PRODUCE. Nothing here exists on the pre-M11 tree, and that is
+# the point: `tests/test_scenario_pytest_invocation.py` exempts a scenario's own declared fixtures
+# from the "every named test path already exists" rule, precisely so a bootstrap can be written
+# before the unit it measures. Every OTHER path this file names is a landed regression anchor and
+# must exist today.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/policy.py"
+  - "src/freight_recon/migrations/phase6_policies.py"
+  - "eval/tests/test_phase6_policy.py"
+  - "scripts/probe_phase6_policy.py"
+  - "scripts/mutate_phase6_policy.py"
+
+commands:
+  # ------------------------------------------------------------------ coverage and axis oracles
+  - name: "the M11 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      # ---- PO-1: authorship. A model may propose TEXT. Inbound content may never author.
+      - "a-draft-is-authored-by-the-policy-owner-or-a-delegate"
+      - "a-model-may-propose-text-and-never-author"
+      - "inbound-content-can-never-author-a-policy"
+      - "an-email-announcing-a-new-rule-is-data-not-a-policy-change"
+      - "a-counterparty-cannot-author-a-policy"
+      - "an-offboarded-human-cannot-author-a-policy"
+      - "po-1-emits-policyproposed"
+      - "policyproposed-does-not-prove-the-policy-is-active"
+      # ---- PO-2: submission. Never-null gate, deterministic predicate, narrow-only.
+      - "submission-requires-a-non-null-gate-decision"
+      - "a-null-gate-decision-is-refused-at-submission"
+      - "an-invented-gate-decision-is-refused"
+      - "the-four-canonical-gate-members-and-no-fifth"
+      - "a-predicate-on-model-inferred-fails-to-compile"
+      - "confidence-one-does-not-make-model-inferred-readable"
+      - "the-evaluator-input-type-has-no-confidence-field"
+      - "a-predicate-on-an-unmodelled-field-fails-to-compile"
+      - "a-tenant-policy-that-broadens-the-product-ceiling-is-refused"
+      - "narrowing-within-the-product-ceiling-is-accepted"
+      - "the-ceiling-comparison-is-structural-not-textual"
+      - "po-2-emits-policysubmitted"
+      - "policysubmitted-is-not-a-rename-of-policyproposed"
+      # ---- PO-3: the governed change. There is no admin path.
+      - "approval-runs-through-the-ordinary-m2-governed-path"
+      - "the-policy-diff-is-the-material-facts"
+      - "there-is-no-admin-path-to-approved"
+      - "a-config-file-cannot-approve-or-activate-a-policy"
+      - "a-migration-cannot-activate-a-policy"
+      - "a-superuser-command-line-cannot-activate-a-policy"
+      - "a-model-cannot-approve-a-policy-change"
+      - "the-approval-id-resolves-to-a-same-tenant-m4-approval"
+      - "policyapproved-carries-the-diff-fingerprint"
+      - "policyapproved-is-consequential-and-pins-its-decision-context"
+      - "policyapproved-does-not-activate"
+      - "m11-builds-no-second-approval-system"
+      # ---- PO-4: activation. Human only, at every confidence, from every automated path.
+      - "activation-requires-an-authenticated-human"
+      - "a-model-cannot-activate-a-policy"
+      - "automation-cannot-activate-a-policy"
+      - "a-retry-handler-cannot-activate-or-broaden-policy"
+      - "a-timer-cannot-activate-a-policy"
+      - "an-unauthorized-activation-emits-the-registered-f14-security-event"
+      - "m11-mints-no-second-unauthorized-activation-contract"
+      - "active-requires-a-non-null-activated-by"
+      - "the-activator-is-the-policy-owner-or-an-authorized-delegate"
+      - "a-cross-tenant-activator-is-refused"
+      - "po-4-emits-policyactivated-and-policyversionchanged"
+      - "policyactivated-does-not-apply-retroactively"
+      - "re-activating-an-already-active-version-is-a-no-op"
+      # ---- PO-5: supersession. The old version is retained, permanently.
+      - "a-newer-version-supersedes-the-active-one"
+      - "the-superseded-version-is-retained-permanently"
+      - "the-superseded-version-still-explains-its-historical-decisions"
+      - "supersession-never-edits-history-in-place"
+      - "po-5-emits-policysuperseded"
+      # ---- PO-6: revocation. Direction is the whole content of the transition.
+      - "a-narrowing-revocation-is-immediate"
+      - "a-broadening-revocation-requires-the-policy-owner"
+      - "automation-cannot-perform-a-broadening-revocation"
+      - "policyrevoked-carries-the-canonical-direction"
+      - "revocation-emits-policyversionchanged"
+      - "there-is-no-temporary-tighten-then-automatic-revert-path"
+      # ---- PO-7: expiry. A narrowing policy's expiry BROADENS, so a human confirms it.
+      - "only-a-narrowing-policy-may-carry-an-expiry"
+      - "a-broadening-policy-cannot-carry-an-expiry"
+      - "timerfired-never-broadens-authority"
+      - "expiry-raises-the-m9-human-confirmation-exception"
+      - "m11-builds-no-part-of-m9"
+      - "po-7-emits-policyexpired"
+      - "policyexpired-does-not-prove-automatic-broadening"
+      # ---- evaluation: deterministic, reproducible, fail-closed
+      - "evaluation-is-byte-identical-reproducible"
+      - "no-wall-clock-enters-the-policy-decision"
+      - "no-randomness-enters-the-policy-decision"
+      - "no-model-call-enters-the-policy-decision"
+      - "unordered-iteration-does-not-change-the-policy-decision"
+      - "the-policy-decision-carries-a-mandatory-reason"
+      - "an-unreproducible-decision-makes-the-grant-unclaimable"
+      - "the-policy-engine-unavailable-yields-no-witness-and-no-effect"
+      - "there-is-no-allow-on-policy-error-path"
+      # ---- the checkpoint boundary: M11 IS step 6, and there is only one of it
+      - "m11-is-checkpoint-step-6-and-builds-no-second-checkpoint"
+      - "m11-mints-no-gate-decision"
+      - "checkpoint-py-remains-the-sole-gate-minter"
+      - "m11-constructs-no-gateentry-and-no-gateregistry"
+      - "an-unregistered-action-class-falls-to-the-human-default"
+      - "the-production-gate-registry-population-stays-empty"
+      - "the-policy-version-is-bound-into-the-witness-and-the-grant"
+      # ---- version binding and staleness: M2/M3/M4 already own the invalidation
+      - "a-stale-policy-version-grant-claim-is-refused"
+      - "the-claim-cas-revalidates-policy-version-through-p3"
+      - "m11-builds-no-second-claim-cas"
+      - "policyversionchanged-voids-an-in-flight-m4-approval"
+      - "m11-drives-m4s-landed-void-on-policy-seam"
+      - "m11-does-not-mutate-m4-state-directly"
+      # ---- precedence: a policy is never the top of the ladder
+      - "a-policy-never-overrides-a-permanent-product-truth"
+      - "a-policy-never-overrides-a-brake-denial"
+      - "an-urgent-policy-does-not-bypass-the-brake"
+      - "m11-engages-no-brake-and-narrows-none"
+      # ---- tenancy
+      - "tenant-is-first-in-the-policy-primary-key"
+      - "the-same-scope-in-two-tenants-does-not-collide"
+      - "a-cross-tenant-policy-lookup-is-refused"
+      - "a-cross-tenant-activation-is-refused"
+      - "a-cross-tenant-supersession-is-refused"
+      - "policy-version-uniqueness-is-tenant-local"
+      # ---- uniqueness, concurrency, OCC, monotonicity
+      - "one-active-policy-per-tenant-and-scope"
+      - "concurrent-activation-yields-exactly-one-active-policy"
+      - "a-stale-occ-write-is-refused"
+      - "policy-version-is-monotonic-per-tenant"
+      - "a-policy-version-is-never-reused"
+      # ---- retention: every version, permanently
+      - "a-policy-row-cannot-be-deleted"
+      - "every-historical-version-is-retained"
+      - "a-policy-change-is-never-retroactive"
+      - "an-old-decision-is-explained-under-its-own-version"
+      # ---- replay creates no authority
+      - "replay-reconstructs-policy-history-only"
+      - "replay-creates-no-human-authority"
+      - "replay-does-not-reactivate-a-policy"
+      - "replay-mints-zero-witnesses-grants-and-effects"
+      # ---- the event contract, exactly
+      - "the-eight-f11-contracts-and-no-ninth"
+      - "m11-mints-no-unregistered-event-name"
+      - "policyevaluated-belongs-to-m2-and-m11-does-not-mint-it"
+      - "f11-strict-order-is-order-not-contiguity"
+      # ---- the dark posture, and the machines that are NOT built
+      - "m11-ships-dark-with-zero-production-importers"
+      - "m11-joins-no-outbound-channel"
+      - "m11-builds-no-policy-editor-or-admin-surface"
+      - "m12-rule-is-not-built"
+      - "m13-brake-lifecycle-is-not-built"
+      - "no-autonomy-graduation-engine-is-built"
+      - "nothing-graduates-v11-stays-fail-closed"
+      - "one-policy-owner-one-authority-level-v12-stays-fail-closed"
+      - "m1-through-m10-are-unchanged"
+
+  - name: "the M11 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      - "--concurrency"
+      - "--delay-ms"
+      - "--repeat"
+      - "--tenants"
+      - "--seed"
+      - "--inject"
+      - "--actor"
+      - "--direction"
+      - "--gate"
+      - "--provenance"
+      - "--brake"
+
+  # ------------------------------------------------------------------ the machine, driven
+  #
+  # THE HEADLINES ARE THE UNIT'S OWN SENTENCES. Each one is a claim a wrong implementation cannot
+  # print, because the case behind it exercises the mechanism rather than reading the docstring.
+  - name: "drive the Policy machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --all"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains:
+      - "behaviours as specified, 0 wrong"
+      - "A POLICY IS A VALUE THE OWNER CAN SEE, NOT A SENTENCE IN A PROMPT"
+      - "A TENANT POLICY MAY ONLY EVER NARROW THE PRODUCT CEILING"
+      - "AUTOMATION MAY ONLY EVER MOVE AUTHORITY IN THE SAFE DIRECTION"
+      - "A GATE EXPRESSIBLE AS AN ABSENCE IS NOT A GATE"
+      - "A POLICY MAY NEVER BRANCH ON A GUESS"
+      - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+      - "A MODEL CAN NEVER ACTIVATE A POLICY"
+      - "AUTOMATION CAN NEVER ACTIVATE A POLICY"
+      - "INBOUND CONTENT CAN NEVER AUTHOR A POLICY"
+      - "A POLICY CHANGE IS ITSELF A GATED ACTION, AND THERE IS NO ADMIN PATH"
+      - "PolicyApproved IS THE NO-ADMIN-PATH EVIDENCE"
+      - "PolicySubmitted IS NOT A RENAME OF PolicyProposed"
+      - "PolicyApproved DOES NOT ACTIVATE"
+      - "A POLICY IS NEVER RETROACTIVE"
+      - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+      - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+      - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+      - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+      - "EVALUATION IS BYTE-IDENTICAL REPRODUCIBLE"
+      - "NO POLICY DECISION MEANS NO WITNESS AND NO EFFECT"
+      - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+      - "M11 MINTS NO GATE DECISION"
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M11 BUILDS NO SECOND CHECKPOINT"
+      - "A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"
+      - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
+      - "A POLICY NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+      - "A POLICY NEVER OVERRIDES A BRAKE DENIAL"
+      - "REPLAY CREATES NO AUTHORITY"
+      - "M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "THE M12 RULE MACHINE IS NOT BUILT"
+      - "THE M13 BRAKE MACHINE IS NOT BUILT"
+      - "NOTHING GRADUATES"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M10 COMPENSATION MACHINE IS UNCHANGED"
+
+  # ------------------------------------------------------------------ the mutation battery
+  - name: "every M11 mutation is caught by the acceptance battery"
+    run: ".venv/bin/python scripts/mutate_phase6_policy.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains:
+      - "mutations caught"
+      - "0 escaped"
+
+  # ------------------------------------------------------------------ acceptance batteries
+  #
+  # EVERY BATTERY BELOW IS INVOKED AS `python -m pytest`, NEVER AS THE `pytest` CONSOLE SCRIPT.
+  # This is the M10 harness-recovery invariant and it is not a style preference: `python -m pytest`
+  # puts the invocation directory on `sys.path` and the console script does not, so a test that
+  # reaches for the repository's own harness (`from eval.phase0 import gate_scan`) raises
+  # `ModuleNotFoundError: No module named 'eval'` under one and passes under the other. M11 reaches
+  # for that harness MORE than any unit before it, because `eval/phase0/gate_scan.py` is the
+  # ADR-010 boundary M11 has to be measured against.
+  #
+  # `-p no:cacheprovider` matches Neyma's own CI so ambient state cannot reshape the run.
+  # `passed` is required on every battery and `no tests ran` / `file or directory not found` are
+  # globally forbidden, so an empty or not-found selection can never read as a green anchor.
+  - name: "the M11 acceptance battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_policy.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  # THE P0 ADR-010 BOUNDARY GUARDS ARE M11's SHARPEST REGRESSION ANCHOR, AND THE ONE MOST LIKELY TO
+  # BE "FIXED" IN THE WRONG DIRECTION. `test_phase0_null_gate.py` and `test_phase0_errata_guards.py`
+  # confine the typed gate ladder to `gate_scan.GATE_RUNTIME_MODULES` by EXACT SET EQUALITY, and
+  # confine MINTING to `checkpoint.py` alone. M11 legitimately acquires gate RUNTIME (it carries a
+  # tenant posture typed as a `GateDecision`), so the carrier boundary has to widen the way
+  # `pipeline_instance.py` widened it at P6-CP-2 — a widening with a narrowing attached. What must
+  # NOT move is the MINT allowlist. Both are run here, on every scenario execution.
+  - name: "the ADR-010 gate boundary still confines minting to the checkpoint kernel"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase0_null_gate.py eval/tests/test_phase0_errata_guards.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  - name: "M1, M2, M3 and M4 stay green beside M11"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains: ["passed"]
+
+  # M9 IS THE MACHINE PO-7's EXPIRY ESCALATES TO, AND M10 IS THE UNIT IMMEDIATELY BEFORE THIS ONE.
+  # M11 must exercise M9's landed human-confirmation seam WITHOUT rebuilding any part of it, and
+  # must leave M10 byte-untouched.
+  - name: "M9 and M10, the machines M11 consumes and must not edit, stay green"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_exception.py eval/tests/test_phase6_compensation.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  # THE CANONICAL CHECKPOINT SUITE IS `test_phase3_checkpoint_matrix.py`. M11 IS checkpoint step 6,
+  # so the kernel's own matrix, the claim CAS that revalidates `policy_version`, and the step-order
+  # guard are the three anchors that decide whether M11 integrated with the checkpoint or built a
+  # second one beside it.
+  - name: "the checkpoint kernel, the claim CAS and step order are unchanged by M11"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the event registry and replay isolation are unchanged by M11"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p5_event_contracts.py eval/tests/test_p5_replay_and_audit.py"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the false-green defences, including the population-proof guard"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_false_green_defenses.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  - name: "the tenant-first posture and bootstrap hermeticity survive a new canonical table"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase0_tenant_posture.py eval/tests/test_bootstrap_hermeticity.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  # ------------------------------------------------------------------ the M11 case vocabulary
+  #
+  # EACH LITERAL BELOW IS THE HEADLINE OF THE CASE ACTUALLY NAMED ON THE LINE ABOVE IT. This is the
+  # M10 correction applied from the start: an oracle that cannot pass on a correct product is the
+  # mirror image of a false green, because it teaches the builder to change the product.
+  - name: "the happy path: a correctly authored policy reaches ACTIVE and decides a checkpoint"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case activation-requires-an-authenticated-human"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"]
+
+  - name: "a model cannot activate a policy, at any confidence"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-model-cannot-activate-a-policy"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A MODEL CAN NEVER ACTIVATE A POLICY"]
+
+  - name: "automation cannot activate a policy, from any automated path"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case automation-cannot-activate-a-policy"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["AUTOMATION CAN NEVER ACTIVATE A POLICY"]
+
+  - name: "inbound content can never author a policy"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case inbound-content-can-never-author-a-policy"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["INBOUND CONTENT CAN NEVER AUTHOR A POLICY"]
+
+  - name: "a tenant policy that broadens the product ceiling is refused"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-tenant-policy-that-broadens-the-product-ceiling-is-refused"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A TENANT POLICY MAY ONLY EVER NARROW THE PRODUCT CEILING"]
+
+  - name: "a predicate on MODEL_INFERRED fails to compile at confidence 1.0"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case confidence-one-does-not-make-model-inferred-readable"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A POLICY MAY NEVER BRANCH ON A GUESS"]
+
+  - name: "the evaluator input type has no confidence field to read"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case the-evaluator-input-type-has-no-confidence-field"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["CONFIDENCE IS STRUCTURALLY NOT AN INPUT"]
+
+  - name: "a policy change runs through the ordinary governed path, and there is no admin path"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case there-is-no-admin-path-to-approved"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A POLICY CHANGE IS ITSELF A GATED ACTION, AND THERE IS NO ADMIN PATH"]
+
+  - name: "PolicyApproved proves the change was human-gated, and does not activate"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case policyapproved-does-not-activate"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["PolicyApproved DOES NOT ACTIVATE"]
+
+  - name: "PolicySubmitted is a separate historical fact from PolicyProposed"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case policysubmitted-is-not-a-rename-of-policyproposed"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["PolicySubmitted IS NOT A RENAME OF PolicyProposed"]
+
+  - name: "a policy change voids an in-flight approval through M4's landed seam"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case policyversionchanged-voids-an-in-flight-m4-approval"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"]
+
+  - name: "a grant minted under the old version cannot be claimed after a policy change"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-stale-policy-version-grant-claim-is-refused"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"]
+
+  - name: "a narrowing policy's expiry raises the M9 human-confirmation Exception and broadens nothing"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case expiry-raises-the-m9-human-confirmation-exception"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"]
+
+  - name: "a fired timer never broadens authority"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case timerfired-never-broadens-authority"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"]
+
+  - name: "the policy engine unavailable at checkpoint yields no witness and no effect"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case the-policy-engine-unavailable-yields-no-witness-and-no-effect"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["NO POLICY DECISION MEANS NO WITNESS AND NO EFFECT"]
+
+  - name: "evaluation is byte-identical reproducible under the same version and inputs"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case evaluation-is-byte-identical-reproducible --repeat 25 --seed 11"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["EVALUATION IS BYTE-IDENTICAL REPRODUCIBLE"]
+
+  - name: "M11 mints no gate decision and the checkpoint stays the sole minter"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case checkpoint-py-remains-the-sole-gate-minter"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE CHECKPOINT IS STILL THE ONLY GATE MINTER"]
+
+  - name: "a policy never overrides a permanent product truth"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-policy-never-overrides-a-permanent-product-truth"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A POLICY NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"]
+
+  - name: "a brake denies regardless of what policy permits, urgent or not"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-policy-never-overrides-a-brake-denial"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A POLICY NEVER OVERRIDES A BRAKE DENIAL"]
+
+  - name: "the superseded version is retained and still explains its historical decisions"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case the-superseded-version-still-explains-its-historical-decisions"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"]
+
+  - name: "a broadening revocation requires the Policy Owner; a narrowing one is immediate"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-broadening-revocation-requires-the-policy-owner --direction all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"]
+
+  - name: "replay reconstructs policy history and creates no authority"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case replay-creates-no-human-authority"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["REPLAY CREATES NO AUTHORITY"]
+
+  - name: "concurrent activation for one tenant and scope yields exactly one ACTIVE policy"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case concurrent-activation-yields-exactly-one-active-policy --concurrency 8 --repeat 20"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "every provenance class is exercised, and only MODEL_INFERRED is structurally refused"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-predicate-on-model-inferred-fails-to-compile --provenance all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "every canonical gate member is exercised across the four-member ladder"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case the-four-canonical-gate-members-and-no-fifth --gate all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "M11 ships dark, and M12 and M13 do not exist"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case m11-ships-dark-with-zero-production-importers"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"]
+
+expect_state:
+  # 1 ---------------------------------------------------------------------------------------
+  - name: "a freshly created canonical database carries the policy layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys); p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39))))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "policies"
+      - "tenant_humans"
+      - "approvals"
+      - "effect_grants"
+      - "checkpoint_witnesses"
+      - "pipeline_instances"
+      - "event_outbox"
+      - "exceptions"
+      - "brakes"
+
+  # 2 ---------------------------------------------------------------------------------------
+  #
+  # THE FROZEN SEVEN, AS A DATABASE CONSTRAINT. The machine file's own opening paragraph exists to
+  # refuse `NARROWED`, `SUSPENDED` and `INVALID` — "narrowed" is an ACTIVE policy with a tighter
+  # posture and a new version, "suspended" is REVOKED, and an invalid draft never activates. Those
+  # three, plus the ordinary inventions (`PENDING`, `ENABLED`, `DISABLED`, `CANCELLED`), are the
+  # eighth state this asserts cannot exist.
+  - name: "the seven canonical policy states are a database constraint, and there is no eighth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      ddl=(lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', ('policies',)).fetchone());
+      v=dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl)) if not m[1]]);
+      s=v.get('state') or []; g=v.get('gate_decision') or [];
+      print('the state vocabulary is a CHECK:', bool(s));
+      print('canonical seven:', sorted(s));
+      print('state count:', len(s));
+      print('forbidden states present:', sorted([x for x in s if x in ('NARROWED','SUSPENDED','INVALID','PENDING','ENABLED','DISABLED','CANCELLED','REJECTED','COMPILED','CONFIRMED','FAILED','ARCHIVED')]));
+      print('the gate vocabulary is a CHECK:', bool(g));
+      print('canonical four:', sorted(g));
+      print('gate member count:', len(g));
+      print('invented gate members present:', sorted([x for x in g if x not in ('HUMAN_APPROVAL_REQUIRED','AUTONOMOUS_WITHIN_CAPS','PERMANENT_HUMAN_ASSERTION_REQUIRED','FORBIDDEN')]));
+      nn=[r[1] for r in c.execute('pragma table_info(policies)') if r[3]];
+      print('gate_decision is NOT NULL:', 'gate_decision' in nn);
+      print('the NOT NULL column set:', sorted(nn))"
+    timeout_s: 300
+    contains:
+      - "the state vocabulary is a CHECK: True"
+      - "canonical seven: ['ACTIVE', 'APPROVED', 'DRAFT', 'EXPIRED', 'PROPOSED', 'REVOKED', 'SUPERSEDED']"
+      - "state count: 7"
+      - "forbidden states present: []"
+      - "the gate vocabulary is a CHECK: True"
+      - "canonical four: ['AUTONOMOUS_WITHIN_CAPS', 'FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
+      - "gate member count: 4"
+      - "invented gate members present: []"
+      - "gate_decision is NOT NULL: True"
+
+  # 3 ---------------------------------------------------------------------------------------
+  #
+  # THE FORBIDDEN WRITES, ATTEMPTED AGAINST A LIVE DATABASE, BEHIND TWO POSITIVE CONTROLS. Reading
+  # the DDL and believing it is how a CHECK that was never compiled reads as enforcement. Every
+  # refusal below is an INSERT the database actually rejected, and the surviving-row count is
+  # asserted so a schema that refuses EVERYTHING cannot pass this by being uniformly hostile.
+  - name: "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='policies';
+      print('policies table present:', bool(c.execute('select 1 from sqlite_master where type=' + chr(39) + 'table' + chr(39) + ' and name=?', (T,)).fetchone()));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')'));
+      colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-02T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused (' + type(exc).__name__ + ')')\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,n,r,'ACTIVE','2026-09-02T00:00:00Z','founder','human')))) for t,h,n,r in (('T_A','policy-owner','Policy Owner','POLICY_OWNER'),('T_A','ops-lead','Ops Lead','AUTHORIZED_HUMAN'),('T_B','other-owner','Other Owner','POLICY_OWNER'))];
+      fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(' + T + ')')]);
+      print('the authored_by FK target:', str(fks.get('authored_by')));
+      print('the activated_by FK target:', str(fks.get('activated_by')));
+      base=build(T, {'tenant':'T_A','policy_id':'pol-1','policy_version':1,'scope':'action_class:raise_invoice','gate_decision':'HUMAN_APPROVAL_REQUIRED','authored_by':'policy-owner','activated_by':None,'state':'DRAFT','version':1,'effective_from':'2026-09-02T00:00:00Z','created_at':'2026-09-02T00:00:00Z','updated_at':'2026-09-02T00:00:00Z'});
+      print('the derived NOT NULL column set:', sorted(base));
+      [attempt(lbl, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in colsof(T) or k == 'gate_decision'])) for lbl, over in [('positive control, a well-formed DRAFT policy', {'state':'DRAFT'}), ('positive control, an ACTIVE policy activated by a named human', {'policy_id':'pol-2','policy_version':2,'scope':'action_class:book_carrier','state':'ACTIVE','activated_by':'policy-owner'}), ('an ACTIVE policy with no activator', {'policy_id':'pol-3','policy_version':3,'scope':'action_class:pay_carrier','state':'ACTIVE','activated_by':None}), ('a policy with a null gate decision', {'policy_id':'pol-4','policy_version':4,'scope':'action_class:send_email','gate_decision':None}), ('an invented gate decision', {'policy_id':'pol-5','policy_version':5,'scope':'action_class:file_document','gate_decision':'AUTONOMOUS'}), ('a NARROWED lifecycle state', {'policy_id':'pol-6','policy_version':6,'scope':'action_class:a','state':'NARROWED'}), ('a SUSPENDED lifecycle state', {'policy_id':'pol-7','policy_version':7,'scope':'action_class:b','state':'SUSPENDED'}), ('an INVALID lifecycle state', {'policy_id':'pol-8','policy_version':8,'scope':'action_class:c','state':'INVALID'}), ('an author who is not a recorded human', {'policy_id':'pol-9','policy_version':9,'scope':'action_class:d','authored_by':'someone-else'}), ('an author from another tenant', {'policy_id':'pol-10','policy_version':10,'scope':'action_class:e','authored_by':'other-owner'}), ('an activator from another tenant', {'policy_id':'pol-11','policy_version':11,'scope':'action_class:f','state':'ACTIVE','activated_by':'other-owner'}), ('positive control, an authorized delegate may activate', {'policy_id':'pol-12','policy_version':12,'scope':'action_class:g','state':'ACTIVE','activated_by':'ops-lead'})]];
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "policies table present: True"
+      - "positive control, a well-formed DRAFT policy: ACCEPTED"
+      - "positive control, an ACTIVE policy activated by a named human: ACCEPTED"
+      - "an ACTIVE policy with no activator: refused"
+      - "a policy with a null gate decision: refused"
+      - "an invented gate decision: refused"
+      - "a NARROWED lifecycle state: refused"
+      - "a SUSPENDED lifecycle state: refused"
+      - "an INVALID lifecycle state: refused"
+      - "an author who is not a recorded human: refused"
+      - "an author from another tenant: refused"
+      - "an activator from another tenant: refused"
+      - "positive control, an authorized delegate may activate: ACCEPTED"
+      - "rows that survived: 3"
+
+  # 4 ---------------------------------------------------------------------------------------
+  #
+  # `UNIQUE (tenant_id, scope) WHERE state = 'ACTIVE'` — the canonical predicate, verbatim. The
+  # refusal must name the index's own columns rather than merely raise `IntegrityError`, because an
+  # `IntegrityError` from a DIFFERENT constraint would otherwise read as this one firing. And the
+  # SAME scope in a DIFFERENT tenant must be ACCEPTED: a global uniqueness that accidentally couples
+  # tenants is the cross-tenant defect wearing a safety constraint's clothes.
+  - name: "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='policies';
+      idx=[r[0] for r in c.execute('select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=? and sql is not null', (T,))];
+      print('policy indexes discovered:', len(idx));
+      uniq=[s for s in idx if 'UNIQUE' in s.upper()];
+      print('a UNIQUE index exists:', bool(uniq));
+      print('the UNIQUE indexes under test:', sorted([re.search('INDEX +([A-Za-z0-9_]+)', s).group(1) for s in uniq]));
+      print('every policy index is tenant-first:', all(re.search('[(] *tenant', s) for s in idx));
+      print('an ACTIVE-only partial predicate exists:', any(re.search('WHERE.*ACTIVE', s, re.S) for s in uniq));
+      print('the active uniqueness columns are tenant and scope:', any(re.search('[(] *tenant *, *scope *[)]', s) for s in uniq));
+      print('a tenant-local policy_version uniqueness exists:', any(re.search('[(] *tenant *, *policy_version *[)]', s) for s in uniq));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-02T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\",'def sql(label, stmt, params):',' try:',\"  c.execute('savepoint m'); cur = c.execute(stmt, params); c.execute('release m'); print(label + ': ACCEPTED, rows=' + str(cur.rowcount))\",' except sqlite3.Error as exc:',\"  c.execute('rollback to m'); c.execute('release m'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt']; sql=env['sql'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,'policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-02T00:00:00Z','founder','human')))) for t in ('T_A','T_B')];
+      base=build(T, {'tenant':'T_A','scope':'action_class:raise_invoice','gate_decision':'HUMAN_APPROVAL_REQUIRED','authored_by':'policy-owner','activated_by':'policy-owner','version':1,'effective_from':'2026-09-02T00:00:00Z','created_at':'2026-09-02T00:00:00Z','updated_at':'2026-09-02T00:00:00Z'});
+      attempt('positive control, the first ACTIVE policy for a tenant and scope', dict(list(base.items()) + [('policy_id','pol-1'),('policy_version',1),('state','ACTIVE')]));
+      attempt('a SECOND ACTIVE policy for the same tenant and scope', dict(list(base.items()) + [('policy_id','pol-2'),('policy_version',2),('state','ACTIVE')]));
+      attempt('positive control, a SUPERSEDED policy for the same scope is retained beside it', dict(list(base.items()) + [('policy_id','pol-3'),('policy_version',3),('state','SUPERSEDED')]));
+      attempt('positive control, the SAME scope ACTIVE in a DIFFERENT tenant', dict(list(base.items()) + [('policy_id','pol-4'),('tenant','T_B'),('policy_version',1),('state','ACTIVE')]));
+      attempt('a reused policy_version inside one tenant', dict(list(base.items()) + [('policy_id','pol-5'),('policy_version',1),('scope','action_class:book_carrier'),('state','DRAFT')]));
+      sql('the OCC guard on a state change that does not advance the version', 'update policies set state=? where tenant=? and policy_id=?', ('REVOKED','T_A','pol-1'));
+      sql('a DELETE against a policy row', 'delete from policies where tenant=? and policy_id=?', ('T_A','pol-3'));
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      print('T_A ACTIVE rows:', c.execute('select count(*) from policies where tenant=? and state=?', ('T_A','ACTIVE')).fetchone()[0]);
+      print('T_B ACTIVE rows:', c.execute('select count(*) from policies where tenant=? and state=?', ('T_B','ACTIVE')).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "a UNIQUE index exists: True"
+      - "every policy index is tenant-first: True"
+      - "an ACTIVE-only partial predicate exists: True"
+      - "the active uniqueness columns are tenant and scope: True"
+      - "a tenant-local policy_version uniqueness exists: True"
+      - "positive control, the first ACTIVE policy for a tenant and scope: ACCEPTED"
+      - "a SECOND ACTIVE policy for the same tenant and scope: refused by"
+      - "positive control, a SUPERSEDED policy for the same scope is retained beside it: ACCEPTED"
+      - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
+      - "a reused policy_version inside one tenant: refused by"
+      - "the OCC guard on a state change that does not advance the version: refused by"
+      - "a DELETE against a policy row: refused by"
+      - "rows that survived: 3"
+      - "T_A ACTIVE rows: 1"
+      - "T_B ACTIVE rows: 1"
+
+  # 5 ---------------------------------------------------------------------------------------
+  #
+  # MIGRATION PARITY. An upgraded database and a fresh one must be the same database. A migration
+  # that creates a slightly different `policies` than `create_canonical_schema` does is how a
+  # constraint that passes every test in CI is absent in the one database that matters.
+  - name: "an upgraded database and a fresh database carry the identical policy layer"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,inspect; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      import freight_recon.migrations.phase6_policies as mg;
+      norm=lambda s: ' '.join((s or '').split());
+      shape=lambda c: sorted([(r[0], norm(r[1])) for r in c.execute('select name, sql from sqlite_master where tbl_name=? and sql is not null', ('policies',))]);
+      want=('MIGRATION_ID','P6PO_SCHEMA_VERSION','P6PO_TENANT_TABLES','P6PO_EXEMPT_TABLES','P6PO_TARGET_SCHEMA','P6PO_INDEXES','create_phase6_policies_schema','stamp_phase6_policies_version','phase6_policies_readiness_problems');
+      print('the migration exposes the canonical P6 symbol set:', sorted(s for s in want if not hasattr(mg, s)) == []);
+      print('missing canonical symbols:', sorted(s for s in want if not hasattr(mg, s)));
+      print('the policy table is declared tenant-owned:', list(mg.P6PO_TENANT_TABLES) == ['policies']);
+      print('the migration declares no tenant-exempt table:', list(mg.P6PO_EXEMPT_TABLES) == []);
+      fresh=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'fresh.sqlite3')); create_canonical_schema(fresh); enable_and_verify_foreign_keys(fresh);
+      up=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'up.sqlite3')); create_canonical_schema(up); enable_and_verify_foreign_keys(up);
+      [up.execute('drop trigger if exists ' + n) for n in list(getattr(mg, 'P6PO_TRIGGERS', {}))];
+      [up.execute('drop index if exists ' + n) for n in list(mg.P6PO_INDEXES)];
+      up.execute('drop table if exists policies'); up.commit();
+      print('the policy layer was actually removed before the upgrade:', shape(up) == []);
+      fn=mg.create_phase6_policies_schema;
+      kw={'now': '2026-09-02T00:00:00Z'} if 'now' in inspect.signature(fn).parameters else {};
+      first=fn(up, **kw);
+      print('the migration performed work on a database missing the layer:', bool(first));
+      second=fn(up, **kw);
+      print('a second application of the migration is a no-op:', second == []);
+      print('fresh policy objects:', len(shape(fresh)));
+      print('upgraded policy objects:', len(shape(up)));
+      print('the upgraded policy layer is identical to the fresh one:', shape(fresh) == shape(up));
+      print('upgraded database readiness problems:', schema_readiness_problems(up));
+      print('the migration reports no readiness problem:', mg.phase6_policies_readiness_problems(up) == [])"
+    timeout_s: 600
+    contains:
+      - "the migration exposes the canonical P6 symbol set: True"
+      - "missing canonical symbols: []"
+      - "the policy table is declared tenant-owned: True"
+      - "the migration declares no tenant-exempt table: True"
+      - "the policy layer was actually removed before the upgrade: True"
+      - "the migration performed work on a database missing the layer: True"
+      - "a second application of the migration is a no-op: True"
+      - "the upgraded policy layer is identical to the fresh one: True"
+      - "upgraded database readiness problems: []"
+      - "the migration reports no readiness problem: True"
+
+  # 6 ---------------------------------------------------------------------------------------
+  #
+  # THE F11 CONTRACT SET, READ FROM THE REGISTRY RATHER THAN FROM M11's ACCOUNT OF IT. All eight
+  # F11 names were registered BEFORE M11 was built — `PolicySubmitted`(PO-2) and `PolicyApproved`
+  # (PO-3) by the 2026-08-12 founder/architect amendment — so this oracle is a landed-authority
+  # anchor as well as an M11 obligation: it proves the registry still says exactly what M11 has to
+  # implement, and that M11 minted no ninth name into it. `PolicyEvaluated` is F2's, produced by
+  # M2's PL-2; `UnauthorizedPolicyActivationAttempted` is F14's. Neither is M11's to mint.
+  - name: "the F11 family is exactly eight registered contracts, with their canonical flags"
+    command: >-
+      .venv/bin/python -c "import sys,json; sys.path.insert(0,'src');
+      d=json.load(open('src/freight_recon/event_contracts_data.json')); c=d['contracts'];
+      f11=sorted([e['name'] for e in c if e.get('family') == 'F11']);
+      print('F11 contract count:', len(f11));
+      print('F11 contracts:', f11);
+      by=dict([(e['name'], e) for e in c]);
+      print('PolicyEvaluated family:', by['PolicyEvaluated']['family'], by['PolicyEvaluated']['producers']);
+      print('UnauthorizedPolicyActivationAttempted family:', by['UnauthorizedPolicyActivationAttempted']['family']);
+      print('PolicyActivated is human_only:', by['PolicyActivated']['human_only']);
+      print('PolicyApproved is human_only:', by['PolicyApproved']['human_only']);
+      print('PolicyApproved is consequential:', by['PolicyApproved']['consequential']);
+      print('PolicyActivated is consequential:', by['PolicyActivated']['consequential']);
+      print('PolicyVersionChanged is coordination:', by['PolicyVersionChanged']['coordination']);
+      print('PolicyVersionChanged is consequential:', by['PolicyVersionChanged']['consequential']);
+      print('PolicyVersionChanged producers:', sorted(by['PolicyVersionChanged']['producers']));
+      print('every F11 contract is strict_order:', all(by[n]['strict_order'] for n in f11));
+      print('every F11 aggregate_type is policy:', sorted(set(by[n]['aggregate_type'] for n in f11)));
+      print('PolicyProposed producer:', by['PolicyProposed']['producers']);
+      print('PolicySubmitted producer:', by['PolicySubmitted']['producers']);
+      print('PolicyRevoked direction enum:', [f['enum'] for f in by['PolicyRevoked']['fields'] if f['name'] == 'direction']);
+      print('PolicyApproved required fields:', sorted([f['name'] for f in by['PolicyApproved']['fields'] if f['required']]));
+      print('PolicyActivated required fields:', sorted([f['name'] for f in by['PolicyActivated']['fields'] if f['required']]));
+      print('total registered contracts:', len(c))"
+    timeout_s: 300
+    contains:
+      - "F11 contract count: 8"
+      - "F11 contracts: ['PolicyActivated', 'PolicyApproved', 'PolicyExpired', 'PolicyProposed', 'PolicyRevoked', 'PolicySubmitted', 'PolicySuperseded', 'PolicyVersionChanged']"
+      - "PolicyEvaluated family: F2 ['PL-2']"
+      - "UnauthorizedPolicyActivationAttempted family: F14"
+      - "PolicyActivated is human_only: True"
+      - "PolicyApproved is human_only: True"
+      - "PolicyApproved is consequential: True"
+      - "PolicyActivated is consequential: True"
+      - "PolicyVersionChanged is coordination: True"
+      - "PolicyVersionChanged is consequential: True"
+      - "PolicyVersionChanged producers: ['PO-4', 'PO-6']"
+      - "every F11 contract is strict_order: True"
+      - "every F11 aggregate_type is policy: ['policy']"
+      - "PolicyProposed producer: ['PO-1']"
+      - "PolicySubmitted producer: ['PO-2']"
+      - "PolicyRevoked direction enum: [['narrow', 'broaden']]"
+      - "PolicyApproved required fields: ['approval_id', 'approved_by', 'diff_fingerprint', 'evidence_refs', 'policy_version']"
+      - "PolicyActivated required fields: ['activated_by', 'effective_from', 'gate_decision', 'policy_version']"
+      - "total registered contracts: 118"
+
+
+  # 7 ---------------------------------------------------------------------------------------
+  #
+  # ### THE SINGLE MOST IMPORTANT ORACLE IN THIS FILE, AND THE ONE MOST LIKELY TO BE SATISFIED THE
+  # WRONG WAY. M11 IS checkpoint step 6. The temptation — and it arrives dressed as compliance — is
+  # to give the Policy Engine its own `GateRegistry`, because a policy engine that owns the gate
+  # registry "obviously" belongs together. That is a SECOND GATE AUTHORITY, and a second gate
+  # authority is the same defect as no gate authority: two answers to "may Neyma do this alone", and
+  # nothing that says which one the grant was minted under.
+  #
+  # A gate decision comes into existence ONLY by constructing a `GateEntry` or a `GateRegistry`.
+  # This walks the AST of every production module and asserts the mint population is exactly
+  # `checkpoint.py`. The kernel's own `_DEFAULT` construction is the POSITIVE CONTROL: a confinement
+  # assertion over a population containing no mint at all passes vacuously and proves nothing.
+  - name: "the checkpoint kernel is still the only thing that MINTS a gate decision, and M11 mints none"
+    command: >-
+      .venv/bin/python -c "import ast,sys,pathlib; sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon'); MINTS={'GateEntry','GateRegistry'};
+      trees=[(py.name, ast.parse(py.read_text(encoding='utf-8'))) for py in sorted(src.rglob('*.py'))];
+      nm=lambda f: f.id if isinstance(f, ast.Name) else getattr(f, 'attr', None);
+      sites=[(n, nm(node.func)) for n, t in trees for node in ast.walk(t) if isinstance(node, ast.Call) and nm(node.func) in MINTS];
+      print('production modules parsed:', len(trees));
+      print('policy.py was parsed:', 'policy.py' in [n for n, _ in trees]);
+      print('the policy migration was parsed:', 'phase6_policies.py' in [n for n, _ in trees]);
+      print('modules that MINT a gate decision:', sorted(set(n for n, _ in sites)));
+      print('the kernel positive control, checkpoint.py mint sites:', len([1 for n, _ in sites if n == 'checkpoint.py']));
+      print('M11 constructs a GateEntry or GateRegistry:', 'policy.py' in set(n for n, _ in sites));
+      print('the M11 migration constructs a GateEntry or GateRegistry:', 'phase6_policies.py' in set(n for n, _ in sites));
+      import freight_recon.checkpoint as ck;
+      print('the canonical gate ladder:', sorted(m.value for m in ck.GateDecision));
+      print('the unregistered-class fallback:', ck.GateRegistry({}, policy_version='pv1').gate_for('raise_invoice').gate.value);
+      print('a registry over an empty mapping registers nothing:', len(ck.GateRegistry({}, policy_version='pv1')._entries))"
+    timeout_s: 300
+    contains:
+      - "policy.py was parsed: True"
+      - "the policy migration was parsed: True"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "the kernel positive control, checkpoint.py mint sites: 1"
+      - "M11 constructs a GateEntry or GateRegistry: False"
+      - "the M11 migration constructs a GateEntry or GateRegistry: False"
+      - "the canonical gate ladder: ['AUTONOMOUS_WITHIN_CAPS', 'FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
+      - "the unregistered-class fallback: HUMAN_APPROVAL_REQUIRED"
+      - "a registry over an empty mapping registers nothing: 0"
+
+  # 8 ---------------------------------------------------------------------------------------
+  #
+  # THE OTHER HALF OF THE BOUNDARY, AND THE ONE THAT LEGITIMATELY MOVES. `eval/phase0/gate_scan.py`
+  # states the ADR-010 carrier boundary ONCE, and `test_phase0_errata_guards.py` asserts the
+  # DISCOVERED carrier population EQUALS it, by exact set equality. M11 carries the typed ladder in
+  # executable code BY CANON — a policy's whole content is a `gate_decision`, and a machine that
+  # could not NAME one could not hold one — so `policy.py` joins that boundary the way
+  # `pipeline_instance.py` joined it at `P6-CP-2`.
+  #
+  # ### THAT IS A WIDENING WITH A NARROWING ATTACHED, AND BOTH HALVES ARE MEASURED. Carrying is
+  # permitted here; MINTING is refused in oracle 7; and every carrier must still cite ADR-010, so a
+  # module cannot acquire policy runtime by writing a magic string. The two synthetic probes at the
+  # end are the discrimination the whole guard rests on: prose naming a gate is NOT a carrier, and
+  # executable code naming one IS — asserted rather than assumed, because if that discrimination
+  # ever inverted, this oracle's silence about every other module would mean nothing.
+  - name: "the ADR-010 carrier boundary is stated once, includes M11, and every carrier cites its authority"
+    command: >-
+      .venv/bin/python -c "import sys,re,pathlib; sys.path.insert(0,'.'); sys.path.insert(0,'src');
+      from eval.phase0 import gate_scan;
+      src=pathlib.Path('src/freight_recon');
+      tokens=('HUMAN_APPROVAL_REQUIRED','AUTONOMOUS_WITHIN_CAPS','PERMANENT_HUMAN_ASSERTION_REQUIRED');
+      texts=[(py.name, py.read_text(encoding='utf-8')) for py in sorted(src.rglob('*.py'))];
+      carriers=[n for n, t in texts if gate_scan.gate_token_sites(t, tokens)];
+      uncited=[n for n, t in texts if gate_scan.gate_token_sites(t, tokens) and not re.search('ADR-010', t)];
+      print('the stated ADR-010 carrier boundary:', sorted(gate_scan.GATE_RUNTIME_MODULES));
+      print('every stated carrier exists on disk:', sorted(gate_scan.require_gate_runtime_modules(src)) == sorted(gate_scan.GATE_RUNTIME_MODULES));
+      print('the discovered carrier population:', sorted(carriers));
+      print('the discovered population equals the stated boundary:', set(carriers) == set(gate_scan.GATE_RUNTIME_MODULES));
+      print('policy.py carries the typed ladder in executable code:', 'policy.py' in carriers);
+      print('carriers without an ADR-010 citation:', sorted(uncited));
+      print('prose alone is not a carrier:', not gate_scan.gate_token_sites(chr(35) + ' this machine mints no HUMAN_APPROVAL_REQUIRED decision', tokens));
+      print('executable code is a carrier:', bool(gate_scan.gate_token_sites('G = ' + chr(34) + 'HUMAN_APPROVAL_REQUIRED' + chr(34), tokens)))"
+    timeout_s: 300
+    contains:
+      - "every stated carrier exists on disk: True"
+      - "the discovered population equals the stated boundary: True"
+      - "policy.py carries the typed ladder in executable code: True"
+      - "carriers without an ADR-010 citation: []"
+      - "prose alone is not a carrier: True"
+      - "executable code is a carrier: True"
+
+  # 9 ---------------------------------------------------------------------------------------
+  #
+  # THE INVALIDATION SEAMS ALREADY BELONG TO M2, M3 AND M4. `PolicyVersionChanged` is a COORDINATION
+  # fact, not permission to bypass each consumer's own guard: M4 owns `AP-4p` (`void_on_policy`,
+  # cause `policy`), and P3's claim CAS owns the grant half by revalidating `policy_version` inside
+  # the claim transaction. M11 DRIVES both. Building a second one is how two invalidation mechanisms
+  # come to disagree about whether a stale grant is claimable.
+  - name: "the version-invalidation seams stay M2's, M3's and M4's, and M11 builds no second one"
+    command: >-
+      .venv/bin/python -c "import sys,ast,pathlib,inspect; sys.path.insert(0,'src');
+      import freight_recon.approval as ap, freight_recon.checkpoint as ck, freight_recon.policy as po;
+      print('M4 owns AP-4p void_on_policy:', hasattr(ap.ApprovalMachine if hasattr(ap, 'ApprovalMachine') else ap, 'void_on_policy') or 'void_on_policy' in inspect.getsource(ap));
+      print('M4 names the policy void cause:', ap.VOID_CAUSE_POLICY);
+      print('M4 reaches VOID_ON_DRIFT on a policy change:', 'VOID_ON_DRIFT' in inspect.getsource(ap));
+      cas=inspect.getsource(ck);
+      print('the claim CAS revalidates policy_version in its WHERE clause:', 'policy_version = ?' in cas);
+      print('the claim CAS names POLICY_CHANGED as a refusal cause:', 'POLICY_CHANGED' in cas);
+      src=pathlib.Path('src/freight_recon');
+      posrc=(src / 'policy.py').read_text(encoding='utf-8');
+      print('M11 defines its own void_on_policy:', 'def void_on_policy' in posrc);
+      print('M11 defines its own claim CAS:', 'def claim_grant_cas' in posrc or 'def _claim' in posrc);
+      print('M11 defines a second checkpoint:', '_mint_checkpoint_passed' in posrc or 'def _seven_steps' in posrc);
+      minters=sorted(p.name for p in src.rglob('*.py') if '_mint_checkpoint_passed' in p.read_text(encoding='utf-8'));
+      print('modules that mint a CheckpointPassed:', minters);
+      print('M11 reaches M4 and the kernel by import rather than by reimplementation:', ('approval' in posrc) and ('checkpoint' in posrc))"
+    timeout_s: 300
+    contains:
+      - "M4 owns AP-4p void_on_policy: True"
+      - "M4 names the policy void cause: policy"
+      - "M4 reaches VOID_ON_DRIFT on a policy change: True"
+      - "the claim CAS revalidates policy_version in its WHERE clause: True"
+      - "the claim CAS names POLICY_CHANGED as a refusal cause: True"
+      - "M11 defines its own void_on_policy: False"
+      - "M11 defines its own claim CAS: False"
+      - "M11 defines a second checkpoint: False"
+      - "modules that mint a CheckpointPassed: ['checkpoint.py']"
+      - "M11 reaches M4 and the kernel by import rather than by reimplementation: True"
+
+  # 10 --------------------------------------------------------------------------------------
+  #
+  # THE EVENT NAMES M11 ACTUALLY EMITS, READ FROM THE AST AND EXCLUDING DOCSTRINGS. A comment or
+  # docstring saying "`PolicyNarrowed` is deliberately NOT minted here" must not trip this, and a
+  # real string literal must. Both directions are proven on synthetic input at the end, because a
+  # scan that cannot tell prose from code is a scan whose verdict is not safe to believe — this is
+  # the exact defect the M10 post-push correction had to repair in three P0 guards.
+  - name: "M11 emits only registered event names, and mints no ninth F11 contract"
+    command: >-
+      .venv/bin/python -c "import ast,sys,json,pathlib; sys.path.insert(0,'src');
+      reg=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts']);
+      f11=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts'] if e.get('family') == 'F11');
+      po=pathlib.Path('src/freight_recon/policy.py'); tree=ast.parse(po.read_text(encoding='utf-8'));
+      docs=set(id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
+      lits=sorted(set(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs));
+      evish=sorted(s for s in lits if s and s[0].isupper() and s.isidentifier() and any(s.startswith(p) for p in ('Policy','Rule','Brake','Approval','Checkpoint','Effect','Pipeline','Exception','Compensation','Unauthorized','Illegal','Human')));
+      print('event-shaped literals M11 names in code:', evish);
+      print('the literal population is non-empty:', bool(evish));
+      print('unregistered event names M11 mints:', sorted(set(evish) - reg));
+      print('F11 names M11 reaches:', sorted(set(evish) & f11));
+      print('M11 names PolicyEvaluated, which is M2s:', 'PolicyEvaluated' in evish);
+      poison=chr(34)+chr(34)+chr(34)+'PolicyNarrowed is deliberately NOT minted here'+chr(34)+chr(34)+chr(34);
+      pt=ast.parse(poison); pd=set(id(n.value) for n in ast.walk(pt) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant));
+      print('a docstring naming an invented event is not a mint:', not [n for n in ast.walk(pt) if isinstance(n, ast.Constant) and id(n) not in pd]);
+      rt=ast.parse('EVENT = ' + chr(34) + 'PolicyNarrowed' + chr(34)); rd=set(id(n.value) for n in ast.walk(rt) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant));
+      print('a real string literal naming an invented event is a mint:', bool([n for n in ast.walk(rt) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in rd]))"
+    timeout_s: 300
+    contains:
+      - "the literal population is non-empty: True"
+      - "unregistered event names M11 mints: []"
+      - "M11 names PolicyEvaluated, which is M2s: False"
+      - "a docstring naming an invented event is not a mint: True"
+      - "a real string literal naming an invented event is a mint: True"
+
+  # 11 --------------------------------------------------------------------------------------
+  #
+  # SHIPS DARK, MEASURED OVER A DISCOVERED POPULATION RATHER THAN AN ENUMERATED FILE LIST. The
+  # channel-capable set is DISCOVERED by import of a network primitive, and the adapter set by module
+  # shape — never brand-named, so a new outbound path cannot escape by being called something this
+  # file never heard of. The population proof comes FIRST: a dark-surface scan that inspected nothing
+  # is vacuously green, and that is precisely the false green M9's build tripped and M10's first pass
+  # repeated.
+  #
+  # ### `smtplib` IS DELIBERATELY ABSENT FROM THE NETWORK SET, AND IT COSTS NOTHING. Product Driver's
+  # own command guard hard-blocks a `python -c` payload that names `smtplib` as an "external service
+  # client from interpreted code" — correctly, because it cannot tell a payload that WOULD send mail
+  # from one that merely reads import names. A permanent oracle the guard refuses is worse than a
+  # weaker one: the generator could not compose from it and, decisively, the INDEPENDENT REVIEWER's
+  # boundary would refuse to re-run it, so the ship-dark oracle would silently drop out of the very
+  # review it exists to inform. Measured rather than assumed: the discovered channel-capable
+  # population is the SAME 17 modules with and without it — `email_adapter.py` reaches the set
+  # through `ssl` anyway — and 17 is already two more than the set M10 shipped.
+  - name: "M11 ships dark: zero production importers, and no channel-capable module reaches it"
+    command: >-
+      .venv/bin/python -c "import ast,sys,pathlib; sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon');
+      trees=[(py, ast.parse(py.read_text(encoding='utf-8'))) for py in sorted(src.rglob('*.py'))];
+      print('production modules scanned:', len(trees));
+      print('the scanned population is non-empty:', bool(trees));
+      allimp=lambda t: set([n.module for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module] + [a.name for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names]);
+      own=lambda t: set([n.module.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module and (n.level or n.module.startswith('freight_recon'))] + [a.name.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names if a.name.startswith('freight_recon')] + [a.name for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.level and not n.module for a in n.names]);
+      print('production importers of policy:', sorted(p.name for p, t in trees if p.name != 'policy.py' and 'policy' in own(t)));
+      print('the stdlib email.policy false positive is excluded:', 'imap_mailbox.py' not in [p.name for p, t in trees if p.name != 'policy.py' and 'policy' in own(t)]);
+      net={'socket','http','urllib','ssl','asyncio','requests','httpx','imaplib'};
+      chan=sorted(p.name for p, t in trees if set(x.split('.')[0] for x in allimp(t)) & net);
+      print('channel-capable modules discovered:', len(chan));
+      print('the channel-capable population is non-empty:', bool(chan));
+      print('channel-capable modules that import policy:', sorted(p.name for p, t in trees if p.name in chan and 'policy' in own(t)));
+      po=dict(trees)[src / 'policy.py'];
+      print('M11 imports a network primitive:', sorted(set(x.split('.')[0] for x in allimp(po)) & net));
+      print('M11 imports a timer service:', 'event_timers' in own(po));
+      print('M11 imports the brake store:', 'brake' in own(po));
+      adapters=sorted(q.stem for q, _ in trees if q.stem.endswith('_adapter') or q.stem.endswith('_write'));
+      print('adapter-shaped modules discovered:', len(adapters));
+      print('the adapter population is non-empty:', bool(adapters));
+      print('M11 imports an adapter:', sorted(own(po) & set(adapters)));
+      outside=[q for q in sorted(pathlib.Path('.').rglob('*.py')) if 'freight_recon' not in str(q) and '.venv' not in str(q) and 'policy' in own(ast.parse(q.read_text(encoding='utf-8')))];
+      print('files outside the package that reach policy:', sorted(str(q) for q in outside))"
+    timeout_s: 600
+    contains:
+      - "the scanned population is non-empty: True"
+      - "production importers of policy: []"
+      - "the stdlib email.policy false positive is excluded: True"
+      - "the channel-capable population is non-empty: True"
+      - "channel-capable modules that import policy: []"
+      - "M11 imports a network primitive: []"
+      - "M11 imports a timer service: False"
+      - "M11 imports the brake store: False"
+      - "the adapter population is non-empty: True"
+      - "M11 imports an adapter: []"
+
+  # 12 --------------------------------------------------------------------------------------
+  #
+  # M12 AND M13 ARE NOT BUILT, AND "SHARED MACHINERY" IS THE DOOR THEY WOULD ARRIVE THROUGH. Policy
+  # and Rule share compilation and lifecycle concepts by canon (`entities/14-policy.md`'s own
+  # opening paragraph says so), which is exactly why a build session can produce a `rules` table
+  # while sincerely believing it is factoring M11 properly. The F12 and F13 contracts are REGISTERED
+  # already — they were registered before M11 — so their presence in the registry proves nothing and
+  # the oracle asks about the RUNTIME instead: no module, no table, no producer.
+  - name: "M12 Rule and M13 Brake are not built, and no autonomy-graduation engine exists"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib,json; sys.path.insert(0,'src');
+      from freight_recon.schema import CANONICAL_TABLES;
+      src=pathlib.Path('src/freight_recon'); names=sorted(p.name for p in src.rglob('*.py'));
+      print('canonical tables:', len(CANONICAL_TABLES));
+      print('the policies table is canonical:', 'policies' in CANONICAL_TABLES);
+      print('an M12 rules table exists:', 'rules' in CANONICAL_TABLES);
+      print('an M13 brake-lifecycle table exists:', any(t in CANONICAL_TABLES for t in ('brake_lifecycle','brake_versions','rule_versions')));
+      print('an M12 rule module exists:', any(n in names for n in ('rule.py','rules.py','rule_machine.py')));
+      print('an M13 brake lifecycle module exists:', any(n in names for n in ('brake_lifecycle.py','brake_machine.py')));
+      print('an M12 rule migration exists:', any(n.startswith('phase6_rule') for n in names));
+      print('an M13 brake migration exists:', any(n.startswith('phase6_brake') for n in names));
+      po=(src / 'policy.py').read_text(encoding='utf-8');
+      print('M11 defines a rule lifecycle:', any(s in po for s in ('class RuleState', 'def compile_rule', 'RULE_STATES')));
+      print('M11 defines an autonomy graduation engine:', any(s in po for s in ('def graduate', 'class Graduation', 'AUTONOMY_GRADUATION')));
+      print('M11 defines a brake lifecycle:', any(s in po for s in ('class BrakeState', 'def engage_brake', 'def release_brake')));
+      reg=json.load(open('src/freight_recon/event_contracts_data.json'))['contracts'];
+      f12=sorted(e['name'] for e in reg if e.get('family') == 'F12'); f13=sorted(e['name'] for e in reg if e.get('family') == 'F13');
+      print('F12 contracts registered but unproduced:', len(f12));
+      print('F13 contracts registered but unproduced:', len(f13));
+      print('M11 names an F12 contract in code:', any(n in po for n in f12));
+      print('M11 names an F13 contract in code:', any(n in po for n in f13))"
+    timeout_s: 300
+    contains:
+      - "the policies table is canonical: True"
+      - "an M12 rules table exists: False"
+      - "an M13 brake-lifecycle table exists: False"
+      - "an M12 rule module exists: False"
+      - "an M13 brake lifecycle module exists: False"
+      - "an M12 rule migration exists: False"
+      - "an M13 brake migration exists: False"
+      - "M11 defines a rule lifecycle: False"
+      - "M11 defines an autonomy graduation engine: False"
+      - "M11 defines a brake lifecycle: False"
+
+  # 13 --------------------------------------------------------------------------------------
+  #
+  # THE TENANT-FIRST PARTITION, WHICH `policies` JOINS. Every canonical table is accounted for and
+  # the partition is asserted mechanically on every CI run; the rehearsal finding this exists to
+  # prevent was exactly a table quietly missing from the written account. A tenantless policy table
+  # is a posture nobody's brokerage owns.
+  - name: "the policy table joins the tenant-first partition, and no tenantless table appeared"
+    command: >-
+      .venv/bin/python -c "import sys,sqlite3,tempfile,os; sys.path.insert(0,'src');
+      from freight_recon import schema;
+      from freight_recon.schema import create_canonical_schema, CANONICAL_TABLES;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      live=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)) if not r[0].startswith('sqlite_'));
+      print('canonical tables declared:', len(CANONICAL_TABLES));
+      print('tables actually created:', len(live));
+      print('every declared canonical table is created:', sorted(set(CANONICAL_TABLES) - set(live)) == []);
+      print('declared but not created:', sorted(set(CANONICAL_TABLES) - set(live)));
+      print('policies is declared canonical:', 'policies' in CANONICAL_TABLES);
+      print('policies is created:', 'policies' in live);
+      cols=lambda t: [r[1] for r in c.execute('pragma table_info(' + t + ')')];
+      pk=lambda t: [r[1] for r in sorted([r for r in c.execute('pragma table_info(' + t + ')') if r[5]], key=lambda r: r[5])];
+      exempt=set(getattr(schema, 'TENANT_EXEMPT_TABLES', ())) | set(getattr(schema, 'P3_EXEMPT_TABLES', ())) | set(getattr(schema, 'P5_EXEMPT_TABLES', ()));
+      tenantless=sorted(t for t in live if 'tenant' not in cols(t) and t not in exempt);
+      print('tenantless tables outside the recorded exemptions:', tenantless);
+      print('policies carries a tenant column:', 'tenant' in cols('policies'));
+      print('tenant is FIRST in the policy primary key:', (pk('policies') or [''])[0] == 'tenant');
+      print('the policy primary key:', pk('policies'));
+      fks=sorted(set(r[2] for r in c.execute('pragma foreign_key_list(policies)')));
+      print('the policy foreign-key referents:', fks);
+      comp=[r for r in c.execute('pragma foreign_key_list(policies)') if r[3] == 'tenant' or r[4] == 'tenant'];
+      print('at least one policy FK is tenant-consistent:', bool(comp))"
+    timeout_s: 300
+    contains:
+      - "every declared canonical table is created: True"
+      - "declared but not created: []"
+      - "policies is declared canonical: True"
+      - "policies is created: True"
+      - "tenantless tables outside the recorded exemptions: []"
+      - "policies carries a tenant column: True"
+      - "tenant is FIRST in the policy primary key: True"
+      - "at least one policy FK is tenant-consistent: True"
+
+  # 14 --------------------------------------------------------------------------------------
+  #
+  # THE AUTHORITY MODEL IS M1's, ALREADY LANDED, AND M11 MUST USE EXACTLY IT. `tenant_humans` has
+  # carried the two-member `authority_role` vocabulary since `P6-CP-1`, and `POLICY_OWNER` was put
+  # there FOR this machine. So V12's fail-closed default — one Policy Owner, one authority level —
+  # is already the landed shape, and M11 inventing a parallel "admin" or "superuser" authority is
+  # both a scope leak and the exact bypass ADR-010 §4 forbids.
+  - name: "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib,sqlite3,tempfile,os; sys.path.insert(0,'src');
+      from freight_recon.migrations.phase6_work_items import AUTHORITY_ROLES;
+      from freight_recon.schema import create_canonical_schema;
+      print('the canonical tenant authority roles:', sorted(AUTHORITY_ROLES));
+      print('authority role count:', len(AUTHORITY_ROLES));
+      print('POLICY_OWNER is a landed authority role:', 'POLICY_OWNER' in AUTHORITY_ROLES);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      refs=sorted(set(r[2] for r in c.execute('pragma foreign_key_list(policies)')));
+      print('policies references tenant_humans:', 'tenant_humans' in refs);
+      po=pathlib.Path('src/freight_recon/policy.py').read_text(encoding='utf-8');
+      print('M11 names the canonical Policy Owner role:', 'POLICY_OWNER' in po);
+      print('M11 invents an admin authority:', any(s in po for s in ('ADMIN', 'SUPERUSER', 'ROOT_USER', 'BYPASS')));
+      print('M11 defines its own authority role vocabulary:', 'AUTHORITY_ROLES =' in po);
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_policies.py').read_text(encoding='utf-8');
+      print('the M11 migration redefines the human authority table:', 'CREATE TABLE tenant_humans' in mig)"
+    timeout_s: 300
+    contains:
+      - "the canonical tenant authority roles: ['AUTHORIZED_HUMAN', 'POLICY_OWNER']"
+      - "authority role count: 2"
+      - "POLICY_OWNER is a landed authority role: True"
+      - "policies references tenant_humans: True"
+      - "M11 names the canonical Policy Owner role: True"
+      - "M11 invents an admin authority: False"
+      - "M11 defines its own authority role vocabulary: False"
+      - "the M11 migration redefines the human authority table: False"
+
+  # 15 --------------------------------------------------------------------------------------
+  #
+  # EXPIRY IS THE ONE PLACE A CLOCK COULD BROADEN AUTHORITY, SO IT IS THE ONE PLACE THE COLUMN
+  # ITSELF HAS TO BE CONSTRAINED. `expires_at` is optional and NARROWING-ONLY: a broadening policy
+  # carrying an expiry is automatic broadening with a delay, which is the whole reason the rule
+  # exists. The direction has to be a persisted, checkable fact on the row — not something the
+  # machine promises to remember.
+  - name: "only a narrowing policy may carry an expiry, and the direction is a persisted fact"
+    command: >-
+      .venv/bin/python -c "import sys,sqlite3,tempfile,os,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=[r[1] for r in c.execute('pragma table_info(policies)')];
+      ddl=(lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', ('policies',)).fetchone());
+      print('the policy column set:', sorted(cols));
+      print('an expires_at column exists:', 'expires_at' in cols);
+      print('expires_at is optional:', 'expires_at' in [r[1] for r in c.execute('pragma table_info(policies)') if not r[3]]);
+      direction=[x for x in cols if 'direction' in x.lower() or 'narrow' in x.lower()];
+      print('the narrowing direction is a persisted column:', bool(direction));
+      print('the direction column(s):', sorted(direction));
+      print('a CHECK constrains expiry to the narrowing direction:', bool(re.search('CHECK[^)]*expires_at', ddl, re.S | re.I)));
+      print('a superseded_by column exists:', 'superseded_by' in cols);
+      print('a revoked_reason column exists:', 'revoked_reason' in cols);
+      print('an approval_id column exists:', 'approval_id' in cols);
+      print('an effective_from column exists:', 'effective_from' in cols);
+      print('an activated_by column exists:', 'activated_by' in cols);
+      print('an authored_by column exists:', 'authored_by' in cols);
+      print('a predicate column exists:', any(x in cols for x in ('predicate','predicate_ref')));
+      print('a caps column exists:', 'caps' in cols)"
+    timeout_s: 300
+    contains:
+      - "an expires_at column exists: True"
+      - "expires_at is optional: True"
+      - "the narrowing direction is a persisted column: True"
+      - "a CHECK constrains expiry to the narrowing direction: True"
+      - "a superseded_by column exists: True"
+      - "a revoked_reason column exists: True"
+      - "an approval_id column exists: True"
+      - "an effective_from column exists: True"
+      - "an activated_by column exists: True"
+      - "an authored_by column exists: True"
+      - "a predicate column exists: True"
+      - "a caps column exists: True"
+
+  # 16 --------------------------------------------------------------------------------------
+  #
+  # THE M9 SEAM PO-7 ESCALATES THROUGH, EXERCISED WITHOUT REBUILDING M9. `policy` has been a member
+  # of M9's closed `source_kind` vocabulary since `P6-CP-9` — carried deliberately WITHOUT a foreign
+  # key, in `SOURCE_KINDS_WITHOUT_TABLE`, and recorded as `M9-AQ-3`, "the kinds whose table does not
+  # exist today". M11 lands that table. ### WHETHER `policy` NOW MOVES INTO THE FK-BACKED
+  # `SOURCE_KIND_TABLE` IS AN OPEN AUTHORITY QUESTION AND M11 DOES NOT SETTLE IT: CURRENT.md forbids
+  # rebuilding M1-M10, so M11 raises its expiry Exception through M9's landed entry point and edits
+  # nothing of M9's. This oracle measures BOTH — that the seam is used, and that M9 is untouched.
+  - name: "M11 raises its expiry Exception through M9's landed seam and edits no part of M9"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib; sys.path.insert(0,'src');
+      from freight_recon.migrations.phase6_exceptions import SOURCE_KINDS, SOURCE_KIND_TABLE, SOURCE_KINDS_WITHOUT_TABLE;
+      import freight_recon.exception as m9;
+      print('policy is a canonical M9 exception source:', 'policy' in SOURCE_KINDS);
+      print('policy is FK-backed in M9 today:', 'policy' in SOURCE_KIND_TABLE);
+      print('policy is carried as a recorded-only kind:', 'policy' in SOURCE_KINDS_WITHOUT_TABLE);
+      print('M9 exposes a raise entry point:', hasattr(m9.M9Machine, 'raise_exception'));
+      print('the six F9 contracts M9 mints:', sorted(m9.PRODUCED_CONTRACTS));
+      po=pathlib.Path('src/freight_recon/policy.py').read_text(encoding='utf-8');
+      print('M11 reaches M9 by import:', 'exception' in po);
+      print('M11 writes the exceptions table directly:', 'insert into exceptions' in po.lower());
+      print('M11 defines an M9 state vocabulary:', any(s in po for s in ('EXCEPTION_STATES', 'class EcState', 'ACKNOWLEDGED')));
+      print('M11 mints an F9 contract name:', sorted(n for n in m9.PRODUCED_CONTRACTS if n in po))"
+    timeout_s: 300
+    contains:
+      - "policy is a canonical M9 exception source: True"
+      - "M9 exposes a raise entry point: True"
+      - "M11 reaches M9 by import: True"
+      - "M11 writes the exceptions table directly: False"
+      - "M11 defines an M9 state vocabulary: False"
+      - "M11 mints an F9 contract name: []"
+
+  # 17 --------------------------------------------------------------------------------------
+  #
+  # THE PRODUCT CEILING COMPARISON, STRUCTURALLY. "A tenant policy may only NARROW the product
+  # ceiling" is the load-bearing sentence of the whole unit, and the tempting implementation is a
+  # string comparison or an alphabetical ordering — which would let `AUTONOMOUS_WITHIN_CAPS` sort
+  # below `HUMAN_APPROVAL_REQUIRED` and quietly call broadening a narrowing. The ordering has to be
+  # a declared, total, canonical relation over the four members, and it has to be the one ADR-010
+  # §3.1 states: `AUTONOMOUS_WITHIN_CAPS` is the broadest, `FORBIDDEN` the narrowest, and the two
+  # human gates in between are NOT interchangeable (`PERMANENT_HUMAN_ASSERTION_REQUIRED` is a
+  # permanent truth and cannot graduate; `HUMAN_APPROVAL_REQUIRED` is current policy and can).
+  - name: "the product-ceiling comparison is a declared total order over the four gate members, not a string compare"
+    command: >-
+      .venv/bin/python -c "import sys,inspect,pathlib; sys.path.insert(0,'src');
+      import freight_recon.policy as po; import freight_recon.checkpoint as ck;
+      src=inspect.getsource(po);
+      ordering=[n for n in dir(po) if 'ORDER' in n.upper() or 'LADDER' in n.upper() or 'RANK' in n.upper() or 'CEILING' in n.upper()];
+      print('a declared gate ordering exists:', bool(ordering));
+      print('the declared ordering symbol(s):', sorted(ordering));
+      obj=getattr(po, sorted(ordering)[0]) if ordering else None;
+      members=set(m.value for m in ck.GateDecision);
+      covered=set(getattr(x, 'value', x) for x in (obj or ()));
+      print('the ordering is total over the four canonical members:', covered == members);
+      print('the ordering covers:', sorted(covered));
+      narrowing=[n for n in dir(po) if 'narrow' in n.lower() or 'broaden' in n.lower()];
+      print('a narrowing predicate exists:', bool(narrowing));
+      print('the narrowing predicate(s):', sorted(narrowing));
+      print('the comparison is not a raw string compare:', not any(s in src for s in ('gate_decision <', 'gate_decision >', 'str(gate) <', 'sorted([gate')));
+      print('ADR-010 is cited as the ordering authority:', 'ADR-010' in src);
+      print('the two human gates are distinguished:', ('PERMANENT_HUMAN_ASSERTION_REQUIRED' in src) and ('HUMAN_APPROVAL_REQUIRED' in src))"
+    timeout_s: 300
+    contains:
+      - "a declared gate ordering exists: True"
+      - "the ordering is total over the four canonical members: True"
+      - "a narrowing predicate exists: True"
+      - "the comparison is not a raw string compare: True"
+      - "ADR-010 is cited as the ordering authority: True"
+      - "the two human gates are distinguished: True"
+
+  # 18 --------------------------------------------------------------------------------------
+  #
+  # THE P6 TRANSITION ARITHMETIC, RE-DERIVED BY PARSING THE MACHINE FILES RATHER THAN BY CARRYING A
+  # FIGURE. Thirteen machine files, 134 rows. Before M11: 113 written and landed, 21 remaining
+  # (M11's 7 + M12's 9 + M13's 5). After M11: 120 written, 14 remaining. A carried number is how a
+  # phase comes to believe it is further along than it is.
+  - name: "the P6 transition arithmetic is re-derived from the machine files, and M11 contributes exactly seven"
+    command: >-
+      .venv/bin/python -c "import re,pathlib;
+      d=pathlib.Path('docs/specifications/state-machines');
+      files=sorted(p for p in d.glob('*.machine.md'));
+      print('machine files discovered:', len(files));
+      rows=lambda p: len([l for l in p.read_text(encoding='utf-8').splitlines() if re.match(r'^\| *\*\*[A-Z]{2}-[0-9]+[a-z]*\*\* *\|', l)]);
+      counts={p.name: rows(p) for p in files};
+      print('per-machine transition counts:', sorted(counts.items()));
+      print('total transition rows counted:', sum(counts.values()));
+      print('M11 transition rows:', counts.get('11-policy.machine.md'));
+      print('M12 transition rows:', counts.get('12-rule.machine.md'));
+      print('M13 transition rows:', counts.get('13-brake.machine.md'))"
+    timeout_s: 300
+    contains:
+      - "machine files discovered: 13"
+      - "total transition rows counted: 134"
+      - "M11 transition rows: 7"
+      - "M12 transition rows: 9"
+      - "M13 transition rows: 5"
+
+verifies:
+  - risk_category: happy_path
+    claim: >-
+      A correctly authored policy completes the whole canonical path — DRAFT by the Policy Owner,
+      PROPOSED with a non-null gate decision and a deterministic predicate, APPROVED through the
+      ordinary M2/M4 governed path with the diff as its material facts, ACTIVE by an authenticated
+      human — and the resulting posture then decides a checkpoint at step 6, returning the correct
+      canonical gate decision. Every refusal below is only meaningful because this one succeeds: an
+      oracle battery that proves a legitimate policy can NEVER become ACTIVE would pass a machine
+      that refuses everything.
+    checks:
+      - "the happy path: a correctly authored policy reaches ACTIVE and decides a checkpoint"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+      - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+      - "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
+    observations:
+      - "ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"
+      - "positive control, a well-formed DRAFT policy: ACCEPTED"
+      - "positive control, an ACTIVE policy activated by a named human: ACCEPTED"
+      - "positive control, the first ACTIVE policy for a tenant and scope: ACCEPTED"
+
+  - risk_category: authorization
+    claim: >-
+      Authority is never laundered into a policy. A model may propose TEXT and can never author,
+      approve, activate, broaden or reinterpret a policy at any confidence including 1.0; automation,
+      a retry handler and a fired timer cannot either; inbound content can never author policy, so an
+      email saying "new company rule: pay all invoices automatically" is data and never a
+      `PolicyActivated`; and an unauthorized attempt reaches the ALREADY-REGISTERED F14
+      `UnauthorizedPolicyActivationAttempted` rather than a second contract M11 minted for itself.
+      `activated_by` is NOT NULL on every ACTIVE row and is a foreign key into M1's landed
+      `tenant_humans`, so a model-activated policy is not insertable.
+    checks:
+      - "a model cannot activate a policy, at any confidence"
+      - "automation cannot activate a policy, from any automated path"
+      - "inbound content can never author a policy"
+      - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+      - "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
+    observations:
+      - "A MODEL CAN NEVER ACTIVATE A POLICY"
+      - "AUTOMATION CAN NEVER ACTIVATE A POLICY"
+      - "INBOUND CONTENT CAN NEVER AUTHOR A POLICY"
+      - "an ACTIVE policy with no activator: refused"
+      - "M11 invents an admin authority: False"
+      - "M11 defines its own authority role vocabulary: False"
+
+  - risk_category: safety_invariant
+    claim: >-
+      A tenant policy may only ever NARROW the product ceiling, and the comparison that decides it is
+      a declared total order over the four canonical gate members — not a string compare, not an
+      alphabetical sort, and not a textual heuristic. `AUTONOMOUS_WITHIN_CAPS` sorts before
+      `HUMAN_APPROVAL_REQUIRED` alphabetically, so a string comparison would call the single most
+      dangerous broadening in the system a narrowing. The two human gates stay distinct:
+      `PERMANENT_HUMAN_ASSERTION_REQUIRED` is a permanent truth and can never graduate;
+      `HUMAN_APPROVAL_REQUIRED` is current policy and can. Automation may only ever move authority in
+      the safe direction, and nothing — no signal, no confidence, no clock — broadens automatically.
+    checks:
+      - "a tenant policy that broadens the product ceiling is refused"
+      - "the product-ceiling comparison is a declared total order over the four gate members, not a string compare"
+      - "a broadening revocation requires the Policy Owner; a narrowing one is immediate"
+      - "a fired timer never broadens authority"
+      - "every canonical gate member is exercised across the four-member ladder"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "A TENANT POLICY MAY ONLY EVER NARROW THE PRODUCT CEILING"
+      - "AUTOMATION MAY ONLY EVER MOVE AUTHORITY IN THE SAFE DIRECTION"
+      - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+      - "the ordering is total over the four canonical members: True"
+      - "the comparison is not a raw string compare: True"
+      - "the two human gates are distinguished: True"
+
+  - risk_category: missing_data
+    claim: >-
+      F-20. A gate expressible as an absence is not a gate. `gate_decision` is NOT NULL on every
+      policy row and constrained to the four canonical members, so forgetting to classify a policy
+      cannot make it ungated; an action class absent from the registry resolves to the kernel's
+      fail-closed `HUMAN_APPROVAL_REQUIRED` default rather than to nothing; and an ACTIVE policy with
+      a null gate decision is structurally impossible rather than merely undesirable.
+    checks:
+      - "the seven canonical policy states are a database constraint, and there is no eighth"
+      - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+      - "the checkpoint kernel is still the only thing that MINTS a gate decision, and M11 mints none"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "A GATE EXPRESSIBLE AS AN ABSENCE IS NOT A GATE"
+      - "gate_decision is NOT NULL: True"
+      - "a policy with a null gate decision: refused"
+      - "the unregistered-class fallback: HUMAN_APPROVAL_REQUIRED"
+
+  - risk_category: malformed_input
+    claim: >-
+      The vocabularies are closed and enforced by the database, not by convention. The seven
+      canonical states are a CHECK with no eighth — the brief's "narrowed", "suspended" and "invalid"
+      map to an ACTIVE policy with a tighter posture, to REVOKED, and to a draft that never activates,
+      and each is refused as a state; the four gate members are a CHECK with no fifth; and an invented
+      member of either vocabulary is refused by the live database on insertion rather than accepted
+      and normalised later.
+    checks:
+      - "the seven canonical policy states are a database constraint, and there is no eighth"
+      - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+    observations:
+      - "canonical seven: ['ACTIVE', 'APPROVED', 'DRAFT', 'EXPIRED', 'PROPOSED', 'REVOKED', 'SUPERSEDED']"
+      - "state count: 7"
+      - "forbidden states present: []"
+      - "gate member count: 4"
+      - "invented gate members present: []"
+      - "a NARROWED lifecycle state: refused"
+      - "a SUSPENDED lifecycle state: refused"
+      - "an INVALID lifecycle state: refused"
+      - "an invented gate decision: refused"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      M-49 / GR-8 / S3. A policy predicate may reference only deterministic, modelled, non-inferred
+      inputs. A predicate touching a `MODEL_INFERRED` field FAILS TO COMPILE — at confidence 1.0, it
+      still fails — and `confidence` is structurally absent from the evaluator's input type, so a
+      guard cannot read it even by trying. This is the rule the whole architecture rests on: if a
+      policy could branch on a guess, every guarantee above it would be conditioned on a model's mood.
+      Not a string blacklist: the refusal is typed, and every other provenance class is exercised so
+      the refusal is shown to be specific rather than a machine that refuses all predicates.
+    checks:
+      - "a predicate on MODEL_INFERRED fails to compile at confidence 1.0"
+      - "the evaluator input type has no confidence field to read"
+      - "every provenance class is exercised, and only MODEL_INFERRED is structurally refused"
+    observations:
+      - "A POLICY MAY NEVER BRANCH ON A GUESS"
+      - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+
+  - risk_category: approval_required
+    claim: >-
+      A policy change is ITSELF an action class with `HUMAN_APPROVAL_REQUIRED`, running through the
+      ordinary M2 pipeline with the policy DIFF as its material facts. There is no admin path, no
+      config-file activation, no migration-time activation and no superuser command line.
+      `PolicyApproved` is the "no admin path" EVIDENCE — it is consequential, it pins its decision
+      context, and it carries the `diff_fingerprint` — and it does NOT activate: PO-4 and an
+      authenticated human do that. M11 builds no second approval system and does not modify M4.
+    checks:
+      - "a policy change runs through the ordinary governed path, and there is no admin path"
+      - "PolicyApproved proves the change was human-gated, and does not activate"
+      - "the F11 family is exactly eight registered contracts, with their canonical flags"
+      - "the version-invalidation seams stay M2's, M3's and M4's, and M11 builds no second one"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "A POLICY CHANGE IS ITSELF A GATED ACTION, AND THERE IS NO ADMIN PATH"
+      - "PolicyApproved IS THE NO-ADMIN-PATH EVIDENCE"
+      - "PolicyApproved DOES NOT ACTIVATE"
+      - "PolicyApproved is consequential: True"
+      - "PolicyApproved required fields: ['approval_id', 'approved_by', 'diff_fingerprint', 'evidence_refs', 'policy_version']"
+
+  - risk_category: stale_state
+    claim: >-
+      A policy change binds in-flight work, and the mechanisms that make it bind ALREADY BELONG to
+      M2, M3 and M4. `PolicyVersionChanged` is a coordination fact, not permission to bypass each
+      consumer's own guard: M4's landed `AP-4p` voids a GRANTED approval with cause `policy`
+      (`VOID_ON_DRIFT`), and P3's claim CAS refuses a grant whose bound `policy_version` is no longer
+      current, naming `POLICY_CHANGED`. M11 drives both and builds neither — two invalidation
+      mechanisms would eventually disagree about whether a stale grant is claimable, and the answer
+      would be decided by whichever ran first.
+    checks:
+      - "a policy change voids an in-flight approval through M4's landed seam"
+      - "a grant minted under the old version cannot be claimed after a policy change"
+      - "the version-invalidation seams stay M2's, M3's and M4's, and M11 builds no second one"
+      - "the checkpoint kernel, the claim CAS and step order are unchanged by M11"
+    observations:
+      - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
+      - "A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"
+      - "the claim CAS revalidates policy_version in its WHERE clause: True"
+      - "the claim CAS names POLICY_CHANGED as a refusal cause: True"
+      - "M11 defines its own void_on_policy: False"
+      - "M11 defines its own claim CAS: False"
+
+  - risk_category: cross_tenant
+    claim: >-
+      Policy is tenant-owned. `tenant` is FIRST in the primary key and first in every index; the
+      active-scope uniqueness is `(tenant, scope)` so the SAME scope may be ACTIVE in two brokerages
+      without collision; `policy_version` uniqueness is tenant-LOCAL so two tenants may both hold
+      version 1; and the `authored_by` / `activated_by` foreign keys are tenant-consistent, so a
+      human from another brokerage can neither author nor activate. A global uniqueness that
+      accidentally couples tenants is the cross-tenant defect wearing a safety constraint's clothes.
+    checks:
+      - "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
+      - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
+      - "the policy table joins the tenant-first partition, and no tenantless table appeared"
+    observations:
+      - "every policy index is tenant-first: True"
+      - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
+      - "an author from another tenant: refused"
+      - "an activator from another tenant: refused"
+      - "tenant is FIRST in the policy primary key: True"
+      - "at least one policy FK is tenant-consistent: True"
+      - "tenantless tables outside the recorded exemptions: []"
+
+  - risk_category: concurrency
+    claim: >-
+      `UNIQUE (tenant, scope) WHERE state = 'ACTIVE'` plus OCC. Two writers racing to activate for
+      one tenant and scope produce exactly ONE active policy, and the loser is refused rather than
+      silently overwriting — tested as a RACE with real concurrency, not only as a serial duplicate
+      insertion, because a serial duplicate proves the index exists and a race proves it holds. A
+      state change that does not advance the version is refused outright.
+    checks:
+      - "concurrent activation for one tenant and scope yields exactly one ACTIVE policy"
+      - "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
+    observations:
+      - "a SECOND ACTIVE policy for the same tenant and scope: refused by"
+      - "the OCC guard on a state change that does not advance the version: refused by"
+      - "T_A ACTIVE rows: 1"
+      - "T_B ACTIVE rows: 1"
+
+  - risk_category: idempotency
+    claim: >-
+      GR-4 / `[C-3]`. Re-activating an already-active version is a NO-OP, not a second activation, a
+      second `PolicyVersionChanged`, or a version bump. A coordination event that fires twice for one
+      fact would void in-flight approvals a second time and make an idempotent redelivery destructive.
+    checks:
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+      - "the M11 acceptance battery"
+    observations:
+      - "behaviours as specified, 0 wrong"
+
+  - risk_category: repeated_request
+    claim: >-
+      `policy_version` is monotonic per tenant and never reused, and every historical version is
+      retained permanently. Supersession does not erase, edit in place, or make a policy retroactive:
+      an effect is judged by the version in force AT ITS CHECKPOINT, and the superseded row survives
+      precisely so it can still explain the decisions made under it. There is no deletion path.
+    checks:
+      - "the superseded version is retained and still explains its historical decisions"
+      - "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+      - "A POLICY IS NEVER RETROACTIVE"
+      - "a reused policy_version inside one tenant: refused by"
+      - "a DELETE against a policy row: refused by"
+      - "positive control, a SUPERSEDED policy for the same scope is retained beside it: ACCEPTED"
+
+  - risk_category: service_unavailable
+    claim: >-
+      FAIL CLOSED. The policy engine unavailable at checkpoint means no policy decision, which means
+      no witness, which means no effect. A decision that cannot be REPRODUCED makes the grant
+      unclaimable. There is no "allow on error" default anywhere in the path — an allow-on-error
+      default is how the money fence dies, and it dies quietly, at exactly the moment the system is
+      least able to tell anyone.
+    checks:
+      - "the policy engine unavailable at checkpoint yields no witness and no effect"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "NO POLICY DECISION MEANS NO WITNESS AND NO EFFECT"
+      - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+
+  - risk_category: boundary
+    claim: >-
+      M-50. Given the same inputs and the same `policy_version`, evaluation produces a byte-identical
+      `PolicyDecision`, with a mandatory `reason` on PERMIT as well as on DENY. No wall clock, no
+      randomness, no model call, no external mutable state and no unordered iteration may move the
+      answer. A system that can block but not explain has merely relocated the owner's problem.
+    checks:
+      - "evaluation is byte-identical reproducible under the same version and inputs"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "EVALUATION IS BYTE-IDENTICAL REPRODUCIBLE"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      A narrowing policy may carry an expiry; a broadening one may never. Its expiry is itself a
+      BROADENING event, so a fired timer raises the canonical human-confirmation Exception through
+      M9's landed seam rather than restoring authority on its own — otherwise "temporarily tighten"
+      becomes "automatically loosen later, when nobody is watching". The direction is a persisted,
+      checkable column and the constraint is a database CHECK, not a promise the machine makes to
+      itself, and there is no temporary-tighten-then-automatic-revert path anywhere.
+    checks:
+      - "a narrowing policy's expiry raises the M9 human-confirmation Exception and broadens nothing"
+      - "a fired timer never broadens authority"
+      - "only a narrowing policy may carry an expiry, and the direction is a persisted fact"
+      - "M11 raises its expiry Exception through M9's landed seam and edits no part of M9"
+    observations:
+      - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+      - "the narrowing direction is a persisted column: True"
+      - "a CHECK constrains expiry to the narrowing direction: True"
+      - "M11 writes the exceptions table directly: False"
+
+  - risk_category: retry_safety
+    claim: >-
+      Never a model, never automation, never a RETRY HANDLER activates or broadens policy. A retry
+      path is the one automated caller that most plausibly looks like a human's intent replayed, and
+      it is named explicitly in the authority for exactly that reason. Revocation direction is
+      likewise not symmetric: narrowing may be immediate and may be automated; broadening requires
+      the named Policy Owner.
+    checks:
+      - "a broadening revocation requires the Policy Owner; a narrowing one is immediate"
+      - "automation cannot activate a policy, from any automated path"
+    observations:
+      - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+      - "AUTOMATION CAN NEVER ACTIVATE A POLICY"
+
+  - risk_category: restart_recovery
+    claim: >-
+      GR-11 / K-3. Replay reconstructs policy history and the decisions made under each version, and
+      creates NO authority: it does not re-activate a policy, does not mint a witness, does not claim
+      a grant, and produces no external effect. A replay that could re-activate is a replay that can
+      grant authority nobody granted, from a log.
+    checks:
+      - "replay reconstructs policy history and creates no authority"
+      - "the event registry and replay isolation are unchanged by M11"
+    observations:
+      - "REPLAY CREATES NO AUTHORITY"
+
+  - risk_category: persistence_failure
+    claim: >-
+      GR-2. The state change and its events are ONE commit. There is no ACTIVE row without its
+      `PolicyActivated` and `PolicyVersionChanged`, no APPROVED row without its `PolicyApproved`, and
+      a persistence failure leaves no half-activated policy. An event without its state change is a
+      lie about authority; a state change without its event is authority nobody can audit.
+    checks:
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+      - "the M11 acceptance battery"
+      - "an upgraded database and a fresh database carry the identical policy layer"
+    observations:
+      - "behaviours as specified, 0 wrong"
+      - "the upgraded policy layer is identical to the fresh one: True"
+      - "upgraded database readiness problems: []"
+
+  - risk_category: regression
+    claim: >-
+      M11 integrates with the checkpoint rather than duplicating it, and touches no landed machine.
+      `checkpoint.py` remains the SOLE gate minter — a gate decision comes into existence only by
+      constructing a `GateEntry` or a `GateRegistry`, and M11 constructs neither — while the ADR-010
+      CARRIER boundary legitimately widens to include M11, exactly as `pipeline_instance.py` widened
+      it at `P6-CP-2`: a widening with a narrowing attached, and every carrier still cites ADR-010.
+      M1 through M10 stay green, the F11 registry keeps exactly eight contracts with no ninth, and
+      the P6 transition arithmetic is re-derived from the machine files rather than carried.
+    checks:
+      - "the checkpoint kernel is still the only thing that MINTS a gate decision, and M11 mints none"
+      - "the ADR-010 carrier boundary is stated once, includes M11, and every carrier cites its authority"
+      - "the ADR-010 gate boundary still confines minting to the checkpoint kernel"
+      - "M1, M2, M3 and M4 stay green beside M11"
+      - "M9 and M10, the machines M11 consumes and must not edit, stay green"
+      - "M11 emits only registered event names, and mints no ninth F11 contract"
+      - "the P6 transition arithmetic is re-derived from the machine files, and M11 contributes exactly seven"
+      - "the tenant-first posture and bootstrap hermeticity survive a new canonical table"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+      - "the F11 family is exactly eight registered contracts, with their canonical flags"
+    observations:
+      - "M11 MINTS NO GATE DECISION"
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M11 BUILDS NO SECOND CHECKPOINT"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "M11 constructs a GateEntry or GateRegistry: False"
+      - "the discovered population equals the stated boundary: True"
+      - "carriers without an ADR-010 citation: []"
+      - "unregistered event names M11 mints: []"
+      - "F11 contract count: 8"
+      - "total transition rows counted: 134"
+      - "M11 transition rows: 7"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M10 COMPENSATION MACHINE IS UNCHANGED"
+
+  - risk_category: partial_failure
+    claim: >-
+      Precedence is deterministic and a policy is never the top of the ladder: Constraint > Permanent
+      Product Truth > Brake > Product Policy > Tenant Policy > Rules > Workflow default. A policy
+      never overrides a Permanent Product Truth and never overrides a brake denial, however urgent
+      the policy claims to be — and M11 exercises the LANDED P3 brake seam rather than pulling M13
+      into scope. A brake denies regardless of what policy permits.
+    checks:
+      - "a policy never overrides a permanent product truth"
+      - "a brake denies regardless of what policy permits, urgent or not"
+      - "M11 ships dark: zero production importers, and no channel-capable module reaches it"
+    observations:
+      - "A POLICY NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+      - "A POLICY NEVER OVERRIDES A BRAKE DENIAL"
+      - "M11 imports the brake store: False"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The F11 event contracts are exact and the PO-1 / PO-2 naming collision stays RESOLVED.
+      `PolicyProposed` is PO-1's — a draft was AUTHORED — and `PolicySubmitted` is PO-2's — a draft
+      was PUT FORWARD for approval with a non-null gate decision. They are separate historical facts
+      and collapsing them would rewrite the meaning of every historical `PolicyProposed`, which is why
+      the 2026-08-12 amendment MINTED the second rather than re-attributing the first. F11 ordering is
+      STRICT per aggregate, which is ORDER and never CONTIGUITY.
+    checks:
+      - "PolicySubmitted is a separate historical fact from PolicyProposed"
+      - "the F11 family is exactly eight registered contracts, with their canonical flags"
+      - "M11 emits only registered event names, and mints no ninth F11 contract"
+    observations:
+      - "PolicySubmitted IS NOT A RENAME OF PolicyProposed"
+      - "PolicyProposed producer: ['PO-1']"
+      - "PolicySubmitted producer: ['PO-2']"
+      - "every F11 contract is strict_order: True"
+      - "M11 names PolicyEvaluated, which is M2s: False"
+
+  - risk_category: dependency_failure
+    claim: >-
+      M11 ships dark and grows no reachability. Zero production importers, no channel-capable module
+      in its import closure, no network primitive, no timer service, no adapter, no production policy
+      editor and no admin surface. And the units after it are NOT built: no M12 Rule lifecycle, no
+      M13 Brake lifecycle, no autonomy-graduation engine, no `rules` table. Policy and Rule share
+      compilation concepts by canon, which is exactly why "shared machinery" is the door M12 would
+      arrive through — so the absence is measured over a discovered population rather than asserted.
+      V11 (graduation thresholds) and V12 (per-tenant authorities) stay OPEN at their fail-closed
+      defaults: nothing graduates, one Policy Owner, one authority level.
+    checks:
+      - "M11 ships dark, and M12 and M13 do not exist"
+      - "M11 ships dark: zero production importers, and no channel-capable module reaches it"
+      - "M12 Rule and M13 Brake are not built, and no autonomy-graduation engine exists"
+      - "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
+      - "drive the Policy machine through a brokerage narrative, and attack it"
+    observations:
+      - "M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "THE M12 RULE MACHINE IS NOT BUILT"
+      - "THE M13 BRAKE MACHINE IS NOT BUILT"
+      - "NOTHING GRADUATES"
+      - "production importers of policy: []"
+      - "channel-capable modules that import policy: []"
+      - "an M12 rules table exists: False"
+      - "M11 defines an autonomy graduation engine: False"
+      - "the canonical tenant authority roles: ['AUTHORIZED_HUMAN', 'POLICY_OWNER']"
+
+expect_visible:
+  # ---- the unit's own sentences, from the narrative run
+  - "behaviours as specified, 0 wrong"
+  - "A POLICY IS A VALUE THE OWNER CAN SEE, NOT A SENTENCE IN A PROMPT"
+  - "A TENANT POLICY MAY ONLY EVER NARROW THE PRODUCT CEILING"
+  - "AUTOMATION MAY ONLY EVER MOVE AUTHORITY IN THE SAFE DIRECTION"
+  - "A GATE EXPRESSIBLE AS AN ABSENCE IS NOT A GATE"
+  - "A POLICY MAY NEVER BRANCH ON A GUESS"
+  - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+  - "A MODEL CAN NEVER ACTIVATE A POLICY"
+  - "AUTOMATION CAN NEVER ACTIVATE A POLICY"
+  - "INBOUND CONTENT CAN NEVER AUTHOR A POLICY"
+  - "A POLICY CHANGE IS ITSELF A GATED ACTION, AND THERE IS NO ADMIN PATH"
+  - "PolicyApproved IS THE NO-ADMIN-PATH EVIDENCE"
+  - "PolicySubmitted IS NOT A RENAME OF PolicyProposed"
+  - "PolicyApproved DOES NOT ACTIVATE"
+  - "A POLICY IS NEVER RETROACTIVE"
+  - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+  - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+  - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+  - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+  - "EVALUATION IS BYTE-IDENTICAL REPRODUCIBLE"
+  - "NO POLICY DECISION MEANS NO WITNESS AND NO EFFECT"
+  - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+  - "M11 MINTS NO GATE DECISION"
+  - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+  - "M11 BUILDS NO SECOND CHECKPOINT"
+  - "A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"
+  - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
+  - "A POLICY NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+  - "A POLICY NEVER OVERRIDES A BRAKE DENIAL"
+  - "REPLAY CREATES NO AUTHORITY"
+  - "M11 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+  - "THE M12 RULE MACHINE IS NOT BUILT"
+  - "THE M13 BRAKE MACHINE IS NOT BUILT"
+  - "NOTHING GRADUATES"
+  - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+  - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+  - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+  - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+  - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+  - "THE M10 COMPENSATION MACHINE IS UNCHANGED"
+  - "ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"
+  # ---- the database, measured
+  - "problems: []"
+  - "policies"
+  - "tenant_humans"
+  - "the state vocabulary is a CHECK: True"
+  - "canonical seven: ['ACTIVE', 'APPROVED', 'DRAFT', 'EXPIRED', 'PROPOSED', 'REVOKED', 'SUPERSEDED']"
+  - "state count: 7"
+  - "forbidden states present: []"
+  - "the gate vocabulary is a CHECK: True"
+  - "canonical four: ['AUTONOMOUS_WITHIN_CAPS', 'FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
+  - "gate member count: 4"
+  - "invented gate members present: []"
+  - "gate_decision is NOT NULL: True"
+  - "policies table present: True"
+  - "positive control, a well-formed DRAFT policy: ACCEPTED"
+  - "positive control, an ACTIVE policy activated by a named human: ACCEPTED"
+  - "an ACTIVE policy with no activator: refused"
+  - "a policy with a null gate decision: refused"
+  - "an invented gate decision: refused"
+  - "a NARROWED lifecycle state: refused"
+  - "a SUSPENDED lifecycle state: refused"
+  - "an INVALID lifecycle state: refused"
+  - "an author who is not a recorded human: refused"
+  - "an author from another tenant: refused"
+  - "an activator from another tenant: refused"
+  - "positive control, an authorized delegate may activate: ACCEPTED"
+  - "a UNIQUE index exists: True"
+  - "every policy index is tenant-first: True"
+  - "an ACTIVE-only partial predicate exists: True"
+  - "the active uniqueness columns are tenant and scope: True"
+  - "a tenant-local policy_version uniqueness exists: True"
+  - "positive control, the first ACTIVE policy for a tenant and scope: ACCEPTED"
+  - "positive control, a SUPERSEDED policy for the same scope is retained beside it: ACCEPTED"
+  - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
+  - "T_A ACTIVE rows: 1"
+  - "T_B ACTIVE rows: 1"
+  - "the upgraded policy layer is identical to the fresh one: True"
+  - "a second application of the migration is a no-op: True"
+  # ---- the registries and the AST, measured
+  - "F11 contract count: 8"
+  - "PolicyEvaluated family: F2 ['PL-2']"
+  - "UnauthorizedPolicyActivationAttempted family: F14"
+  - "PolicyActivated is human_only: True"
+  - "PolicyApproved is human_only: True"
+  - "every F11 contract is strict_order: True"
+  - "total registered contracts: 118"
+  - "modules that MINT a gate decision: ['checkpoint.py']"
+  - "M11 constructs a GateEntry or GateRegistry: False"
+  - "the unregistered-class fallback: HUMAN_APPROVAL_REQUIRED"
+  - "the discovered population equals the stated boundary: True"
+  - "carriers without an ADR-010 citation: []"
+  - "unregistered event names M11 mints: []"
+  - "production importers of policy: []"
+  - "channel-capable modules that import policy: []"
+  - "an M12 rules table exists: False"
+  - "an M12 rule module exists: False"
+  - "an M13 brake lifecycle module exists: False"
+  - "M11 defines an autonomy graduation engine: False"
+  - "M11 invents an admin authority: False"
+  - "tenant is FIRST in the policy primary key: True"
+  - "tenantless tables outside the recorded exemptions: []"
+  - "the ordering is total over the four canonical members: True"
+  - "the comparison is not a raw string compare: True"
+  - "total transition rows counted: 134"
+  - "M11 transition rows: 7"
+
+forbidden:
+  # ---- shared harness vocabulary, carried by every P6 scenario
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  # A REGRESSION ANCHOR THAT RAN NOTHING IS NOT A REGRESSION ANCHOR. pytest answers a missing path
+  # with `ERROR: file or directory not found` and exit 4, and an empty selection with `no tests ran`
+  # and exit 5. Both are loud here, so a battery can never report the absence of a failure as the
+  # absence of a defect — the M10 harness-recovery invariant, applied from the start.
+  - "ERROR: file or directory not found"
+  - "no tests ran"
+  - "ModuleNotFoundError: No module named 'eval'"
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # ---- PO-1: authorship
+  - "### A MODEL AUTHORED A POLICY ###"
+  - "### A MODEL PROPOSAL BECAME AN ACTIVE POLICY ###"
+  - "### INBOUND CONTENT AUTHORED A POLICY ###"
+  - "### AN EMAIL BECAME A POLICY CHANGE ###"
+  - "### A COUNTERPARTY AUTHORED A POLICY ###"
+  - "### AN OFFBOARDED HUMAN AUTHORED A POLICY ###"
+  - "### AN UNAUTHENTICATED ACTOR AUTHORED A POLICY ###"
+  - "### PolicyProposed TREATED AS ACTIVATION ###"
+  # ---- PO-2: the never-null gate and the deterministic predicate
+  - "### NULL GATE DECISION ACCEPTED ###"
+  - "### GATE DECISION DEFAULTED SILENTLY ###"
+  - "### GATE DECISION INHERITED BY ACCIDENT ###"
+  - "### FIFTH GATE MEMBER MINTED ###"
+  - "### INVENTED GATE DECISION ACCEPTED ###"
+  - "### MODEL_INFERRED PREDICATE COMPILED ###"
+  - "### MODEL_INFERRED READ AT CONFIDENCE ONE ###"
+  - "### CONFIDENCE READ BY THE EVALUATOR ###"
+  - "### CONFIDENCE FIELD PRESENT ON THE EVALUATOR INPUT ###"
+  - "### UNMODELLED FIELD COMPILED INTO A PREDICATE ###"
+  - "### PREDICATE ADMITTED AS A PROMPT STRING ###"
+  - "### NOTED THE PROCEDURE WITHOUT COMPILING A RULE ###"
+  # ---- the product ceiling
+  - "### TENANT POLICY BROADENED THE PRODUCT CEILING ###"
+  - "### CEILING COMPARISON WAS A STRING COMPARE ###"
+  - "### CEILING ORDER INCOMPLETE ###"
+  - "### PERMANENT ASSERTION GATE COLLAPSED INTO APPROVAL ###"
+  - "### FORBIDDEN COLLAPSED INTO PERMANENT ASSERTION ###"
+  - "### AUTONOMY GRANTED WITHOUT A HUMAN ###"
+  # ---- PO-3: the governed change
+  - "### ADMIN PATH TO APPROVED ###"
+  - "### CONFIG FILE ACTIVATED A POLICY ###"
+  - "### MIGRATION ACTIVATED A POLICY ###"
+  - "### SUPERUSER COMMAND LINE ACTIVATED A POLICY ###"
+  - "### POLICY CHANGE BYPASSED THE M2 PIPELINE ###"
+  - "### POLICY DIFF WAS NOT THE MATERIAL FACTS ###"
+  - "### MISSING diff_fingerprint ON PolicyApproved ###"
+  - "### A MODEL APPROVED A POLICY CHANGE ###"
+  - "### CROSS-TENANT APPROVAL ACCEPTED ###"
+  - "### SECOND APPROVAL SYSTEM BUILT ###"
+  - "### M4 SEMANTICS MODIFIED ###"
+  - "### PolicyApproved TREATED AS PolicyActivated ###"
+  # ---- PO-4: activation
+  - "### A MODEL ACTIVATED A POLICY ###"
+  - "### AUTOMATION ACTIVATED A POLICY ###"
+  - "### A RETRY HANDLER ACTIVATED A POLICY ###"
+  - "### A TIMER ACTIVATED A POLICY ###"
+  - "### A SERVICE ACCOUNT BROADENED POLICY ###"
+  - "### ACTIVE WITHOUT AN ACTIVATOR ###"
+  - "### ACTIVATED BY A NON-HUMAN ACTOR ###"
+  - "### CROSS-TENANT ACTIVATION ACCEPTED ###"
+  - "### UNAUTHORIZED ACTIVATION WENT UNRECORDED ###"
+  - "### SECOND UNAUTHORIZED-ACTIVATION CONTRACT MINTED ###"
+  - "### PolicyActivated APPLIED RETROACTIVELY ###"
+  - "### RE-ACTIVATION BUMPED THE VERSION ###"
+  # ---- PO-5 / PO-6 / PO-7
+  - "### SUPERSEDED VERSION DELETED ###"
+  - "### HISTORY EDITED IN PLACE ###"
+  - "### POLICY APPLIED RETROACTIVELY ###"
+  - "### OLD VERSION NO LONGER EXPLAINS ITS DECISIONS ###"
+  - "### BROADENING REVOCATION BY AUTOMATION ###"
+  - "### REVOCATION DIRECTION MISSING ###"
+  - "### NARROWING REVOCATION BLOCKED ON REVIEW ###"
+  - "### TEMPORARY TIGHTEN AUTO-REVERTED ###"
+  - "### EXPIRY BROADENED AUTHORITY ###"
+  - "### TimerFired BROADENED AUTHORITY ###"
+  - "### BROADENING POLICY CARRIED AN EXPIRY ###"
+  - "### EXPIRY RAISED NO HUMAN CONFIRMATION ###"
+  - "### AUTOMATIC BROADENING ###"
+  # ---- evaluation
+  - "### NON-DETERMINISTIC POLICY DECISION ###"
+  - "### WALL CLOCK ENTERED THE DECISION ###"
+  - "### RANDOMNESS ENTERED THE DECISION ###"
+  - "### MODEL CALL ENTERED THE DECISION ###"
+  - "### UNORDERED ITERATION CHANGED THE DECISION ###"
+  - "### POLICY DECISION WITHOUT A REASON ###"
+  - "### ALLOW ON POLICY ERROR ###"
+  - "### WITNESS MINTED WITHOUT A POLICY DECISION ###"
+  - "### EFFECT REACHED THE ADAPTER WITHOUT A POLICY DECISION ###"
+  - "### UNREPRODUCIBLE DECISION CLAIMED A GRANT ###"
+  # ---- the checkpoint boundary
+  - "### M11 MINTED A GATE DECISION ###"
+  - "### M11 REGISTERED A GATE ###"
+  - "### SECOND GATE MINTER BUILT ###"
+  - "### SECOND CHECKPOINT BUILT ###"
+  - "### SECOND GATE REGISTRY CONSTRUCTED ###"
+  - "### PRODUCTION GATE REGISTRY POPULATED ###"
+  - "### CHECKPOINT BYPASSED ###"
+  - "### policy_version MISSING FROM THE WITNESS ###"
+  - "### policy_version MISSING FROM THE GRANT ###"
+  # ---- staleness and drift
+  - "### STALE POLICY VERSION CLAIMED A GRANT ###"
+  - "### STALE APPROVAL EXECUTED ###"
+  - "### SECOND CLAIM CAS BUILT ###"
+  - "### SECOND DRIFT-INVALIDATION MECHANISM BUILT ###"
+  - "### M4 STATE MUTATED DIRECTLY BY M11 ###"
+  - "### PolicyVersionChanged BYPASSED A CONSUMER GUARD ###"
+  # ---- precedence
+  - "### POLICY OVERRODE A PERMANENT PRODUCT TRUTH ###"
+  - "### POLICY OVERRODE A BRAKE DENIAL ###"
+  - "### URGENT POLICY BYPASSED THE BRAKE ###"
+  - "### M11 ENGAGED A BRAKE ###"
+  - "### M11 NARROWED A BRAKE ###"
+  - "### POLICY OVERRODE A CONSTRAINT ###"
+  # ---- tenancy, uniqueness, concurrency, retention
+  - "### CROSS-TENANT POLICY LOOKUP ACCEPTED ###"
+  - "### CROSS-TENANT SUPERSESSION ACCEPTED ###"
+  - "### TENANT MISSING FROM THE PRIMARY KEY ###"
+  - "### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###"
+  - "### DUPLICATE ACTIVE POLICY ###"
+  - "### TWO ACTIVE POLICIES FOR ONE SCOPE ###"
+  - "### OCC BYPASSED ###"
+  - "### POLICY VERSION OVERWRITTEN IN PLACE ###"
+  - "### POLICY VERSION REUSED ###"
+  - "### POLICY VERSION WENT BACKWARDS ###"
+  - "### POLICY ROW DELETED ###"
+  - "### HISTORICAL VERSION DISCARDED ###"
+  # ---- replay and events
+  - "### REPLAY ACTIVATED A POLICY ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### REPLAY MINTED A WITNESS ###"
+  - "### REPLAY MINTED A GRANT ###"
+  - "### REPLAY PRODUCED AN EXTERNAL EFFECT ###"
+  - "### UNREGISTERED EVENT MINTED ###"
+  - "### NINTH F11 CONTRACT MINTED ###"
+  - "### PolicyProposed AND PolicySubmitted COLLAPSED ###"
+  - "### PolicyEvaluated MINTED BY M11 ###"
+  - "### STRICT ORDER WEAKENED ###"
+  - "### CONTIGUITY REQUIRED WHERE ONLY ORDER IS ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### REQUIRED PAYLOAD FIELD DROPPED ###"
+  # ---- scope and posture
+  - "### M12 RULE MACHINE BUILT ###"
+  - "### M13 BRAKE MACHINE BUILT ###"
+  - "### RULES TABLE CREATED ###"
+  - "### AUTONOMY GRADUATION ENGINE BUILT ###"
+  - "### PRODUCTION POLICY EDITOR BUILT ###"
+  - "### POLICY ADMIN UI BUILT ###"
+  - "### PRODUCTION IMPORTER OF POLICY ###"
+  - "### CHANNEL JOINED ###"
+  - "### NOTIFIER WIRED ###"
+  - "### OVERSIGHT QUEUE BUILT ###"
+  - "### M11 PRODUCTION-ENABLED ###"
+  - "### P7 PROVENANCE SURFACE BUILT ###"
+  - "### V11 RESOLVED BY PREFERENCE ###"
+  - "### V12 RESOLVED BY PREFERENCE ###"
+  - "### PARALLEL ADMIN AUTHORITY INVENTED ###"
+  - "### M1 MACHINE EDITED ###"
+  - "### M2 STATE MACHINE EDITED ###"
+  - "### M3 EFFECT SEAM REWRITTEN ###"
+  - "### M4 MACHINE EDITED ###"
+  - "### M9 MACHINE EDITED ###"
+  - "### M10 MACHINE EDITED ###"
+
+teardown: []
