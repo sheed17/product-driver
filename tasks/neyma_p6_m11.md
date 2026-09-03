@@ -214,7 +214,8 @@ PolicyVersionChanged  ‡PO-4/6  policy_version
 ### **DO NOT MINT `PolicyNarrowed`, `PolicySuspended`, `PolicyInvalidated`, `PolicyEnabled`,
 ### `PolicyDisabled`, `PolicyOverridden`, `PolicyCompiled`, `PolicyConfirmed`, `RuleActivated`,
 ### `BrakeEngaged` OR ANY OTHER NAME.** `PolicyOverridden` appears in **ADR-010 §8.1** and is **NOT
-### in the 118 registered contracts** — that is `M11-AQ-4` below, and it is reported, not resolved.
+### in the 118 registered contracts** — that is `M11-AQ-4` / `P6-D71` below: `BLOCKED_AUTHORITY`,
+### reported and NOT resolved, minted by nobody but a founder/architect, and landing with M12/Rule.
 
 **`UnauthorizedPolicyActivationAttempted` is F14's and already registered.** A model or automation
 attempting activation emits **that** contract. Do not mint a duplicate.
@@ -400,83 +401,171 @@ activation, supersession, revocation, evaluation and version use all fail closed
 uniqueness may accidentally couple tenants** — the SAME scope must be ACTIVE in two brokerages
 without collision, and two tenants must both be able to hold version 1.
 
-### 3.6 ⚠️ THE KNOWN AUTHORITY QUESTIONS — read this before writing the transition table
+### 3.6 ⚠️ THE EIGHT AUTHORITY QUESTIONS — FIVE ARE NOW SETTLED IN CANON, THREE ARE NOT
 
-**Eight were found mechanically against the corpus and the landed code. They are REPORTED AND LEFT
-OPEN. Build the fail-closed side of each and say so. Resolving any of them is a founder decision or
-a later machine's, not a build session's.**
+**This bootstrap found eight authority questions mechanically, against the corpus and the landed
+code. A Neyma AUTHORITY-ONLY correction has since landed at `5d2d8e1` — it changed no file under
+`src/`, `eval/`, `scripts/` or `.github/` — which CORRECTED five of them in the canon and RECORDED
+the remainder as P6 debt rows `P6-D71`…`P6-D75`.**
 
-**`M11-AQ-1` — P6 owes M11 and P6's own registry entry prohibits it.**
-`IMPLEMENTATION-REGISTRY.yaml`'s P6 unit declares `expected_production_outputs: ["17 platform
-primitives", "13 machines", "134 transitions"]` — the 13 machines include M11 — and its `objective`
-names "the 13 machines, 134 transitions". The **same block** declares
-`prohibited_scope: [freight domain projections (P9), policy (P8), provenance (P7)]`, and there is a
-separate **P8 unit** named *"Policy, Rule, Brake, Conflict, Expectation, Exception, Compensation"*
-whose objective is *"Typed policy, compile-or-refuse rules, the real brake."* Meanwhile CURRENT.md
-and the registry's own P6 comment both say **"M11 — THE POLICY — IS THE NEXT CHECKPOINT."**
-**Fail-closed reading, and the one this task builds:** P6/M11 lands the **machine** — the durable,
-versioned, human-activated policy record and its seven transitions — **dark**. The **policy runtime**
-(populating the production `GateRegistry`, autonomy graduation, tenant policy authoring, rule
-compilation) is **P8**. M10's landing already asserted the same boundary in its own words: *"the
-production `GateRegistry` population stays EMPTY until U8.1 / P8."* **Report this. Do not resolve it.**
+### **THE FAIL-CLOSED SIDE OF EVERY ONE OF THEM IS UNCHANGED. The correction TIGHTENED the
+### authority; it licensed nothing.** Where a question is still OPEN below, it is open because
+resolving it is a founder/architect act — **not** because you have discretion. Read what the canon
+now says, and build it.
 
-**`M11-AQ-2` — the entity's "Events emitted" list is two short.**
-`entities/14-policy.md` §31 lists six: `PolicyProposed`, `PolicyActivated`, `PolicySuperseded`,
-`PolicyRevoked`, `PolicyExpired`, `PolicyVersionChanged`. It omits **`PolicySubmitted`(PO-2)** and
-**`PolicyApproved`(PO-3)**, both of which the 2026-08-12 amendment MINTED and both of which are in
-`events/registry.md` §3 and in `event_contracts_data.json`. The entity file was not updated by the
-amendment. **Fail-closed:** the **event registry governs** — it is by its own header the sole
-canonical list — so F11 has **eight** members. **Emit all eight. Report the discrepancy.**
+**`M11-AQ-1` — RESOLVED IN CANON. P6/M11 builds the MACHINE; P8 keeps the RUNTIME.**
+It read as a contradiction: P6's `prohibited_scope` carried the bare token `policy (P8)` while P6's
+own `objective` and `expected_production_outputs` owe *"the 13 machines, 134 transitions"* — and M11,
+M12 and M13 ARE three of those thirteen, their 21 transitions part of the 134, with the registry
+itself saying **"M11 — THE POLICY — IS THE NEXT CHECKPOINT."** Read literally, the token prohibited
+the work the same file schedules. `IMPLEMENTATION-REGISTRY.yaml`'s P6 unit and `PHASE-OUTPUTS.md`'s
+P6 row now NAME the boundary instead of carrying the bare token.
 
-**`M11-AQ-3` — TSS §12.11 is cited as Policy's complete lifecycle and contains Rule's table.**
-Entity §20 says *"Lifecycle reference. **Canonical spec §12.11** (complete)"* and the machine header
-says *"Lifecycle: Target Spec §12.11"*. §12.11 is headed **"12.11 POLICY · 12.12 RULE"** and its
-transition table enumerates **Rule's** rows (`RuleProposed`, `Compiled`, `CompilationFailed`,
-`ConflictDetected`, `HumanConfirmed`, `Activated`, `Superseded`, `Revoked`). **There is no Policy
-transition table in §12.11.** The seven `PO-*` rows exist **only** in `11-policy.machine.md` §14.
-**Fail-closed:** the **machine table governs** (the same precedence M10 used). §12.11's *prose* below
-the table is canonical for the change-is-gated, never-retroactive and expiry rules and is used as
-such. **Report it.**
+**What P6/M11 MAY implement:** the canonical Policy **entity** (`entities/14-policy.md`), its
+**tenant-first `policies` table**, machine M11's **seven transitions `PO-1`…`PO-7`**, and the
+**eight already-registered F11 contracts** — **SHIPS DARK**, on the M1–M10 precedent: no production
+importer, no channel join, no `GateRegistry` construction and no `register_gate` call anywhere in
+production, no gate minting outside `checkpoint.py`, and no activation of a real tenant policy on
+live traffic.
 
-**`M11-AQ-4` — `PolicyOverridden` is named by ADR-010 §8.1 and is not a registered contract.**
-§8.1's bounded single-instance override requires an event `PolicyOverridden{rule_id, actor, reason,
-decision_ref, commit_key}` recorded as audit **and** security. It is **not** among the 118 registered
-contracts. Note also that §8.1's override is **rule**-level (`rule_id`) and therefore arguably M12's.
-**Fail-closed:** **mint no unregistered event name.** M11 builds **no override mechanism** at all;
-the bounded override is out of scope for this unit. **Report it.**
+**What remains P8-ONLY (`U8.1`):** production Action Class gate **REGISTRATION** (populating the
+production `GateRegistry`), the typed policy **EVALUATION RUNTIME** at checkpoint step 6 beyond P3's
+landed minimal structural contract, rule **compile-or-refuse** runtime, the
+**precedence/conflict-resolution engine**, richer **action-class descriptors** (K-5), the
+**autonomy/graduation runtime**, and **ENABLEMENT** of any of it on live traffic.
 
-**`M11-AQ-5` — the ceiling `CHECK` cannot be a row-local `CHECK`.**
-Entity §16 requires *"CHECK: a tenant policy's `gate_decision` may only NARROW the product ceiling
-(never broaden)."* A SQL `CHECK` is **row-local** and cannot read a product ceiling that is not on
-the row. **Fail-closed:** enforce the narrowing **structurally in the PO-2 and PO-4 guards** against
-the declared canonical ordering, and persist whatever the row needs (the direction, and the ceiling
-the policy was measured against) so the fact is auditable and reproducible. **State plainly that the
-invariant is a machine guard rather than a row `CHECK`, and why.** Do not silently drop it, and do
-not fake a `CHECK` that compares a column to itself.
+### **NOTE PRECISELY WHAT IS *NOT* ON THE P8 LIST: AUTHORING.** `PO-1` and `PO-2` — a Policy Owner
+### drafting a policy and submitting it for approval — ARE M11's, ship-dark. **Do not refuse to build
+### the authoring transitions on the ground that "tenant policy authoring is P8."** That reading is
+wrong, an earlier draft of this task carried it, and it is corrected here. This grants no scope and
+removes none; `V11` and `V12` stay open and fail-closed.
 
-**`M11-AQ-6` — `policy_version` is tenant-monotonic but the natural key is per-scope.**
-Entity §17 requires `UNIQUE (tenant_id, policy_version)` and §19 says `policy_version` is *"monotonic
-per tenant"*; entity §9 gives the natural identifier as `(tenant_id, scope, policy_version)`, which
-reads as per-scope versioning. These are different schemes. **Fail-closed, and the one this task
-builds:** **tenant-monotonic**, exactly as §17 and §19 literally say. It is also the safe direction —
-a tenant-wide version means activating in scope A bumps the version the claim CAS revalidates, so
-in-flight work in scope B is re-checked rather than silently surviving a posture change. **Report the
-tension.**
+**`M11-AQ-2` — RESOLVED IN CANON. F11 is exactly EIGHT.**
+`entities/14-policy.md` point 31 listed **six** — it omitted `PolicySubmitted`(PO-2) and
+`PolicyApproved`(PO-3), both MINTED under founder/architect authority by the **2026-08-12** P5 U5.2
+amendment. It is settled the same way it always would have been — **the event registry governs** —
+because `events/registry.md` §3 is by its own header the sole
+canonical list of event names — so point 31 has been corrected **UP** to the registry. ### **NO
+### REGISTERED CONTRACT WAS DELETED TO MAKE AN ENTITY LIST MATCH.** F11, the state-machine registry
+§5 and machine M11 §14 always carried eight. **Emit all eight. Mint no ninth.** `PolicyProposed` ≠
+`PolicySubmitted`, and `PolicyApproved` ≠ `PolicyActivated`; both distinctions are load-bearing.
 
-**`M11-AQ-7` — nothing enforces "exactly one Policy Owner per tenant".**
-Entity §7 requires *"exactly one named Policy Owner per tenant (I1)"*. M1's landed `tenant_humans`
-has `authority_role IN ('POLICY_OWNER','AUTHORIZED_HUMAN')` and **no partial unique index** making
-`POLICY_OWNER` singular per tenant. **Fail-closed:** M11 **does not edit M1's table** (CURRENT.md's
-⛔ list forbids rebuilding M1–M10). Enforce singularity in M11's own guard where it is M11's
-business, and **report that the structural constraint lives in M1 and was not added here.**
+**`M11-AQ-3` — RESOLVED IN CANON. §12.11 carries NO Policy transition table.**
+§12.11 and §12.12 share one heading and one transition table, and **every row of that table emits a
+`Rule*` event — it is §12.12 RULE's**, which the target specification now states directly above it.
+Entity point 20's *"§12.11 (complete)"* was false against §12.11 alone and is corrected.
+### **Machine `11-policy.machine.md` §14 (`PO-1`…`PO-7`) IS Policy's transition authority**, and it
+derives from §12.11 and invents nothing. §12.11's **prose below the table** still binds: a policy
+change is itself a gated action class, effective dates are never retroactive, and a narrowing
+policy's expiry requires a human. **No lifecycle was rewritten.**
 
-**`M11-AQ-8` — M9's `policy` source kind has no FK, and M11 now lands the table.**
-`migrations/phase6_exceptions.py` carries `"policy"` in `SOURCE_KINDS_WITHOUT_TABLE` — *"the kinds
-whose table does NOT exist today"* — recorded as `M9-AQ-3`. M11 lands `policies`. Whether `policy`
-should now move into the FK-backed `SOURCE_KIND_TABLE` is a real question about M9's schema.
-**Fail-closed:** **M11 edits no part of M9.** PO-7 raises its Exception through M9's landed
-`raise_exception` entry point with `source_kind="policy"`, exactly as the recorded-only kind allows.
-**Report it. It closes at a founder determination or a later M9 revision, not here.**
+**`M11-AQ-4` — STILL OPEN. `P6-D71`. `BLOCKED_AUTHORITY`. DO NOT TOUCH IT IN EITHER DIRECTION.**
+`PolicyOverridden{rule_id, actor, reason, decision_ref, commit_key}` is named by target spec §20.7
+M-54, by ADR-010 §8.1 and by `entities/17-audit-event.md` point 41 as an audit **and** security event
+with an explicit payload and a named test — and it appears **nowhere** in `events/registry.md` §3.
+It is not a stale synonym, not merely conceptual, and not historical: it is a canonical event that
+was **intended and never minted**. ### **MINTING AN EVENT IS A FOUNDER/ARCHITECT ACT** — the only
+precedent is the 2026-08-12 amendment — so the correction pass deliberately did **not** edit it, and
+neither do you.
+
+### **IT DOES NOT BLOCK M11.** The payload is keyed on `rule_id`; the act is an override of a
+**STANDING RULE at precedence layer 6**, not a Policy lifecycle transition; and it appears in **none**
+of M11's seven `PO-*` rows and **none** of F11's eight contracts. ### **M11 BUILDS NO OVERRIDE
+### MECHANISM AT ALL, MINTS NO `PolicyOverridden`, AND SIMULATES NONE — not as an event, not as a
+### field, not as a code path.** The obligation lands with **M12/Rule**. Report that you left it
+alone.
+
+**`M11-AQ-5` — RESOLVED IN CANON, AND THE INVARIANT IS UNWEAKENED.**
+Entity point 16's *"CHECK: a tenant policy's `gate_decision` may only NARROW the product ceiling"* is
+a ### **SEMANTIC INVARIANT, NOT A ROW-LOCAL SQL `CHECK`**, and the entity now says so in the same
+form `01-work-item.md` ("enforced at the transition layer") and `15-rule.md` ("enforced at compile")
+already use. The comparison is against **Product Policy**, which spec §20.2 enforces **in CONFIG** —
+it is not a column of this row, so **no row-local constraint can reference it**.
+
+Enforce it at the **`PO-2` transition guard** and as **machine M11 §15's illegal transition**, over a
+**declared total order on the four canonical gate members** — never a string compare, never an
+alphabetical sort. **State plainly that the invariant is a machine guard rather than a row `CHECK`,
+and why.** Do not silently drop it, and **do not fake a `CHECK` that compares a column to itself.**
+### **AND DO NOT NOW READ "IT IS NOT A SQL `CHECK`" AS PERMISSION TO MAKE IT A REVIEW CONVENTION:
+### BROADENING MUST BE MECHANICALLY IMPOSSIBLE.**
+
+**`M11-AQ-6` — RESOLVED IN CANON. The version NAMESPACE is the TENANT, never the scope.**
+Point 17's `UNIQUE (tenant_id, policy_version)` plus point 19's per-tenant monotonicity (`[C-10]`)
+plus the landed kernel pinning ONE scalar per decision make a scope-local numbering **structurally
+impossible**: two scopes cannot each hold version 1. `scope` appears in the natural key
+`(tenant_id, scope, policy_version)` because it names WHICH posture the row carries — **not** because
+it opens a second numbering. **Build tenant-monotonic, and reject any scope-local version scheme.**
+
+### **AND THE CONSEQUENCE IS NOW STATED, IS DELIBERATE, AND YOU MUST BUILD IT: a change in ANY scope
+### advances the TENANT's `policy_version`, so `PolicyVersionChanged` voids in-flight
+### approvals / witnesses / unclaimed grants in EVERY scope** (points 39/40; machine M11 §34). A
+checkpoint pins and re-validates exactly ONE `policy_version` per decision.
+### **OVER-VOIDING IS THE FAIL-CLOSED DIRECTION AND UNDER-VOIDING IS NOT AVAILABLE** — do not
+"optimise" by scoping the void to the scope that changed, and do not treat a surviving in-flight
+approval in another scope as correct behaviour. It is the defect this question exists to prevent.
+
+**`M11-AQ-7` — OPEN AS M11 ACCEPTANCE WORK. `P6-D72`. ### THIS ONE IS YOURS TO CLOSE, AND IT IS
+LOAD-BEARING.**
+Entity point 7 requires *"exactly one named Policy Owner per tenant"* (I1); point 14 states
+Policy N : 1 Policy Owner; point 18 requires `activated_by` to **BE** the Policy Owner or an
+authorised delegate; and M11 §5 names *"the tenant's single named Policy Owner"* as the machine's
+owner. M1's landed `tenant_humans` carries `authority_role IN ('POLICY_OWNER','AUTHORIZED_HUMAN')`
+with `PRIMARY KEY (tenant, human_id)` and ### **NO constraint limiting a tenant to one ACTIVE
+### `POLICY_OWNER`. TWO ARE INSERTABLE TODAY** — measured, not assumed, in
+`src/freight_recon/migrations/phase6_work_items.py`.
+
+This is **not** a corpus contradiction and it is **not** deferred: `P6-D72` **closes at M11**.
+### **YOU MUST ESTABLISH THE INVARIANT MECHANICALLY. A tenant must not be able to hold two ACTIVE
+### `POLICY_OWNER` rows once M11 has landed.**
+
+- **The mechanism is yours to choose, and it must sit on the EXISTING tenant-authority record.**
+  `tenant_humans` is the one record of human authority in this system. ### **DO NOT INVENT A SECOND
+  ### USER, ADMIN, SUPERUSER OR AUTHORITY SYSTEM** — ADR-017's control-plane user administration is
+  **P11** and is a different thing.
+- A constraint added to `tenant_humans` is a **MIGRATION ON AN M1-LANDED, TENANT-ISOLATION-BEARING
+  TABLE — `CLAUDE.md` §7 TIER 1.** ### **THAT ROUTE IS PERMITTED**, and it is the one the debt row
+  names. It is **not** covered by "do not modify M1–M10" (§5), which forbids **rebuilding** landed
+  machines, not adding the constraint an M11 invariant requires. Take it only with the tier-1
+  process: builder **plus one focused independent review**, plus proof the new constraint **can
+  actually fail**.
+- ### **IT IS LOAD-BEARING BECAUSE point 18's `activated_by` FK AND `PO-6`'s "broadening requires the
+  ### Policy Owner" BOTH RESOLVE THROUGH IT: an ambiguous Policy Owner makes "the Policy Owner
+  ### activated this" UNPROVABLE — and that is the strongest authority claim in the system.**
+- **`V12` stays OPEN at its fail-closed default: one Policy Owner, one authority level.** Enforcing
+  singularity **IS** that default. It does not resolve `V12`, and you may not claim that it does.
+
+**`M11-AQ-8` — RESOLVED BY LANDED PRECEDENT. `P6-D73`. The seam is NAMED and LEFT UNWIRED.**
+M9's `exceptions.source_kind` already accepts `policy` with **no foreign key**, because `policies`
+did not exist — `SOURCE_KINDS_WITHOUT_TABLE` in `migrations/phase6_exceptions.py`, recorded by M9
+itself as `M9-AQ-3`. M11 creates the referent, so "should M11 wire the FK now" arrives with M11. It
+is answered by a landing, not by a new decision: ### **M10 created `compensations` and did NOT add
+### the `compensation` mirror column or FK to `exceptions`** — the seam was named and left unwired,
+on the ground M9's own landing set: *"wiring a seam is precisely what shipping dark forbids."*
+
+### **M11 DOES THE SAME: NAME THE SEAM AND LEAVE IT UNWIRED.** To say it in the form the rest of
+this task uses: **M11 edits no part of M9.** `PO-7` raises its
+Exception through M9's landed `raise_exception` entry point with `source_kind="policy"`, exactly as
+the recorded-only kind allows. Adding the FK is a change to a table M11 does not own and belongs to a
+later session that owns `exceptions`.
+
+**Two further debt rows the correction recorded, which you WILL reach:**
+
+**`P6-D74` — the gate-runtime CARRIER allowlist is a fixed three, and M11 collides with it.**
+`eval/phase0/gate_scan.py` states the ADR-010 boundary exactly once as `GATE_RUNTIME_MODULES`, and
+two P0 guards read it. This is a **tier-1 decision point, recorded before it is reached**, and
+**§3.7 below is its full and binding treatment.** ### **NOTHING ABOUT `P6-D74` AUTHORISES WIDENING
+### THE *MINT* ALLOWLIST. `checkpoint.py` STAYS THE SOLE MINTER OF A GATE DECISION, AND THE
+### PRODUCTION `GateRegistry` POPULATION STAYS EMPTY UNTIL U8.1/P8.**
+
+**`P6-D75` — nothing cross-checks an entity's "Events emitted" against the event registry.**
+That is exactly how `M11-AQ-2` survived from the 2026-08-12 amendment until the correction pass:
+`eval/phase0/spec_corpus.py` and `test_phase0_acceptance_bijection.py` assert exact set equality
+between the registry and the 13 machine tables, but **no probe reads point 31 of any of the
+seventeen entity files.** Only `14-policy.md` was corrected; ### **THE CLASS IS OPEN AND THE OTHER
+### SIXTEEN ENTITY FILES WERE NOT AUDITED.** Do not treat an entity file's point 31 as trustworthy
+authority. **Do not build that probe here** — it is real work with a real denominator and it is not
+this unit's scope — but do not rely on the unaudited surface either: where an entity list and the
+registry disagree, **the registry governs.**
 
 **Also carried, and not blockers:** **V11** (autonomy graduation thresholds) and **V12** (which
 authorities exist per tenant) stay **OPEN** at their canonical fail-closed defaults — **nothing
@@ -582,12 +671,20 @@ scripts/probe_phase6_policy.py
     --gate <g>          one of the four canonical members, or all
     --provenance <p>    one of the six canonical provenance classes, or all   ← ITS SECOND AXIS
     --brake <state>     engaged | released
+    --scope <s>         one of the canonical scope kinds, or all   ← `M11-AQ-6`'s AXIS
 ```
 
 ### **`--direction` AND `--provenance` ARE THIS UNIT'S OWN TWO AXES**, the way `--original-state`
 and `--exposure` were M10's. Direction is the axis the whole machine turns on — narrowing and
 broadening are not symmetric anywhere in this unit — and provenance is the axis the predicate turns
 on. `--gate` varies the ceiling comparison across the four-member ladder.
+
+### **`--scope` IS THE AXIS `M11-AQ-6`'s CORRECTED CONSEQUENCE IS ONLY VISIBLE ALONG.** The version
+namespace is the TENANT, so a change in ONE scope must void in-flight authority in EVERY other
+scope — and a single-scope case can never show that, because with one scope "void the scope that
+changed" and "void the tenant" are the same behaviour. ### **A scope-local implementation passes
+### every single-scope case and fails the system**, which is exactly why the scope a case runs
+against has to be a dimension the generator can vary rather than a constant baked into one case.
 
 **Every case must be deterministic, hermetic and free of wall-clock sleeps**, and `--all` must be
 runnable end to end in well under its scenario timeout.
@@ -693,12 +790,17 @@ can never emit is decoration; a marker it emits on a correct product is worse.
 ### STALE POLICY VERSION CLAIMED A GRANT ###            ### STALE APPROVAL EXECUTED ###
 ### SECOND CLAIM CAS BUILT ###                          ### SECOND DRIFT-INVALIDATION MECHANISM BUILT ###
 ### M4 STATE MUTATED DIRECTLY BY M11 ###                ### PolicyVersionChanged BYPASSED A CONSUMER GUARD ###
+### SCOPE-LOCAL POLICY VERSION NAMESPACE ###            ### THE VOID WAS NARROWED TO THE SCOPE THAT CHANGED ###
+### UNDER-VOIDING CHOSEN OVER OVER-VOIDING ###          ### IN-FLIGHT AUTHORITY SURVIVED A POLICY VERSION CHANGE IN ANOTHER SCOPE ###
 ### POLICY OVERRODE A PERMANENT PRODUCT TRUTH ###       ### POLICY OVERRODE A BRAKE DENIAL ###
 ### URGENT POLICY BYPASSED THE BRAKE ###                ### M11 ENGAGED A BRAKE ###
 ### M11 NARROWED A BRAKE ###                            ### POLICY OVERRODE A CONSTRAINT ###
 ### CROSS-TENANT POLICY LOOKUP ACCEPTED ###             ### CROSS-TENANT SUPERSESSION ACCEPTED ###
 ### TENANT MISSING FROM THE PRIMARY KEY ###             ### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###
 ### DUPLICATE ACTIVE POLICY ###                         ### TWO ACTIVE POLICIES FOR ONE SCOPE ###
+### TWO ACTIVE POLICY OWNERS IN ONE TENANT ###          ### POLICY OWNER SINGULARITY UNENFORCED ###
+### POLICY OWNER SINGULARITY LEFT TO REVIEW ###         ### AMBIGUOUS POLICY OWNER ACTIVATED A POLICY ###
+### POLICY OWNER SINGULARITY COUPLED TWO TENANTS ###    ### SECOND AUTHORITY RECORD INVENTED FOR THE POLICY OWNER ###
 ### OCC BYPASSED ###                                    ### POLICY VERSION OVERWRITTEN IN PLACE ###
 ### POLICY VERSION REUSED ###                           ### POLICY VERSION WENT BACKWARDS ###
 ### POLICY ROW DELETED ###                              ### HISTORICAL VERSION DISCARDED ###
@@ -706,6 +808,8 @@ can never emit is decoration; a marker it emits on a correct product is worse.
 ### REPLAY MINTED A WITNESS ###                         ### REPLAY MINTED A GRANT ###
 ### REPLAY PRODUCED AN EXTERNAL EFFECT ###              ### UNREGISTERED EVENT MINTED ###
 ### NINTH F11 CONTRACT MINTED ###                       ### PolicyProposed AND PolicySubmitted COLLAPSED ###
+### PolicyOverridden MINTED ###                         ### PolicyOverridden SIMULATED ###
+### AN OVERRIDE MECHANISM WAS BUILT ###                 ### P6-D71 RESOLVED BY A BUILD SESSION ###
 ### PolicyEvaluated MINTED BY M11 ###                   ### STRICT ORDER WEAKENED ###
 ### CONTIGUITY REQUIRED WHERE ONLY ORDER IS ###         ### EVENT WITHOUT ITS STATE ###
 ### STATE WITHOUT ITS EVENT ###                         ### REQUIRED PAYLOAD FIELD DROPPED ###
@@ -760,11 +864,23 @@ dropped.
 - **Do not populate the production `GateRegistry`.** It stays EMPTY until U8.1 / P8.
 - **Do not build a policy editor, an admin screen, an oversight queue, a dashboard or a notifier.**
 - **Do not join any outbound channel**, import a timer service, or reach any adapter.
-- **Do not modify M1–M10.** They are landed. Their residuals are debt rows.
+- **Do not modify M1–M10.** They are landed. Their residuals are debt rows. ### **THE ONE
+  ### NARROW EXCEPTION, AND IT IS NAMED: `P6-D72`'s Policy Owner singularity constraint on M1's
+  ### `tenant_humans`** (§3.6). That is a constraint an M11 invariant requires, not a rebuild of a
+  landed machine — it is **permitted**, it is **tier 1**, and it is the ONLY edit to an M1–M10
+  table this unit may make. Everything else about M1–M10 stays untouched, and **M9 in particular
+  is not edited at all** (`P6-D73`).
 - **Do not touch the checkpoint kernel's semantics**, the witness's unconstructability, the claim
   CAS's `WHERE`-clause revalidation, or the brake.
 - **Do not score a P6 criterion, move P6's status, or unlock P7.**
-- **Do not resolve `M11-AQ-1` … `M11-AQ-8`, V11 or V12.**
+- **Do not re-open, re-litigate or silently re-decide the FIVE authority questions the canon
+  correction SETTLED** (`M11-AQ-1`, `-2`, `-3`, `-5`, `-6`) — build what §3.6 says they now say.
+- ### **Do not resolve `M11-AQ-4`/`P6-D71` (`PolicyOverridden`), `V11` or `V12`.** They close at a
+  founder/architect decision, not a build session's. `M11-AQ-8`/`P6-D73` is answered by precedent:
+  name the seam, leave it unwired.
+- ### **`M11-AQ-7`/`P6-D72` IS THE ONE YOU MUST CLOSE**, mechanically, at M11 — exactly one ACTIVE
+  `POLICY_OWNER` per tenant, on the existing `tenant_humans` authority record, with no second
+  authority system invented. Leaving it unenforced is a FAILED unit, not a reported question.
 - **Do not weaken, delete or subset-ify either ADR-010 boundary guard** (§3.7).
 
 ---

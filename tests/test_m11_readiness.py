@@ -592,6 +592,62 @@ class TestPersistedStateIsTheOracle:
             "positive controls too would still look green on the refusals"
         )
 
+    def test_the_policy_owner_singularity_is_attempted_against_a_live_database(self, state_checks):
+        """`M11-AQ-7` / `P6-D72`. The invariant is "exactly one named Policy Owner per tenant", and
+        on the pre-M11 tree NOTHING enforces it — two ACTIVE `POLICY_OWNER` rows are insertable.
+        `P6-D72` closes at M11, so the only honest oracle is one that ISSUES the second insert.
+
+        ### THE DIRECTION OF THESE ASSERTIONS IS THE WHOLE GUARD. An oracle that merely MENTIONS the
+        second owner would pass whether the scenario demanded `refused by` or `ACCEPTED`, and a
+        one-character edit in the wrong direction would ship a scenario that certifies the exact
+        defect it was written to catch. So the refusals are pinned as refusals, and the positive
+        controls are pinned as acceptances, by name."""
+        owner = [v for k, v in state_checks.items()
+                 if "two ACTIVE Policy Owners" in k]
+        assert owner, "no oracle attempts a second ACTIVE Policy Owner against a live database"
+        lines = owner[0]
+        joined = " ".join(lines)
+
+        # The refusals must be REFUSALS.
+        for refusal in (
+            "a SECOND ACTIVE POLICY_OWNER in the same tenant",
+            "a SECOND ACTIVE POLICY_OWNER in the second tenant",
+        ):
+            got = [c for c in lines if c.startswith(refusal)]
+            assert got, f"the oracle never attempts: {refusal}"
+            assert all(c.endswith("refused by") for c in got), (
+                f"{refusal!r} is not asserted as a REFUSAL: {got} — a scenario that expects this "
+                "write to be ACCEPTED certifies the defect `P6-D72` exists to close"
+            )
+
+        # The positive controls must be ACCEPTANCES, or the refusals are vacuous.
+        controls = [c for c in lines if c.startswith("positive control")]
+        assert len(controls) >= 3, (
+            f"only {len(controls)} positive controls; a `tenant_humans` that refused every insert "
+            "would satisfy the refusals above and enforce nothing"
+        )
+        assert all(c.endswith("ACCEPTED") for c in controls), (
+            f"a positive control is not asserted as ACCEPTED: {controls}"
+        )
+        # An ACTIVE delegate and a retired former owner must both still be insertable, or the
+        # constraint is not singularity — it is "one human per tenant", a different and wrong rule.
+        assert any("AUTHORIZED_HUMAN beside the owner" in c for c in controls), (
+            "no control proves an ACTIVE delegate still fits beside the Policy Owner"
+        )
+        assert any("RETIRED former POLICY_OWNER" in c for c in controls), (
+            "no control proves history is retained; a constraint that deletes the former owner "
+            "buys singularity by destroying the audit trail"
+        )
+
+        # And it must be PER TENANT, not global.
+        assert "the singularity index is tenant-scoped: True" in joined
+        assert "T_A ACTIVE POLICY_OWNER rows: 1" in joined
+        assert "T_B ACTIVE POLICY_OWNER rows: 1" in joined
+        assert "tenants with a Policy Owner: 2" in joined, (
+            "nothing proves two tenants may each hold their own Policy Owner, so a GLOBAL unique "
+            "index — one Policy Owner in the entire system — would pass this oracle"
+        )
+
     def test_the_active_scope_uniqueness_is_tenant_first_and_partial(self, state_checks):
         uniq = [v for k, v in state_checks.items() if "one ACTIVE policy per tenant and scope" in k]
         assert uniq, "no oracle measures the active-scope uniqueness"
@@ -743,12 +799,111 @@ class TestTheTaskPreservesTheAuthorityConflicts:
             f"{question} is not in the task, so a build session would settle it by accident"
         )
 
-    def test_the_task_says_they_are_reported_not_resolved(self):
-        assert "REPORTED AND LEFT OPEN" in M11_TASK_PROSE
-        assert (
-            "Resolving any of them is a founder decision or a later machine's, not a build "
-            "session's" in M11_TASK_PROSE
+    def test_the_task_splits_the_settled_from_the_still_open(self):
+        """The bootstrap found eight and reported all eight as OPEN. The Neyma authority correction
+        at `5d2d8e1` SETTLED five of them in the canon and recorded the rest as `P6-D71`..`P6-D75`,
+        so the blanket "all eight are reported, not resolved" is now FALSE — and a task that still
+        said it would send a build session to report a question the corpus already answers, or to
+        treat `P6-D72` as somebody else's problem.
+
+        ### The split itself is the load-bearing thing, so it is asserted rather than the slogan.
+        The correction must never read as a licence: the fail-closed side of every question is
+        unchanged, and this test pins that sentence too."""
+        assert "SETTLED IN CANON" in M11_TASK
+        for settled in ("`M11-AQ-1`", "`M11-AQ-2`", "`M11-AQ-3`", "`M11-AQ-5`", "`M11-AQ-6`"):
+            assert settled in M11_TASK, f"{settled} is no longer named as settled"
+        assert "RESOLVED IN CANON" in M11_TASK
+        assert "P6-D71" in M11_TASK and "P6-D72" in M11_TASK and "P6-D73" in M11_TASK
+        assert "P6-D74" in M11_TASK and "P6-D75" in M11_TASK
+        # A correction is not a licence, and the task has to say so in its own voice.
+        assert "licensed nothing" in M11_TASK_PROSE
+        assert "resolving it is a founder/architect act" in M11_TASK_PROSE.lower()
+
+    def test_policyoverridden_stays_blocked_authority_and_unbuilt(self):
+        """`M11-AQ-4` / `P6-D71`. Minting an event is a founder/architect act; the correction pass
+        deliberately did not edit it in either direction, and neither may a build session.
+
+        ### The second half is the one that actually gets violated: a builder who accepts "do not
+        MINT it" will still cheerfully SIMULATE it in a test fixture or carry it as a column, which
+        records the fact under a name no consumer is registered against — the same defect wearing a
+        test's clothes."""
+        assert "BLOCKED_AUTHORITY" in M11_TASK
+        assert "P6-D71" in M11_TASK
+        assert "MINTING AN EVENT IS A FOUNDER/ARCHITECT ACT" in M11_TASK
+        assert "MECHANISM AT ALL, MINTS NO `PolicyOverridden`, AND SIMULATES NONE" in M11_TASK
+        assert "lands with" in M11_TASK_PROSE.lower() and "M12/Rule" in M11_TASK
+        for marker in (
+            "### PolicyOverridden MINTED ###",
+            "### PolicyOverridden SIMULATED ###",
+            "### AN OVERRIDE MECHANISM WAS BUILT ###",
+            "### P6-D71 RESOLVED BY A BUILD SESSION ###",
+        ):
+            assert marker in M11_TASK, f"the task never defines {marker}"
+
+    def test_the_single_policy_owner_is_load_bearing_acceptance_work(self):
+        """`M11-AQ-7` / `P6-D72` is the ONE authority question this unit must CLOSE. It closes at
+        M11, and the earlier draft of this task under-stated it twice: it told the builder to
+        enforce singularity "in M11's own guard" and flatly forbade touching M1's table — which
+        forbids the tier-1 partial-index route the debt row itself names.
+
+        ### "The constraint was never there before" is not a defence. Entity point 18's
+        `activated_by` FK and PO-6's "broadening requires the Policy Owner" both resolve through
+        this cardinality, so two ACTIVE owners make "the Policy Owner activated this" UNPROVABLE."""
+        assert "P6-D72" in M11_TASK
+        assert "closes at M11" in M11_TASK_PROSE
+        assert "TWO ARE INSERTABLE TODAY" in M11_TASK
+        assert "YOU MUST ESTABLISH THE INVARIANT MECHANICALLY" in M11_TASK
+        # The permitted mechanism, and its cost, both stated.
+        assert "TIER 1" in M11_TASK and "THAT ROUTE IS PERMITTED" in M11_TASK
+        assert "tenant_humans" in M11_TASK
+        assert "DO NOT INVENT A SECOND ### USER, ADMIN, SUPERUSER OR AUTHORITY SYSTEM" in M11_TASK_FLAT
+        # It must not be downgraded back into a reported question.
+        assert "Leaving it unenforced is a FAILED unit, not a reported question." in M11_TASK
+        # And it must not be mistaken for resolving V12.
+        assert "It does not resolve `V12`" in M11_TASK
+
+    def test_the_tenant_global_version_consequence_is_stated_and_owed(self):
+        """`M11-AQ-6`. The structural half (tenant-monotonic numbering) was always in the task. The
+        correction added the CONSEQUENCE as canon: a change in ANY scope voids in-flight authority
+        in EVERY scope, and over-voiding is the fail-closed direction.
+
+        ### That is the half a builder optimises away, because voiding another scope's work looks
+        like a bug. A single-scope test suite cannot tell the two implementations apart."""
+        assert "namespace is the TENANT" in M11_TASK_FLAT
+        assert "OVER-VOIDING IS THE FAIL-CLOSED DIRECTION AND UNDER-VOIDING IS NOT AVAILABLE" in (
+            M11_TASK_PROSE
         )
+        assert "voids in-flight" in M11_TASK_PROSE
+        assert "EVERY scope" in M11_TASK_FLAT
+        assert "--scope" in M11_TASK, "the axis the consequence is only visible along is undocumented"
+
+    def test_the_m9_seam_is_answered_by_precedent_rather_than_left_hanging(self):
+        """`M11-AQ-8` / `P6-D73`. M10 created `compensations` and did NOT retro-wire M9's FK; M11
+        does the same. The task must name the precedent, not just the prohibition, or a builder
+        reads "leave it unwired" as an oversight to be helpful about."""
+        assert "P6-D73" in M11_TASK
+        assert "M11 edits no part of M9" in M11_TASK_PROSE
+        assert "SOURCE_KINDS_WITHOUT_TABLE" in M11_TASK
+        assert "wiring a seam is precisely what shipping dark forbids" in M11_TASK
+
+    def test_the_gate_carrier_debt_does_not_widen_the_mint_allowlist(self):
+        """`P6-D74`. The carrier allowlist legitimately moves; the MINT allowlist never does. The
+        task has to carry both halves in the same breath, because the widening is what a builder
+        remembers and the narrowing is what keeps the system honest."""
+        assert "P6-D74" in M11_TASK
+        assert "GATE_RUNTIME_MODULES" in M11_TASK
+        assert "AUTHORISES WIDENING" in M11_TASK
+        assert "SOLE MINTER OF A GATE DECISION" in M11_TASK
+        assert "STAYS EMPTY UNTIL U8.1/P8" in M11_TASK
+
+    def test_the_entity_events_cross_check_gap_is_recorded_not_closed(self):
+        """`P6-D75`. Only `14-policy.md` was corrected; sixteen entity files were not audited. A
+        builder who trusts an entity file's point 31 is trusting the exact surface that let
+        `M11-AQ-2` survive for three weeks."""
+        assert "P6-D75" in M11_TASK
+        assert "THE CLASS IS OPEN" in M11_TASK
+        assert "Do not build that probe here" in M11_TASK
+        assert "the registry governs" in M11_TASK_PROSE
 
     def test_the_p8_scope_conflict_is_stated_with_both_halves(self):
         """`M11-AQ-1` is the one a build session is most likely to resolve silently, because the

@@ -137,6 +137,10 @@ commands:
       - "policyversionchanged-voids-an-in-flight-m4-approval"
       - "m11-drives-m4s-landed-void-on-policy-seam"
       - "m11-does-not-mutate-m4-state-directly"
+      # ---- AQ-6 tenant-global versioning: a change in ANY scope voids in-flight work in EVERY scope
+      - "a-change-in-one-scope-advances-the-tenant-policy-version"
+      - "a-change-in-one-scope-voids-in-flight-authority-in-every-other-scope"
+      - "the-void-is-never-narrowed-to-the-scope-that-changed"
       # ---- precedence: a policy is never the top of the ladder
       - "a-policy-never-overrides-a-permanent-product-truth"
       - "a-policy-never-overrides-a-brake-denial"
@@ -155,6 +159,12 @@ commands:
       - "a-stale-occ-write-is-refused"
       - "policy-version-is-monotonic-per-tenant"
       - "a-policy-version-is-never-reused"
+      # ---- AQ-7 / P6-D72: exactly one ACTIVE Policy Owner per tenant, mechanically
+      - "a-tenant-has-exactly-one-active-policy-owner"
+      - "a-second-active-policy-owner-in-one-tenant-is-refused"
+      - "two-tenants-may-each-have-their-own-policy-owner"
+      - "an-ambiguous-policy-owner-cannot-activate-a-policy"
+      - "m11-invents-no-second-authority-system"
       # ---- retention: every version, permanently
       - "a-policy-row-cannot-be-deleted"
       - "every-historical-version-is-retained"
@@ -197,6 +207,10 @@ commands:
       - "--gate"
       - "--provenance"
       - "--brake"
+      # `M11-AQ-6`'s consequence needs a SCOPE axis: the tenant-global version means a change in one
+      # scope must void in-flight authority in the others, so the scope a case runs against is a
+      # dimension the generator has to be able to vary rather than a constant baked into one case.
+      - "--scope"
 
   # ------------------------------------------------------------------ the machine, driven
   #
@@ -408,6 +422,51 @@ commands:
     expect_exit_code: 0
     timeout_s: 600
     expect_contains: ["A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"]
+
+  # `M11-AQ-6`, THE CONSEQUENCE HALF. The corrected authority states it as canon and as DELIBERATE:
+  # the version namespace is the TENANT, so a change in ANY scope advances the tenant's
+  # `policy_version` and `PolicyVersionChanged` voids in-flight approvals, witnesses and unclaimed
+  # grants in EVERY scope. ### OVER-VOIDING IS THE FAIL-CLOSED DIRECTION AND UNDER-VOIDING IS NOT
+  # AVAILABLE. The tempting optimisation — void only the scope that changed, because the other
+  # scope's posture "did not move" — is the defect: a checkpoint pins exactly ONE `policy_version`
+  # per decision, so work in scope B is carrying the tenant scalar that scope A just invalidated.
+  # This is the one direction a scope-local reading survives into, which is why it is measured
+  # separately from the structural uniqueness oracle.
+  - name: "a change in one scope voids in-flight authority in every other scope"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-change-in-one-scope-voids-in-flight-authority-in-every-other-scope --scope all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A CHANGE IN ANY SCOPE VOIDS IN-FLIGHT AUTHORITY IN EVERY SCOPE"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "the tenant policy version advances on a change in any scope, and the void is never narrowed to it"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case the-void-is-never-narrowed-to-the-scope-that-changed"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["THE VOID IS TENANT-WIDE, NEVER NARROWED TO THE SCOPE THAT CHANGED"]
+
+  # `M11-AQ-7` / `P6-D72` — THE ONE AUTHORITY QUESTION THIS UNIT MUST CLOSE, AND THE REASON IT IS
+  # LOAD-BEARING RATHER THAN HOUSEKEEPING. M1's landed `tenant_humans` has no constraint limiting a
+  # tenant to one ACTIVE `POLICY_OWNER` — two are insertable today, measured not assumed. Entity
+  # point 18's `activated_by` FK and PO-6's "broadening requires the Policy Owner" BOTH resolve
+  # through that cardinality, so an ambiguous Policy Owner makes ### "THE POLICY OWNER ACTIVATED
+  # THIS" UNPROVABLE — the strongest authority claim in the system, resting on a row anyone could
+  # have duplicated. The mechanism is the builder's to choose; that it EXISTS is not optional, and
+  # "the constraint was never there before" is precisely the argument this oracle refuses.
+  - name: "a tenant has exactly one ACTIVE Policy Owner, and a second is refused"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case a-second-active-policy-owner-in-one-tenant-is-refused --tenants all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A TENANT HAS EXACTLY ONE ACTIVE POLICY OWNER"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "an ambiguous Policy Owner cannot activate a policy, and no second authority system appears"
+    run: ".venv/bin/python scripts/probe_phase6_policy.py --case an-ambiguous-policy-owner-cannot-activate-a-policy"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN AMBIGUOUS POLICY OWNER CANNOT ACTIVATE A POLICY"]
 
   - name: "a narrowing policy's expiry raises the M9 human-confirmation Exception and broadens nothing"
     run: ".venv/bin/python scripts/probe_phase6_policy.py --case expiry-raises-the-m9-human-confirmation-exception"
@@ -1095,6 +1154,64 @@ expect_state:
       - "M11 defines its own authority role vocabulary: False"
       - "the M11 migration redefines the human authority table: False"
 
+  # 14a -------------------------------------------------------------------------------------
+  #
+  # ### `M11-AQ-7` / `P6-D72`, ATTEMPTED AGAINST A LIVE DATABASE RATHER THAN READ OUT OF A DOCSTRING.
+  # Oracle 14 proves M11 uses M1's authority vocabulary and invents no second one. THAT IS NOT THE
+  # SAME CLAIM AS THIS ONE. "Exactly one named Policy Owner per tenant" is entity point 7's `I1`, it
+  # is what M11 §5 means by "the tenant's single named Policy Owner", and on the pre-M11 tree it is
+  # AUTHORITY WITH NO MECHANICAL ENFORCEMENT: `tenant_humans` is `PRIMARY KEY (tenant, human_id)`
+  # with `authority_role IN ('POLICY_OWNER','AUTHORIZED_HUMAN')` and NOTHING that stops a tenant
+  # holding two ACTIVE `POLICY_OWNER` rows. `P6-D72` closes at M11, so the constraint has to EXIST
+  # after this unit, and the only way to know it exists is to ATTEMPT the second insert.
+  #
+  # ### THE ARGUMENT THIS ORACLE REFUSES IS "THE CONSTRAINT WAS NEVER THERE BEFORE." That is true and
+  # it is not a defence: point 18's `activated_by` FK and PO-6's "broadening requires the Policy
+  # Owner" both resolve through this cardinality, so two ACTIVE owners make "the Policy Owner
+  # activated this" UNPROVABLE — the strongest authority claim in the system, resting on a row
+  # anyone could have duplicated. The MECHANISM is the builder's to choose (a partial unique index
+  # on `tenant_humans` is the tier-1 route `P6-D72` names, and it is permitted); WHICH mechanism is
+  # not measured here, only that a second ACTIVE owner is REFUSED and that the refusal is per
+  # TENANT — a global constraint that let only one brokerage in the system have a Policy Owner would
+  # be the cross-tenant defect wearing a safety constraint's clothes, which is why T_B is a positive
+  # control rather than an afterthought.
+  - name: "a tenant cannot hold two ACTIVE Policy Owners, and the constraint is per tenant"
+    command: >-
+      .venv/bin/python -c "import sys,sqlite3,tempfile,os,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.execute('pragma foreign_keys=ON'); create_canonical_schema(c);
+      cols=[r[1] for r in c.execute('pragma table_info(tenant_humans)')];
+      print('tenant_humans columns:', sorted(cols));
+      idx=[r[0] for r in c.execute(chr(34)+'select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=' + chr(39) + 'tenant_humans' + chr(39) + ' and sql is not null'+chr(34))];
+      print('a POLICY_OWNER singularity index exists:', any('POLICY_OWNER' in (s or '') for s in idx));
+      print('the singularity index is tenant-scoped:', any('POLICY_OWNER' in (s or '') and re.search('[(] *tenant', s) for s in idx));
+      row=lambda t,h,r,st: dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,h,r,st,'2026-09-02T00:00:00Z','founder','human')));
+      env={'c':c,'sqlite3':sqlite3};
+      exec(chr(10).join(['def attempt(label, d):',' try:',"  c.execute('savepoint s'); c.execute('insert into tenant_humans (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values())); c.execute('release s'); print(label + ': ACCEPTED')",' except sqlite3.Error as exc:',"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])"]), env);
+      attempt=env['attempt'];
+      attempt('positive control, the first ACTIVE POLICY_OWNER in a tenant', row('T_A','owner-1','POLICY_OWNER','ACTIVE'));
+      attempt('a SECOND ACTIVE POLICY_OWNER in the same tenant', row('T_A','owner-2','POLICY_OWNER','ACTIVE'));
+      attempt('positive control, an ACTIVE AUTHORIZED_HUMAN beside the owner', row('T_A','ops-lead','AUTHORIZED_HUMAN','ACTIVE'));
+      attempt('positive control, a RETIRED former POLICY_OWNER is retained', row('T_A','owner-0','POLICY_OWNER','REVOKED'));
+      attempt('positive control, a DIFFERENT tenant has its own ACTIVE POLICY_OWNER', row('T_B','other-owner','POLICY_OWNER','ACTIVE'));
+      attempt('a SECOND ACTIVE POLICY_OWNER in the second tenant', row('T_B','other-owner-2','POLICY_OWNER','ACTIVE'));
+      print('T_A ACTIVE POLICY_OWNER rows:', c.execute(chr(34)+'select count(*) from tenant_humans where tenant=? and authority_role=? and state=?'+chr(34), ('T_A','POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      print('T_B ACTIVE POLICY_OWNER rows:', c.execute(chr(34)+'select count(*) from tenant_humans where tenant=? and authority_role=? and state=?'+chr(34), ('T_B','POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      print('tenants with a Policy Owner:', c.execute(chr(34)+'select count(distinct tenant) from tenant_humans where authority_role=? and state=?'+chr(34), ('POLICY_OWNER','ACTIVE')).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "a POLICY_OWNER singularity index exists: True"
+      - "the singularity index is tenant-scoped: True"
+      - "positive control, the first ACTIVE POLICY_OWNER in a tenant: ACCEPTED"
+      - "a SECOND ACTIVE POLICY_OWNER in the same tenant: refused by"
+      - "positive control, an ACTIVE AUTHORIZED_HUMAN beside the owner: ACCEPTED"
+      - "positive control, a RETIRED former POLICY_OWNER is retained: ACCEPTED"
+      - "positive control, a DIFFERENT tenant has its own ACTIVE POLICY_OWNER: ACCEPTED"
+      - "a SECOND ACTIVE POLICY_OWNER in the second tenant: refused by"
+      - "T_A ACTIVE POLICY_OWNER rows: 1"
+      - "T_B ACTIVE POLICY_OWNER rows: 1"
+      - "tenants with a Policy Owner: 2"
+
   # 15 --------------------------------------------------------------------------------------
   #
   # EXPIRY IS THE ONE PLACE A CLOCK COULD BROADEN AUTHORITY, SO IT IS THE ONE PLACE THE COLUMN
@@ -1274,6 +1391,9 @@ verifies:
       - "inbound content can never author a policy"
       - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
       - "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
+      - "a tenant cannot hold two ACTIVE Policy Owners, and the constraint is per tenant"
+      - "a tenant has exactly one ACTIVE Policy Owner, and a second is refused"
+      - "an ambiguous Policy Owner cannot activate a policy, and no second authority system appears"
     observations:
       - "A MODEL CAN NEVER ACTIVATE A POLICY"
       - "AUTOMATION CAN NEVER ACTIVATE A POLICY"
@@ -1281,6 +1401,10 @@ verifies:
       - "an ACTIVE policy with no activator: refused"
       - "M11 invents an admin authority: False"
       - "M11 defines its own authority role vocabulary: False"
+      - "A TENANT HAS EXACTLY ONE ACTIVE POLICY OWNER"
+      - "AN AMBIGUOUS POLICY OWNER CANNOT ACTIVATE A POLICY"
+      - "a POLICY_OWNER singularity index exists: True"
+      - "a SECOND ACTIVE POLICY_OWNER in the same tenant: refused by"
 
   - risk_category: safety_invariant
     claim: >-
@@ -1399,9 +1523,13 @@ verifies:
       - "a grant minted under the old version cannot be claimed after a policy change"
       - "the version-invalidation seams stay M2's, M3's and M4's, and M11 builds no second one"
       - "the checkpoint kernel, the claim CAS and step order are unchanged by M11"
+      - "a change in one scope voids in-flight authority in every other scope"
+      - "the tenant policy version advances on a change in any scope, and the void is never narrowed to it"
     observations:
       - "A POLICY CHANGE VOIDS AN IN-FLIGHT APPROVAL"
       - "A STALE POLICY VERSION MAKES THE GRANT UNCLAIMABLE"
+      - "A CHANGE IN ANY SCOPE VOIDS IN-FLIGHT AUTHORITY IN EVERY SCOPE"
+      - "THE VOID IS TENANT-WIDE, NEVER NARROWED TO THE SCOPE THAT CHANGED"
       - "the claim CAS revalidates policy_version in its WHERE clause: True"
       - "the claim CAS names POLICY_CHANGED as a refusal cause: True"
       - "M11 defines its own void_on_policy: False"
@@ -1419,6 +1547,7 @@ verifies:
       - "one ACTIVE policy per tenant and scope, enforced by a tenant-first partial index"
       - "the live database refuses a null gate, an ACTIVE policy with no activator, and an invented state"
       - "the policy table joins the tenant-first partition, and no tenantless table appeared"
+      - "a tenant cannot hold two ACTIVE Policy Owners, and the constraint is per tenant"
     observations:
       - "every policy index is tenant-first: True"
       - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
@@ -1427,6 +1556,9 @@ verifies:
       - "tenant is FIRST in the policy primary key: True"
       - "at least one policy FK is tenant-consistent: True"
       - "tenantless tables outside the recorded exemptions: []"
+      - "the singularity index is tenant-scoped: True"
+      - "positive control, a DIFFERENT tenant has its own ACTIVE POLICY_OWNER: ACCEPTED"
+      - "tenants with a Policy Owner: 2"
 
   - risk_category: concurrency
     claim: >-
@@ -1877,6 +2009,11 @@ forbidden:
   - "### SECOND DRIFT-INVALIDATION MECHANISM BUILT ###"
   - "### M4 STATE MUTATED DIRECTLY BY M11 ###"
   - "### PolicyVersionChanged BYPASSED A CONSUMER GUARD ###"
+  # `M11-AQ-6` — the version namespace is the TENANT; over-voiding is the fail-closed direction
+  - "### SCOPE-LOCAL POLICY VERSION NAMESPACE ###"
+  - "### THE VOID WAS NARROWED TO THE SCOPE THAT CHANGED ###"
+  - "### IN-FLIGHT AUTHORITY SURVIVED A POLICY VERSION CHANGE IN ANOTHER SCOPE ###"
+  - "### UNDER-VOIDING CHOSEN OVER OVER-VOIDING ###"
   # ---- precedence
   - "### POLICY OVERRODE A PERMANENT PRODUCT TRUTH ###"
   - "### POLICY OVERRODE A BRAKE DENIAL ###"
@@ -1891,6 +2028,13 @@ forbidden:
   - "### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###"
   - "### DUPLICATE ACTIVE POLICY ###"
   - "### TWO ACTIVE POLICIES FOR ONE SCOPE ###"
+  # `M11-AQ-7` / `P6-D72` — the invariant this unit must CLOSE, not report
+  - "### TWO ACTIVE POLICY OWNERS IN ONE TENANT ###"
+  - "### POLICY OWNER SINGULARITY UNENFORCED ###"
+  - "### POLICY OWNER SINGULARITY LEFT TO REVIEW ###"
+  - "### AMBIGUOUS POLICY OWNER ACTIVATED A POLICY ###"
+  - "### POLICY OWNER SINGULARITY COUPLED TWO TENANTS ###"
+  - "### SECOND AUTHORITY RECORD INVENTED FOR THE POLICY OWNER ###"
   - "### OCC BYPASSED ###"
   - "### POLICY VERSION OVERWRITTEN IN PLACE ###"
   - "### POLICY VERSION REUSED ###"
@@ -1905,6 +2049,12 @@ forbidden:
   - "### REPLAY PRODUCED AN EXTERNAL EFFECT ###"
   - "### UNREGISTERED EVENT MINTED ###"
   - "### NINTH F11 CONTRACT MINTED ###"
+  # `M11-AQ-4` / `P6-D71` — BLOCKED_AUTHORITY. Minting it is a founder/architect act; it lands with
+  # M12/Rule; and SIMULATING it is the same defect wearing a test's clothes.
+  - "### PolicyOverridden MINTED ###"
+  - "### PolicyOverridden SIMULATED ###"
+  - "### AN OVERRIDE MECHANISM WAS BUILT ###"
+  - "### P6-D71 RESOLVED BY A BUILD SESSION ###"
   - "### PolicyProposed AND PolicySubmitted COLLAPSED ###"
   - "### PolicyEvaluated MINTED BY M11 ###"
   - "### STRICT ORDER WEAKENED ###"
