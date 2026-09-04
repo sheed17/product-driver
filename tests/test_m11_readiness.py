@@ -774,6 +774,186 @@ class TestPersistedStateIsTheOracle:
         assert "the comparison is not a raw string compare: True" in joined
         assert "the two human gates are distinguished: True" in joined
 
+    def test_the_ceiling_order_is_asserted_as_a_SEQUENCE_not_a_set(self, state_checks):
+        """### The repair of run 20260903-065810's fourth defective oracle.
+
+        The first form of this check discovered the ordering by NAME, took `sorted(...)[0]` —
+        which is `DEFAULT_PRODUCT_CEILING`, a single `str`-valued enum member, not the ordering —
+        and iterated its CHARACTERS. Totality was compared against `{'A','D','E','H',...}` and
+        could never be True. A set assertion would not have been enough even if it had picked the
+        right object: `AUTONOMOUS_WITHIN_CAPS` is the broadest member and `FORBIDDEN` the
+        narrowest, and a check that only knows WHICH four members exist would score a reversed
+        ladder as correct — the exact defect that calls the most dangerous broadening in the
+        system a narrowing. So the ORDER is pinned, in the ADR-010 §3.1 sequence.
+        """
+        ceiling = [v for k, v in state_checks.items() if "declared total order" in k][0]
+        joined = " ".join(ceiling)
+        assert ("the declared order, broadest first: ['AUTONOMOUS_WITHIN_CAPS', "
+                "'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED', "
+                "'FORBIDDEN']") in joined, (
+            "the ordering is asserted as a SET of members, so a reversed or shuffled ladder "
+            "would satisfy it — which is the broadening-reads-as-narrowing defect itself"
+        )
+        assert "the declared order is not the alphabetical one: True" in joined
+        assert ("gate members that would BROADEN the ceiling and are refused: "
+                "['AUTONOMOUS_WITHIN_CAPS']") in joined, (
+            "nothing pins the DIRECTION, so an oracle that agreed the four members exist would "
+            "pass while a tenant policy broadened the product ceiling"
+        )
+        assert "a raw gate string cannot be ranked: True" in joined
+
+    def test_the_ceiling_oracle_mutates_the_order_and_requires_red(self, state_checks):
+        """A totality predicate nobody has seen refuse anything is a decoration."""
+        joined = " ".join([v for k, v in state_checks.items() if "declared total order" in k][0])
+        for control in (
+            "swapping two members breaks the declared order: True",
+            "collapsing the two human gates breaks totality: True",
+            "adding a fifth member breaks totality: True",
+            "reversing the order breaks the declared order: True",
+            "under a reversed order the broadest gate would read as a narrowing: True",
+        ):
+            assert control in joined, f"the ceiling oracle carries no control for: {control}"
+
+    def test_the_admin_authority_oracle_reads_executable_code_not_raw_text(self, state_checks):
+        """### The repair of run 20260903-065810's first defective oracle.
+
+        The question is architectural — "did M11 introduce executable admin/superuser authority,
+        an admin activation path, or a second authority mechanism?" — and the first form of this
+        check answered it with `'ADMIN' in policy.py`. That matched the machine's own docstring,
+        `A POLICY CHANGE IS ITSELF A GATED ACTION, AND THERE IS NO ADMIN PATH`, and reported the
+        sentence promising there is no admin path as evidence that one had been invented. The
+        repair does NOT ignore the word: it reads SYMBOLS and executable TOKENS out of the AST, so
+        prose is not authority and an identifier is.
+        """
+        admin = [v for k, v in state_checks.items() if "parallel admin authority" in k]
+        assert admin, "no oracle measures the admin-authority boundary"
+        joined = " ".join(admin[0])
+        assert "admin-shaped executable symbols M11 defines or calls: []" in joined
+        assert "admin-shaped executable authority tokens M11 stores or compares: []" in joined
+        assert "authority-role vocabularies M11 declares of its own: []" in joined
+        assert "M11 invents an admin authority: False" in joined
+        # Prose must not be authority...
+        for prose in (
+            "a docstring saying there is no admin path is not an admin authority: True",
+            "a comment saying there is no admin path is not an admin authority: True",
+            "a refusal message naming the admin path is not an admin authority: True",
+        ):
+            assert prose in joined, f"the admin oracle proves no prose control: {prose}"
+        # ...and more than one executable SHAPE must be.
+        shapes = [c for c in admin[0] if c.endswith("IS an admin authority: True")]
+        assert len(shapes) >= 4, (
+            f"only {len(shapes)} executable admin shapes are proven to turn this oracle red; a "
+            "scan that has never been seen to fire is not evidence that M11 is clean"
+        )
+
+    def test_the_posture_columns_are_asserted_by_their_canonical_names(self, state_checks):
+        """### The repair of run 20260903-065810's second defective oracle.
+
+        It tested `'predicate' in cols` and `'caps' in cols` — a shorthand the reader carried in
+        their head — against a schema whose columns are `predicate_json` and `caps_json`. It
+        failed on a CORRECT product, which is the worse of the two ways an oracle can be wrong: a
+        red that means nothing teaches everyone to ignore a red that does. The repair is not a
+        fuzzy match — a near miss must still fail — so the same predicate is applied to mutated
+        column sets and required to refuse each one.
+        """
+        expiry = [v for k, v in state_checks.items() if "may carry an expiry" in k]
+        assert expiry, "no oracle measures the posture columns"
+        joined = " ".join(expiry[0])
+        assert ("the canonical posture columns the schema carries: "
+                "['caps_json', 'predicate_json']") in joined, (
+            "the posture columns are not asserted by their canonical names, so a shorthand or a "
+            "near-miss column could satisfy the contract"
+        )
+        assert "the canonical predicate and caps contract holds: True" in joined
+        for control in (
+            "a schema missing predicate_json fails the same contract: True",
+            "a schema missing caps_json fails the same contract: True",
+            "a schema naming them predicate and caps fails the same contract: True",
+            "a schema naming them predicate_ref and caps_ref fails the same contract: True",
+            "a nullable predicate_json fails the same contract: True",
+            "a nullable caps_json fails the same contract: True",
+        ):
+            assert control in joined, f"the posture-column oracle carries no control for: {control}"
+
+    def test_the_event_oracle_separates_what_m11_mints_from_what_it_consumes(self, state_checks):
+        """### The repair of run 20260903-065810's third defective oracle.
+
+        It read every event-shaped literal in `policy.py` and called them all MINTS, so
+        `Trigger.HUMAN_ACTIVATED = "HumanActivated"` — a driving fact the machine CONSUMES at
+        PO-4, named in §33's "Events consumed", deliberately absent from the registry — was
+        reported as a ninth F11 contract M11 had invented. Registering it to quiet the oracle
+        would have manufactured the exact ninth contract the invariant forbids. The mint boundary
+        stays EIGHT; a consumed trigger is measured as a consumer.
+        """
+        emitted = [v for k, v in state_checks.items() if "emits only registered event names" in k]
+        assert emitted, "no oracle reads the event names M11 actually emits"
+        joined = " ".join(emitted[0])
+        assert "the count of F11 contracts M11 mints: 8" in joined, (
+            "nothing pins the mint count at eight, so a ninth contract could be minted and the "
+            "oracle would only notice if it were also unregistered"
+        )
+        assert "minted names that are not registered F11 contracts: []" in joined
+        assert "M11 mints a ninth F11 contract: False" in joined
+        assert ("the driving facts M11 CONSUMES: ['Approved', 'Authored', 'HumanActivated', "
+                "'NewVersionActivated', 'Revoked', 'Submitted', 'TimerFired']") in joined, (
+            "the consumed set is not pinned, so a mint could be hidden from the unregistered-name "
+            "scan simply by adding a trigger with that name"
+        )
+        assert "HumanActivated is consumed, not minted: True" in joined
+        assert "a consumed trigger is never also minted: True" in joined
+        assert "a ninth event minted on a transition row is caught: True" in joined
+        assert "a mint hidden behind a new consumed trigger is still caught: True" in joined
+
+    def test_the_live_write_positive_controls_carry_governed_change_evidence(self, state_checks):
+        """### The repair of run 20260903-065810's fifth defective oracle.
+
+        Its positive controls raw-inserted an ACTIVE policy with no `approval_id` and no
+        `diff_fingerprint`, and the database correctly refused them through the no-admin-path
+        CHECK — the safety-POSITIVE behaviour PO-3 exists to produce. A positive control that a
+        correct product must refuse is not a positive control, and with it failing the whole
+        refusal battery was vacuous: a schema that refused EVERYTHING would have scored the same.
+        The control now carries the governed-change evidence the canonical path leaves behind, and
+        the ungoverned raw insert is kept as a NEGATIVE control that must be REFUSED.
+        """
+        live = [v for k, v in state_checks.items() if "the live database refuses" in k][0]
+        joined = " ".join(live)
+        assert ("the M4 approval the positive controls bind: "
+                "('apr-1', 'GRANTED', 'policy-owner')") in joined, (
+            "the positive controls do not bind a real granted M4 approval, so either they are "
+            "ungoverned rows a correct product must refuse, or the no-admin-path CHECK is gone"
+        )
+        ungoverned = [c for c in live if c.startswith("the ungoverned raw insert")]
+        assert ungoverned, (
+            "the ungoverned raw ACTIVE insert is no longer attempted, so nothing proves the "
+            "no-admin-path CHECK still refuses a policy manufactured without an approval"
+        )
+        assert all(c.endswith("refused by") for c in ungoverned), (
+            f"the ungoverned raw insert is not pinned as a REFUSAL: {ungoverned}"
+        )
+        assert "surviving governed rows with no approval evidence: 0" in joined
+        assert "surviving governed rows that carry both the approval and the diff fingerprint: 2" in joined
+
+    def test_the_owner_singularity_oracle_proves_a_coupling_constraint_would_be_caught(
+        self, state_checks
+    ):
+        """`tenants with a Policy Owner: 2` is the assertion that separates a tenant-scoped
+        constraint from a global one — but on its own nothing shows it CAN come back as anything
+        else. The oracle now builds a deliberately GLOBAL uniqueness beside the real one and
+        proves the same count reads 1 under it."""
+        owner = [v for k, v in state_checks.items() if "two ACTIVE Policy Owners" in k][0]
+        joined = " ".join(owner)
+        assert "the index population is non-empty: True" in joined, (
+            "the index scan carries no population proof, so a database with no indexes at all "
+            "would report the singularity index as absent for the wrong reason"
+        )
+        assert "tenants a GLOBAL owner uniqueness would allow: 1" in joined
+        assert "a global owner uniqueness that couples tenants is caught: True" in joined
+        assert "the landed constraint does NOT couple tenants: True" in joined
+        assert "T_A retained former POLICY_OWNER rows: 1" in joined, (
+            "nothing proves the retired owner was actually RETAINED as a row; the control could "
+            "be ACCEPTED by a table that quietly dropped it"
+        )
+
     def test_m12_and_m13_absence_is_measured_over_runtime_not_the_registry(self, state_checks):
         """The F12 and F13 contracts were registered before M11, so their presence proves nothing.
         The oracle has to ask about the RUNTIME: no module, no table, no migration."""
@@ -1519,6 +1699,11 @@ PARITY = "an upgraded database and a fresh database carry the identical policy l
 CEILING = ("the product-ceiling comparison is a declared total order over the four gate members, "
            "not a string compare")
 SCOPE = "M12 Rule and M13 Brake are not built, and no autonomy-graduation engine exists"
+#: The three oracles run 20260903-065810 found defective ALONGSIDE the four named above, and whose
+#: repairs the section below mutates in turn.
+ADMIN = "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
+OWNER = "a tenant cannot hold two ACTIVE Policy Owners, and the constraint is per tenant"
+EXPIRY = "only a narrowing policy may carry an expiry, and the direction is a persisted fact"
 
 
 def _state_map(scenario) -> dict[str, list[str]]:
@@ -1798,6 +1983,171 @@ class TestThisFileFailsWhenTheGuardIsRemoved:
         with pytest.raises(AssertionError):
             joined = " ".join(_state_map(scenario)[CEILING])
             assert "the ordering is total over the four canonical members: True" in joined
+
+    def test_asserting_the_ceiling_order_as_a_set_instead_of_a_sequence_is_caught(self):
+        """The mutation that restores run 20260903-065810's fourth defect from the other side: a
+        totality assertion with no ORDER would score a reversed ladder as correct."""
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", CEILING), "contains",
+            "the declared order, broadest first: ['AUTONOMOUS_WITHIN_CAPS', "
+            "'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED', 'FORBIDDEN']"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[CEILING])
+            assert ("the declared order, broadest first: ['AUTONOMOUS_WITHIN_CAPS', "
+                    "'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED', "
+                    "'FORBIDDEN']") in joined
+
+    def test_dropping_the_broadening_direction_from_the_ceiling_oracle_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", CEILING), "contains",
+            "gate members that would BROADEN the ceiling and are refused: "
+            "['AUTONOMOUS_WITHIN_CAPS']"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[CEILING])
+            assert ("gate members that would BROADEN the ceiling and are refused: "
+                    "['AUTONOMOUS_WITHIN_CAPS']") in joined
+
+    # ---- the admin-authority boundary ------------------------------------------------------
+    def test_dropping_the_structural_admin_symbol_scan_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", ADMIN), "contains",
+            "admin-shaped executable symbols M11 defines or calls: []"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[ADMIN])
+            assert "admin-shaped executable symbols M11 defines or calls: []" in joined
+
+    def test_dropping_the_admin_oracles_prose_controls_is_caught(self):
+        """Without them the oracle is back to a text scan that cannot tell the docstring
+        promising there is no admin path from an admin path."""
+        def edit(raw):
+            entry = _named(raw, "expect_state", ADMIN)
+            entry["contains"] = [
+                c for c in entry["contains"] if "is not an admin authority" not in c
+            ]
+
+        scenario = _mutate(edit)
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[ADMIN])
+            assert ("a docstring saying there is no admin path is not an admin authority: True"
+                    in joined)
+
+    def test_dropping_the_admin_oracles_executable_shapes_is_caught(self):
+        def edit(raw):
+            entry = _named(raw, "expect_state", ADMIN)
+            entry["contains"] = [
+                c for c in entry["contains"] if not c.endswith("IS an admin authority: True")
+            ]
+
+        scenario = _mutate(edit)
+        with pytest.raises(AssertionError):
+            shapes = [c for c in _state_map(scenario)[ADMIN]
+                      if c.endswith("IS an admin authority: True")]
+            assert len(shapes) >= 4
+
+    # ---- the posture columns ---------------------------------------------------------------
+    def test_dropping_the_canonical_posture_column_names_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", EXPIRY), "contains",
+            "the canonical posture columns the schema carries: ['caps_json', 'predicate_json']"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[EXPIRY])
+            assert ("the canonical posture columns the schema carries: "
+                    "['caps_json', 'predicate_json']") in joined
+
+    def test_dropping_the_near_miss_column_control_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", EXPIRY), "contains",
+            "a schema naming them predicate_ref and caps_ref fails the same contract: True"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[EXPIRY])
+            assert ("a schema naming them predicate_ref and caps_ref fails the same contract: "
+                    "True") in joined
+
+    # ---- the mint / consume boundary -------------------------------------------------------
+    def test_dropping_the_eight_mint_count_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", EVENTS), "contains",
+            "the count of F11 contracts M11 mints: 8"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[EVENTS])
+            assert "the count of F11 contracts M11 mints: 8" in joined
+
+    def test_dropping_the_pinned_consumed_trigger_set_is_caught(self):
+        """Unpinned, a mint could be hidden from the unregistered-name scan by adding a trigger
+        with that name — which is the failure mode the producer/consumer split introduces."""
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", EVENTS), "contains",
+            "the driving facts M11 CONSUMES: ['Approved', 'Authored', 'HumanActivated', "
+            "'NewVersionActivated', 'Revoked', 'Submitted', 'TimerFired']"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[EVENTS])
+            assert ("the driving facts M11 CONSUMES: ['Approved', 'Authored', 'HumanActivated', "
+                    "'NewVersionActivated', 'Revoked', 'Submitted', 'TimerFired']") in joined
+
+    # ---- the governed positive control -----------------------------------------------------
+    def test_dropping_the_governed_approval_binding_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", LIVE_WRITES), "contains",
+            "the M4 approval the positive controls bind: ('apr-1', 'GRANTED', 'policy-owner')"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[LIVE_WRITES])
+            assert ("the M4 approval the positive controls bind: "
+                    "('apr-1', 'GRANTED', 'policy-owner')") in joined
+
+    def test_dropping_the_ungoverned_raw_insert_negative_control_is_caught(self):
+        def edit(raw):
+            entry = _named(raw, "expect_state", LIVE_WRITES)
+            entry["contains"] = [
+                c for c in entry["contains"] if not c.startswith("the ungoverned raw insert")
+            ]
+
+        scenario = _mutate(edit)
+        with pytest.raises(AssertionError):
+            ungoverned = [c for c in _state_map(scenario)[LIVE_WRITES]
+                          if c.startswith("the ungoverned raw insert")]
+            assert ungoverned
+
+    def test_flipping_the_ungoverned_raw_insert_to_an_acceptance_is_caught(self):
+        """The direction guard. A one-character edit in the wrong direction would ship a scenario
+        that certifies an admin path into ACTIVE as correct."""
+        def edit(raw):
+            entry = _named(raw, "expect_state", LIVE_WRITES)
+            entry["contains"] = [
+                (c.replace(": refused by", ": ACCEPTED")
+                 if c.startswith("the ungoverned raw insert") else c)
+                for c in entry["contains"]
+            ]
+
+        scenario = _mutate(edit)
+        with pytest.raises(AssertionError):
+            ungoverned = [c for c in _state_map(scenario)[LIVE_WRITES]
+                          if c.startswith("the ungoverned raw insert")]
+            assert ungoverned and all(c.endswith("refused by") for c in ungoverned)
+
+    # ---- the owner singularity, per tenant --------------------------------------------------
+    def test_dropping_the_global_coupling_control_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", OWNER), "contains",
+            "a global owner uniqueness that couples tenants is caught: True"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[OWNER])
+            assert "a global owner uniqueness that couples tenants is caught: True" in joined
+
+    def test_dropping_the_index_population_proof_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", OWNER), "contains",
+            "the index population is non-empty: True"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[OWNER])
+            assert "the index population is non-empty: True" in joined
+
+    def test_dropping_the_retained_former_owner_row_count_is_caught(self):
+        scenario = _mutate(lambda raw: _drop(
+            _named(raw, "expect_state", OWNER), "contains",
+            "T_A retained former POLICY_OWNER rows: 1"))
+        with pytest.raises(AssertionError):
+            joined = " ".join(_state_map(scenario)[OWNER])
+            assert "T_A retained former POLICY_OWNER rows: 1" in joined
 
     # ---- future scope ----------------------------------------------------------------------
     def test_permitting_an_early_m12_is_caught(self):

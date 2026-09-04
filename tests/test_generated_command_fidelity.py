@@ -301,6 +301,78 @@ class TestTheShippedCorpus:
             f"generator in a rewritten form, e.g. {missing[0][:120]!r}"
         )
 
+    def test_every_python_dash_c_payload_in_the_corpus_parses_after_shell_splitting(self):
+        """The command a shell would actually run has to BE a program.
+
+        ### THIS IS THE HOLE RUN 20260903-065810 FELL THROUGH, AND IT IS ONE LEVEL BELOW THE
+        GUARD BELOW. `test_every_embedded_body_in_the_corpus_still_parses` reads the literals a
+        command hands to `exec`, and to find them it must first shell-split the command and parse
+        the `-c` payload — so when THAT parse fails it `continue`s, on the reasonable-sounding
+        grounds that the command is "not a python -c invocation, or not ours to judge". A command
+        whose payload does not parse is not un-judgeable. It is broken.
+
+        M11's Policy-Owner-singularity oracle carried BARE double quotes inside a double-quoted
+        shell command. `/bin/sh` closed the string at the first one, the command exited 2 having
+        executed no Python at all, and the run reported a P0 safety-invariant failure against a
+        product whose constraint was present and correct. Three iterations of a build session were
+        spent on a defect that lived in the measurement instrument, and this file was one
+        `continue` away from naming it before the run started.
+
+        So the payload is parsed HERE, where an unparseable one is a failure rather than a skip.
+        """
+        _authored, approved = self._corpus()
+        checked, broken = 0, []
+        for command in approved.verbatim:
+            try:
+                tokens = shlex.split(command)
+            except ValueError as exc:
+                broken.append((f"the shell cannot split it ({exc})", command))
+                continue
+            if not tokens or "-c" not in tokens:
+                continue
+            if not Path(tokens[0]).name.startswith("python"):
+                continue
+            index = tokens.index("-c")
+            if index + 1 >= len(tokens):
+                broken.append(("-c is the last token, so there is no program", command))
+                continue
+            checked += 1
+            try:
+                ast.parse(tokens[index + 1])
+            except SyntaxError as exc:
+                broken.append((f"{type(exc).__name__}: {exc.msg} (line {exc.lineno})", command))
+        assert not broken, (
+            f"{len(broken)} shipped command(s) would reach the interpreter as something that is "
+            f"not a program, so they can only ever fail — and they fail as a PRODUCT defect. "
+            f"First: {broken[0][0]} — {broken[0][1][:160]!r}"
+        )
+        assert checked, (
+            "no shipped command is a `python -c` invocation any more, so this guard is no longer "
+            "measuring the thing it was written for — keep one, or retire the test deliberately "
+            "rather than letting it pass vacuously"
+        )
+
+    def test_the_payload_guard_catches_the_bare_quote_that_broke_run_20260903(self):
+        """The mutation control for the guard above, in the exact shape the defect had.
+
+        A `python -c "..."` whose exec payload carries an unescaped double quote: the shell ends
+        the argument at that quote, so what the interpreter receives is a truncated program. The
+        escaped form of the same command is required to parse, so this is a statement about the
+        quoting rather than about the program. If the first half stops raising, the guard above has
+        been loosened into something that passes either way.
+        """
+        quote, backslash = chr(34), chr(92)
+        body = "import sys; exec(chr(10).join(['def go():',{q} print(1){q}]), {{}})"
+        bare = ".venv/bin/python -c " + quote + body.format(q=quote) + quote
+        escaped = ".venv/bin/python -c " + quote + body.format(q=backslash + quote) + quote
+
+        tokens = shlex.split(bare)
+        with pytest.raises(SyntaxError):
+            ast.parse(tokens[tokens.index("-c") + 1])
+
+        tokens = shlex.split(escaped)
+        ast.parse(tokens[tokens.index("-c") + 1])
+
     def test_every_embedded_body_in_the_corpus_still_parses(self):
         _authored, approved = self._corpus()
         checked = 0

@@ -631,19 +631,27 @@ expect_state:
       info=lambda t: list(c.execute('pragma table_info(' + t + ')'));
       colsof=lambda t: [r[1] for r in info(t)];
       env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
-      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-02T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused (' + type(exc).__name__ + ')')\"]), env);
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-02T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
       build=env['build']; ins=env['ins']; attempt=env['attempt'];
       [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,n,r,'ACTIVE','2026-09-02T00:00:00Z','founder','human')))) for t,h,n,r in (('T_A','policy-owner','Policy Owner','POLICY_OWNER'),('T_A','ops-lead','Ops Lead','AUTHORIZED_HUMAN'),('T_B','other-owner','Other Owner','POLICY_OWNER'))];
+      [ins('approvals', build('approvals', {'tenant':t,'approval_id':a,'state':'GRANTED','granted_by':h,'granted_at':'2026-09-02T00:00:00Z','frozen':0,'version':1,'required_signatures':1,'gate_decision':'HUMAN_APPROVAL_REQUIRED','commit_key':'ck-' + a,'action_class':'policy_change'})) for t,a,h in (('T_A','apr-1','policy-owner'),('T_B','apr-b','other-owner'))];
+      print('the M4 approval the positive controls bind:', c.execute('select approval_id, state, granted_by from approvals where tenant=?', ('T_A',)).fetchone());
       fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(' + T + ')')]);
       print('the authored_by FK target:', str(fks.get('authored_by')));
       print('the activated_by FK target:', str(fks.get('activated_by')));
       base=build(T, {'tenant':'T_A','policy_id':'pol-1','policy_version':1,'scope':'action_class:raise_invoice','gate_decision':'HUMAN_APPROVAL_REQUIRED','authored_by':'policy-owner','activated_by':None,'state':'DRAFT','version':1,'effective_from':'2026-09-02T00:00:00Z','created_at':'2026-09-02T00:00:00Z','updated_at':'2026-09-02T00:00:00Z'});
       print('the derived NOT NULL column set:', sorted(base));
-      [attempt(lbl, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in colsof(T) or k == 'gate_decision'])) for lbl, over in [('positive control, a well-formed DRAFT policy', {'state':'DRAFT'}), ('positive control, an ACTIVE policy activated by a named human', {'policy_id':'pol-2','policy_version':2,'scope':'action_class:book_carrier','state':'ACTIVE','activated_by':'policy-owner'}), ('an ACTIVE policy with no activator', {'policy_id':'pol-3','policy_version':3,'scope':'action_class:pay_carrier','state':'ACTIVE','activated_by':None}), ('a policy with a null gate decision', {'policy_id':'pol-4','policy_version':4,'scope':'action_class:send_email','gate_decision':None}), ('an invented gate decision', {'policy_id':'pol-5','policy_version':5,'scope':'action_class:file_document','gate_decision':'AUTONOMOUS'}), ('a NARROWED lifecycle state', {'policy_id':'pol-6','policy_version':6,'scope':'action_class:a','state':'NARROWED'}), ('a SUSPENDED lifecycle state', {'policy_id':'pol-7','policy_version':7,'scope':'action_class:b','state':'SUSPENDED'}), ('an INVALID lifecycle state', {'policy_id':'pol-8','policy_version':8,'scope':'action_class:c','state':'INVALID'}), ('an author who is not a recorded human', {'policy_id':'pol-9','policy_version':9,'scope':'action_class:d','authored_by':'someone-else'}), ('an author from another tenant', {'policy_id':'pol-10','policy_version':10,'scope':'action_class:e','authored_by':'other-owner'}), ('an activator from another tenant', {'policy_id':'pol-11','policy_version':11,'scope':'action_class:f','state':'ACTIVE','activated_by':'other-owner'}), ('positive control, an authorized delegate may activate', {'policy_id':'pol-12','policy_version':12,'scope':'action_class:g','state':'ACTIVE','activated_by':'ops-lead'})]];
-      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0])"
+      G={'approval_id':'apr-1','diff_fingerprint':'fp_v1:0f1e2d3c'};
+      gov=lambda d: dict(list(G.items()) + list(d.items()));
+      [attempt(lbl, dict(list(base.items()) + [(k,v) for k,v in over.items() if k in colsof(T) or k == 'gate_decision'])) for lbl, over in [('positive control, a well-formed DRAFT policy', {'state':'DRAFT'}), ('positive control, an ACTIVE policy activated by a named human', gov({'policy_id':'pol-2','policy_version':2,'scope':'action_class:book_carrier','state':'ACTIVE','activated_by':'policy-owner'})), ('an ACTIVE policy with no activator', gov({'policy_id':'pol-3','policy_version':3,'scope':'action_class:pay_carrier','state':'ACTIVE','activated_by':None})), ('a policy with a null gate decision', {'policy_id':'pol-4','policy_version':4,'scope':'action_class:send_email','gate_decision':None}), ('an invented gate decision', {'policy_id':'pol-5','policy_version':5,'scope':'action_class:file_document','gate_decision':'AUTONOMOUS'}), ('a NARROWED lifecycle state', {'policy_id':'pol-6','policy_version':6,'scope':'action_class:a','state':'NARROWED'}), ('a SUSPENDED lifecycle state', {'policy_id':'pol-7','policy_version':7,'scope':'action_class:b','state':'SUSPENDED'}), ('an INVALID lifecycle state', {'policy_id':'pol-8','policy_version':8,'scope':'action_class:c','state':'INVALID'}), ('an author who is not a recorded human', {'policy_id':'pol-9','policy_version':9,'scope':'action_class:d','authored_by':'someone-else'}), ('an author from another tenant', {'policy_id':'pol-10','policy_version':10,'scope':'action_class:e','authored_by':'other-owner'}), ('an activator from another tenant', gov({'policy_id':'pol-11','policy_version':11,'scope':'action_class:f','state':'ACTIVE','activated_by':'other-owner'})), ('the ungoverned raw insert, an ACTIVE policy with no approval and no diff fingerprint', {'policy_id':'pol-13','policy_version':13,'scope':'action_class:h','state':'ACTIVE','activated_by':'policy-owner'}), ('an ACTIVE policy naming an approval from another tenant', {'policy_id':'pol-14','policy_version':14,'scope':'action_class:i','state':'ACTIVE','activated_by':'policy-owner','approval_id':'apr-b','diff_fingerprint':'fp_v1:0f1e2d3c'}), ('positive control, an authorized delegate may activate', gov({'policy_id':'pol-12','policy_version':12,'scope':'action_class:g','state':'ACTIVE','activated_by':'ops-lead'}))]];
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      GOV=('APPROVED','ACTIVE','SUPERSEDED','REVOKED','EXPIRED');
+      print('surviving governed rows that carry both the approval and the diff fingerprint:', c.execute('select count(*) from policies where state in (?,?,?,?,?) and approval_id is not null and diff_fingerprint is not null', GOV).fetchone()[0]);
+      print('surviving governed rows with no approval evidence:', c.execute('select count(*) from policies where state in (?,?,?,?,?) and (approval_id is null or diff_fingerprint is null)', GOV).fetchone()[0])"
     timeout_s: 600
     contains:
       - "policies table present: True"
+      - "the M4 approval the positive controls bind: ('apr-1', 'GRANTED', 'policy-owner')"
       - "positive control, a well-formed DRAFT policy: ACCEPTED"
       - "positive control, an ACTIVE policy activated by a named human: ACCEPTED"
       - "an ACTIVE policy with no activator: refused"
@@ -655,8 +663,12 @@ expect_state:
       - "an author who is not a recorded human: refused"
       - "an author from another tenant: refused"
       - "an activator from another tenant: refused"
+      - "the ungoverned raw insert, an ACTIVE policy with no approval and no diff fingerprint: refused by"
+      - "an ACTIVE policy naming an approval from another tenant: refused by"
       - "positive control, an authorized delegate may activate: ACCEPTED"
       - "rows that survived: 3"
+      - "surviving governed rows that carry both the approval and the diff fingerprint: 2"
+      - "surviving governed rows with no approval evidence: 0"
 
   # 4 ---------------------------------------------------------------------------------------
   #
@@ -687,11 +699,14 @@ expect_state:
       exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-02T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\",'def sql(label, stmt, params):',' try:',\"  c.execute('savepoint m'); cur = c.execute(stmt, params); c.execute('release m'); print(label + ': ACCEPTED, rows=' + str(cur.rowcount))\",' except sqlite3.Error as exc:',\"  c.execute('rollback to m'); c.execute('release m'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
       build=env['build']; ins=env['ins']; attempt=env['attempt']; sql=env['sql'];
       [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,'policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-02T00:00:00Z','founder','human')))) for t in ('T_A','T_B')];
+      [ins('approvals', build('approvals', {'tenant':t,'approval_id':a,'state':'GRANTED','granted_by':'policy-owner','granted_at':'2026-09-02T00:00:00Z','frozen':0,'version':1,'required_signatures':1,'gate_decision':'HUMAN_APPROVAL_REQUIRED','commit_key':'ck-' + a,'action_class':'policy_change'})) for t,a in (('T_A','apr-1'),('T_B','apr-b'))];
+      print('the M4 approvals the positive controls bind:', sorted(c.execute('select tenant, approval_id, state from approvals')));
       base=build(T, {'tenant':'T_A','scope':'action_class:raise_invoice','gate_decision':'HUMAN_APPROVAL_REQUIRED','authored_by':'policy-owner','activated_by':'policy-owner','version':1,'effective_from':'2026-09-02T00:00:00Z','created_at':'2026-09-02T00:00:00Z','updated_at':'2026-09-02T00:00:00Z'});
-      attempt('positive control, the first ACTIVE policy for a tenant and scope', dict(list(base.items()) + [('policy_id','pol-1'),('policy_version',1),('state','ACTIVE')]));
-      attempt('a SECOND ACTIVE policy for the same tenant and scope', dict(list(base.items()) + [('policy_id','pol-2'),('policy_version',2),('state','ACTIVE')]));
-      attempt('positive control, a SUPERSEDED policy for the same scope is retained beside it', dict(list(base.items()) + [('policy_id','pol-3'),('policy_version',3),('state','SUPERSEDED')]));
-      attempt('positive control, the SAME scope ACTIVE in a DIFFERENT tenant', dict(list(base.items()) + [('policy_id','pol-4'),('tenant','T_B'),('policy_version',1),('state','ACTIVE')]));
+      G=[('approval_id','apr-1'),('diff_fingerprint','fp_v1:0f1e2d3c')];
+      attempt('positive control, the first ACTIVE policy for a tenant and scope', dict(list(base.items()) + G + [('policy_id','pol-1'),('policy_version',1),('state','ACTIVE')]));
+      attempt('a SECOND ACTIVE policy for the same tenant and scope', dict(list(base.items()) + G + [('policy_id','pol-2'),('policy_version',2),('state','ACTIVE')]));
+      attempt('positive control, a SUPERSEDED policy for the same scope is retained beside it', dict(list(base.items()) + G + [('policy_id','pol-3'),('policy_version',3),('state','SUPERSEDED'),('superseded_by','pol-1')]));
+      attempt('positive control, the SAME scope ACTIVE in a DIFFERENT tenant', dict(list(base.items()) + [('approval_id','apr-b'),('diff_fingerprint','fp_v1:0f1e2d3c'),('policy_id','pol-4'),('tenant','T_B'),('policy_version',1),('state','ACTIVE')]));
       attempt('a reused policy_version inside one tenant', dict(list(base.items()) + [('policy_id','pol-5'),('policy_version',1),('scope','action_class:book_carrier'),('state','DRAFT')]));
       sql('the OCC guard on a state change that does not advance the version', 'update policies set state=? where tenant=? and policy_id=?', ('REVOKED','T_A','pol-1'));
       sql('a DELETE against a policy row', 'delete from policies where tenant=? and policy_id=?', ('T_A','pol-3'));
@@ -705,6 +720,7 @@ expect_state:
       - "an ACTIVE-only partial predicate exists: True"
       - "the active uniqueness columns are tenant and scope: True"
       - "a tenant-local policy_version uniqueness exists: True"
+      - "the M4 approvals the positive controls bind: [('T_A', 'apr-1', 'GRANTED'), ('T_B', 'apr-b', 'GRANTED')]"
       - "positive control, the first ACTIVE policy for a tenant and scope: ACCEPTED"
       - "a SECOND ACTIVE policy for the same tenant and scope: refused by"
       - "positive control, a SUPERSEDED policy for the same scope is retained beside it: ACCEPTED"
@@ -949,32 +965,68 @@ expect_state:
   # real string literal must. Both directions are proven on synthetic input at the end, because a
   # scan that cannot tell prose from code is a scan whose verdict is not safe to believe — this is
   # the exact defect the M10 post-push correction had to repair in three P0 guards.
+  #
+  # ### AND A PRODUCER IS NOT A CONSUMER. The first form of this oracle read every event-shaped
+  # literal in `policy.py` and called the lot of them MINTS, so `Trigger.HUMAN_ACTIVATED =
+  # "HumanActivated"` — a DRIVING FACT the machine consumes at PO-4, named in §33's "Events
+  # consumed", absent from `event_contracts_data.json` by design — was reported as a ninth F11
+  # contract M11 had invented. It is the opposite: an event M11 CONSUMES cannot be an event M11
+  # mints, and registering one to quiet the oracle would have manufactured the exact ninth contract
+  # the invariant forbids. So three populations are now measured separately — what M11 EMITS
+  # (declared on its own transition rows), what it CONSUMES (the closed `Trigger` set), and every
+  # event-shaped literal it names anywhere — the consumed set is PINNED so a mint cannot be hidden
+  # by adding a trigger, the emitted set is required to be exactly the registered eight, and a
+  # synthetic ninth is required to turn it red.
   - name: "M11 emits only registered event names, and mints no ninth F11 contract"
     command: >-
       .venv/bin/python -c "import ast,sys,json,pathlib; sys.path.insert(0,'src');
       reg=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts']);
       f11=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts'] if e.get('family') == 'F11');
       po=pathlib.Path('src/freight_recon/policy.py'); tree=ast.parse(po.read_text(encoding='utf-8'));
-      docs=set(id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
-      lits=sorted(set(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs));
-      evish=sorted(s for s in lits if s and s[0].isupper() and s.isidentifier() and any(s.startswith(p) for p in ('Policy','Rule','Brake','Approval','Checkpoint','Effect','Pipeline','Exception','Compensation','Unauthorized','Illegal','Human')));
+      docsof=lambda t: set(id(n.value) for n in ast.walk(t) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
+      litsof=lambda t: set(n.value for n in ast.walk(t) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docsof(t));
+      evishof=lambda t: sorted(s for s in litsof(t) if s and s[0].isupper() and s.isidentifier() and any(s.startswith(p) for p in ('Policy','Rule','Brake','Approval','Checkpoint','Effect','Pipeline','Exception','Compensation','Unauthorized','Illegal','Human')));
+      emitof=lambda t: sorted(set(e.value for n in ast.walk(t) if isinstance(n, ast.Call) for k in n.keywords if k.arg == 'events' for e in ast.walk(k.value) if isinstance(e, ast.Constant) and isinstance(e.value, str)));
+      consumeof=lambda t: sorted(set(a.value.value for n in ast.walk(t) if isinstance(n, ast.ClassDef) and n.name == 'Trigger' for a in n.body if isinstance(a, ast.Assign) and isinstance(a.value, ast.Constant) and isinstance(a.value.value, str)));
+      evish=evishof(tree); emitted=emitof(tree); consumed=consumeof(tree);
+      mintsof=lambda t: sorted(set(evishof(t)) - set(consumeof(t)));
       print('event-shaped literals M11 names in code:', evish);
       print('the literal population is non-empty:', bool(evish));
-      print('unregistered event names M11 mints:', sorted(set(evish) - reg));
+      print('the event names M11 MINTS, declared on its own transition rows:', emitted);
+      print('the mint population is non-empty:', bool(emitted));
+      print('the count of F11 contracts M11 mints:', len(set(emitted) & f11));
+      print('minted names that are not registered F11 contracts:', sorted(set(emitted) - f11));
+      print('M11 mints a ninth F11 contract:', bool(set(emitted) - f11) or len(set(emitted) & f11) != 8);
+      print('the driving facts M11 CONSUMES:', consumed);
+      print('a consumed trigger is never also minted:', not (set(consumed) & set(emitted)));
+      print('HumanActivated is consumed, not minted:', ('HumanActivated' in consumed) and ('HumanActivated' not in emitted));
+      print('unregistered event names M11 mints:', sorted(set(mintsof(tree)) - reg));
       print('F11 names M11 reaches:', sorted(set(evish) & f11));
       print('M11 names PolicyEvaluated, which is M2s:', 'PolicyEvaluated' in evish);
       poison=chr(34)+chr(34)+chr(34)+'PolicyNarrowed is deliberately NOT minted here'+chr(34)+chr(34)+chr(34);
-      pt=ast.parse(poison); pd=set(id(n.value) for n in ast.walk(pt) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant));
-      print('a docstring naming an invented event is not a mint:', not [n for n in ast.walk(pt) if isinstance(n, ast.Constant) and id(n) not in pd]);
-      rt=ast.parse('EVENT = ' + chr(34) + 'PolicyNarrowed' + chr(34)); rd=set(id(n.value) for n in ast.walk(rt) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant));
-      print('a real string literal naming an invented event is a mint:', bool([n for n in ast.walk(rt) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in rd]))"
+      print('a docstring naming an invented event is not a mint:', not mintsof(ast.parse(poison)));
+      print('a real string literal naming an invented event is a mint:', mintsof(ast.parse('EVENT = ' + chr(34) + 'PolicyNarrowed' + chr(34))) == ['PolicyNarrowed']);
+      ninth='row = TransitionRow(id=' + chr(34) + 'PO-8' + chr(34) + ', events=(' + chr(34) + 'PolicyNarrowed' + chr(34) + ',))';
+      print('a ninth event minted on a transition row is caught:', bool(set(emitof(ast.parse(ninth))) - f11));
+      hidden='class Trigger(str, Enum):' + chr(10) + '    SNEAK = ' + chr(34) + 'PolicyNarrowed' + chr(34) + chr(10) + 'row = TransitionRow(id=' + chr(34) + 'PO-8' + chr(34) + ', events=(' + chr(34) + 'PolicyNarrowed' + chr(34) + ',))';
+      print('a mint hidden behind a new consumed trigger is still caught:', bool(set(emitof(ast.parse(hidden))) - f11) and bool(set(consumeof(ast.parse(hidden))) & set(emitof(ast.parse(hidden)))))"
     timeout_s: 300
     contains:
       - "the literal population is non-empty: True"
+      - "the event names M11 MINTS, declared on its own transition rows: ['PolicyActivated', 'PolicyApproved', 'PolicyExpired', 'PolicyProposed', 'PolicyRevoked', 'PolicySubmitted', 'PolicySuperseded', 'PolicyVersionChanged']"
+      - "the mint population is non-empty: True"
+      - "the count of F11 contracts M11 mints: 8"
+      - "minted names that are not registered F11 contracts: []"
+      - "M11 mints a ninth F11 contract: False"
+      - "the driving facts M11 CONSUMES: ['Approved', 'Authored', 'HumanActivated', 'NewVersionActivated', 'Revoked', 'Submitted', 'TimerFired']"
+      - "a consumed trigger is never also minted: True"
+      - "HumanActivated is consumed, not minted: True"
       - "unregistered event names M11 mints: []"
       - "M11 names PolicyEvaluated, which is M2s: False"
       - "a docstring naming an invented event is not a mint: True"
       - "a real string literal naming an invented event is a mint: True"
+      - "a ninth event minted on a transition row is caught: True"
+      - "a mint hidden behind a new consumed trigger is still caught: True"
 
   # 11 --------------------------------------------------------------------------------------
   #
@@ -1128,7 +1180,7 @@ expect_state:
   # both a scope leak and the exact bypass ADR-010 §4 forbids.
   - name: "M11 uses M1's landed tenant authority model and invents no parallel admin authority"
     command: >-
-      .venv/bin/python -c "import sys,pathlib,sqlite3,tempfile,os; sys.path.insert(0,'src');
+      .venv/bin/python -c "import sys,pathlib,sqlite3,tempfile,os,ast,re; sys.path.insert(0,'src');
       from freight_recon.migrations.phase6_work_items import AUTHORITY_ROLES;
       from freight_recon.schema import create_canonical_schema;
       print('the canonical tenant authority roles:', sorted(AUTHORITY_ROLES));
@@ -1139,10 +1191,32 @@ expect_state:
       print('policies references tenant_humans:', 'tenant_humans' in refs);
       po=pathlib.Path('src/freight_recon/policy.py').read_text(encoding='utf-8');
       print('M11 names the canonical Policy Owner role:', 'POLICY_OWNER' in po);
-      print('M11 invents an admin authority:', any(s in po for s in ('ADMIN', 'SUPERUSER', 'ROOT_USER', 'BYPASS')));
-      print('M11 defines its own authority role vocabulary:', 'AUTHORITY_ROLES =' in po);
       mig=pathlib.Path('src/freight_recon/migrations/phase6_policies.py').read_text(encoding='utf-8');
-      print('the M11 migration redefines the human authority table:', 'CREATE TABLE tenant_humans' in mig)"
+      RE=re.compile('(?i)(admin|superuser|root_user|god_mode|impersonat|sudo|bypass)');
+      docs=lambda t: set(id(n.value) for n in ast.walk(t) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
+      syms=lambda t: set([n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))] + [n.id for n in ast.walk(t) if isinstance(n, ast.Name)] + [n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.arg)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.keyword) and n.arg] + [(n.asname or n.name) for n in ast.walk(t) if isinstance(n, ast.alias)]);
+      toks=lambda t: set(n.value for n in ast.walk(t) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs(t) and n.value and len(n.value) <= 64 and not any(ch.isspace() for ch in n.value));
+      vocab=lambda t: sorted(set([n.name for n in ast.walk(t) if isinstance(n, ast.ClassDef) and RE.search(n.name)] + [g.id for n in t.body if isinstance(n, ast.Assign) for g in n.targets if isinstance(g, ast.Name) and re.search('(?i)authority|_roles', g.id)]));
+      admin_syms=lambda s: sorted(x for x in syms(ast.parse(s)) if RE.search(x));
+      admin_toks=lambda s: sorted(x for x in toks(ast.parse(s)) if RE.search(x));
+      admin_vocab=lambda s: vocab(ast.parse(s));
+      red=lambda s: bool(admin_syms(s) or admin_toks(s) or admin_vocab(s));
+      print('the M11 sources parsed for executable authority:', ['policy.py', 'phase6_policies.py']);
+      print('admin-shaped executable symbols M11 defines or calls:', sorted(set(admin_syms(po) + admin_syms(mig))));
+      print('admin-shaped executable authority tokens M11 stores or compares:', sorted(set(admin_toks(po) + admin_toks(mig))));
+      print('authority-role vocabularies M11 declares of its own:', sorted(set(admin_vocab(po) + admin_vocab(mig))));
+      print('M11 invents an admin authority:', red(po) or red(mig));
+      print('M11 defines its own authority role vocabulary:', bool(admin_vocab(po) or admin_vocab(mig)));
+      print('the M11 migration redefines the human authority table:', 'CREATE TABLE tenant_humans' in mig);
+      print('a docstring saying there is no admin path is not an admin authority:', not red('def f():' + chr(10) + '    ' + chr(39)*3 + 'THERE IS NO ADMIN PATH' + chr(39)*3 + chr(10)));
+      print('a comment saying there is no admin path is not an admin authority:', not red(chr(35) + ' THERE IS NO ADMIN PATH, EVER' + chr(10) + 'X = 1' + chr(10)));
+      print('a refusal message naming the admin path is not an admin authority:', not red('raise M11Error(' + chr(39) + 'PO-3 binds a named M4 approval; none was given (no admin path).' + chr(39) + ')' + chr(10)));
+      print('an admin activation function IS an admin authority:', red('def admin_activate(p):' + chr(10) + '    return p' + chr(10)));
+      print('an admin authority class IS an admin authority:', red('class AdminAuthority:' + chr(10) + '    pass' + chr(10)));
+      print('an admin role token compared in executable code IS an admin authority:', red('def go(r):' + chr(10) + '    if r == ' + chr(39) + 'ADMIN' + chr(39) + ':' + chr(10) + '        return True' + chr(10)));
+      print('a superuser attribute read IS an admin authority:', red('def go(u):' + chr(10) + '    return u.is_superuser' + chr(10)));
+      print('an as_admin keyword argument IS an admin authority:', red('activate(p, as_admin=True)' + chr(10)));
+      print('a second authority-role vocabulary IS an admin authority:', red('AUTHORITY_ROLES = (' + chr(39) + 'POLICY_OWNER' + chr(39) + ', ' + chr(39) + 'ADMIN' + chr(39) + ')' + chr(10)))"
     timeout_s: 300
     contains:
       - "the canonical tenant authority roles: ['AUTHORIZED_HUMAN', 'POLICY_OWNER']"
@@ -1150,9 +1224,21 @@ expect_state:
       - "POLICY_OWNER is a landed authority role: True"
       - "policies references tenant_humans: True"
       - "M11 names the canonical Policy Owner role: True"
+      - "admin-shaped executable symbols M11 defines or calls: []"
+      - "admin-shaped executable authority tokens M11 stores or compares: []"
+      - "authority-role vocabularies M11 declares of its own: []"
       - "M11 invents an admin authority: False"
       - "M11 defines its own authority role vocabulary: False"
       - "the M11 migration redefines the human authority table: False"
+      - "a docstring saying there is no admin path is not an admin authority: True"
+      - "a comment saying there is no admin path is not an admin authority: True"
+      - "a refusal message naming the admin path is not an admin authority: True"
+      - "an admin activation function IS an admin authority: True"
+      - "an admin authority class IS an admin authority: True"
+      - "an admin role token compared in executable code IS an admin authority: True"
+      - "a superuser attribute read IS an admin authority: True"
+      - "an as_admin keyword argument IS an admin authority: True"
+      - "a second authority-role vocabulary IS an admin authority: True"
 
   # 14a -------------------------------------------------------------------------------------
   #
@@ -1175,6 +1261,19 @@ expect_state:
   # TENANT — a global constraint that let only one brokerage in the system have a Policy Owner would
   # be the cross-tenant defect wearing a safety constraint's clothes, which is why T_B is a positive
   # control rather than an afterthought.
+  #
+  # ### THIS COMMAND HAD TO REACH THE DATABASE BEFORE ANY OF THAT WAS TRUE OF IT, AND FOR THREE
+  # ITERATIONS IT DID NOT. It exited 2 without executing a line of Python — the exec payload carried
+  # BARE double quotes inside a shell command that is itself double-quoted, so `/bin/sh` closed the
+  # string at the first one and reported "syntax error near unexpected token `('". Behind that,
+  # every `sqlite3` call wrapped its SQL in `chr(34)`, which hands SQLite a statement whose first
+  # character is a double quote and earns `near select ....: syntax error`. And behind THAT,
+  # the retained-history control inserted `state='REVOKED'` into a table whose CHECK admits only
+  # ACTIVE and OFFBOARDED, so the one positive control that proves the constraint buys singularity
+  # WITHOUT destroying the audit trail could never have been ACCEPTED. Three defects in the
+  # instrument, stacked, all of them reported as a product failure. The quoting is now escaped, the
+  # SQL is passed as an ordinary single-quoted string, and the retired owner is OFFBOARDED with the
+  # `offboarded_at` its own CHECK requires.
   - name: "a tenant cannot hold two ACTIVE Policy Owners, and the constraint is per tenant"
     command: >-
       .venv/bin/python -c "import sys,sqlite3,tempfile,os,re; sys.path.insert(0,'src');
@@ -1182,24 +1281,36 @@ expect_state:
       p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.execute('pragma foreign_keys=ON'); create_canonical_schema(c);
       cols=[r[1] for r in c.execute('pragma table_info(tenant_humans)')];
       print('tenant_humans columns:', sorted(cols));
-      idx=[r[0] for r in c.execute(chr(34)+'select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=' + chr(39) + 'tenant_humans' + chr(39) + ' and sql is not null'+chr(34))];
+      idx=[r[0] for r in c.execute('select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=' + chr(39) + 'tenant_humans' + chr(39) + ' and sql is not null')];
+      print('the tenant_humans indexes discovered:', len(idx));
+      print('the index population is non-empty:', bool(idx));
       print('a POLICY_OWNER singularity index exists:', any('POLICY_OWNER' in (s or '') for s in idx));
       print('the singularity index is tenant-scoped:', any('POLICY_OWNER' in (s or '') and re.search('[(] *tenant', s) for s in idx));
-      row=lambda t,h,r,st: dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,h,r,st,'2026-09-02T00:00:00Z','founder','human')));
+      row=lambda t,h,r,st: dict(list(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,h,r,st,'2026-09-02T00:00:00Z','founder','human'))) + ([('offboarded_at','2026-09-01T00:00:00Z')] if st != 'ACTIVE' else []));
       env={'c':c,'sqlite3':sqlite3};
-      exec(chr(10).join(['def attempt(label, d):',' try:',"  c.execute('savepoint s'); c.execute('insert into tenant_humans (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values())); c.execute('release s'); print(label + ': ACCEPTED')",' except sqlite3.Error as exc:',"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])"]), env);
+      exec(chr(10).join(['def attempt(label, d, t=' + chr(39) + 'tenant_humans' + chr(39) + '):',' try:',\"  c.execute('savepoint s'); c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values())); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
       attempt=env['attempt'];
       attempt('positive control, the first ACTIVE POLICY_OWNER in a tenant', row('T_A','owner-1','POLICY_OWNER','ACTIVE'));
       attempt('a SECOND ACTIVE POLICY_OWNER in the same tenant', row('T_A','owner-2','POLICY_OWNER','ACTIVE'));
       attempt('positive control, an ACTIVE AUTHORIZED_HUMAN beside the owner', row('T_A','ops-lead','AUTHORIZED_HUMAN','ACTIVE'));
-      attempt('positive control, a RETIRED former POLICY_OWNER is retained', row('T_A','owner-0','POLICY_OWNER','REVOKED'));
+      attempt('positive control, a RETIRED former POLICY_OWNER is retained', row('T_A','owner-0','POLICY_OWNER','OFFBOARDED'));
       attempt('positive control, a DIFFERENT tenant has its own ACTIVE POLICY_OWNER', row('T_B','other-owner','POLICY_OWNER','ACTIVE'));
       attempt('a SECOND ACTIVE POLICY_OWNER in the second tenant', row('T_B','other-owner-2','POLICY_OWNER','ACTIVE'));
-      print('T_A ACTIVE POLICY_OWNER rows:', c.execute(chr(34)+'select count(*) from tenant_humans where tenant=? and authority_role=? and state=?'+chr(34), ('T_A','POLICY_OWNER','ACTIVE')).fetchone()[0]);
-      print('T_B ACTIVE POLICY_OWNER rows:', c.execute(chr(34)+'select count(*) from tenant_humans where tenant=? and authority_role=? and state=?'+chr(34), ('T_B','POLICY_OWNER','ACTIVE')).fetchone()[0]);
-      print('tenants with a Policy Owner:', c.execute(chr(34)+'select count(distinct tenant) from tenant_humans where authority_role=? and state=?'+chr(34), ('POLICY_OWNER','ACTIVE')).fetchone()[0])"
+      print('T_A ACTIVE POLICY_OWNER rows:', c.execute('select count(*) from tenant_humans where tenant=? and authority_role=? and state=?', ('T_A','POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      print('T_B ACTIVE POLICY_OWNER rows:', c.execute('select count(*) from tenant_humans where tenant=? and authority_role=? and state=?', ('T_B','POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      print('T_A retained former POLICY_OWNER rows:', c.execute('select count(*) from tenant_humans where tenant=? and authority_role=? and state=?', ('T_A','POLICY_OWNER','OFFBOARDED')).fetchone()[0]);
+      print('tenants with a Policy Owner:', c.execute('select count(distinct tenant) from tenant_humans where authority_role=? and state=?', ('POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      c.execute('create table probe_global (tenant TEXT NOT NULL, human_id TEXT NOT NULL, authority_role TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (tenant, human_id))');
+      c.execute('create unique index ix_probe_global on probe_global (authority_role) where authority_role = ' + chr(39) + 'POLICY_OWNER' + chr(39) + ' and state = ' + chr(39) + 'ACTIVE' + chr(39));
+      grow=lambda t,h: dict(zip(('tenant','human_id','authority_role','state'), (t,h,'POLICY_OWNER','ACTIVE')));
+      attempt('the coupling control, a GLOBAL owner index admits the first tenant', grow('T_A','g-1'), 'probe_global');
+      attempt('the coupling control, a GLOBAL owner index and a second tenant', grow('T_B','g-2'), 'probe_global');
+      print('tenants a GLOBAL owner uniqueness would allow:', c.execute('select count(distinct tenant) from probe_global where authority_role=? and state=?', ('POLICY_OWNER','ACTIVE')).fetchone()[0]);
+      print('a global owner uniqueness that couples tenants is caught:', c.execute('select count(distinct tenant) from probe_global where authority_role=? and state=?', ('POLICY_OWNER','ACTIVE')).fetchone()[0] != 2);
+      print('the landed constraint does NOT couple tenants:', c.execute('select count(distinct tenant) from tenant_humans where authority_role=? and state=?', ('POLICY_OWNER','ACTIVE')).fetchone()[0] == 2)"
     timeout_s: 600
     contains:
+      - "the index population is non-empty: True"
       - "a POLICY_OWNER singularity index exists: True"
       - "the singularity index is tenant-scoped: True"
       - "positive control, the first ACTIVE POLICY_OWNER in a tenant: ACCEPTED"
@@ -1210,7 +1321,13 @@ expect_state:
       - "a SECOND ACTIVE POLICY_OWNER in the second tenant: refused by"
       - "T_A ACTIVE POLICY_OWNER rows: 1"
       - "T_B ACTIVE POLICY_OWNER rows: 1"
+      - "T_A retained former POLICY_OWNER rows: 1"
       - "tenants with a Policy Owner: 2"
+      - "the coupling control, a GLOBAL owner index admits the first tenant: ACCEPTED"
+      - "the coupling control, a GLOBAL owner index and a second tenant: refused by"
+      - "tenants a GLOBAL owner uniqueness would allow: 1"
+      - "a global owner uniqueness that couples tenants is caught: True"
+      - "the landed constraint does NOT couple tenants: True"
 
   # 15 --------------------------------------------------------------------------------------
   #
@@ -1219,6 +1336,17 @@ expect_state:
   # carrying an expiry is automatic broadening with a delay, which is the whole reason the rule
   # exists. The direction has to be a persisted, checkable fact on the row — not something the
   # machine promises to remember.
+  #
+  # ### THE POSTURE COLUMNS ARE ASKED FOR BY THEIR CANONICAL NAMES, NOT BY A SHORTHAND. This oracle
+  # used to test `'predicate' in cols` and `'caps' in cols` while the schema names them
+  # `predicate_json` and `caps_json` — shorthand the reader carried in their head, asserted against
+  # a database that never used it. It failed on a correct schema, which is the worse of the two
+  # ways an oracle can be wrong: a red that means nothing trains everyone to ignore a red that
+  # does. The repair is NOT a fuzzy substring match, which would let `predicate_ref` or a stray
+  # `predicate` column satisfy the contract. The required names are stated exactly and required to
+  # be NOT NULL, and the SAME predicate is then applied to four mutated column sets — each name
+  # dropped, both renamed to the shorthand, both renamed to a plausible near-miss, each made
+  # nullable — and required to come back False, so a green here is a statement about this schema.
   - name: "only a narrowing policy may carry an expiry, and the direction is a persisted fact"
     command: >-
       .venv/bin/python -c "import sys,sqlite3,tempfile,os,re; sys.path.insert(0,'src');
@@ -1239,8 +1367,21 @@ expect_state:
       print('an effective_from column exists:', 'effective_from' in cols);
       print('an activated_by column exists:', 'activated_by' in cols);
       print('an authored_by column exists:', 'authored_by' in cols);
-      print('a predicate column exists:', any(x in cols for x in ('predicate','predicate_ref')));
-      print('a caps column exists:', 'caps' in cols)"
+      nn=[r[1] for r in c.execute('pragma table_info(policies)') if r[3]];
+      REQ=('predicate_json','caps_json');
+      holds=lambda cs, ns: all(x in cs and x in ns for x in REQ);
+      drop=lambda xs, x: [y for y in xs if y != x];
+      rename=lambda xs, a, b: [(b if y == a else y) for y in xs];
+      print('the canonical posture columns the schema carries:', sorted(x for x in cols if x in REQ));
+      print('a predicate column exists:', ('predicate_json' in cols) and ('predicate_json' in nn));
+      print('a caps column exists:', ('caps_json' in cols) and ('caps_json' in nn));
+      print('the canonical predicate and caps contract holds:', holds(cols, nn));
+      print('a schema missing predicate_json fails the same contract:', not holds(drop(cols, 'predicate_json'), drop(nn, 'predicate_json')));
+      print('a schema missing caps_json fails the same contract:', not holds(drop(cols, 'caps_json'), drop(nn, 'caps_json')));
+      print('a schema naming them predicate and caps fails the same contract:', not holds(rename(rename(cols, 'predicate_json', 'predicate'), 'caps_json', 'caps'), rename(rename(nn, 'predicate_json', 'predicate'), 'caps_json', 'caps')));
+      print('a schema naming them predicate_ref and caps_ref fails the same contract:', not holds(rename(rename(cols, 'predicate_json', 'predicate_ref'), 'caps_json', 'caps_ref'), rename(rename(nn, 'predicate_json', 'predicate_ref'), 'caps_json', 'caps_ref')));
+      print('a nullable predicate_json fails the same contract:', not holds(cols, drop(nn, 'predicate_json')));
+      print('a nullable caps_json fails the same contract:', not holds(cols, drop(nn, 'caps_json')))"
     timeout_s: 300
     contains:
       - "an expires_at column exists: True"
@@ -1253,8 +1394,16 @@ expect_state:
       - "an effective_from column exists: True"
       - "an activated_by column exists: True"
       - "an authored_by column exists: True"
+      - "the canonical posture columns the schema carries: ['caps_json', 'predicate_json']"
       - "a predicate column exists: True"
       - "a caps column exists: True"
+      - "the canonical predicate and caps contract holds: True"
+      - "a schema missing predicate_json fails the same contract: True"
+      - "a schema missing caps_json fails the same contract: True"
+      - "a schema naming them predicate and caps fails the same contract: True"
+      - "a schema naming them predicate_ref and caps_ref fails the same contract: True"
+      - "a nullable predicate_json fails the same contract: True"
+      - "a nullable caps_json fails the same contract: True"
 
   # 16 --------------------------------------------------------------------------------------
   #
@@ -1299,19 +1448,59 @@ expect_state:
   # §3.1 states: `AUTONOMOUS_WITHIN_CAPS` is the broadest, `FORBIDDEN` the narrowest, and the two
   # human gates in between are NOT interchangeable (`PERMANENT_HUMAN_ASSERTION_REQUIRED` is a
   # permanent truth and cannot graduate; `HUMAN_APPROVAL_REQUIRED` is current policy and can).
+  # ### THIS ORACLE WAS ITSELF THE DEFECT ONCE, AND THE REPAIR IS WHY IT NOW READS THE ORDER.
+  # Its first form discovered the ordering by NAME — `[n for n in dir(po) if 'ORDER'/'RANK'/
+  # 'CEILING' in n]` — took `sorted(...)[0]`, and got `DEFAULT_PRODUCT_CEILING`: not the ordering at
+  # all, but a single `str`-valued enum member. Iterating it iterated the CHARACTERS of
+  # 'HUMAN_APPROVAL_REQUIRED', so "the ordering covers" printed ['A','D','E','H',...] and totality
+  # could never be True however correct the product was. A measurement instrument that compares a
+  # gate ladder to an alphabet is not a weaker oracle than one that reads the ladder — it is an
+  # oracle of something else, and its verdict about M11 was never about M11. So the ordering is now
+  # read through the product's OWN typed accessors (`gate_rank` over `checkpoint.GateDecision`,
+  # `narrows_or_holds` against `DEFAULT_PRODUCT_CEILING`), the canonical order is asserted as a
+  # SEQUENCE rather than a set, and the four mutations that would restore the defect the unit exists
+  # to prevent — a swap, a collapse of the two human gates, a fifth member, a reversal — are applied
+  # to the same totality/direction predicate and required to turn it RED.
   - name: "the product-ceiling comparison is a declared total order over the four gate members, not a string compare"
     command: >-
-      .venv/bin/python -c "import sys,inspect,pathlib; sys.path.insert(0,'src');
+      .venv/bin/python -c "import sys,inspect; sys.path.insert(0,'src');
       import freight_recon.policy as po; import freight_recon.checkpoint as ck;
       src=inspect.getsource(po);
+      CANON=['AUTONOMOUS_WITHIN_CAPS','HUMAN_APPROVAL_REQUIRED','PERMANENT_HUMAN_ASSERTION_REQUIRED','FORBIDDEN'];
       ordering=[n for n in dir(po) if 'ORDER' in n.upper() or 'LADDER' in n.upper() or 'RANK' in n.upper() or 'CEILING' in n.upper()];
       print('a declared gate ordering exists:', bool(ordering));
       print('the declared ordering symbol(s):', sorted(ordering));
-      obj=getattr(po, sorted(ordering)[0]) if ordering else None;
-      members=set(m.value for m in ck.GateDecision);
-      covered=set(getattr(x, 'value', x) for x in (obj or ()));
-      print('the ordering is total over the four canonical members:', covered == members);
-      print('the ordering covers:', sorted(covered));
+      members=tuple(ck.GateDecision);
+      ranks=dict((m.value, po.gate_rank(m)) for m in members);
+      broadest=lambda d: [k for k in sorted(d, key=lambda k: (-d[k], k))];
+      total=lambda d: sorted(d) == sorted(CANON) and len(set(d.values())) == len(CANON);
+      print('the canonical gate members the ordering ranks:', sorted(ranks));
+      print('the declared rank of each member:', sorted(ranks.items()));
+      print('the ordering is total over the four canonical members:', total(ranks));
+      print('the declared order, broadest first:', broadest(ranks));
+      print('the declared order is the ADR-010 canonical one:', broadest(ranks) == CANON);
+      print('the declared order is not the alphabetical one:', broadest(ranks) != sorted(CANON));
+      ceiling=po.DEFAULT_PRODUCT_CEILING;
+      print('the product ceiling is a canonical gate member:', ceiling in members);
+      print('the product ceiling:', ceiling.value);
+      print('gate members a tenant policy may adopt under the ceiling:', sorted(m.value for m in members if po.narrows_or_holds(m, ceiling)));
+      print('gate members that would BROADEN the ceiling and are refused:', sorted(m.value for m in members if not po.narrows_or_holds(m, ceiling)));
+      env={'po':po};
+      exec(chr(10).join(['def ranks_raw(x):',' try:',\"  po.gate_rank(x); return 'RANKED'\",' except Exception as exc:','  return type(exc).__name__']), env);
+      print('a raw gate string cannot be ranked:', env['ranks_raw']('AUTONOMOUS_WITHIN_CAPS') != 'RANKED');
+      print('the refusal a raw string earns:', env['ranks_raw']('AUTONOMOUS_WITHIN_CAPS'));
+      swap=dict(ranks); swap['AUTONOMOUS_WITHIN_CAPS']=ranks['FORBIDDEN']; swap['FORBIDDEN']=ranks['AUTONOMOUS_WITHIN_CAPS'];
+      collapse=dict(ranks); collapse['PERMANENT_HUMAN_ASSERTION_REQUIRED']=ranks['HUMAN_APPROVAL_REQUIRED'];
+      fifth=dict(ranks); fifth['ADVISORY_ONLY']=99;
+      reverse=dict((k, -v) for k, v in ranks.items());
+      print('swapping two members breaks the declared order:', broadest(swap) != CANON);
+      print('collapsing the two human gates breaks totality:', not total(collapse));
+      print('adding a fifth member breaks totality:', not total(fifth));
+      print('reversing the order breaks the declared order:', broadest(reverse) != CANON);
+      narrows=lambda d, new, ceil: d[new] <= d[ceil];
+      print('under the declared order AUTONOMOUS_WITHIN_CAPS broadens the ceiling:', not narrows(ranks, 'AUTONOMOUS_WITHIN_CAPS', ceiling.value));
+      print('under a reversed order the broadest gate would read as a narrowing:', narrows(reverse, 'AUTONOMOUS_WITHIN_CAPS', ceiling.value));
+      print('the product agrees with the declared order, not the reversed one:', po.narrows_or_holds(ck.GateDecision.AUTONOMOUS_WITHIN_CAPS, ceiling) == narrows(ranks, 'AUTONOMOUS_WITHIN_CAPS', ceiling.value));
       narrowing=[n for n in dir(po) if 'narrow' in n.lower() or 'broaden' in n.lower()];
       print('a narrowing predicate exists:', bool(narrowing));
       print('the narrowing predicate(s):', sorted(narrowing));
@@ -1321,7 +1510,23 @@ expect_state:
     timeout_s: 300
     contains:
       - "a declared gate ordering exists: True"
+      - "the canonical gate members the ordering ranks: ['AUTONOMOUS_WITHIN_CAPS', 'FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
       - "the ordering is total over the four canonical members: True"
+      - "the declared order, broadest first: ['AUTONOMOUS_WITHIN_CAPS', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED', 'FORBIDDEN']"
+      - "the declared order is the ADR-010 canonical one: True"
+      - "the declared order is not the alphabetical one: True"
+      - "the product ceiling is a canonical gate member: True"
+      - "the product ceiling: HUMAN_APPROVAL_REQUIRED"
+      - "gate members a tenant policy may adopt under the ceiling: ['FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
+      - "gate members that would BROADEN the ceiling and are refused: ['AUTONOMOUS_WITHIN_CAPS']"
+      - "a raw gate string cannot be ranked: True"
+      - "swapping two members breaks the declared order: True"
+      - "collapsing the two human gates breaks totality: True"
+      - "adding a fifth member breaks totality: True"
+      - "reversing the order breaks the declared order: True"
+      - "under the declared order AUTONOMOUS_WITHIN_CAPS broadens the ceiling: True"
+      - "under a reversed order the broadest gate would read as a narrowing: True"
+      - "the product agrees with the declared order, not the reversed one: True"
       - "a narrowing predicate exists: True"
       - "the comparison is not a raw string compare: True"
       - "ADR-010 is cited as the ordering authority: True"
