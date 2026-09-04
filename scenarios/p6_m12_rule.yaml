@@ -1,0 +1,2446 @@
+name: p6_m12_rule
+phase: P6
+mode: backend
+description: >-
+  P6 M12: the Rule — the registered, versioned, deterministic decision procedure WITH AN ID that
+  an owner's sentence either compiles into, or honestly does not. This is the machine that resolves
+  Stream B lesson L-C, and L-C is the one lesson about what Neyma SAYS rather than what it does.
+  An owner types "never bill without a POD" and the old system replied "📋 Noted the procedure for
+  raise_invoice" — installing nothing, enforcing nothing, and leaving the owner believing a control
+  existed. M12 makes exactly two outcomes possible and there is no third: OUTCOME A, the instruction
+  compiles deterministically into an enforceable Rule with a rule_id, generated test vectors, human
+  confirmation and authenticated human activation; or OUTCOME B, it does NOT compile, it is retained
+  as non-authoritative organizational memory, and the owner is TOLD IN THE LITERAL REPLY that it is
+  not a rule and what is missing. A model may propose the candidate TEXT. After that a model never
+  compiles, never confirms, never activates, never evaluates and never resolves. Compilation is
+  deterministic: every referenced field MODELLED and NON-INFERRED, the predicate decidable at
+  checkpoint time, the scope resolvable — and a rule that would branch on a MODEL_INFERRED field
+  fails to compile at confidence 1.0, because a policy that could branch on a guess conditions every
+  guarantee above it on a model's mood. Two genuinely conflicting active rules FAIL CLOSED into M7's
+  RULE_VS_RULE Conflict and are never auto-merged: Neyma never picks a winner. Rules sit at
+  precedence layer 6, beneath Constraint, Permanent Product Truth, Brake, Product Policy and Tenant
+  Policy, and may never override any of them. M12 IS checkpoint step 6's rule evaluation; it mints
+  no gate decision and builds no second checkpoint, because a second gate authority is the same
+  defect as no gate authority. M12 ships dark. This scenario measures the DATABASE, the EVENT
+  REGISTRY, the LITERAL REPLY TEXT and the AST, not the probe's narration.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The files this unit is expected to PRODUCE. Nothing here exists on the pre-M12 tree, and that is
+# the point: `tests/test_scenario_pytest_invocation.py` exempts a scenario's own declared fixtures
+# from the "every named test path already exists" rule, precisely so a bootstrap can be written
+# before the unit it measures. Every OTHER path this file names is a landed regression anchor and
+# must exist today.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/rule.py"
+  - "src/freight_recon/migrations/phase6_rules.py"
+  - "eval/tests/test_phase6_rule.py"
+  - "scripts/probe_phase6_rule.py"
+  - "scripts/mutate_phase6_rule.py"
+
+commands:
+  # ------------------------------------------------------------------ coverage and axis oracles
+  - name: "the M12 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      # ---- RU-1: proposal. A model may propose TEXT, and text is not authority.
+      - "a-model-may-propose-structured-candidate-text"
+      - "a-proposal-is-not-an-enforceable-rule"
+      - "the-source-instruction-is-retained-verbatim"
+      - "an-offboarded-human-cannot-author-a-rule"
+      - "a-counterparty-instruction-is-not-a-rule"
+      - "inbound-content-can-never-author-a-rule"
+      - "ru-1-emits-ruleproposed"
+      - "ruleproposed-does-not-prove-the-rule-is-enforceable"
+      # ---- RU-2: compilation. Deterministic, model-free, modelled and non-inferred fields only.
+      - "compilation-is-deterministic-and-model-free"
+      - "no-model-call-occurs-after-the-text-proposal"
+      - "every-referenced-field-must-be-modelled"
+      - "every-referenced-field-must-be-non-inferred"
+      - "the-predicate-must-be-decidable-at-checkpoint-time"
+      - "the-scope-must-resolve"
+      - "never-bill-without-a-pod-compiles-to-a-gate-precondition"
+      - "the-pod-rule-admits-only-the-three-canonical-provenance-classes"
+      - "a-model-inferred-pod-is-denied-by-the-compiled-rule"
+      - "compilation-is-byte-identical-reproducible"
+      - "no-wall-clock-enters-compilation"
+      - "no-randomness-enters-compilation"
+      - "unordered-iteration-does-not-change-the-compiled-predicate"
+      - "ru-2-emits-rulecompiled"
+      - "rulecompiled-carries-the-compiled-predicate-and-the-test-vectors"
+      # ---- RU-2f: the honest refusal. THIS IS THE UNIT'S REASON FOR EXISTING.
+      - "do-not-use-carrier-x-for-produce-cannot-compile"
+      - "the-owner-is-told-commodity-is-not-a-modelled-field"
+      - "a-margin-rule-refuses-to-compile-on-model-inferred-cost"
+      - "confidence-one-does-not-make-model-inferred-compilable"
+      - "the-compiler-input-type-has-no-confidence-field"
+      - "an-unmodelled-field-fails-to-compile"
+      - "an-undecidable-predicate-fails-to-compile"
+      - "an-unresolvable-scope-fails-to-compile"
+      - "ru-2f-emits-rulenotenforceable"
+      - "rulenotenforceable-names-exactly-what-is-missing"
+      - "the-rejected-instruction-is-retained-as-organizational-memory"
+      - "organizational-memory-carries-no-authority"
+      - "the-reply-never-claims-a-procedure-was-noted"
+      - "the-reply-never-claims-enforcement-without-an-active-rule-id"
+      - "the-honest-refusal-sentence-is-emitted-verbatim"
+      - "a-reply-claiming-enforcement-is-detected-on-literal-text"
+      - "rejected-is-terminal"
+      # ---- RU-3: conflict. FAIL CLOSED, through M7, never a second conflict system.
+      - "two-conflicting-active-rules-fail-closed"
+      - "m12-raises-the-m7-rule-vs-rule-conflict"
+      - "the-conflicting-rule-stays-compiled-and-blocked"
+      - "conflicting-rules-are-never-auto-merged"
+      - "neyma-never-picks-a-winner-between-two-rules"
+      - "m12-mints-no-conflictraised-of-its-own"
+      - "m12-builds-no-second-conflict-system"
+      - "the-narrower-scope-wins-and-is-not-a-conflict"
+      - "a-human-resolves-a-rule-vs-rule-conflict"
+      - "an-open-rule-conflict-blocks-the-action"
+      # ---- RU-4: confirmation. The owner sees the compiled rule AND its test vectors.
+      - "the-owner-is-shown-the-compiled-rule-before-confirming"
+      - "the-owner-is-shown-the-generated-test-vectors"
+      - "confirmation-without-test-vectors-is-refused"
+      - "the-owner-is-never-asked-to-approve-opaque-source-text"
+      - "ru-4-emits-ruleconfirmed"
+      - "ruleconfirmed-does-not-activate"
+      # ---- RU-5: activation. Human only, at every confidence, from every automated path.
+      - "activation-requires-an-authenticated-human"
+      - "a-model-cannot-activate-a-rule"
+      - "automation-cannot-activate-a-rule"
+      - "a-timer-cannot-activate-a-rule"
+      - "a-retry-handler-cannot-activate-a-rule"
+      - "a-counterparty-cannot-activate-a-rule"
+      - "a-cross-tenant-activator-is-refused"
+      - "a-cross-tenant-author-is-refused"
+      - "active-requires-a-non-null-activated-by"
+      - "an-unauthorized-activation-emits-the-registered-f14-security-event"
+      - "m12-mints-no-second-unauthorized-activation-contract"
+      - "ru-5-emits-ruleactivated"
+      - "re-activating-an-already-active-version-is-a-no-op"
+      - "a-no-op-reactivation-emits-no-second-ruleactivated"
+      - "a-no-op-reactivation-does-not-bump-the-rule-version"
+      # ---- RU-6: supersession. The old version is retained, permanently.
+      - "a-newer-version-supersedes-the-active-one"
+      - "the-superseded-version-is-retained-permanently"
+      - "the-superseded-version-still-explains-its-historical-decisions"
+      - "supersession-never-edits-history-in-place"
+      - "a-cross-tenant-supersession-is-refused"
+      - "ru-6-emits-rulesuperseded"
+      # ---- RU-7: revocation. Direction is the whole content of the transition.
+      - "a-narrowing-revocation-is-immediate"
+      - "a-broadening-revocation-requires-the-policy-owner"
+      - "automation-cannot-perform-a-broadening-revocation"
+      - "rulerevoked-carries-the-canonical-direction"
+      - "there-is-no-temporary-tighten-then-automatic-revert-path"
+      # ---- RU-8: expiry. A narrowing rule's expiry BROADENS, so a human confirms it.
+      - "only-a-narrowing-rule-may-carry-an-expiry"
+      - "a-broadening-rule-cannot-carry-an-expiry"
+      - "a-narrowing-rules-expiry-broadens-authority"
+      - "expiry-requires-a-human-at-expiry"
+      - "timerfired-never-broadens-authority"
+      - "ru-8-emits-ruleexpired"
+      - "ruleexpired-does-not-prove-automatic-broadening"
+      - "expiry-raises-the-m9-human-confirmation-exception"
+      - "m12-builds-no-part-of-m9"
+      # ---- the checkpoint boundary: M12 IS step 6's rule evaluation, and there is only one of it
+      - "gate-precondition-rules-are-evaluated-at-checkpoint-step-6"
+      - "constraint-rules-are-evaluated-at-checkpoint-step-6"
+      - "a-denying-rule-yields-no-witness-and-no-effect"
+      - "a-denying-rule-yields-no-grant"
+      - "m12-is-checkpoint-step-6-and-builds-no-second-checkpoint"
+      - "m12-mints-no-gate-decision"
+      - "checkpoint-py-remains-the-sole-gate-minter"
+      - "m12-constructs-no-gateentry-and-no-gateregistry"
+      - "the-production-gate-registry-population-stays-empty"
+      - "a-gate-precondition-rule-may-require-human-approval-under-a-condition"
+      - "rule-evaluation-is-part-of-the-checkpoint-the-brake-gates"
+      - "there-is-no-allow-on-rule-error-path"
+      - "the-rule-engine-unavailable-yields-no-witness-and-no-effect"
+      # ---- precedence: a rule is layer 6, and layer 6 is beneath five other things
+      - "rules-sit-beneath-policy-at-precedence-layer-six"
+      - "a-rule-never-overrides-a-constraint"
+      - "a-rule-never-overrides-a-permanent-product-truth"
+      - "a-rule-never-overrides-a-brake-denial"
+      - "a-rule-never-overrides-the-product-policy-ceiling"
+      - "a-rule-never-overrides-a-tenant-policy"
+      - "m12-builds-no-second-precedence-engine"
+      - "an-expired-instruction-has-no-force"
+      # ---- tenancy
+      - "tenant-is-first-in-the-rule-primary-key"
+      - "the-same-scope-and-kind-in-two-tenants-does-not-collide"
+      - "a-cross-tenant-rule-lookup-is-refused"
+      - "rule-version-uniqueness-is-tenant-local"
+      - "rule-uniqueness-is-never-global-across-tenants"
+      # ---- uniqueness, versioning, concurrency, OCC
+      - "one-active-rule-per-tenant-scope-and-kind-where-the-scope-admits-one"
+      - "where-multiple-active-rules-are-permitted-conflict-detection-handles-them"
+      - "rule-version-is-monotonic-per-tenant"
+      - "a-rule-version-is-never-reused"
+      - "a-rule-version-is-never-retroactively-edited"
+      - "concurrent-activation-yields-exactly-one-active-rule"
+      - "a-stale-occ-write-is-refused"
+      # ---- retention: every version, permanently
+      - "a-rule-row-cannot-be-deleted"
+      - "every-historical-version-is-retained"
+      - "an-old-decision-is-explained-under-its-own-rule-version"
+      # ---- replay creates no authority
+      - "replay-reconstructs-rule-history-only"
+      - "replay-creates-no-human-authority"
+      - "replay-does-not-activate-a-rule"
+      - "replay-mints-zero-witnesses-grants-and-effects"
+      # ---- the event contract, exactly
+      - "the-eight-f12-contracts-and-no-ninth"
+      - "m12-mints-no-unregistered-event-name"
+      - "conflictraised-belongs-to-m7-and-m12-does-not-mint-it"
+      - "the-f14-security-contract-is-not-m12s-to-mint"
+      - "humanconfirmed-and-humanactivated-are-consumed-facts-not-minted-events"
+      - "timerfired-is-a-consumed-fact-not-an-m12-event"
+      - "policyoverridden-is-unregistered-and-m12-mints-none"
+      # ---- observability, and the question that stays deferred
+      - "override-rate-is-the-rule-health-metric"
+      - "a-repeatedly-overridden-rule-asks-a-human"
+      - "a-repeatedly-overridden-rule-is-never-auto-disabled"
+      - "q3-stays-deferred-and-fail-closed"
+      # ---- the dark posture, and the machines that are NOT built
+      - "m12-ships-dark-with-zero-production-importers"
+      - "m12-joins-no-outbound-channel"
+      - "m12-builds-no-rule-editor-or-authoring-surface"
+      - "m12-imports-no-network-primitive"
+      - "m12-imports-no-timer-service"
+      - "m13-brake-lifecycle-is-not-built"
+      - "no-autonomy-graduation-engine-is-built"
+      - "v4-v5-stay-open-and-fail-closed"
+      - "nothing-is-registered-deterministic-id-match-only"
+      - "every-conflict-goes-to-a-human"
+      - "m1-through-m11-are-unchanged"
+
+  - name: "the M12 probe exposes a bounded, closed dimension vocabulary to vary cases with"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      - "--concurrency"
+      - "--delay-ms"
+      - "--repeat"
+      - "--tenants"
+      - "--seed"
+      - "--inject"
+      - "--actor"
+      - "--direction"
+      - "--provenance"
+      - "--scope"
+      - "--brake"
+      # `--kind` AND `--outcome` ARE THIS UNIT'S OWN TWO AXES. The four rule kinds do not behave
+      # alike — `GATE_PRECONDITION` and `CONSTRAINT` are evaluated by the checkpoint, `IDENTITY` and
+      # `CONFLICT_RESOLUTION` are consulted by two other components entirely — and the whole unit is
+      # the claim that exactly TWO outcomes exist, which is a claim a single-outcome case cannot
+      # make. A generator that cannot vary the kind can only ever exercise one quarter of the
+      # machine, and one that cannot vary the outcome cannot show that the third state is absent.
+      - "--kind"
+      - "--outcome"
+
+  # ------------------------------------------------------------------ the machine, driven
+  #
+  # THE HEADLINES ARE THE UNIT'S OWN SENTENCES. Each one is a claim a wrong implementation cannot
+  # print, because the case behind it exercises the mechanism rather than reading the docstring.
+  - name: "drive the Rule machine through a brokerage narrative, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --all"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains:
+      - "behaviours as specified, 0 wrong"
+      - "A HUMAN INSTRUCTION EITHER COMPILES INTO AN ENFORCEABLE RULE OR IS HONESTLY REFUSED"
+      - "THERE IS NO THIRD OUTCOME"
+      - "A MODEL MAY PROPOSE TEXT; IT NEVER COMPILES"
+      - "COMPILATION IS DETERMINISTIC, WITH NO MODEL IN THE LOOP"
+      - "A RULE MAY NEVER BRANCH ON A GUESS"
+      - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+      - "AN UNMODELLED FIELD DOES NOT COMPILE"
+      - "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION"
+      - "AN INFERRED POD IS NOT A POD"
+      - "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD"
+      - "NOTED THE PROCEDURE IS FORBIDDEN WITHOUT AN ACTIVE RULE ID"
+      - "AN INSTRUCTION THAT DID NOT COMPILE IS MEMORY, NOT AUTHORITY"
+      - "THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING"
+      - "ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"
+      - "A MODEL CAN NEVER ACTIVATE A RULE"
+      - "AUTOMATION CAN NEVER ACTIVATE A RULE"
+      - "TWO CONFLICTING RULES FAIL CLOSED"
+      - "NEYMA NEVER PICKS A WINNER BETWEEN TWO RULES"
+      - "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE"
+      - "THE NARROWER SCOPE WINS, AND THAT IS NOT A CONFLICT"
+      - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+      - "RE-ACTIVATING AN ACTIVE VERSION IS A NO-OP"
+      - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+      - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+      - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+      - "A DENYING RULE MEANS NO WITNESS AND NO EFFECT"
+      - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+      - "M12 MINTS NO GATE DECISION"
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M12 BUILDS NO SECOND CHECKPOINT"
+      - "A RULE NEVER OVERRIDES A CONSTRAINT"
+      - "A RULE NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+      - "A RULE NEVER OVERRIDES A BRAKE DENIAL"
+      - "A RULE NEVER OVERRIDES POLICY"
+      - "REPLAY CREATES NO AUTHORITY"
+      - "A REPEATEDLY OVERRIDDEN RULE ASKS A HUMAN AND IS NEVER AUTO-DISABLED"
+      - "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "THE M13 BRAKE MACHINE IS NOT BUILT"
+      - "NOTHING GRADUATES"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11 POLICY MACHINE IS UNCHANGED"
+
+  # ------------------------------------------------------------------ the mutation battery
+  - name: "every M12 mutation is caught by the acceptance battery"
+    run: ".venv/bin/python scripts/mutate_phase6_rule.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains:
+      - "mutations caught"
+      - "0 escaped"
+
+  # ------------------------------------------------------------------ acceptance batteries
+  #
+  # EVERY BATTERY BELOW IS INVOKED AS `python -m pytest`, NEVER AS THE `pytest` CONSOLE SCRIPT.
+  # This is the M10 harness-recovery invariant and it is not a style preference: `python -m pytest`
+  # puts the invocation directory on `sys.path` and the console script does not, so a test that
+  # reaches for the repository's own harness (`from eval.phase0 import gate_scan`) raises
+  # `ModuleNotFoundError: No module named 'eval'` under one and passes under the other.
+  #
+  # `-p no:cacheprovider` matches Neyma's own CI so ambient state cannot reshape the run.
+  # `passed` is required on every battery and `no tests ran` / `file or directory not found` are
+  # globally forbidden, so an empty or not-found selection can never read as a green anchor.
+  - name: "the M12 acceptance battery"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_rule.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  # THE P0 ADR-010 BOUNDARY GUARDS ARE M12's SHARPEST REGRESSION ANCHOR, AND THE ONE MOST LIKELY TO
+  # BE "FIXED" IN THE WRONG DIRECTION. `test_phase0_null_gate.py` and `test_phase0_errata_guards.py`
+  # confine the typed gate ladder to `gate_scan.GATE_RUNTIME_MODULES` by EXACT SET EQUALITY, and
+  # confine MINTING to `checkpoint.py` alone. A `GATE_PRECONDITION` rule legitimately names a gate
+  # member — ADR-010 §6.1's fourth worked example sets `HUMAN_APPROVAL_REQUIRED` under a condition —
+  # so the carrier boundary may widen the way it widened for `pipeline_instance.py` at P6-CP-2 and
+  # for `policy.py` at P6-CP-11. What must NOT move is the MINT allowlist.
+  - name: "the ADR-010 gate boundary still confines minting to the checkpoint kernel"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase0_null_gate.py eval/tests/test_phase0_errata_guards.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  - name: "M1, M2, M3 and M4 stay green beside M12"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_work_item.py eval/tests/test_phase6_pipeline_instance.py eval/tests/test_phase6_external_effect.py eval/tests/test_phase6_approval.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains: ["passed"]
+
+  # M7 IS THE MACHINE RU-3 FAILS CLOSED INTO, M9 IS THE MACHINE RU-8's EXPIRY AND THE OVERRIDE-RATE
+  # SEAM ESCALATE TO, AND M11 IS THE UNIT IMMEDIATELY BEFORE THIS ONE AND THE LAYER DIRECTLY ABOVE
+  # IT IN THE PRECEDENCE LADDER. M12 must drive all three and rebuild none of them.
+  - name: "M7, M9 and M11, the machines M12 consumes and must not edit, stay green"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_conflict.py eval/tests/test_phase6_exception.py eval/tests/test_phase6_policy.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  - name: "M5, M6, M8 and M10 stay green beside M12"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase6_observation.py eval/tests/test_phase6_identity_binding_claim.py eval/tests/test_phase6_expectation.py eval/tests/test_phase6_compensation.py"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains: ["passed"]
+
+  # THE CANONICAL CHECKPOINT SUITE IS `test_phase3_checkpoint_matrix.py`. A GATE_PRECONDITION rule is
+  # evaluated INSIDE checkpoint step 6, so the kernel's own matrix, the claim CAS and the step-order
+  # guard are the three anchors that decide whether M12 integrated with the checkpoint or built a
+  # second one beside it.
+  - name: "the checkpoint kernel, the claim CAS and step order are unchanged by M12"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_step_order.py"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the event registry and replay isolation are unchanged by M12"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_p5_event_contracts.py eval/tests/test_p5_replay_and_audit.py"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+  - name: "the false-green defences, including the population-proof guard"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_false_green_defenses.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  - name: "the tenant-first posture and bootstrap hermeticity survive a new canonical table"
+    run: ".venv/bin/python -m pytest -q -p no:cacheprovider eval/tests/test_phase0_tenant_posture.py eval/tests/test_bootstrap_hermeticity.py"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["passed"]
+
+  # ------------------------------------------------------------------ the M12 case vocabulary
+  #
+  # EACH LITERAL BELOW IS THE HEADLINE OF THE CASE ACTUALLY NAMED ON THE LINE ABOVE IT. This is the
+  # M10 correction applied from the start: an oracle that cannot pass on a correct product is the
+  # mirror image of a false green, because it teaches the builder to change the product.
+  - name: "the happy path: never bill without a POD compiles, is confirmed, is activated and decides a checkpoint"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case never-bill-without-a-pod-compiles-to-a-gate-precondition"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION"
+      - "AN INFERRED POD IS NOT A POD"
+
+  - name: "the instruction that cannot compile, and the owner who is told so"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case do-not-use-carrier-x-for-produce-cannot-compile"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD"
+      - "AN INSTRUCTION THAT DID NOT COMPILE IS MEMORY, NOT AUTHORITY"
+
+  - name: "the reply never claims a procedure was noted"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-reply-never-claims-a-procedure-was-noted"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["NOTED THE PROCEDURE IS FORBIDDEN WITHOUT AN ACTIVE RULE ID"]
+
+  - name: "a margin rule refuses to compile on a MODEL_INFERRED cost at confidence 1.0"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case confidence-one-does-not-make-model-inferred-compilable"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A RULE MAY NEVER BRANCH ON A GUESS"]
+
+  - name: "the compiler input type has no confidence field to read"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-compiler-input-type-has-no-confidence-field"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["CONFIDENCE IS STRUCTURALLY NOT AN INPUT"]
+
+  - name: "an unmodelled field does not compile, over every provenance class"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case an-unmodelled-field-fails-to-compile --provenance all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "AN UNMODELLED FIELD DOES NOT COMPILE"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "compilation is deterministic and no model is called after the text proposal"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case no-model-call-occurs-after-the-text-proposal"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["COMPILATION IS DETERMINISTIC, WITH NO MODEL IN THE LOOP"]
+
+  - name: "a model may propose the candidate text, and text is not authority"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-model-may-propose-structured-candidate-text"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A MODEL MAY PROPOSE TEXT; IT NEVER COMPILES"]
+
+  - name: "compilation is byte-identical reproducible under the same candidate"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case compilation-is-byte-identical-reproducible --repeat 25 --seed 12"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "there are exactly two outcomes, exercised along the outcome axis"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-proposal-is-not-an-enforceable-rule --outcome all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "THERE IS NO THIRD OUTCOME"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "the owner is shown the compiled rule and its test vectors before confirming"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-owner-is-shown-the-generated-test-vectors"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING"]
+
+  - name: "confirmation without test vectors is refused"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case confirmation-without-test-vectors-is-refused"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING"]
+
+  - name: "activation requires an authenticated human"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case activation-requires-an-authenticated-human"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"]
+
+  - name: "a model cannot activate a rule, at any confidence"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-model-cannot-activate-a-rule"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A MODEL CAN NEVER ACTIVATE A RULE"]
+
+  - name: "automation cannot activate a rule, from any automated path"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case automation-cannot-activate-a-rule --actor all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "AUTOMATION CAN NEVER ACTIVATE A RULE"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "a cross-tenant activator is refused, and so is a cross-tenant author"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-cross-tenant-activator-is-refused --tenants all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "two conflicting rules fail closed into the M7 RULE_VS_RULE conflict"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case two-conflicting-active-rules-fail-closed"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "TWO CONFLICTING RULES FAIL CLOSED"
+      - "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE"
+
+  - name: "conflicting rules are never auto-merged and Neyma never picks a winner"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case conflicting-rules-are-never-auto-merged"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["NEYMA NEVER PICKS A WINNER BETWEEN TWO RULES"]
+
+  - name: "the narrower scope wins, and that is precedence rather than a conflict"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-narrower-scope-wins-and-is-not-a-conflict --scope all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "THE NARROWER SCOPE WINS, AND THAT IS NOT A CONFLICT"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "the superseded rule version is retained and still explains its historical decisions"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-superseded-version-still-explains-its-historical-decisions"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"]
+
+  - name: "re-activating an already-active version is a no-op"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case re-activating-an-already-active-version-is-a-no-op --repeat 10"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "RE-ACTIVATING AN ACTIVE VERSION IS A NO-OP"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "a broadening rule revocation requires the Policy Owner; a narrowing one is immediate"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-broadening-revocation-requires-the-policy-owner --direction all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"]
+
+  - name: "a narrowing rule's expiry broadens authority, so a human is required at expiry"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case expiry-requires-a-human-at-expiry"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"]
+
+  - name: "a fired timer never broadens rule authority"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case timerfired-never-broadens-authority"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"]
+
+  - name: "a denying rule yields no witness, no grant and no effect"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-denying-rule-yields-no-witness-and-no-effect"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A DENYING RULE MEANS NO WITNESS AND NO EFFECT"]
+
+  - name: "the rule engine unavailable at checkpoint yields no witness and no effect"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case the-rule-engine-unavailable-yields-no-witness-and-no-effect"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["THERE IS NO ALLOW-ON-ERROR DEFAULT"]
+
+  - name: "M12 mints no gate decision and the checkpoint stays the sole minter"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case checkpoint-py-remains-the-sole-gate-minter"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M12 MINTS NO GATE DECISION"
+
+  - name: "a rule never overrides anything above it in the precedence ladder"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case rules-sit-beneath-policy-at-precedence-layer-six"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A RULE NEVER OVERRIDES A CONSTRAINT"
+      - "A RULE NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+      - "A RULE NEVER OVERRIDES POLICY"
+
+  - name: "a brake denies regardless of what a rule permits"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-rule-never-overrides-a-brake-denial --brake engaged"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["A RULE NEVER OVERRIDES A BRAKE DENIAL"]
+
+  - name: "replay reconstructs rule history and creates no authority"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case replay-creates-no-human-authority"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["REPLAY CREATES NO AUTHORITY"]
+
+  - name: "concurrent activation for one tenant, scope and kind yields exactly one ACTIVE rule"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case concurrent-activation-yields-exactly-one-active-rule --concurrency 8 --repeat 20"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "every rule kind is exercised across the four-member kind vocabulary"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case gate-precondition-rules-are-evaluated-at-checkpoint-step-6 --kind all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  - name: "a repeatedly overridden rule asks a human, and is never auto-disabled"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case a-repeatedly-overridden-rule-is-never-auto-disabled"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A REPEATEDLY OVERRIDDEN RULE ASKS A HUMAN AND IS NEVER AUTO-DISABLED"]
+
+  - name: "M12 ships dark, and M13 does not exist"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case m12-ships-dark-with-zero-production-importers"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "THE M13 BRAKE MACHINE IS NOT BUILT"
+
+  - name: "nothing graduates, and the landed machines are unchanged"
+    run: ".venv/bin/python scripts/probe_phase6_rule.py --case m1-through-m11-are-unchanged"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "NOTHING GRADUATES"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11 POLICY MACHINE IS UNCHANGED"
+
+expect_state:
+  # 1 ---------------------------------------------------------------------------------------
+  - name: "a freshly created canonical database carries the rule layer, tenant-first"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys); p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      print(sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39))))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "rules"
+      - "policies"
+      - "conflicts"
+      - "exceptions"
+      - "tenant_humans"
+      - "approvals"
+      - "effect_grants"
+      - "checkpoint_witnesses"
+      - "pipeline_instances"
+      - "event_outbox"
+      - "brakes"
+
+  # 2 ---------------------------------------------------------------------------------------
+  #
+  # THE FROZEN EIGHT AND THE FROZEN FOUR, AS DATABASE CONSTRAINTS. The machine file's own opening
+  # paragraph exists to refuse `parsed`, `invalid`, `conflict-detected`, `awaiting-confirmation` and
+  # `suspended` BY NAME — they map to PROPOSED, REJECTED, a raised M7 Conflict, COMPILED and REVOKED
+  # without a ninth state. Those five, the ordinary inventions (`PENDING`, `ENABLED`, `DISABLED`,
+  # `CANCELLED`, `FAILED`, `ARCHIVED`) and — the sharpest of them — M11's OWN states `DRAFT` and
+  # `APPROVED` are what this asserts cannot exist on a rule. A machine built by copying M11 acquires
+  # `DRAFT`/`APPROVED` silently and looks entirely reasonable doing it.
+  - name: "the eight canonical rule states and four canonical kinds are database constraints, and there is no ninth or fifth"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      ddl=(lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', ('rules',)).fetchone());
+      v=dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl)) if not m[1]]);
+      s=v.get('state') or []; k=v.get('kind') or [];
+      print('the state vocabulary is a CHECK:', bool(s));
+      print('canonical eight:', sorted(s));
+      print('state count:', len(s));
+      print('forbidden states present:', sorted([x for x in s if x in ('PARSED','INVALID','CONFLICT_DETECTED','AWAITING_CONFIRMATION','SUSPENDED','PENDING','ENABLED','DISABLED','CANCELLED','FAILED','ARCHIVED','DRAFT','APPROVED')]));
+      print('the kind vocabulary is a CHECK:', bool(k));
+      print('canonical four:', sorted(k));
+      print('kind count:', len(k));
+      print('invented kinds present:', sorted([x for x in k if x not in ('IDENTITY','CONFLICT_RESOLUTION','GATE_PRECONDITION','CONSTRAINT')]));
+      nn=[r[1] for r in c.execute('pragma table_info(rules)') if r[3]];
+      print('the NOT NULL column set:', sorted(nn));
+      print('compiled_predicate is NOT NULL:', 'compiled_predicate' in nn);
+      print('source_instruction is NOT NULL:', 'source_instruction' in nn);
+      print('authored_by is NOT NULL:', 'authored_by' in nn);
+      print('rule_version is NOT NULL:', 'rule_version' in nn);
+      cols=sorted(r[1] for r in c.execute('pragma table_info(rules)'));
+      print('the rule column set:', cols);
+      print('every canonical required attribute is a column:', sorted(x for x in ('rule_id','tenant','rule_version','scope','kind','compiled_predicate','state','source_instruction','authored_by','activated_by','test_vectors') if x not in cols))"
+    timeout_s: 300
+    contains:
+      - "the state vocabulary is a CHECK: True"
+      - "canonical eight: ['ACTIVE', 'COMPILED', 'CONFIRMED', 'EXPIRED', 'PROPOSED', 'REJECTED', 'REVOKED', 'SUPERSEDED']"
+      - "state count: 8"
+      - "forbidden states present: []"
+      - "the kind vocabulary is a CHECK: True"
+      - "canonical four: ['CONFLICT_RESOLUTION', 'CONSTRAINT', 'GATE_PRECONDITION', 'IDENTITY']"
+      - "kind count: 4"
+      - "invented kinds present: []"
+      - "compiled_predicate is NOT NULL: True"
+      - "source_instruction is NOT NULL: True"
+      - "authored_by is NOT NULL: True"
+      - "rule_version is NOT NULL: True"
+      - "every canonical required attribute is a column: []"
+
+  # 3 ---------------------------------------------------------------------------------------
+  #
+  # THE FORBIDDEN WRITES, ATTEMPTED AGAINST A LIVE DATABASE, BEHIND THREE POSITIVE CONTROLS. Reading
+  # the DDL and believing it is how a CHECK that was never compiled reads as enforcement. Every
+  # refusal below is an INSERT the database actually rejected, and the surviving-row count is
+  # asserted so a schema that refuses EVERYTHING cannot pass this by being uniformly hostile.
+  #
+  # ### THE LOAD-BEARING ONE IS `an ACTIVE rule with no activator`. Entity point 16 makes it a CHECK
+  # and point 37 makes it a STRUCTURALLY IMPOSSIBLE STATE, and the whole of RU-5 rests on it: if an
+  # ACTIVE row can exist with a null `activated_by`, then "an authenticated human activated this" is
+  # a convention rather than a fact, and every downstream claim about who authorised an enforcement
+  # rests on a row anyone could have written.
+  - name: "the live database refuses an ACTIVE rule with no activator, an invented state, an invented kind and a cross-tenant actor"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='rules';
+      print('rules table present:', bool(c.execute('select 1 from sqlite_master where type=' + chr(39) + 'table' + chr(39) + ' and name=?', (T,)).fetchone()));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-04T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,n,r,'ACTIVE','2026-09-04T00:00:00Z','founder','human')))) for t,h,n,r in (('T_A','rule-owner','Policy Owner','POLICY_OWNER'),('T_A','ops-lead','Ops Lead','AUTHORIZED_HUMAN'),('T_B','other-owner','Other Owner','POLICY_OWNER'))];
+      print('the M1 humans the positive controls bind:', sorted(c.execute('select tenant, human_id, authority_role from tenant_humans')));
+      fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(' + T + ')')]);
+      print('the authored_by FK target:', str(fks.get('authored_by')));
+      print('the activated_by FK target:', str(fks.get('activated_by')));
+      base=build(T, {'tenant':'T_A','rule_id':'ru-1','rule_version':1,'scope':'action_class:raise_invoice','kind':'GATE_PRECONDITION','state':'PROPOSED','authored_by':'rule-owner','activated_by':None,'source_instruction':'never bill without a POD','compiled_predicate':'{}','test_vectors':'[]','version':1,'created_at':'2026-09-04T00:00:00Z','updated_at':'2026-09-04T00:00:00Z'});
+      print('the derived NOT NULL column set:', sorted(base));
+      over=lambda d: dict(list(base.items()) + [(k, v) for k, v in d.items() if k in colsof(T)]);
+      [attempt(lbl, over(d)) for lbl, d in [('positive control, a well-formed PROPOSED rule', {'state':'PROPOSED'}), ('positive control, an ACTIVE rule activated by a named human', {'rule_id':'ru-2','rule_version':2,'scope':'action_class:book_carrier','state':'ACTIVE','activated_by':'rule-owner'}), ('positive control, an authorized delegate may activate', {'rule_id':'ru-3','rule_version':3,'scope':'action_class:pay_carrier','state':'ACTIVE','activated_by':'ops-lead'}), ('an ACTIVE rule with no activator', {'rule_id':'ru-4','rule_version':4,'scope':'action_class:send_email','state':'ACTIVE','activated_by':None}), ('a PARSED lifecycle state', {'rule_id':'ru-5','rule_version':5,'scope':'action_class:a','state':'PARSED'}), ('an INVALID lifecycle state', {'rule_id':'ru-6','rule_version':6,'scope':'action_class:b','state':'INVALID'}), ('a SUSPENDED lifecycle state', {'rule_id':'ru-7','rule_version':7,'scope':'action_class:c','state':'SUSPENDED'}), ('an AWAITING_CONFIRMATION lifecycle state', {'rule_id':'ru-8','rule_version':8,'scope':'action_class:d','state':'AWAITING_CONFIRMATION'}), ('a DRAFT lifecycle state borrowed from M11', {'rule_id':'ru-9','rule_version':9,'scope':'action_class:e','state':'DRAFT'}), ('an APPROVED lifecycle state borrowed from M11', {'rule_id':'ru-10','rule_version':10,'scope':'action_class:f','state':'APPROVED'}), ('an invented rule kind', {'rule_id':'ru-11','rule_version':11,'scope':'action_class:g','kind':'ROUTING'}), ('an author who is not a recorded human', {'rule_id':'ru-12','rule_version':12,'scope':'action_class:h','authored_by':'someone-else'}), ('an author from another tenant', {'rule_id':'ru-13','rule_version':13,'scope':'action_class:i','authored_by':'other-owner'}), ('an activator from another tenant', {'rule_id':'ru-14','rule_version':14,'scope':'action_class:j','state':'ACTIVE','activated_by':'other-owner'})]];
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      print('surviving ACTIVE rows with a named activator:', c.execute('select count(*) from rules where state=? and activated_by is not null', ('ACTIVE',)).fetchone()[0]);
+      print('surviving ACTIVE rows with no activator:', c.execute('select count(*) from rules where state=? and activated_by is null', ('ACTIVE',)).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "rules table present: True"
+      - "positive control, a well-formed PROPOSED rule: ACCEPTED"
+      - "positive control, an ACTIVE rule activated by a named human: ACCEPTED"
+      - "positive control, an authorized delegate may activate: ACCEPTED"
+      - "an ACTIVE rule with no activator: refused"
+      - "a PARSED lifecycle state: refused"
+      - "an INVALID lifecycle state: refused"
+      - "a SUSPENDED lifecycle state: refused"
+      - "an AWAITING_CONFIRMATION lifecycle state: refused"
+      - "a DRAFT lifecycle state borrowed from M11: refused"
+      - "an APPROVED lifecycle state borrowed from M11: refused"
+      - "an invented rule kind: refused"
+      - "an author who is not a recorded human: refused"
+      - "an author from another tenant: refused"
+      - "an activator from another tenant: refused"
+      - "rows that survived: 3"
+      - "surviving ACTIVE rows with a named activator: 2"
+      - "surviving ACTIVE rows with no activator: 0"
+
+  # 4 ---------------------------------------------------------------------------------------
+  #
+  # ### THE UNIQUENESS ENTITY POINT 17 ACTUALLY STATES, WHICH IS NOT THE ONE A CAREFUL READER
+  # EXPECTS. It is CONDITIONAL: `UNIQUE (tenant_id, scope, kind) WHERE state = 'ACTIVE'` ### **where
+  # a scope admits one rule; otherwise multiple active rules may coexist (and conflicts are
+  # detected)**. Both halves are load-bearing and they fail in opposite directions. Impose the index
+  # on every scope and a legitimate second rule is refused by a constraint canon never granted —
+  # which silently resolves `V4`/`V5` by making the "otherwise" branch unreachable. Omit it and two
+  # rules that must not coexist do. So the SINGLE-ADMITTING SET IS A DECLARED CONSTANT the index
+  # predicate names, the "otherwise" branch must be REACHABLE, and RU-3 conflict detection is what
+  # covers it. `M12-AQ-4` records that WHICH scope forms admit one is not settled by canon; that the
+  # question is answered EXPLICITLY, in one declared place, is not optional.
+  #
+  # And the SAME scope and kind in a DIFFERENT tenant must be ACCEPTED: a global uniqueness that
+  # accidentally couples tenants is the cross-tenant defect wearing a safety constraint's clothes.
+  - name: "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      import freight_recon.migrations.phase6_rules as mg;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='rules';
+      idx=[r[0] for r in c.execute('select sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=? and sql is not null', (T,))];
+      print('rule indexes discovered:', len(idx));
+      uniq=[s for s in idx if 'UNIQUE' in s.upper()];
+      print('a UNIQUE index exists:', bool(uniq));
+      print('the UNIQUE indexes under test:', sorted([re.search('INDEX +([A-Za-z0-9_]+)', s).group(1) for s in uniq]));
+      print('every rule index is tenant-first:', all(re.search('[(] *tenant', s) for s in idx));
+      print('an ACTIVE-only partial predicate exists:', any(re.search('WHERE.*ACTIVE', s, re.S) for s in uniq));
+      print('the active uniqueness columns are tenant, scope and kind:', any(re.search('[(] *tenant *, *scope *, *kind *[)]', s) for s in uniq));
+      print('a tenant-local rule_version uniqueness exists:', any(re.search('[(] *tenant *, *rule_version *[)]', s) for s in uniq));
+      single=sorted(getattr(mg, 'P6RU_SINGLE_ACTIVE_SCOPES', ()));
+      forms=sorted(getattr(mg, 'P6RU_SCOPE_FORMS', ()));
+      print('the declared scope-form vocabulary:', forms);
+      print('the declared single-admitting scope forms:', single);
+      print('the single-admitting set is declared and non-empty:', bool(single));
+      print('the single-admitting set is a PROPER subset, so the otherwise branch is reachable:', bool(forms) and bool(set(forms) - set(single)));
+      print('scope forms that admit MULTIPLE active rules:', sorted(set(forms) - set(single)));
+      print('the partial predicate names the single-admitting forms:', all(any(f in s for s in uniq) for f in single));
+      pk=[x for _, x in sorted((r[5], r[1]) for r in c.execute('pragma table_info(' + T + ')') if r[5])];
+      print('the rule primary key, in order:', pk);
+      print('tenant is FIRST in the rule primary key:', bool(pk) and pk[0] == 'tenant');
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone()))) if not m[1]]);
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at') or n.endswith('_from'): return '2026-09-04T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\",'def sql(label, stmt, params):',' try:',\"  c.execute('savepoint m'); cur = c.execute(stmt, params); c.execute('release m'); print(label + ': ACCEPTED, rows=' + str(cur.rowcount))\",' except sqlite3.Error as exc:',\"  c.execute('rollback to m'); c.execute('release m'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt']; sql=env['sql'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,'rule-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-04T00:00:00Z','founder','human')))) for t in ('T_A','T_B')];
+      SC=(single[0] if single else 'action_class') + ':raise_invoice';
+      MU=(sorted(set(forms) - set(single))[0] if set(forms) - set(single) else 'customer') + ':acme';
+      base=build(T, {'tenant':'T_A','kind':'GATE_PRECONDITION','authored_by':'rule-owner','activated_by':'rule-owner','source_instruction':'never bill without a POD','compiled_predicate':'{}','test_vectors':'[]','version':1,'created_at':'2026-09-04T00:00:00Z','updated_at':'2026-09-04T00:00:00Z'});
+      over=lambda d: dict(list(base.items()) + [(k, v) for k, v in d.items() if k in colsof(T)]);
+      attempt('positive control, the first ACTIVE rule for a tenant, scope and kind', over({'rule_id':'ru-1','rule_version':1,'scope':SC,'state':'ACTIVE'}));
+      attempt('a SECOND ACTIVE rule for the same tenant, single-admitting scope and kind', over({'rule_id':'ru-2','rule_version':2,'scope':SC,'state':'ACTIVE'}));
+      attempt('positive control, a SUPERSEDED rule for the same scope and kind is retained beside it', over({'rule_id':'ru-3','rule_version':3,'scope':SC,'state':'SUPERSEDED'}));
+      attempt('positive control, the SAME scope and kind ACTIVE in a DIFFERENT tenant', over({'rule_id':'ru-4','tenant':'T_B','rule_version':1,'scope':SC,'state':'ACTIVE'}));
+      attempt('positive control, a first ACTIVE rule in a multi-admitting scope', over({'rule_id':'ru-5','rule_version':4,'scope':MU,'state':'ACTIVE'}));
+      attempt('positive control, a SECOND ACTIVE rule in a multi-admitting scope, which conflict detection covers', over({'rule_id':'ru-6','rule_version':5,'scope':MU,'state':'ACTIVE'}));
+      attempt('a reused rule_version inside one tenant', over({'rule_id':'ru-7','rule_version':1,'scope':'action_class:book_carrier','state':'PROPOSED'}));
+      sql('the OCC guard on a state change that does not advance the version', 'update rules set state=? where tenant=? and rule_id=?', ('REVOKED','T_A','ru-1'));
+      sql('a DELETE against a rule row', 'delete from rules where tenant=? and rule_id=?', ('T_A','ru-3'));
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      print('T_A ACTIVE rows in the single-admitting scope:', c.execute('select count(*) from rules where tenant=? and state=? and scope=?', ('T_A','ACTIVE',SC)).fetchone()[0]);
+      print('T_B ACTIVE rows in the single-admitting scope:', c.execute('select count(*) from rules where tenant=? and state=? and scope=?', ('T_B','ACTIVE',SC)).fetchone()[0]);
+      print('T_A ACTIVE rows in the multi-admitting scope:', c.execute('select count(*) from rules where tenant=? and state=? and scope=?', ('T_A','ACTIVE',MU)).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "a UNIQUE index exists: True"
+      - "every rule index is tenant-first: True"
+      - "an ACTIVE-only partial predicate exists: True"
+      - "the active uniqueness columns are tenant, scope and kind: True"
+      - "a tenant-local rule_version uniqueness exists: True"
+      - "the single-admitting set is declared and non-empty: True"
+      - "the single-admitting set is a PROPER subset, so the otherwise branch is reachable: True"
+      - "the partial predicate names the single-admitting forms: True"
+      - "tenant is FIRST in the rule primary key: True"
+      - "positive control, the first ACTIVE rule for a tenant, scope and kind: ACCEPTED"
+      - "a SECOND ACTIVE rule for the same tenant, single-admitting scope and kind: refused by"
+      - "positive control, a SUPERSEDED rule for the same scope and kind is retained beside it: ACCEPTED"
+      - "positive control, the SAME scope and kind ACTIVE in a DIFFERENT tenant: ACCEPTED"
+      - "positive control, a first ACTIVE rule in a multi-admitting scope: ACCEPTED"
+      - "positive control, a SECOND ACTIVE rule in a multi-admitting scope, which conflict detection covers: ACCEPTED"
+      - "a reused rule_version inside one tenant: refused by"
+      - "the OCC guard on a state change that does not advance the version: refused by"
+      - "a DELETE against a rule row: refused by"
+      - "T_A ACTIVE rows in the single-admitting scope: 1"
+      - "T_B ACTIVE rows in the single-admitting scope: 1"
+      - "T_A ACTIVE rows in the multi-admitting scope: 2"
+
+  # 5 ---------------------------------------------------------------------------------------
+  #
+  # MIGRATION PARITY. An upgraded database and a fresh one must be the same database. A migration
+  # that creates a slightly different `rules` than `create_canonical_schema` does is how a constraint
+  # that passes every test in CI is absent in the one database that matters.
+  - name: "an upgraded database and a fresh database carry the identical rule layer"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,inspect; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys);
+      import freight_recon.migrations.phase6_rules as mg;
+      norm=lambda s: ' '.join((s or '').split());
+      shape=lambda c: sorted([(r[0], norm(r[1])) for r in c.execute('select name, sql from sqlite_master where tbl_name=? and sql is not null', ('rules',))]);
+      want=('MIGRATION_ID','P6RU_SCHEMA_VERSION','P6RU_TENANT_TABLES','P6RU_EXEMPT_TABLES','P6RU_TARGET_SCHEMA','P6RU_INDEXES','P6RU_SCOPE_FORMS','P6RU_SINGLE_ACTIVE_SCOPES','create_phase6_rules_schema','stamp_phase6_rules_version','phase6_rules_readiness_problems');
+      print('the canonical P6 symbol set is complete:', sorted(s for s in want if not hasattr(mg, s)) == []);
+      print('missing canonical symbols:', sorted(s for s in want if not hasattr(mg, s)));
+      print('the rule table is declared tenant-owned:', list(mg.P6RU_TENANT_TABLES) == ['rules']);
+      print('the unit declares no tenant-exempt table:', list(mg.P6RU_EXEMPT_TABLES) == []);
+      fresh=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'fresh.sqlite3')); create_canonical_schema(fresh); enable_and_verify_foreign_keys(fresh);
+      up=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'up.sqlite3')); create_canonical_schema(up); enable_and_verify_foreign_keys(up);
+      [up.execute('drop trigger if exists ' + n) for n in list(getattr(mg, 'P6RU_TRIGGERS', {}))];
+      [up.execute('drop index if exists ' + n) for n in list(mg.P6RU_INDEXES)];
+      up.execute('drop table if exists rules'); up.commit();
+      print('the rule layer was actually removed before the upgrade:', shape(up) == []);
+      fn=mg.create_phase6_rules_schema;
+      kw={'now': '2026-09-04T00:00:00Z'} if 'now' in inspect.signature(fn).parameters else {};
+      fn(up, **kw); up.commit();
+      print('the upgraded rule layer is identical to the fresh one:', shape(up) == shape(fresh));
+      before=shape(up); fn(up, **kw); up.commit();
+      print('a second application of the migration is a no-op:', shape(up) == before);
+      print('the upgraded database is READY:', schema_readiness_problems(up) == []);
+      print('the unit reports its own readiness problems:', mg.phase6_rules_readiness_problems(up))"
+    timeout_s: 600
+    contains:
+      - "the canonical P6 symbol set is complete: True"
+      - "missing canonical symbols: []"
+      - "the rule table is declared tenant-owned: True"
+      - "the unit declares no tenant-exempt table: True"
+      - "the rule layer was actually removed before the upgrade: True"
+      - "the upgraded rule layer is identical to the fresh one: True"
+      - "a second application of the migration is a no-op: True"
+      - "the upgraded database is READY: True"
+      - "the unit reports its own readiness problems: []"
+
+  # 6 ---------------------------------------------------------------------------------------
+  #
+  # THE F12 CONTRACT SET, READ FROM THE REGISTRY RATHER THAN FROM M12's ACCOUNT OF IT. All eight
+  # F12 names were registered BEFORE M12 was built — `RuleExpired`(RU-8) by the 2026-08-12
+  # founder/architect amendment — so this oracle is a landed-authority anchor as well as an M12
+  # obligation. ### AND IT PINS THE TWO CONTRACTS M12 MUST NOT MINT: `ConflictRaised` is **F7's**,
+  # produced by `CF-1`/`IB-6`/`EF-4c` and by nothing of M12's, even though `entities/15-rule.md`
+  # point 31 lists it among Rule's EMITTED events — `M12-AQ-2`, and the machine table's
+  # `CONSUMES:ConflictRaised` is the reading that wins. `UnauthorizedPolicyActivationAttempted` is
+  # **F14's**, already registered and already used by M11: a second contract for the same fact is
+  # rule-17 duplication.
+  - name: "the F12 family is exactly eight registered contracts, and the two M12 must not mint belong elsewhere"
+    command: >-
+      .venv/bin/python -c "import sys,json; sys.path.insert(0,'src');
+      d=json.load(open('src/freight_recon/event_contracts_data.json')); c=d['contracts'];
+      f12=sorted([e['name'] for e in c if e.get('family') == 'F12']);
+      print('F12 contract count:', len(f12));
+      print('F12 contracts:', f12);
+      by=dict([(e['name'], e) for e in c]);
+      print('ConflictRaised family:', by['ConflictRaised']['family'], sorted(by['ConflictRaised']['producers']));
+      print('RU-3 is not a registered producer of ConflictRaised:', 'RU-3' not in by['ConflictRaised']['producers']);
+      print('UnauthorizedPolicyActivationAttempted family:', by['UnauthorizedPolicyActivationAttempted']['family']);
+      print('PolicyOverridden is registered:', 'PolicyOverridden' in by);
+      print('RuleActivated is human_only:', by['RuleActivated']['human_only']);
+      print('every F12 aggregate_type is rule:', sorted(set(by[n]['aggregate_type'] for n in f12)));
+      print('F12 producers, one transition each:', sorted((n, tuple(by[n]['producers'])) for n in f12));
+      print('RuleProposed required fields:', sorted([f['name'] for f in by['RuleProposed']['fields'] if f['required']]));
+      print('RuleCompiled required fields:', sorted([f['name'] for f in by['RuleCompiled']['fields'] if f['required']]));
+      print('RuleNotEnforceable required fields:', sorted([f['name'] for f in by['RuleNotEnforceable']['fields'] if f['required']]));
+      print('RuleActivated required fields:', sorted([f['name'] for f in by['RuleActivated']['fields'] if f['required']]));
+      print('RuleRevoked required fields:', sorted([f['name'] for f in by['RuleRevoked']['fields'] if f['required']]));
+      print('RuleSuperseded required fields:', sorted([f['name'] for f in by['RuleSuperseded']['fields'] if f['required']]));
+      print('RuleExpired required fields:', sorted([f['name'] for f in by['RuleExpired']['fields'] if f['required']]));
+      print('the F12 strict_order flags as REGISTERED:', sorted(set(by[n]['strict_order'] for n in f12)));
+      print('total registered contracts:', len(c))"
+    timeout_s: 300
+    contains:
+      - "F12 contract count: 8"
+      - "F12 contracts: ['RuleActivated', 'RuleCompiled', 'RuleConfirmed', 'RuleExpired', 'RuleNotEnforceable', 'RuleProposed', 'RuleRevoked', 'RuleSuperseded']"
+      - "ConflictRaised family: F7 ['CF-1', 'EF-4c', 'IB-6']"
+      - "RU-3 is not a registered producer of ConflictRaised: True"
+      - "UnauthorizedPolicyActivationAttempted family: F14"
+      - "PolicyOverridden is registered: False"
+      - "RuleActivated is human_only: True"
+      - "every F12 aggregate_type is rule: ['rule']"
+      - "RuleProposed required fields: ['kind', 'scope', 'source_instruction']"
+      - "RuleCompiled required fields: ['compiled_predicate', 'rule_id', 'test_vectors']"
+      - "RuleNotEnforceable required fields: ['missing']"
+      - "RuleActivated required fields: ['activated_by', 'rule_id', 'rule_version']"
+      - "RuleRevoked required fields: ['direction', 'revoked_reason']"
+      - "RuleSuperseded required fields: ['superseded_by']"
+      - "RuleExpired required fields: ['expired_at', 'rule_id', 'rule_version']"
+      - "total registered contracts: 118"
+
+  # 7 ---------------------------------------------------------------------------------------
+  #
+  # ### THE SINGLE MOST IMPORTANT ORACLE IN THIS FILE, AND THE ONE MOST LIKELY TO BE SATISFIED THE
+  # WRONG WAY. A `GATE_PRECONDITION` rule decides, inside checkpoint step 6, whether an action may
+  # proceed and — ADR-010 §6.1's fourth worked example — may raise the gate to
+  # `HUMAN_APPROVAL_REQUIRED` under a condition. The temptation, and it arrives dressed as
+  # compliance, is to give the rule engine its own `GateRegistry`, because a thing that decides gates
+  # "obviously" owns the gate registry. That is a SECOND GATE AUTHORITY, and a second gate authority
+  # is the same defect as no gate authority: two answers to "may Neyma do this alone", and nothing
+  # that says which one the grant was minted under.
+  #
+  # A gate decision comes into existence ONLY by constructing a `GateEntry` or a `GateRegistry`.
+  # This walks the AST of every production module and asserts the mint population is exactly
+  # `checkpoint.py`. The kernel's own `_DEFAULT` construction is the POSITIVE CONTROL: a confinement
+  # assertion over a population containing no mint at all passes vacuously and proves nothing.
+  - name: "the checkpoint kernel is still the only thing that MINTS a gate decision, and M12 mints none"
+    command: >-
+      .venv/bin/python -c "import ast,sys,pathlib; sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon'); MINTS={'GateEntry','GateRegistry'};
+      trees=[(py.name, ast.parse(py.read_text(encoding='utf-8'))) for py in sorted(src.rglob('*.py'))];
+      nm=lambda f: f.id if isinstance(f, ast.Name) else getattr(f, 'attr', None);
+      sites=[(n, nm(node.func)) for n, t in trees for node in ast.walk(t) if isinstance(node, ast.Call) and nm(node.func) in MINTS];
+      print('modules parsed:', len(trees));
+      print('rule.py was parsed:', 'rule.py' in [n for n, _ in trees]);
+      print('the rule schema module was parsed:', 'phase6_rules.py' in [n for n, _ in trees]);
+      print('modules that MINT a gate decision:', sorted(set(n for n, _ in sites)));
+      print('the kernel positive control, checkpoint.py mint sites:', len([1 for n, _ in sites if n == 'checkpoint.py']));
+      print('M12 constructs a GateEntry or GateRegistry:', 'rule.py' in set(n for n, _ in sites));
+      print('the M12 schema module constructs a GateEntry or GateRegistry:', 'phase6_rules.py' in set(n for n, _ in sites));
+      reg=[n for n, t in trees for node in ast.walk(t) if isinstance(node, ast.Call) and nm(node.func) == 'register_gate'];
+      print('modules that REGISTER an action class gate:', sorted(set(reg)));
+      import freight_recon.checkpoint as ck;
+      print('the canonical gate ladder:', sorted(m.value for m in ck.GateDecision));
+      print('the unregistered-class fallback:', ck.GateRegistry({}, policy_version='pv1').gate_for('raise_invoice').gate.value);
+      print('a registry over an empty mapping registers nothing:', len(ck.GateRegistry({}, policy_version='pv1')._entries))"
+    timeout_s: 300
+    contains:
+      - "rule.py was parsed: True"
+      - "the rule schema module was parsed: True"
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "the kernel positive control, checkpoint.py mint sites: 1"
+      - "M12 constructs a GateEntry or GateRegistry: False"
+      - "the M12 schema module constructs a GateEntry or GateRegistry: False"
+      - "modules that REGISTER an action class gate: []"
+      - "the canonical gate ladder: ['AUTONOMOUS_WITHIN_CAPS', 'FORBIDDEN', 'HUMAN_APPROVAL_REQUIRED', 'PERMANENT_HUMAN_ASSERTION_REQUIRED']"
+      - "the unregistered-class fallback: HUMAN_APPROVAL_REQUIRED"
+      - "a registry over an empty mapping registers nothing: 0"
+
+  # 8 ---------------------------------------------------------------------------------------
+  #
+  # THE OTHER HALF OF THE BOUNDARY, AND THE ONE THAT MAY LEGITIMATELY MOVE. `eval/phase0/gate_scan.py`
+  # states the ADR-010 carrier boundary ONCE, and `test_phase0_errata_guards.py` asserts the
+  # DISCOVERED carrier population EQUALS it, by exact set equality. If a `GATE_PRECONDITION` rule
+  # names a typed gate member in executable code — and ADR-010 §6.1 says one may — then M12's modules
+  # join that boundary the way `pipeline_instance.py` did at `P6-CP-2` and `policy.py` did at
+  # `P6-CP-11`. ### THAT IS A WIDENING WITH A NARROWING ATTACHED, AND BOTH HALVES ARE MEASURED HERE
+  # AND IN ORACLE 7: carrying is permitted, MINTING is refused, and every carrier must cite ADR-010
+  # so a module cannot acquire gate runtime by writing a magic string.
+  #
+  # ### THIS ORACLE DOES NOT REQUIRE M12 TO JOIN. It requires the DISCOVERED population to EQUAL the
+  # STATED one, whichever way the builder goes: a module that carries the vocabulary and is absent
+  # from the boundary is a drift, and a boundary naming a module that carries nothing is a widening
+  # bought for free. Both are failures; joining or not joining is not.
+  - name: "the ADR-010 carrier boundary is stated once, equals what is discovered, and every carrier cites its authority"
+    command: >-
+      .venv/bin/python -c "import sys,re,pathlib; sys.path.insert(0,'.'); sys.path.insert(0,'src');
+      from eval.phase0 import gate_scan;
+      src=pathlib.Path('src/freight_recon');
+      stated=sorted(gate_scan.require_gate_runtime_modules(src));
+      print('the stated ADR-010 carrier boundary:', stated);
+      print('the boundary is non-empty:', bool(stated));
+      textof=lambda q: q.read_text(encoding='utf-8');
+      carriers=sorted(set(q.name for q in src.rglob('*.py') if gate_scan.gate_token_sites(textof(q))));
+      print('modules that CARRY gate vocabulary in executable code:', carriers);
+      print('the discovered population equals the stated boundary:', carriers == stated);
+      print('rule.py carries gate vocabulary:', 'rule.py' in carriers);
+      print('rule.py is inside the stated boundary if it carries:', ('rule.py' not in carriers) or ('rule.py' in stated));
+      print('the rule schema module is inside the boundary if it carries:', ('phase6_rules.py' not in carriers) or ('phase6_rules.py' in stated));
+      find=lambda n: next((q for q in src.rglob('*.py') if q.name == n), None);
+      cite=lambda n: bool(find(n)) and 'ADR-010' in textof(find(n));
+      print('every stated carrier exists on disk:', all(find(n) for n in stated));
+      print('carriers without an ADR-010 citation:', sorted(n for n in stated if not cite(n)));
+      print('the checkpoint kernel is still in the boundary:', 'checkpoint.py' in stated)"
+    timeout_s: 300
+    contains:
+      - "the boundary is non-empty: True"
+      - "every stated carrier exists on disk: True"
+      - "the discovered population equals the stated boundary: True"
+      - "rule.py is inside the stated boundary if it carries: True"
+      - "the rule schema module is inside the boundary if it carries: True"
+      - "carriers without an ADR-010 citation: []"
+      - "the checkpoint kernel is still in the boundary: True"
+
+  # 9 ---------------------------------------------------------------------------------------
+  #
+  # ### RU-3 FAILS CLOSED INTO M7, AND M7 IS ALREADY BUILT. `RULE_VS_RULE` has been a member of M7's
+  # closed `CONFLICT_KINDS` since `P6-CP-7`, `conflicts.rule_id` has been a column since the same
+  # landing, and `ConflictRaised`'s registered producers are `CF-1`, `IB-6` and `EF-4c` — none of
+  # them M12's. So the ONLY correct shape is: M12 calls M7's landed raise entry point, M7 mints the
+  # ConflictRaised as CF-1, the rule stays `COMPILED` and BLOCKED, and a human resolves it. A second
+  # conflict table, a second conflict module, a local `RuleConflict` type or an M12-minted
+  # `ConflictRaised` are four different ways of building the thing that already exists.
+  - name: "M12 fails closed into M7's landed RULE_VS_RULE conflict and builds no second conflict system"
+    command: >-
+      .venv/bin/python -c "import sys,sqlite3,tempfile,os,ast,pathlib; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, CANONICAL_TABLES;
+      import freight_recon.conflict as m7;
+      print('RULE_VS_RULE is a landed M7 conflict kind:', 'RULE_VS_RULE' in m7.CONFLICT_KINDS);
+      print('the canonical M7 conflict kinds:', sorted(m7.CONFLICT_KINDS));
+      print('the registered ConflictRaised producers:', sorted(m7.CONFLICT_RAISED_PRODUCERS));
+      print('RU-3 is not among them:', 'RU-3' not in m7.CONFLICT_RAISED_PRODUCERS);
+      print('the five F7 contracts M7 mints:', sorted(m7.PRODUCED_CONTRACTS));
+      print('M7 exposes a raise entry point:', hasattr(m7.M7Machine, 'raise_conflict'));
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=[r[1] for r in c.execute('pragma table_info(conflicts)')];
+      print('conflicts carries a rule_id column:', 'rule_id' in cols);
+      print('a second conflict table exists:', any(t in CANONICAL_TABLES for t in ('rule_conflicts','conflicting_rules','rule_conflict_log')));
+      ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8');
+      tree=ast.parse(ru);
+      own=lambda t: set([n.module.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module] + [a.name for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.level and not n.module for a in n.names] + [a.name.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names]);
+      print('the modules M12 imports:', sorted(own(tree)));
+      print('M12 reaches M7 by import:', 'conflict' in own(tree));
+      print('M12 writes the conflicts table directly:', 'insert into conflicts' in ru.lower());
+      print('M12 defines an M7 state or kind vocabulary:', any(s in ru for s in ('CONFLICT_STATES', 'CONFLICT_KINDS =', 'class CfKind', 'class CfState')));
+      print('M12 mints an F7 contract name:', sorted(n for n in m7.PRODUCED_CONTRACTS if n in ru));
+      print('M12 names the canonical RULE_VS_RULE kind:', 'RULE_VS_RULE' in ru)"
+    timeout_s: 300
+    contains:
+      - "RULE_VS_RULE is a landed M7 conflict kind: True"
+      - "the registered ConflictRaised producers: ['CF-1', 'EF-4c', 'IB-6']"
+      - "RU-3 is not among them: True"
+      - "M7 exposes a raise entry point: True"
+      - "conflicts carries a rule_id column: True"
+      - "a second conflict table exists: False"
+      - "M12 reaches M7 by import: True"
+      - "M12 writes the conflicts table directly: False"
+      - "M12 defines an M7 state or kind vocabulary: False"
+      - "M12 mints an F7 contract name: []"
+      - "M12 names the canonical RULE_VS_RULE kind: True"
+
+  # 10 --------------------------------------------------------------------------------------
+  #
+  # THE EVENT NAMES M12 ACTUALLY EMITS, READ FROM THE AST AND EXCLUDING DOCSTRINGS. A comment saying
+  # "`ConflictRaised` is deliberately NOT minted here" must not trip this, and a real string literal
+  # must. Both directions are proven on synthetic input at the end, because a scan that cannot tell
+  # prose from code is a scan whose verdict is not safe to believe.
+  #
+  # ### AND A PRODUCER IS NOT A CONSUMER. `HumanConfirmed`, `HumanActivated`, `HumanRevoked`,
+  # `ConflictDetected` and `TimerFired` are the DRIVING FACTS the machine consumes — named in the
+  # machine file §33 and in entity point 32, and ABSENT from `event_contracts_data.json` by design.
+  # Registering one of them to quiet an oracle would manufacture exactly the ninth contract the
+  # invariant forbids. So three populations are measured separately — what M12 EMITS (declared on its
+  # own transition rows), what it CONSUMES (the closed `Trigger` set), and every event-shaped literal
+  # it names anywhere — the consumed set is PINNED so a mint cannot be hidden by adding a trigger.
+  - name: "M12 emits only registered event names, and mints no ninth F12 contract"
+    command: >-
+      .venv/bin/python -c "import ast,sys,json,pathlib; sys.path.insert(0,'src');
+      reg=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts']);
+      f12=set(e['name'] for e in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts'] if e.get('family') == 'F12');
+      ru=pathlib.Path('src/freight_recon/rule.py'); tree=ast.parse(ru.read_text(encoding='utf-8'));
+      docsof=lambda t: set(id(n.value) for n in ast.walk(t) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
+      litsof=lambda t: set(n.value for n in ast.walk(t) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docsof(t));
+      evishof=lambda t: sorted(s for s in litsof(t) if s and s[0].isupper() and s.isidentifier() and any(s.startswith(p) for p in ('Rule','Policy','Brake','Conflict','Approval','Checkpoint','Effect','Pipeline','Exception','Compensation','Unauthorized','Illegal','Human','Timer')));
+      emitof=lambda t: sorted(set(e.value for n in ast.walk(t) if isinstance(n, ast.Call) for k in n.keywords if k.arg == 'events' for e in ast.walk(k.value) if isinstance(e, ast.Constant) and isinstance(e.value, str)));
+      consumeof=lambda t: sorted(set(a.value.value for n in ast.walk(t) if isinstance(n, ast.ClassDef) and n.name == 'Trigger' for a in n.body if isinstance(a, ast.Assign) and isinstance(a.value, ast.Constant) and isinstance(a.value.value, str)));
+      evish=evishof(tree); emitted=emitof(tree); consumed=consumeof(tree);
+      mintsof=lambda t: sorted(set(evishof(t)) - set(consumeof(t)));
+      print('event-shaped literals M12 names in code:', evish);
+      print('the literal population is non-empty:', bool(evish));
+      print('the event names M12 MINTS, declared on its own transition rows:', emitted);
+      print('the mint population is non-empty:', bool(emitted));
+      print('the count of F12 contracts M12 mints:', len(set(emitted) & f12));
+      print('minted names that are not registered F12 contracts:', sorted(set(emitted) - f12));
+      print('M12 mints a ninth F12 contract:', bool(set(emitted) - f12) or len(set(emitted) & f12) != 8);
+      print('the driving facts M12 CONSUMES:', consumed);
+      print('a consumed trigger is never also minted:', not (set(consumed) & set(emitted)));
+      print('HumanActivated is consumed, not minted:', ('HumanActivated' in consumed) and ('HumanActivated' not in emitted));
+      print('TimerFired is consumed, not minted:', ('TimerFired' in consumed) and ('TimerFired' not in emitted));
+      print('ConflictRaised is not minted by M12:', 'ConflictRaised' not in emitted);
+      print('PolicyOverridden is not minted by M12:', 'PolicyOverridden' not in emitted);
+      print('the F14 security contract is not minted by M12:', 'UnauthorizedPolicyActivationAttempted' not in emitted);
+      print('unregistered event names M12 mints:', sorted(set(mintsof(tree)) - reg));
+      poison=chr(34)*3 + 'ConflictRaised is deliberately NOT minted here; M7 owns it' + chr(34)*3;
+      print('a docstring naming a foreign event is not a mint:', not mintsof(ast.parse(poison)));
+      print('a real string literal naming an invented event is a mint:', mintsof(ast.parse('EVENT = ' + chr(34) + 'RuleSuspended' + chr(34))) == ['RuleSuspended']);
+      ninth='row = TransitionRow(id=' + chr(34) + 'RU-9' + chr(34) + ', events=(' + chr(34) + 'RuleSuspended' + chr(34) + ',))';
+      print('a ninth event minted on a transition row is caught:', bool(set(emitof(ast.parse(ninth))) - f12));
+      hidden='class Trigger(str, Enum):' + chr(10) + '    SNEAK = ' + chr(34) + 'RuleSuspended' + chr(34) + chr(10) + 'row = TransitionRow(id=' + chr(34) + 'RU-9' + chr(34) + ', events=(' + chr(34) + 'RuleSuspended' + chr(34) + ',))';
+      print('a mint hidden behind a new consumed trigger is still caught:', bool(set(emitof(ast.parse(hidden))) - f12) and bool(set(consumeof(ast.parse(hidden))) & set(emitof(ast.parse(hidden)))))"
+    timeout_s: 300
+    contains:
+      - "the literal population is non-empty: True"
+      - "the event names M12 MINTS, declared on its own transition rows: ['RuleActivated', 'RuleCompiled', 'RuleConfirmed', 'RuleExpired', 'RuleNotEnforceable', 'RuleProposed', 'RuleRevoked', 'RuleSuperseded']"
+      - "the mint population is non-empty: True"
+      - "the count of F12 contracts M12 mints: 8"
+      - "minted names that are not registered F12 contracts: []"
+      - "M12 mints a ninth F12 contract: False"
+      - "a consumed trigger is never also minted: True"
+      - "HumanActivated is consumed, not minted: True"
+      - "TimerFired is consumed, not minted: True"
+      - "ConflictRaised is not minted by M12: True"
+      - "PolicyOverridden is not minted by M12: True"
+      - "the F14 security contract is not minted by M12: True"
+      - "unregistered event names M12 mints: []"
+      - "a docstring naming a foreign event is not a mint: True"
+      - "a real string literal naming an invented event is a mint: True"
+      - "a ninth event minted on a transition row is caught: True"
+      - "a mint hidden behind a new consumed trigger is still caught: True"
+
+  # 11 --------------------------------------------------------------------------------------
+  #
+  # SHIPS DARK, MEASURED OVER A DISCOVERED POPULATION RATHER THAN AN ENUMERATED FILE LIST. The
+  # channel-capable set is DISCOVERED by import of a network primitive, and the adapter set by module
+  # shape — never brand-named, so a new outbound path cannot escape by being called something this
+  # file never heard of. The population proof comes FIRST: a dark-surface scan that inspected nothing
+  # is vacuously green, and that is precisely the false green M9's build tripped and M10's first pass
+  # repeated.
+  - name: "M12 ships dark: zero importers in the package, and no channel-capable module reaches it"
+    command: >-
+      .venv/bin/python -c "import ast,sys,pathlib; sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon');
+      trees=[(py, ast.parse(py.read_text(encoding='utf-8'))) for py in sorted(src.rglob('*.py'))];
+      print('modules scanned:', len(trees));
+      print('the scanned population is non-empty:', bool(trees));
+      allimp=lambda t: set([n.module for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module] + [a.name for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names]);
+      own=lambda t: set([n.module.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module and (n.level or n.module.startswith('freight_recon'))] + [a.name.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names if a.name.startswith('freight_recon')] + [a.name for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.level and not n.module for a in n.names]);
+      importers=sorted(p.name for p, t in trees if p.name != 'rule.py' and 'rule' in own(t));
+      print('shipped importers of rule:', importers);
+      net={'socket','http','urllib','ssl','asyncio','requests','httpx','imaplib'};
+      chan=sorted(p.name for p, t in trees if set(x.split('.')[0] for x in allimp(t)) & net);
+      print('channel-capable modules discovered:', len(chan));
+      print('the channel-capable population is non-empty:', bool(chan));
+      print('channel-capable modules that import rule:', sorted(p.name for p, t in trees if p.name in chan and 'rule' in own(t)));
+      ru=dict(trees)[src / 'rule.py'];
+      print('M12 imports a network primitive:', sorted(set(x.split('.')[0] for x in allimp(ru)) & net));
+      print('M12 imports a timer service:', 'event_timers' in own(ru));
+      print('M12 imports the brake store:', 'brake' in own(ru));
+      print('M12 imports the checkpoint kernel:', 'checkpoint' in own(ru));
+      adapters=sorted(q.stem for q, _ in trees if q.stem.endswith('_adapter') or q.stem.endswith('_write'));
+      print('adapter-shaped modules discovered:', len(adapters));
+      print('the adapter population is non-empty:', bool(adapters));
+      print('M12 imports an adapter:', sorted(own(ru) & set(adapters)));
+      outside=[q for q in sorted(pathlib.Path('.').rglob('*.py')) if 'freight_recon' not in str(q) and '.venv' not in str(q) and 'rule' in own(ast.parse(q.read_text(encoding='utf-8')))];
+      print('files outside the package that reach rule:', sorted(str(q) for q in outside))"
+    timeout_s: 900
+    contains:
+      - "the scanned population is non-empty: True"
+      - "shipped importers of rule: []"
+      - "the channel-capable population is non-empty: True"
+      - "channel-capable modules that import rule: []"
+      - "M12 imports a network primitive: []"
+      - "M12 imports a timer service: False"
+      - "M12 imports the brake store: False"
+      - "the adapter population is non-empty: True"
+      - "M12 imports an adapter: []"
+
+  # 12 --------------------------------------------------------------------------------------
+  #
+  # M13 IS NOT BUILT, AND "SHARED MACHINERY" IS THE DOOR IT WOULD ARRIVE THROUGH. Rule and Brake sit
+  # one after the other in the same ADR and share a versioned-authority shape, which is exactly why a
+  # build session can produce a brake lifecycle while sincerely believing it is factoring M12
+  # properly. `brake.py` on this tree is P3's LANDED KERNEL BRAKE — an admission-control read
+  # surface — and it is NOT M13: the discriminator is a brake LIFECYCLE, its states and its
+  # transitions. The F13 contracts are REGISTERED already, so their presence in the registry proves
+  # nothing and the oracle asks about the RUNTIME instead: no lifecycle, no table, no producer.
+  #
+  # And the surfaces M12 must not grow: no rule editor, no authoring console, no importer.
+  - name: "M13 Brake is not built, no autonomy-graduation engine exists, and M12 grows no authoring surface"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib,json; sys.path.insert(0,'src');
+      from freight_recon.schema import CANONICAL_TABLES;
+      src=pathlib.Path('src/freight_recon'); names=sorted(p.name for p in src.rglob('*.py'));
+      print('canonical tables:', len(CANONICAL_TABLES));
+      print('the rules table is canonical:', 'rules' in CANONICAL_TABLES);
+      print('an M13 brake-lifecycle table exists:', any(t in CANONICAL_TABLES for t in ('brake_lifecycle','brake_versions','brake_states')));
+      print('an M13 brake lifecycle module exists:', any(n in names for n in ('brake_lifecycle.py','brake_machine.py')));
+      print('an M13 brake schema module exists:', any(n.startswith('phase6_brake') for n in names));
+      print('a rule editor or console module exists:', any(n in names for n in ('rule_editor.py','rule_console.py','rule_admin.py','rule_authoring.py')));
+      ru=(src / 'rule.py').read_text(encoding='utf-8');
+      print('M12 defines a brake lifecycle:', any(s in ru for s in ('class BrakeState', 'def engage_brake', 'def release_brake', 'BRAKE_STATES')));
+      print('M12 defines an autonomy graduation engine:', any(s in ru for s in ('def graduate', 'class Graduation', 'AUTONOMY_GRADUATION')));
+      print('M12 defines a policy lifecycle:', any(s in ru for s in ('class PolicyState', 'POLICY_STATES', 'def submit_policy')));
+      print('M12 builds an authoring surface:', any(s in ru for s in ('def edit_rule', 'class RuleEditor', 'def import_rules', 'def bulk_activate')));
+      reg=json.load(open('src/freight_recon/event_contracts_data.json'))['contracts'];
+      f13=sorted(e['name'] for e in reg if e.get('family') == 'F13');
+      print('F13 contracts registered but unproduced:', len(f13));
+      print('M12 names an F13 contract in code:', any(n in ru for n in f13));
+      print('the landed P3 kernel brake is still present:', 'brake.py' in names)"
+    timeout_s: 300
+    contains:
+      - "the rules table is canonical: True"
+      - "an M13 brake-lifecycle table exists: False"
+      - "an M13 brake lifecycle module exists: False"
+      - "an M13 brake schema module exists: False"
+      - "a rule editor or console module exists: False"
+      - "M12 defines a brake lifecycle: False"
+      - "M12 defines an autonomy graduation engine: False"
+      - "M12 defines a policy lifecycle: False"
+      - "M12 builds an authoring surface: False"
+      - "M12 names an F13 contract in code: False"
+      - "the landed P3 kernel brake is still present: True"
+
+  # 13 --------------------------------------------------------------------------------------
+  #
+  # THE TENANT-FIRST PARTITION, WHICH `rules` JOINS. Every canonical table is accounted for and the
+  # partition is asserted mechanically on every CI run; the rehearsal finding this exists to prevent
+  # was exactly a table quietly missing from the written account. A tenantless rules table is an
+  # enforcement nobody's brokerage owns.
+  - name: "the rules table joins the tenant-first partition, and no tenantless table appeared"
+    command: >-
+      .venv/bin/python -c "import sys,sqlite3,tempfile,os; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, CANONICAL_TABLES,
+      CANONICAL_TENANT_TABLES, TENANT_EXEMPT_TABLES);
+      import freight_recon.schema as sc;
+      exempt=set(TENANT_EXEMPT_TABLES);
+      [exempt.update(getattr(sc, n)) for n in dir(sc) if n.endswith('_EXEMPT_TABLES')];
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      present=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)) if not r[0].startswith('sqlite_'));
+      print('tables created:', len(present));
+      print('the created population is non-empty:', bool(present));
+      cols=lambda t: [r[1] for r in c.execute('pragma table_info(' + t + ')')];
+      tenantless=sorted(t for t in present if 'tenant' not in [x.lower() for x in cols(t)]);
+      print('tenantless tables outside the recorded exemptions:', sorted(set(tenantless) - exempt));
+      print('rules carries a tenant column:', 'tenant' in [x.lower() for x in cols('rules')]);
+      print('rules is a canonical table:', 'rules' in CANONICAL_TABLES);
+      print('every canonical table was created:', sorted(t for t in CANONICAL_TABLES if t not in present));
+      extra=sorted(t for t in present if t not in CANONICAL_TABLES);
+      print('tables created and not enumerated in the canonical set:', extra);
+      print('the rule table is accounted for in the canonical set:', 'rules' not in extra)"
+    timeout_s: 300
+    contains:
+      - "the created population is non-empty: True"
+      - "tenantless tables outside the recorded exemptions: []"
+      - "rules carries a tenant column: True"
+      - "rules is a canonical table: True"
+      - "every canonical table was created: []"
+      - "the rule table is accounted for in the canonical set: True"
+
+  # 14 --------------------------------------------------------------------------------------
+  #
+  # THE AUTHORITY MODEL IS M1's, ALREADY LANDED, AND M12 MUST USE EXACTLY IT. `tenant_humans` has
+  # carried the two-member `authority_role` vocabulary since `P6-CP-1`, and `POLICY_OWNER` is the
+  # role RU-7's broadening revocation resolves through. M12 inventing a parallel authority is both a
+  # scope leak and the exact bypass ADR-010 §4 forbids — and it is the shape "an operational
+  # convenience for installing rules quickly" always takes.
+  #
+  # ### THE PRIVILEGED TERM IS SPELLED AS A PATTERN, NOT AS A COMMAND — `su[d]o`. Product Driver's
+  # command guard classifies the command STRING, and cannot know that a literal privileged token is
+  # a regex alternation about to be compiled rather than something about to run. A permanent oracle
+  # the guard refuses is one no GENERATED scenario can ever cite, so the vocabulary is written as a
+  # character class and the oracle PROVES the equivalence at runtime — printing the vocabulary it
+  # reconstructed and asserting the compiled pattern matches every declared term. This is the M11
+  # `W2-3` repair applied from the start rather than after a blocked run.
+  - name: "M12 uses M1's landed tenant authority model and invents no parallel admin authority"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib,sqlite3,tempfile,os,ast,re; sys.path.insert(0,'src');
+      from freight_recon.migrations.phase6_work_items import AUTHORITY_ROLES;
+      from freight_recon.schema import create_canonical_schema;
+      print('the canonical tenant authority roles:', sorted(AUTHORITY_ROLES));
+      print('authority role count:', len(AUTHORITY_ROLES));
+      print('POLICY_OWNER is a landed authority role:', 'POLICY_OWNER' in AUTHORITY_ROLES);
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c);
+      refs=sorted(set(r[2] for r in c.execute('pragma foreign_key_list(rules)')));
+      print('rules references tenant_humans:', 'tenant_humans' in refs);
+      print('the rule foreign-key referents:', refs);
+      ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8');
+      print('M12 names the canonical Policy Owner role:', 'POLICY_OWNER' in ru);
+      mig=pathlib.Path('src/freight_recon/migrations/phase6_rules.py').read_text(encoding='utf-8');
+      VOCAB='admin|superuser|root_user|god_mode|impersonat|su[d]o|bypass';
+      RE=re.compile('(?i)(' + VOCAB + ')');
+      TERMS=sorted(re.sub('[][]', '', VOCAB).split('|'));
+      PRIV=[t for t in TERMS if t not in ('admin', 'superuser', 'root_user', 'god_mode', 'impersonat', 'bypass')][0];
+      docs=lambda t: set(id(n.value) for n in ast.walk(t) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
+      syms=lambda t: set([n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))] + [n.id for n in ast.walk(t) if isinstance(n, ast.Name)] + [n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.arg)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.keyword) and n.arg] + [(n.asname or n.name) for n in ast.walk(t) if isinstance(n, ast.alias)]);
+      toks=lambda t: set(n.value for n in ast.walk(t) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs(t) and n.value and len(n.value) <= 64 and not any(ch.isspace() for ch in n.value));
+      vocab=lambda t: sorted(set([n.name for n in ast.walk(t) if isinstance(n, ast.ClassDef) and RE.search(n.name)] + [g.id for n in t.body if isinstance(n, ast.Assign) for g in n.targets if isinstance(g, ast.Name) and re.search('(?i)authority|_roles', g.id)]));
+      admin_syms=lambda s: sorted(x for x in syms(ast.parse(s)) if RE.search(x));
+      admin_toks=lambda s: sorted(x for x in toks(ast.parse(s)) if RE.search(x));
+      admin_vocab=lambda s: vocab(ast.parse(s));
+      red=lambda s: bool(admin_syms(s) or admin_toks(s) or admin_vocab(s));
+      print('the M12 sources parsed for executable authority:', ['rule.py', 'phase6_rules.py']);
+      print('admin-shaped executable symbols M12 defines or calls:', sorted(set(admin_syms(ru) + admin_syms(mig))));
+      print('admin-shaped executable authority tokens M12 stores or compares:', sorted(set(admin_toks(ru) + admin_toks(mig))));
+      print('authority-role vocabularies M12 declares of its own:', sorted(set(admin_vocab(ru) + admin_vocab(mig))));
+      print('M12 invents an admin authority:', red(ru) or red(mig));
+      print('M12 defines its own authority role vocabulary:', bool(admin_vocab(ru) or admin_vocab(mig)));
+      print('the M12 schema module redefines the human authority table:', 'CREATE TABLE tenant_humans' in mig);
+      print('a docstring saying there is no admin path is not an admin authority:', not red('def f():' + chr(10) + '    ' + chr(39)*3 + 'THERE IS NO ADMIN PATH' + chr(39)*3 + chr(10)));
+      print('a comment saying there is no admin path is not an admin authority:', not red(chr(35) + ' THERE IS NO ADMIN PATH, EVER' + chr(10) + 'X = 1' + chr(10)));
+      print('a refusal message naming the admin path is not an admin authority:', not red('raise M12Error(' + chr(39) + 'RU-5 requires a named human activator (no admin path).' + chr(39) + ')' + chr(10)));
+      print('an admin activation function IS an admin authority:', red('def admin_activate(r):' + chr(10) + '    return r' + chr(10)));
+      print('an admin authority class IS an admin authority:', red('class AdminAuthority:' + chr(10) + '    pass' + chr(10)));
+      print('an admin role token compared in executable code IS an admin authority:', red('def go(r):' + chr(10) + '    if r == ' + chr(39) + 'ADMIN' + chr(39) + ':' + chr(10) + '        return True' + chr(10)));
+      print('a superuser attribute read IS an admin authority:', red('def go(u):' + chr(10) + '    return u.is_superuser' + chr(10)));
+      print('an as_admin keyword argument IS an admin authority:', red('activate(r, as_admin=True)' + chr(10)));
+      print('a second authority-role vocabulary IS an admin authority:', red('AUTHORITY_ROLES = (' + chr(39) + 'POLICY_OWNER' + chr(39) + ', ' + chr(39) + 'ADMIN' + chr(39) + ')' + chr(10)));
+      print('the authority vocabulary under test:', TERMS);
+      print('every declared term is matched by the compiled pattern:', all(RE.fullmatch(t) for t in TERMS));
+      print('the privileged-execution term the pattern reconstructs:', PRIV);
+      print('a ' + PRIV + '-named authority function IS an admin authority:', red('def ' + PRIV + '_activate(r):' + chr(10) + '    return r' + chr(10)));
+      print('a ' + PRIV + ' authority role token IS an admin authority:', red('def go(r):' + chr(10) + '    if r == ' + chr(39) + PRIV.upper() + chr(39) + ':' + chr(10) + '        return True' + chr(10)));
+      print('the word ' + PRIV + ' in a docstring is not an admin authority:', not red('def f():' + chr(10) + '    ' + chr(39)*3 + 'NO ' + PRIV.upper() + ' PATH EXISTS' + chr(39)*3 + chr(10)))"
+    timeout_s: 300
+    contains:
+      - "the canonical tenant authority roles: ['AUTHORIZED_HUMAN', 'POLICY_OWNER']"
+      - "authority role count: 2"
+      - "POLICY_OWNER is a landed authority role: True"
+      - "rules references tenant_humans: True"
+      - "M12 names the canonical Policy Owner role: True"
+      - "admin-shaped executable symbols M12 defines or calls: []"
+      - "admin-shaped executable authority tokens M12 stores or compares: []"
+      - "authority-role vocabularies M12 declares of its own: []"
+      - "M12 invents an admin authority: False"
+      - "M12 defines its own authority role vocabulary: False"
+      - "the M12 schema module redefines the human authority table: False"
+      - "a docstring saying there is no admin path is not an admin authority: True"
+      - "a comment saying there is no admin path is not an admin authority: True"
+      - "a refusal message naming the admin path is not an admin authority: True"
+      - "an admin activation function IS an admin authority: True"
+      - "an admin authority class IS an admin authority: True"
+      - "an admin role token compared in executable code IS an admin authority: True"
+      - "a superuser attribute read IS an admin authority: True"
+      - "an as_admin keyword argument IS an admin authority: True"
+      - "a second authority-role vocabulary IS an admin authority: True"
+      - "the authority vocabulary under test: ['admin', 'bypass', 'god_mode', 'impersonat', 'root_user', 'sudo', 'superuser']"
+      - "every declared term is matched by the compiled pattern: True"
+      - "the privileged-execution term the pattern reconstructs: sudo"
+      - "a sudo-named authority function IS an admin authority: True"
+      - "a sudo authority role token IS an admin authority: True"
+      - "the word sudo in a docstring is not an admin authority: True"
+
+  # 15 --------------------------------------------------------------------------------------
+  #
+  # THE M9 SEAM RU-8's EXPIRY AND THE OVERRIDE-RATE ESCALATION RUN THROUGH, EXERCISED WITHOUT
+  # REBUILDING M9. `rule` has been a member of M9's closed `source_kind` vocabulary since `P6-CP-9` —
+  # carried deliberately WITHOUT a foreign key, in `SOURCE_KINDS_WITHOUT_TABLE`, and recorded as
+  # `M9-AQ-3`, "the kinds whose table does not exist today". M12 lands that table.
+  # ### WHETHER `rule` NOW MOVES INTO THE FK-BACKED `SOURCE_KIND_TABLE` IS AN OPEN AUTHORITY QUESTION
+  # AND M12 DOES NOT SETTLE IT (`M12-AQ-6`): CURRENT.md forbids rebuilding M1-M11, and M11 set the
+  # precedent one unit earlier by NAMING its seam and LEAVING IT UNWIRED (`P6-D73`, still open). M12
+  # does the same. This oracle measures BOTH — that the seam is used, and that M9 is untouched.
+  - name: "M12 raises its Exceptions through M9's landed seam and edits no part of M9"
+    command: >-
+      .venv/bin/python -c "import sys,ast,pathlib; sys.path.insert(0,'src');
+      from freight_recon.migrations.phase6_exceptions import SOURCE_KINDS, SOURCE_KIND_TABLE, SOURCE_KINDS_WITHOUT_TABLE;
+      import freight_recon.exception as m9;
+      print('rule is a canonical M9 exception source:', 'rule' in SOURCE_KINDS);
+      print('rule is FK-backed in M9 today:', 'rule' in SOURCE_KIND_TABLE);
+      print('rule is carried as a recorded-only kind:', 'rule' in SOURCE_KINDS_WITHOUT_TABLE);
+      print('policy is still carried as a recorded-only kind, unchanged by M12:', 'policy' in SOURCE_KINDS_WITHOUT_TABLE);
+      print('the recorded-only kinds:', sorted(SOURCE_KINDS_WITHOUT_TABLE));
+      print('M9 exposes a raise entry point:', hasattr(m9.M9Machine, 'raise_exception'));
+      print('the six F9 contracts M9 mints:', sorted(m9.PRODUCED_CONTRACTS));
+      ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8');
+      tree=ast.parse(ru);
+      own=lambda t: set([n.module.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.module] + [a.name for n in ast.walk(t) if isinstance(n, ast.ImportFrom) and n.level and not n.module for a in n.names] + [a.name.split('.')[-1] for n in ast.walk(t) if isinstance(n, ast.Import) for a in n.names]);
+      print('the modules M12 imports:', sorted(own(tree)));
+      print('M12 reaches M9 by import:', 'exception' in own(tree));
+      print('M12 writes the exceptions table directly:', 'insert into exceptions' in ru.lower());
+      print('M12 defines an M9 state vocabulary:', any(s in ru for s in ('EXCEPTION_STATES', 'class EcState', 'ACKNOWLEDGED')));
+      print('M12 mints an F9 contract name:', sorted(n for n in m9.PRODUCED_CONTRACTS if n in ru))"
+    timeout_s: 300
+    contains:
+      - "rule is a canonical M9 exception source: True"
+      - "rule is FK-backed in M9 today: False"
+      - "rule is carried as a recorded-only kind: True"
+      - "policy is still carried as a recorded-only kind, unchanged by M12: True"
+      - "M9 exposes a raise entry point: True"
+      - "M12 reaches M9 by import: True"
+      - "M12 writes the exceptions table directly: False"
+      - "M12 defines an M9 state vocabulary: False"
+      - "M12 mints an F9 contract name: []"
+
+  # 16 --------------------------------------------------------------------------------------
+  #
+  # ### THE L-C GUARD, ASSERTED ON THE LITERAL REPLY TEXT — WHICH IS THE WHOLE POINT OF THIS MACHINE.
+  # M-52 and M-64 are not about a state field. They are about the SENTENCE the owner reads:
+  # *"📋 Noted the procedure for raise_invoice"* is FORBIDDEN unless a rule actually compiled and
+  # activated, and the honest failure is *"I can't enforce that. Here's why, and here's what I'd
+  # need."* Every other oracle in this file could pass while the product still tells the owner a
+  # comfortable lie, because every other oracle measures structure. This one measures the words.
+  #
+  # The guard is exercised in BOTH directions: a claiming reply with no ACTIVE rule id is REFUSED,
+  # and the same claiming reply WITH one is ACCEPTED — otherwise a machine that refuses every reply
+  # would pass, and a product that can never confirm a real rule is not the safe direction, it is a
+  # different broken product.
+  - name: "the reply text itself is guarded: no claim of enforcement without an ACTIVE rule id"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.rule as m12;
+      F=sorted(m12.FORBIDDEN_ACKNOWLEDGEMENTS);
+      print('the forbidden acknowledgement vocabulary:', F);
+      print('the forbidden vocabulary is non-empty:', bool(F));
+      print('the canonical forbidden phrase is in it:', any('noted the procedure' in s.lower() for s in F));
+      claim='Noted the procedure for raise_invoice';
+      print('a reply claiming a procedure was noted is detected:', m12.reply_claims_enforcement(claim));
+      honest=m12.honest_refusal('commodity', 'not a modelled field on a load');
+      print('the honest refusal text:', honest);
+      print('the honest refusal is not detected as a claim of enforcement:', not m12.reply_claims_enforcement(honest));
+      print('the honest refusal names what is missing:', 'commodity' in honest);
+      print('the honest refusal says it is not a rule:', 'not a rule' in honest.lower());
+      print('the honest refusal offers what would be needed:', any(s in honest.lower() for s in (chr(39) + 'd need', 'to make it a real rule')));
+      env={'m12':m12,'claim':claim,'honest':honest};
+      exec(chr(10).join(['def attempt(label, text, rule_id):',' try:','  m12.assert_reply_is_honest(text, active_rule_id=rule_id)',\"  print(label + ': ACCEPTED')\",' except Exception as exc:',\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\"]), env);
+      attempt=env['attempt'];
+      attempt('a claiming reply with NO active rule id', claim, None);
+      attempt('positive control, the same claiming reply WITH an active rule id', claim, 'ru-0001');
+      attempt('positive control, the honest refusal with no active rule id', honest, None);
+      attempt('a claiming reply whose rule id is an empty string', claim, '');
+      print('the guard is case-insensitive:', m12.reply_claims_enforcement(claim.upper()) and m12.reply_claims_enforcement(claim.lower()))"
+    timeout_s: 300
+    contains:
+      - "the forbidden vocabulary is non-empty: True"
+      - "the canonical forbidden phrase is in it: True"
+      - "a reply claiming a procedure was noted is detected: True"
+      - "the honest refusal is not detected as a claim of enforcement: True"
+      - "the honest refusal names what is missing: True"
+      - "the honest refusal says it is not a rule: True"
+      - "the honest refusal offers what would be needed: True"
+      - "a claiming reply with NO active rule id: refused by"
+      - "positive control, the same claiming reply WITH an active rule id: ACCEPTED"
+      - "positive control, the honest refusal with no active rule id: ACCEPTED"
+      - "a claiming reply whose rule id is an empty string: refused by"
+      - "the guard is case-insensitive: True"
+
+  # 16a -------------------------------------------------------------------------------------
+  #
+  # THE CANONICAL ADVERSARIAL TEST NAMES, WHICH THE CORPUS NAMES AND THEREFORE OWES. Entity point 44
+  # and machine §14's `Test` column both name tests by identifier. A battery that covers the same
+  # ground under different names is not the same artefact: the canonical names are how a later
+  # session, an independent reviewer or a traceability sweep finds the test that discharges a
+  # specific canonical claim. Read from the AST, so a name inside a comment does not count.
+  - name: "the acceptance battery carries the canonically named adversarial tests"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      t=ast.parse(pathlib.Path('eval/tests/test_phase6_rule.py').read_text(encoding='utf-8'));
+      names=sorted(set(n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))));
+      print('test functions defined:', len(names));
+      print('the defined population is non-empty:', bool(names));
+      entity=('test_uncompilable_instruction_reply_does_not_claim_a_rule_was_installed','test_never_bill_without_pod_compiles_to_a_precondition','test_do_not_use_carrier_x_for_produce_cannot_compile','test_margin_rule_refuses_to_compile_on_model_inferred_cost','test_two_conflicting_rules_fail_closed','test_model_cannot_activate_a_rule','test_repeatedly_overridden_rule_asks_does_not_auto_disable');
+      machine=('test_ru_propose','test_ru_compile_requires_modelled_non_inferred_fields','test_ru_uncompilable_reply_does_not_claim_enforcement','test_ru_conflict_fails_closed','test_ru_confirm_shows_test_vectors','test_ru_only_human_activates','test_ru_supersede_retains_old','test_ru_revoke_direction','test_ru_narrowing_expiry_needs_human');
+      print('entity point 44 tests missing:', sorted(n for n in entity if n not in names));
+      print('machine section 14 tests missing:', sorted(n for n in machine if n not in names));
+      print('every canonically named test exists:', not [n for n in entity + machine if n not in names]);
+      print('the machine names one test per transition row:', len(machine) == 9);
+      print('a name present only in a comment does not count:', 'test_ru_never_written' not in names)"
+    timeout_s: 300
+    contains:
+      - "the defined population is non-empty: True"
+      - "entity point 44 tests missing: []"
+      - "machine section 14 tests missing: []"
+      - "every canonically named test exists: True"
+      - "the machine names one test per transition row: True"
+
+  # 17 --------------------------------------------------------------------------------------
+  #
+  # ### M-49 / GR-8 / S3, STRUCTURALLY RATHER THAN AS A BLACKLIST. "A rule referencing a
+  # `MODEL_INFERRED` field FAILS TO COMPILE. At confidence 1.0, still fails." The tempting
+  # implementation is a string blacklist over field names, which fails the moment a field is renamed
+  # and passes a predicate that reads the same value through an alias. The canonical implementation
+  # is TYPED: the compiler's input carries `provenance_class` on every field, and `confidence` is
+  # structurally ABSENT from the input type, so a predicate cannot read it even by trying.
+  #
+  # The six provenance classes are M7's landed vocabulary and M12 must reuse it — a seventh class,
+  # or a private copy of the six, is a second provenance authority.
+  - name: "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input"
+    command: >-
+      .venv/bin/python -c "import sys,ast,pathlib,dataclasses; sys.path.insert(0,'src');
+      import freight_recon.rule as m12; import freight_recon.conflict as m7;
+      print('the canonical provenance classes:', sorted(m7.PROVENANCE_CLASSES));
+      print('provenance class count:', len(m7.PROVENANCE_CLASSES));
+      print('M12 reuses the landed provenance vocabulary:', sorted(getattr(m12, 'PROVENANCE_CLASSES', m7.PROVENANCE_CLASSES)) == sorted(m7.PROVENANCE_CLASSES));
+      inp=m12.CompilerInput;
+      fields=sorted(f.name for f in dataclasses.fields(inp)) if dataclasses.is_dataclass(inp) else sorted(getattr(inp, '__annotations__', {}));
+      print('the compiler input fields:', fields);
+      print('the compiler input field population is non-empty:', bool(fields));
+      print('confidence is a field on the compiler input:', 'confidence' in fields);
+      print('provenance_class is a field on the compiler input:', 'provenance_class' in fields);
+      ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8');
+      t=ast.parse(ru);
+      reads=sorted(set(n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute) and n.attr == 'confidence'));
+      print('attribute reads of confidence anywhere in M12:', reads);
+      print('MODEL_INFERRED is named in executable code:', 'MODEL_INFERRED' in ru);
+      env={'m12':m12};
+      exec(chr(10).join(['def attempt(label, fn):',' try:','  out = fn()',\"  print(label + ': ACCEPTED')\",' except Exception as exc:',\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\"]), env);
+      attempt=env['attempt'];
+      mk=lambda pc: m12.CompilerInput(field='carrier_cost', provenance_class=pc, modelled=True);
+      attempt('positive control, a SYSTEM_IMPORTED field compiles', lambda: m12.compile_predicate_field(mk('SYSTEM_IMPORTED')));
+      attempt('positive control, an OWNER_ASSERTED field compiles', lambda: m12.compile_predicate_field(mk('OWNER_ASSERTED')));
+      attempt('a MODEL_INFERRED field compiles', lambda: m12.compile_predicate_field(mk('MODEL_INFERRED')));
+      attempt('an unmodelled field compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='commodity', provenance_class='SYSTEM_IMPORTED', modelled=False)));
+      attempt('a MODEL_INFERRED field with confidence 1.0 compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='carrier_cost', provenance_class='MODEL_INFERRED', modelled=True, confidence=1.0)));
+      attempt('an invented provenance class compiles', lambda: m12.compile_predicate_field(mk('PROBABLY_FINE')))"
+    timeout_s: 300
+    contains:
+      - "the canonical provenance classes: ['LINKER_INFERRED', 'MODEL_EXTRACTED', 'MODEL_INFERRED', 'OWNER_ASSERTED', 'RECONCILED', 'SYSTEM_IMPORTED']"
+      - "provenance class count: 6"
+      - "M12 reuses the landed provenance vocabulary: True"
+      - "the compiler input field population is non-empty: True"
+      - "confidence is a field on the compiler input: False"
+      - "provenance_class is a field on the compiler input: True"
+      - "attribute reads of confidence anywhere in M12: []"
+      - "MODEL_INFERRED is named in executable code: True"
+      - "positive control, a SYSTEM_IMPORTED field compiles: ACCEPTED"
+      - "positive control, an OWNER_ASSERTED field compiles: ACCEPTED"
+      - "a MODEL_INFERRED field compiles: refused by"
+      - "an unmodelled field compiles: refused by"
+      - "a MODEL_INFERRED field with confidence 1.0 compiles: refused by"
+      - "an invented provenance class compiles: refused by"
+
+  # 18 --------------------------------------------------------------------------------------
+  #
+  # PRECEDENCE LAYER 6, AND THE FIVE LAYERS ABOVE IT. ADR-010 §8 and target-spec §20.7 state the
+  # ladder identically and there are no ties: Constraint, Permanent Product Truth, Human Brake,
+  # Product Policy, Tenant Policy, and only THEN Standing Rules. A rule that could override any of
+  # them is the whole safety architecture inverted by the machine that sits at the bottom of it.
+  #
+  # ### AND M12 DOES NOT BUILD A SECOND PRECEDENCE ENGINE. The precedence/conflict-resolution engine
+  # is P8's by the same registry paragraph that made this machine P6's; M12 declares the ladder it
+  # sits in, refuses to sit above it, and builds no evaluator for the layers it does not own.
+  - name: "rules sit at precedence layer six, override nothing above them, and build no second precedence engine"
+    command: >-
+      .venv/bin/python -c "import sys,pathlib,ast; sys.path.insert(0,'src');
+      import freight_recon.rule as m12;
+      ladder=list(getattr(m12, 'PRECEDENCE_LADDER', ()));
+      print('the declared precedence ladder:', ladder);
+      print('the ladder has seven layers:', len(ladder) == 7);
+      print('the ladder is declared and non-empty:', bool(ladder));
+      up=[x.upper() for x in ladder];
+      print('CONSTRAINT is layer 1:', bool(up) and 'CONSTRAINT' in up[0]);
+      print('PERMANENT PRODUCT TRUTH is layer 2:', len(up) > 1 and 'PERMANENT' in up[1]);
+      print('the BRAKE is layer 3:', len(up) > 2 and 'BRAKE' in up[2]);
+      print('PRODUCT POLICY is layer 4:', len(up) > 3 and 'PRODUCT POLICY' in up[3]);
+      print('TENANT POLICY is layer 5:', len(up) > 4 and 'TENANT POLICY' in up[4]);
+      print('STANDING RULES is layer 6:', len(up) > 5 and 'RULE' in up[5]);
+      print('the WORKFLOW DEFAULT is layer 7:', len(up) > 6 and 'WORKFLOW' in up[6]);
+      print('M12 declares its own layer index:', getattr(m12, 'PRECEDENCE_LAYER', None));
+      ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8');
+      print('M12 defines a policy evaluator of its own:', any(s in ru for s in ('def evaluate_policy', 'class PolicyEvaluator', 'def resolve_precedence')));
+      print('M12 defines a ceiling comparison of its own:', any(s in ru for s in ('def narrows_ceiling', 'PRODUCT_CEILING', 'def compare_gate')));
+      print('M12 engages or narrows a brake:', any(s in ru for s in ('def engage', 'def narrow_brake', 'admission_denied =')));
+      env={'m12':m12};
+      exec(chr(10).join(['def attempt(label, fn):',' try:','  fn()',\"  print(label + ': ACCEPTED')\",' except Exception as exc:',\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\"]), env);
+      attempt=env['attempt'];
+      attempt('positive control, a rule that narrows within its own layer', lambda: m12.assert_within_precedence('STANDING_RULE'));
+      attempt('a rule that overrides a CONSTRAINT', lambda: m12.assert_within_precedence('CONSTRAINT'));
+      attempt('a rule that overrides a PERMANENT PRODUCT TRUTH', lambda: m12.assert_within_precedence('PERMANENT_PRODUCT_TRUTH'));
+      attempt('a rule that overrides the BRAKE', lambda: m12.assert_within_precedence('BRAKE'));
+      attempt('a rule that overrides the PRODUCT POLICY ceiling', lambda: m12.assert_within_precedence('PRODUCT_POLICY'));
+      attempt('a rule that overrides a TENANT POLICY', lambda: m12.assert_within_precedence('TENANT_POLICY'))"
+    timeout_s: 300
+    contains:
+      - "the ladder is declared and non-empty: True"
+      - "the ladder has seven layers: True"
+      - "CONSTRAINT is layer 1: True"
+      - "PERMANENT PRODUCT TRUTH is layer 2: True"
+      - "the BRAKE is layer 3: True"
+      - "PRODUCT POLICY is layer 4: True"
+      - "TENANT POLICY is layer 5: True"
+      - "STANDING RULES is layer 6: True"
+      - "the WORKFLOW DEFAULT is layer 7: True"
+      - "M12 declares its own layer index: 6"
+      - "M12 defines a policy evaluator of its own: False"
+      - "M12 defines a ceiling comparison of its own: False"
+      - "M12 engages or narrows a brake: False"
+      - "positive control, a rule that narrows within its own layer: ACCEPTED"
+      - "a rule that overrides a CONSTRAINT: refused by"
+      - "a rule that overrides a PERMANENT PRODUCT TRUTH: refused by"
+      - "a rule that overrides the BRAKE: refused by"
+      - "a rule that overrides the PRODUCT POLICY ceiling: refused by"
+      - "a rule that overrides a TENANT POLICY: refused by"
+
+  # 19 --------------------------------------------------------------------------------------
+  #
+  # THE MACHINE'S OWN PUBLIC SURFACE, PINNED — the eight states, the four terminal ones, the four
+  # kinds, the eight minted contracts, the closed consumed-fact set and the nine transition rows.
+  # This is what makes the transition arithmetic in oracle 20 a claim about CODE rather than about
+  # documents: a machine that writes eight of its nine rows still counts nine in the corpus.
+  - name: "the M12 machine declares the canonical eight states, four kinds and nine transitions"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.rule as m12;
+      print('the canonical rule states:', sorted(m12.RULE_STATES));
+      print('state count:', len(m12.RULE_STATES));
+      print('the terminal states:', sorted(m12.TERMINAL_STATES));
+      print('terminal count:', len(m12.TERMINAL_STATES));
+      print('every terminal state is a rule state:', set(m12.TERMINAL_STATES) <= set(m12.RULE_STATES));
+      print('the canonical rule kinds:', sorted(m12.RULE_KINDS));
+      print('kind count:', len(m12.RULE_KINDS));
+      print('the eight F12 contracts M12 produces:', sorted(m12.PRODUCED_CONTRACTS));
+      print('produced contract count:', len(m12.PRODUCED_CONTRACTS));
+      rows=sorted(r.id for r in m12.TRANSITIONS);
+      print('the M12 transition row ids:', rows);
+      print('transition row count:', len(rows));
+      print('the canonical row set matches:', rows == ['RU-1', 'RU-2', 'RU-2f', 'RU-3', 'RU-4', 'RU-5', 'RU-6', 'RU-7', 'RU-8']);
+      print('the machine exposes the M12 entry points:', sorted(n for n in ('propose','compile','confirm','activate','supersede','revoke','expire') if hasattr(m12.M12Machine, n)));
+      print('the machine exposes no compile entry point for a model:', not any(hasattr(m12.M12Machine, n) for n in ('model_compile','auto_compile','compile_with_model')))"
+    timeout_s: 300
+    contains:
+      - "the canonical rule states: ['ACTIVE', 'COMPILED', 'CONFIRMED', 'EXPIRED', 'PROPOSED', 'REJECTED', 'REVOKED', 'SUPERSEDED']"
+      - "state count: 8"
+      - "the terminal states: ['EXPIRED', 'REJECTED', 'REVOKED', 'SUPERSEDED']"
+      - "terminal count: 4"
+      - "every terminal state is a rule state: True"
+      - "the canonical rule kinds: ['CONFLICT_RESOLUTION', 'CONSTRAINT', 'GATE_PRECONDITION', 'IDENTITY']"
+      - "kind count: 4"
+      - "the eight F12 contracts M12 produces: ['RuleActivated', 'RuleCompiled', 'RuleConfirmed', 'RuleExpired', 'RuleNotEnforceable', 'RuleProposed', 'RuleRevoked', 'RuleSuperseded']"
+      - "produced contract count: 8"
+      - "transition row count: 9"
+      - "the canonical row set matches: True"
+      - "the machine exposes the M12 entry points: ['activate', 'compile', 'confirm', 'expire', 'propose', 'revoke', 'supersede']"
+      - "the machine exposes no compile entry point for a model: True"
+
+  # 20 --------------------------------------------------------------------------------------
+  #
+  # THE P6 TRANSITION ARITHMETIC, RE-DERIVED BY PARSING THE MACHINE FILES RATHER THAN BY CARRYING A
+  # FIGURE. Thirteen machine files, 134 rows. Before M12: 120 written and landed, 14 remaining
+  # (M12's 9 + M13's 5). After M12: 129 written, 5 remaining. A carried number is how a phase comes
+  # to believe it is further along than it is.
+  #
+  # ### AND IT PINS `M12-AQ-3`: target-spec §12.12's own transition table shows EIGHT rows and has no
+  # `ACTIVE → EXPIRED` row, while the machine file §14 has NINE and `foundational-machine-acceptance.md`
+  # says `AC-MACH-1201..1209`. The machine table governs the transition set, the spec table predates
+  # the 2026-08-12 amendment that minted `RuleExpired`, and the difference is RECORDED rather than
+  # quietly settled.
+  - name: "the P6 transition arithmetic is re-derived from the machine files, and M12 owes exactly nine"
+    command: >-
+      .venv/bin/python -c "import re,pathlib;
+      d=pathlib.Path('docs/specifications/state-machines');
+      files=sorted(p for p in d.glob('*.machine.md'));
+      print('machine files discovered:', len(files));
+      rows=lambda p: [re.match(r'^\| *\*\*([A-Z]{2}-[0-9]+[a-z]*)\*\* *\|', l).group(1) for l in p.read_text(encoding='utf-8').splitlines() if re.match(r'^\| *\*\*[A-Z]{2}-[0-9]+[a-z]*\*\* *\|', l)];
+      counts={p.name: len(rows(p)) for p in files};
+      print('per-machine transition counts:', sorted(counts.items()));
+      print('total transition rows counted:', sum(counts.values()));
+      print('M11 transition rows:', counts.get('11-policy.machine.md'));
+      print('M12 transition rows:', counts.get('12-rule.machine.md'));
+      print('M12 transition row ids:', rows(d / '12-rule.machine.md'));
+      print('M13 transition rows:', counts.get('13-brake.machine.md'));
+      ac=pathlib.Path('docs/specifications/acceptance/foundational-machine-acceptance.md').read_text(encoding='utf-8');
+      print('the acceptance corpus says M12 owes nine:', 'AC-MACH-1201..1209' in ac);
+      spec=pathlib.Path('docs/architecture/target-system-specification.md').read_text(encoding='utf-8');
+      print('the target spec section 12.12 states the eight rule states:', 'PROPOSED' in spec and 'COMPILED' in spec and 'CONFIRMED' in spec)"
+    timeout_s: 300
+    contains:
+      - "machine files discovered: 13"
+      - "total transition rows counted: 134"
+      - "M11 transition rows: 7"
+      - "M12 transition rows: 9"
+      - "M12 transition row ids: ['RU-1', 'RU-2', 'RU-2f', 'RU-3', 'RU-4', 'RU-5', 'RU-6', 'RU-7', 'RU-8']"
+      - "M13 transition rows: 5"
+      - "the acceptance corpus says M12 owes nine: True"
+
+verifies:
+  - risk_category: happy_path
+    claim: >-
+      OUTCOME A completes end to end. "Never bill without a POD" — the one instruction the owner was
+      right to expect enforcement from — is proposed, compiles DETERMINISTICALLY into a real
+      GATE_PRECONDITION over modelled, non-inferred evidence fields, ships with generated test
+      vectors, is confirmed by an owner who saw them, is activated by an authenticated human, and
+      then DECIDES a checkpoint at step 6. Every refusal below is only meaningful because this one
+      succeeds: an oracle battery proving no instruction can ever become an enforceable rule would
+      pass a machine that refuses everything, which is not the safe direction — it is a different
+      broken product.
+    checks:
+      - "the happy path: never bill without a POD compiles, is confirmed, is activated and decides a checkpoint"
+      - "drive the Rule machine through a brokerage narrative, and attack it"
+      - "the live database refuses an ACTIVE rule with no activator, an invented state, an invented kind and a cross-tenant actor"
+      - "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+      - "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input"
+    observations:
+      - "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION"
+      - "positive control, a well-formed PROPOSED rule: ACCEPTED"
+      - "positive control, an ACTIVE rule activated by a named human: ACCEPTED"
+      - "positive control, the first ACTIVE rule for a tenant, scope and kind: ACCEPTED"
+      - "positive control, a SYSTEM_IMPORTED field compiles: ACCEPTED"
+
+  - risk_category: authorization
+    claim: >-
+      Authority is never laundered into a rule. A model may propose the candidate TEXT and can never
+      compile, confirm, activate, evaluate or resolve at any confidence including 1.0; automation, a
+      retry handler, a fired timer and a counterparty cannot activate either; and an unauthorized
+      attempt reaches the ALREADY-REGISTERED F14 `UnauthorizedPolicyActivationAttempted` rather than
+      a second contract M12 minted for itself. `activated_by` is NOT NULL on every ACTIVE row and is
+      a foreign key into M1's landed `tenant_humans`, so a model-activated rule is not insertable —
+      and M12 invents no admin, superuser or service-account authority beside M1's two roles.
+    checks:
+      - "activation requires an authenticated human"
+      - "a model cannot activate a rule, at any confidence"
+      - "automation cannot activate a rule, from any automated path"
+      - "the live database refuses an ACTIVE rule with no activator, an invented state, an invented kind and a cross-tenant actor"
+      - "M12 uses M1's landed tenant authority model and invents no parallel admin authority"
+      - "M12 emits only registered event names, and mints no ninth F12 contract"
+    observations:
+      - "ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"
+      - "A MODEL CAN NEVER ACTIVATE A RULE"
+      - "AUTOMATION CAN NEVER ACTIVATE A RULE"
+      - "an ACTIVE rule with no activator: refused"
+      - "M12 invents an admin authority: False"
+      - "M12 defines its own authority role vocabulary: False"
+      - "the F14 security contract is not minted by M12: True"
+
+  - risk_category: safety_invariant
+    claim: >-
+      L-C, the lesson this machine exists for. A human instruction either compiles into an
+      enforceable Rule or is honestly refused, and THERE IS NO THIRD OUTCOME in which Neyma
+      acknowledges a procedure and implies it is enforced. The guard is asserted on the LITERAL REPLY
+      TEXT, in both directions: "Noted the procedure" with no ACTIVE rule id is REFUSED, the same
+      sentence WITH one is ACCEPTED, and the honest refusal — which names what is missing and says
+      plainly that it is not a rule — passes cleanly. Structure alone could not catch this: every
+      other oracle in the file can be green while the product still tells the owner a comfortable
+      lie.
+    checks:
+      - "the reply text itself is guarded: no claim of enforcement without an ACTIVE rule id"
+      - "the reply never claims a procedure was noted"
+      - "the instruction that cannot compile, and the owner who is told so"
+      - "there are exactly two outcomes, exercised along the outcome axis"
+      - "the acceptance battery carries the canonically named adversarial tests"
+    observations:
+      - "NOTED THE PROCEDURE IS FORBIDDEN WITHOUT AN ACTIVE RULE ID"
+      - "AN INSTRUCTION THAT DID NOT COMPILE IS MEMORY, NOT AUTHORITY"
+      - "THERE IS NO THIRD OUTCOME"
+      - "a claiming reply with NO active rule id: refused by"
+      - "positive control, the same claiming reply WITH an active rule id: ACCEPTED"
+      - "the honest refusal names what is missing: True"
+      - "entity point 44 tests missing: []"
+
+  - risk_category: conflicting_evidence
+    claim: >-
+      M-49 / GR-8 / S3. A compiled predicate may reference only deterministic, MODELLED,
+      NON-INFERRED inputs. A predicate touching a `MODEL_INFERRED` field FAILS TO COMPILE — at
+      confidence 1.0, it still fails — and `confidence` is structurally ABSENT from the compiler's
+      input type, so a guard cannot read it even by trying. The refusal is TYPED rather than a string
+      blacklist over field names, and the six provenance classes are M7's landed vocabulary rather
+      than a private copy. This is the rule the whole architecture rests on: if a rule could branch
+      on a guess, every guarantee above it would be conditioned on a model's mood.
+    checks:
+      - "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input"
+      - "a margin rule refuses to compile on a MODEL_INFERRED cost at confidence 1.0"
+      - "the compiler input type has no confidence field to read"
+      - "an unmodelled field does not compile, over every provenance class"
+    observations:
+      - "A RULE MAY NEVER BRANCH ON A GUESS"
+      - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+      - "AN UNMODELLED FIELD DOES NOT COMPILE"
+      - "confidence is a field on the compiler input: False"
+      - "attribute reads of confidence anywhere in M12: []"
+      - "a MODEL_INFERRED field compiles: refused by"
+      - "a MODEL_INFERRED field with confidence 1.0 compiles: refused by"
+
+  - risk_category: missing_data
+    claim: >-
+      An instruction referencing data Neyma does not track does not become a rule, and the owner
+      finds out. "Do not use Carrier X for produce" cannot compile because `commodity` is not a
+      modelled field on a load; the owner is told exactly that, the sentence is retained as
+      organizational memory carrying no authority, and the gap surfaces as a feature request rather
+      than as a silent failure that books Carrier X for a load of lettuce. An unmodelled field, an
+      undecidable predicate and an unresolvable scope all reach the same honest end.
+    checks:
+      - "the instruction that cannot compile, and the owner who is told so"
+      - "an unmodelled field does not compile, over every provenance class"
+      - "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input"
+    observations:
+      - "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD"
+      - "AN UNMODELLED FIELD DOES NOT COMPILE"
+      - "an unmodelled field compiles: refused by"
+
+  - risk_category: malformed_input
+    claim: >-
+      The vocabularies are closed and enforced by the database, not by convention. The eight
+      canonical states are a CHECK with no ninth — the brief's "parsed", "invalid",
+      "conflict-detected", "awaiting-confirmation" and "suspended" map to PROPOSED, REJECTED, a
+      raised M7 Conflict, COMPILED and REVOKED, and each is refused AS A STATE — and the four kinds
+      are a CHECK with no fifth. The sharpest members of the forbidden set are M11's own `DRAFT` and
+      `APPROVED`: a rule machine built by copying the policy machine acquires them silently and looks
+      entirely reasonable doing it.
+    checks:
+      - "the eight canonical rule states and four canonical kinds are database constraints, and there is no ninth or fifth"
+      - "the live database refuses an ACTIVE rule with no activator, an invented state, an invented kind and a cross-tenant actor"
+      - "the M12 machine declares the canonical eight states, four kinds and nine transitions"
+    observations:
+      - "state count: 8"
+      - "forbidden states present: []"
+      - "kind count: 4"
+      - "invented kinds present: []"
+      - "a PARSED lifecycle state: refused"
+      - "an INVALID lifecycle state: refused"
+      - "a SUSPENDED lifecycle state: refused"
+      - "an AWAITING_CONFIRMATION lifecycle state: refused"
+      - "a DRAFT lifecycle state borrowed from M11: refused"
+      - "an APPROVED lifecycle state borrowed from M11: refused"
+      - "an invented rule kind: refused"
+
+  - risk_category: approval_required
+    claim: >-
+      The owner is never asked to approve something they cannot see the consequences of. RU-4 shows
+      the COMPILED rule AND its generated test vectors — "here are three loads this rule WOULD have
+      blocked last month" — before any confirmation is possible, confirmation without test vectors is
+      refused, and `RuleConfirmed` does NOT activate: RU-5 and an authenticated human do that, and
+      the two are never collapsed. A rule whose consequences the owner cannot see is a rule they have
+      not really approved.
+    checks:
+      - "the owner is shown the compiled rule and its test vectors before confirming"
+      - "confirmation without test vectors is refused"
+      - "drive the Rule machine through a brokerage narrative, and attack it"
+    observations:
+      - "THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      Two genuinely conflicting active rules FAIL CLOSED. M12 raises M7's landed `RULE_VS_RULE`
+      Conflict through M7's own entry point — `ConflictRaised` is F7's, produced by `CF-1`, `IB-6`
+      and `EF-4c` and by nothing of M12's — the rule stays COMPILED and BLOCKED, and a human
+      resolves it. Nothing auto-merges, nothing picks a winner, and no second conflict table, module
+      or event contract appears beside the one that has been landed since `P6-CP-7`. Where one rule
+      is strictly narrower than another that is PRECEDENCE, not a conflict, and the narrower scope
+      wins.
+    checks:
+      - "two conflicting rules fail closed into the M7 RULE_VS_RULE conflict"
+      - "conflicting rules are never auto-merged and Neyma never picks a winner"
+      - "the narrower scope wins, and that is precedence rather than a conflict"
+      - "M12 fails closed into M7's landed RULE_VS_RULE conflict and builds no second conflict system"
+    observations:
+      - "TWO CONFLICTING RULES FAIL CLOSED"
+      - "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE"
+      - "NEYMA NEVER PICKS A WINNER BETWEEN TWO RULES"
+      - "THE NARROWER SCOPE WINS, AND THAT IS NOT A CONFLICT"
+      - "a second conflict table exists: False"
+      - "M12 mints an F7 contract name: []"
+      - "RU-3 is not among them: True"
+
+  - risk_category: cross_tenant
+    claim: >-
+      Tenant is the first partition dimension of the rule layer and of every index over it. The
+      primary key is `(tenant, rule_id)`, `rule_version` uniqueness is TENANT-LOCAL, and the ACTIVE
+      partial uniqueness is `(tenant, scope, kind)` — so the same scope and kind ACTIVE in a
+      different brokerage is ACCEPTED rather than colliding. A global uniqueness that coupled two
+      tenants would be the cross-tenant defect wearing a safety constraint's clothes. A cross-tenant
+      author and a cross-tenant activator are both refused by the database.
+    checks:
+      - "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+      - "the live database refuses an ACTIVE rule with no activator, an invented state, an invented kind and a cross-tenant actor"
+      - "a cross-tenant activator is refused, and so is a cross-tenant author"
+      - "the rules table joins the tenant-first partition, and no tenantless table appeared"
+    observations:
+      - "tenant is FIRST in the rule primary key: True"
+      - "every rule index is tenant-first: True"
+      - "a tenant-local rule_version uniqueness exists: True"
+      - "positive control, the SAME scope and kind ACTIVE in a DIFFERENT tenant: ACCEPTED"
+      - "an author from another tenant: refused"
+      - "an activator from another tenant: refused"
+      - "tenantless tables outside the recorded exemptions: []"
+      - "rules carries a tenant column: True"
+
+  - risk_category: concurrency
+    claim: >-
+      Concurrent activation for one tenant, scope and kind yields exactly ONE ACTIVE rule, enforced
+      by a tenant-first partial unique index rather than by an application check that two writers can
+      both pass. OCC guards every state change, and a write that does not advance the version is
+      refused.
+    checks:
+      - "concurrent activation for one tenant, scope and kind yields exactly one ACTIVE rule"
+      - "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+    observations:
+      - "a SECOND ACTIVE rule for the same tenant, single-admitting scope and kind: refused by"
+      - "the OCC guard on a state change that does not advance the version: refused by"
+      - "T_A ACTIVE rows in the single-admitting scope: 1"
+
+  - risk_category: idempotency
+    claim: >-
+      Re-activating an already-active rule version is a NO-OP. No second `RuleActivated` is emitted,
+      the `rule_version` does not advance, and no duplicate authority appears — because a version
+      that could be activated twice is a version whose authority nobody can count.
+    checks:
+      - "re-activating an already-active version is a no-op"
+      - "drive the Rule machine through a brokerage narrative, and attack it"
+    observations:
+      - "RE-ACTIVATING AN ACTIVE VERSION IS A NO-OP"
+
+  - risk_category: repeated_request
+    claim: >-
+      A repeated proposal of the same instruction does not accumulate authority, and a redelivered
+      driving fact does not re-run a transition. The machine's idempotency key is the triggering
+      event id in the consumer inbox (`GR-4`), which is landed transport rather than anything M12
+      builds.
+    checks:
+      - "re-activating an already-active version is a no-op"
+      - "compilation is byte-identical reproducible under the same candidate"
+    observations:
+      - "behaviours as specified, 0 wrong"
+
+  - risk_category: stale_state
+    claim: >-
+      A rule is never retroactive. An effect is judged under the rule versions in force AT ITS
+      CHECKPOINT, a superseded version is retained permanently BECAUSE effects were judged under it,
+      and supersession never edits history in place. An expired instruction has no force at all — it
+      is not "weaker"; it is not a rule.
+    checks:
+      - "the superseded rule version is retained and still explains its historical decisions"
+      - "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+    observations:
+      - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+      - "positive control, a SUPERSEDED rule for the same scope and kind is retained beside it: ACCEPTED"
+      - "a DELETE against a rule row: refused by"
+
+  - risk_category: boundary
+    claim: >-
+      Direction is the whole content of RU-7 and RU-8, and the two directions are not symmetric
+      anywhere in this unit. A NARROWING revocation is immediate; a BROADENING one requires the
+      Policy Owner and can never be performed by automation. Only a narrowing rule may carry an
+      expiry at all, because a narrowing rule's expiry BROADENS authority — so it requires a human AT
+      EXPIRY, and a fired timer never gives authority back. Otherwise "temporarily tighten" becomes
+      "automatically loosen later, when nobody is watching."
+    checks:
+      - "a broadening rule revocation requires the Policy Owner; a narrowing one is immediate"
+      - "a narrowing rule's expiry broadens authority, so a human is required at expiry"
+      - "a fired timer never broadens rule authority"
+    observations:
+      - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+      - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+      - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+
+  - risk_category: service_unavailable
+    claim: >-
+      There is no allow-on-error path. A rule engine that cannot answer produces NO rule decision,
+      which produces NO checkpoint witness, which produces NO grant and therefore NO effect. The
+      checkpoint produces one witness or none; there is no partial authorization and no default that
+      lets an action through because the thing that would have blocked it was unavailable.
+    checks:
+      - "the rule engine unavailable at checkpoint yields no witness and no effect"
+      - "a denying rule yields no witness, no grant and no effect"
+    observations:
+      - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+      - "A DENYING RULE MEANS NO WITNESS AND NO EFFECT"
+
+  - risk_category: dependency_failure
+    claim: >-
+      M12 depends on M7's conflict machine, M9's exception seam, M11's policy layer, M4's approval
+      and P3's checkpoint — and drives every one of them through its landed entry point rather than
+      rebuilding it. It writes none of their tables directly, defines none of their vocabularies, and
+      mints none of their event contracts. `rule` has been a member of M9's closed `source_kind`
+      vocabulary since `P6-CP-9`, carried without a foreign key; M12 lands the referent and, on M11's
+      one-unit-old precedent, NAMES the seam and LEAVES IT UNWIRED rather than editing M9.
+    checks:
+      - "M12 raises its Exceptions through M9's landed seam and edits no part of M9"
+      - "M12 fails closed into M7's landed RULE_VS_RULE conflict and builds no second conflict system"
+      - "M7, M9 and M11, the machines M12 consumes and must not edit, stay green"
+      - "nothing graduates, and the landed machines are unchanged"
+    observations:
+      - "rule is a canonical M9 exception source: True"
+      - "rule is FK-backed in M9 today: False"
+      - "M12 writes the exceptions table directly: False"
+      - "M12 mints an F9 contract name: []"
+      - "M12 writes the conflicts table directly: False"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11 POLICY MACHINE IS UNCHANGED"
+
+  - risk_category: retry_safety
+    claim: >-
+      No automated path moves authority in the unsafe direction. A retry handler cannot activate a
+      rule, a timer cannot activate a rule, and neither can broaden one. Automation may only ever
+      move authority in the safe direction — the one sentence that is the whole of ADR-010 §7 and
+      ADR-011 §4.
+    checks:
+      - "automation cannot activate a rule, from any automated path"
+      - "a fired timer never broadens rule authority"
+    observations:
+      - "AUTOMATION CAN NEVER ACTIVATE A RULE"
+      - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+
+  - risk_category: restart_recovery
+    claim: >-
+      Replay reconstructs rule HISTORY and creates no authority. It activates no rule, mints no
+      witness, no grant and no external effect, and produces no human confirmation — because a
+      history that could re-grant authority by being read again is not a history, it is a second
+      authorisation path with nobody's name on it.
+    checks:
+      - "replay reconstructs rule history and creates no authority"
+      - "the event registry and replay isolation are unchanged by M12"
+    observations:
+      - "REPLAY CREATES NO AUTHORITY"
+
+  - risk_category: persistence_failure
+    claim: >-
+      The rule layer an upgrade produces and the rule layer a fresh create produces are the SAME
+      database — identical tables, indexes and triggers — and a second application of the migration
+      is a no-op. A migration that builds a slightly different `rules` than `create_canonical_schema`
+      is how a constraint that passes every test in CI is absent from the one database that matters.
+      Retention is permanent: a rule row cannot be deleted, and every historical version survives.
+    checks:
+      - "an upgraded database and a fresh database carry the identical rule layer"
+      - "a freshly created canonical database carries the rule layer, tenant-first"
+      - "rule uniqueness is tenant-first, conditional on the declared single-admitting scopes, and never global"
+    observations:
+      - "the upgraded rule layer is identical to the fresh one: True"
+      - "a second application of the migration is a no-op: True"
+      - "the rule layer was actually removed before the upgrade: True"
+      - "problems: []"
+      - "a DELETE against a rule row: refused by"
+
+  - risk_category: regression
+    claim: >-
+      M12 changes the meaning of nothing that is already landed. `checkpoint.py` remains the SOLE
+      minter of a gate decision — asserted by AST over every module in the package, with the kernel's
+      own `_DEFAULT` construction as the positive control — the production `GateRegistry` population
+      stays EMPTY, no second checkpoint appears, and the ADR-010 carrier population still EQUALS the
+      boundary stated once in `gate_scan.py`. M1 through M11 stay green beside it, and the P0
+      boundary guards are run on every execution of this scenario rather than trusted.
+    checks:
+      - "the checkpoint kernel is still the only thing that MINTS a gate decision, and M12 mints none"
+      - "the ADR-010 carrier boundary is stated once, equals what is discovered, and every carrier cites its authority"
+      - "the ADR-010 gate boundary still confines minting to the checkpoint kernel"
+      - "the checkpoint kernel, the claim CAS and step order are unchanged by M12"
+      - "M1, M2, M3 and M4 stay green beside M12"
+      - "M5, M6, M8 and M10 stay green beside M12"
+      - "M12 mints no gate decision and the checkpoint stays the sole minter"
+    observations:
+      - "modules that MINT a gate decision: ['checkpoint.py']"
+      - "M12 constructs a GateEntry or GateRegistry: False"
+      - "modules that REGISTER an action class gate: []"
+      - "the discovered population equals the stated boundary: True"
+      - "carriers without an ADR-010 citation: []"
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M12 MINTS NO GATE DECISION"
+
+  - risk_category: partial_failure
+    claim: >-
+      A rule sits at precedence layer 6 and can never reach above it. It never overrides a
+      Constraint, a Permanent Product Truth, the Brake, the Product Policy ceiling or a Tenant
+      Policy — each refusal attempted rather than described, behind a positive control that a rule
+      operating INSIDE its own layer is accepted. And M12 builds no second precedence engine, no
+      second ceiling comparison and no brake control: the layers it does not own, it does not
+      evaluate.
+    checks:
+      - "rules sit at precedence layer six, override nothing above them, and build no second precedence engine"
+      - "a rule never overrides anything above it in the precedence ladder"
+      - "a brake denies regardless of what a rule permits"
+    observations:
+      - "A RULE NEVER OVERRIDES A CONSTRAINT"
+      - "A RULE NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+      - "A RULE NEVER OVERRIDES POLICY"
+      - "A RULE NEVER OVERRIDES A BRAKE DENIAL"
+      - "a rule that overrides a CONSTRAINT: refused by"
+      - "a rule that overrides the BRAKE: refused by"
+      - "M12 defines a policy evaluator of its own: False"
+      - "M12 engages or narrows a brake: False"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      The event surface is exactly the eight registered F12 contracts and no ninth. The names M12
+      MINTS are read from its own transition rows by AST; the DRIVING FACTS it consumes —
+      `HumanConfirmed`, `HumanActivated`, `HumanRevoked`, `ConflictDetected`, `TimerFired` — are
+      pinned as a closed consumed set so a mint cannot be hidden by adding a trigger; `ConflictRaised`
+      is F7's and `UnauthorizedPolicyActivationAttempted` is F14's, and M12 mints neither.
+      `PolicyOverridden` appears in ADR-010 §8.1 and is NOT among the 118 registered contracts, so
+      M12 mints no override event and builds no override mechanism — that stays `P6-D71`, reported
+      and unresolved.
+    checks:
+      - "M12 emits only registered event names, and mints no ninth F12 contract"
+      - "the F12 family is exactly eight registered contracts, and the two M12 must not mint belong elsewhere"
+      - "the M12 machine declares the canonical eight states, four kinds and nine transitions"
+    observations:
+      - "the count of F12 contracts M12 mints: 8"
+      - "minted names that are not registered F12 contracts: []"
+      - "unregistered event names M12 mints: []"
+      - "ConflictRaised is not minted by M12: True"
+      - "PolicyOverridden is not minted by M12: True"
+      - "PolicyOverridden is registered: False"
+      - "F12 contract count: 8"
+      - "transition row count: 9"
+
+  - risk_category: safety_invariant
+    claim: >-
+      M12 ships dark. Zero modules in the package import it, no channel-capable module reaches it, it
+      imports no network primitive, no timer service, no brake store and no adapter, and nothing
+      outside the package touches it. M13's brake lifecycle is not built, no autonomy-graduation
+      engine exists, and no rule editor, authoring surface or importer appears. The population proof
+      comes FIRST, because a dark-surface scan that inspected nothing is vacuously green — the exact
+      false green M9's build tripped and M10's first pass repeated.
+    checks:
+      - "M12 ships dark: zero importers in the package, and no channel-capable module reaches it"
+      - "M13 Brake is not built, no autonomy-graduation engine exists, and M12 grows no authoring surface"
+      - "M12 ships dark, and M13 does not exist"
+      - "nothing graduates, and the landed machines are unchanged"
+    observations:
+      - "the scanned population is non-empty: True"
+      - "shipped importers of rule: []"
+      - "the channel-capable population is non-empty: True"
+      - "channel-capable modules that import rule: []"
+      - "M12 imports a network primitive: []"
+      - "M12 imports an adapter: []"
+      - "an M13 brake lifecycle module exists: False"
+      - "M12 defines an autonomy graduation engine: False"
+      - "a rule editor or console module exists: False"
+      - "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "THE M13 BRAKE MACHINE IS NOT BUILT"
+      - "NOTHING GRADUATES"
+
+expect_visible:
+  # ---- the unit's own sentences, from the narrative run
+  - "behaviours as specified, 0 wrong"
+  - "A HUMAN INSTRUCTION EITHER COMPILES INTO AN ENFORCEABLE RULE OR IS HONESTLY REFUSED"
+  - "THERE IS NO THIRD OUTCOME"
+  - "A MODEL MAY PROPOSE TEXT; IT NEVER COMPILES"
+  - "COMPILATION IS DETERMINISTIC, WITH NO MODEL IN THE LOOP"
+  - "A RULE MAY NEVER BRANCH ON A GUESS"
+  - "CONFIDENCE IS STRUCTURALLY NOT AN INPUT"
+  - "AN UNMODELLED FIELD DOES NOT COMPILE"
+  - "NEVER BILL WITHOUT A POD COMPILES TO A REAL PRECONDITION"
+  - "AN INFERRED POD IS NOT A POD"
+  - "DO NOT USE CARRIER X FOR PRODUCE CANNOT COMPILE, AND THE OWNER IS TOLD"
+  - "NOTED THE PROCEDURE IS FORBIDDEN WITHOUT AN ACTIVE RULE ID"
+  - "AN INSTRUCTION THAT DID NOT COMPILE IS MEMORY, NOT AUTHORITY"
+  - "THE OWNER SEES THE COMPILED RULE AND ITS TEST VECTORS BEFORE CONFIRMING"
+  - "ACTIVATION REQUIRES AN AUTHENTICATED HUMAN"
+  - "A MODEL CAN NEVER ACTIVATE A RULE"
+  - "AUTOMATION CAN NEVER ACTIVATE A RULE"
+  - "TWO CONFLICTING RULES FAIL CLOSED"
+  - "NEYMA NEVER PICKS A WINNER BETWEEN TWO RULES"
+  - "M12 RAISES THE M7 RULE_VS_RULE CONFLICT AND BUILDS NO SECOND ONE"
+  - "THE NARROWER SCOPE WINS, AND THAT IS NOT A CONFLICT"
+  - "THE OLD VERSION IS RETAINED BECAUSE EFFECTS WERE JUDGED UNDER IT"
+  - "RE-ACTIVATING AN ACTIVE VERSION IS A NO-OP"
+  - "A NARROWING REVOCATION IS IMMEDIATE; A BROADENING ONE NEEDS THE OWNER"
+  - "THE CLOCK MAY TAKE AUTHORITY AWAY; THE CLOCK MAY NEVER GIVE IT"
+  - "AN EXPIRY THAT BROADENS REQUIRES A HUMAN AT EXPIRY"
+  - "A DENYING RULE MEANS NO WITNESS AND NO EFFECT"
+  - "THERE IS NO ALLOW-ON-ERROR DEFAULT"
+  - "M12 MINTS NO GATE DECISION"
+  - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+  - "M12 BUILDS NO SECOND CHECKPOINT"
+  - "A RULE NEVER OVERRIDES A CONSTRAINT"
+  - "A RULE NEVER OVERRIDES A PERMANENT PRODUCT TRUTH"
+  - "A RULE NEVER OVERRIDES A BRAKE DENIAL"
+  - "A RULE NEVER OVERRIDES POLICY"
+  - "REPLAY CREATES NO AUTHORITY"
+  - "A REPEATEDLY OVERRIDDEN RULE ASKS A HUMAN AND IS NEVER AUTO-DISABLED"
+  - "M12 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+  - "THE M13 BRAKE MACHINE IS NOT BUILT"
+  - "NOTHING GRADUATES"
+  - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+  - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+  - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+  - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+  - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+  - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+  - "THE M11 POLICY MACHINE IS UNCHANGED"
+  # ---- the database, measured
+  - "problems: []"
+  - "rules"
+  - "the state vocabulary is a CHECK: True"
+  - "canonical eight: ['ACTIVE', 'COMPILED', 'CONFIRMED', 'EXPIRED', 'PROPOSED', 'REJECTED', 'REVOKED', 'SUPERSEDED']"
+  - "state count: 8"
+  - "forbidden states present: []"
+  - "the kind vocabulary is a CHECK: True"
+  - "canonical four: ['CONFLICT_RESOLUTION', 'CONSTRAINT', 'GATE_PRECONDITION', 'IDENTITY']"
+  - "kind count: 4"
+  - "invented kinds present: []"
+  - "every canonical required attribute is a column: []"
+  - "rules table present: True"
+  - "positive control, a well-formed PROPOSED rule: ACCEPTED"
+  - "positive control, an ACTIVE rule activated by a named human: ACCEPTED"
+  - "positive control, an authorized delegate may activate: ACCEPTED"
+  - "an ACTIVE rule with no activator: refused"
+  - "a PARSED lifecycle state: refused"
+  - "a DRAFT lifecycle state borrowed from M11: refused"
+  - "an APPROVED lifecycle state borrowed from M11: refused"
+  - "an invented rule kind: refused"
+  - "an author from another tenant: refused"
+  - "an activator from another tenant: refused"
+  - "a UNIQUE index exists: True"
+  - "every rule index is tenant-first: True"
+  - "an ACTIVE-only partial predicate exists: True"
+  - "the active uniqueness columns are tenant, scope and kind: True"
+  - "a tenant-local rule_version uniqueness exists: True"
+  - "the single-admitting set is declared and non-empty: True"
+  - "the single-admitting set is a PROPER subset, so the otherwise branch is reachable: True"
+  - "tenant is FIRST in the rule primary key: True"
+  - "positive control, the SAME scope and kind ACTIVE in a DIFFERENT tenant: ACCEPTED"
+  - "a reused rule_version inside one tenant: refused by"
+  - "a DELETE against a rule row: refused by"
+  - "the upgraded rule layer is identical to the fresh one: True"
+  - "a second application of the migration is a no-op: True"
+  # ---- the registries, the reply text and the AST, measured
+  - "F12 contract count: 8"
+  - "ConflictRaised family: F7 ['CF-1', 'EF-4c', 'IB-6']"
+  - "UnauthorizedPolicyActivationAttempted family: F14"
+  - "PolicyOverridden is registered: False"
+  - "RuleActivated is human_only: True"
+  - "total registered contracts: 118"
+  - "modules that MINT a gate decision: ['checkpoint.py']"
+  - "M12 constructs a GateEntry or GateRegistry: False"
+  - "modules that REGISTER an action class gate: []"
+  - "the unregistered-class fallback: HUMAN_APPROVAL_REQUIRED"
+  - "the discovered population equals the stated boundary: True"
+  - "carriers without an ADR-010 citation: []"
+  - "unregistered event names M12 mints: []"
+  - "ConflictRaised is not minted by M12: True"
+  - "PolicyOverridden is not minted by M12: True"
+  - "shipped importers of rule: []"
+  - "channel-capable modules that import rule: []"
+  - "an M13 brake lifecycle module exists: False"
+  - "M12 defines an autonomy graduation engine: False"
+  - "a rule editor or console module exists: False"
+  - "M12 invents an admin authority: False"
+  - "confidence is a field on the compiler input: False"
+  - "attribute reads of confidence anywhere in M12: []"
+  - "a MODEL_INFERRED field with confidence 1.0 compiles: refused by"
+  - "a claiming reply with NO active rule id: refused by"
+  - "positive control, the same claiming reply WITH an active rule id: ACCEPTED"
+  - "entity point 44 tests missing: []"
+  - "machine section 14 tests missing: []"
+  - "tenantless tables outside the recorded exemptions: []"
+  - "total transition rows counted: 134"
+  - "M12 transition rows: 9"
+  - "transition row count: 9"
+
+forbidden:
+  # ---- shared harness vocabulary, carried by every P6 scenario
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  # A REGRESSION ANCHOR THAT RAN NOTHING IS NOT A REGRESSION ANCHOR. pytest answers a missing path
+  # with `ERROR: file or directory not found` and exit 4, and an empty selection with `no tests ran`
+  # and exit 5. Both are loud here, so a battery can never report the absence of a failure as the
+  # absence of a defect — the M10 harness-recovery invariant, applied from the start.
+  - "ERROR: file or directory not found"
+  - "no tests ran"
+  - "ModuleNotFoundError: No module named 'eval'"
+  # ---- the shared probe failure vocabulary every P6 probe carries
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # ---- RU-1 / RU-2: proposal and compilation
+  - "### A MODEL COMPILED A RULE ###"
+  - "### A MODEL CONFIRMED A RULE ###"
+  - "### A MODEL PROPOSAL BECAME AN ACTIVE RULE ###"
+  - "### A MODEL CALL ENTERED COMPILATION ###"
+  - "### A MODEL EVALUATED A RULE ###"
+  - "### A MODEL RESOLVED A RULE CONFLICT ###"
+  - "### INBOUND CONTENT AUTHORED A RULE ###"
+  - "### A COUNTERPARTY AUTHORED A RULE ###"
+  - "### AN OFFBOARDED HUMAN AUTHORED A RULE ###"
+  - "### AN UNAUTHENTICATED ACTOR AUTHORED A RULE ###"
+  - "### RuleProposed TREATED AS ENFORCEMENT ###"
+  - "### SOURCE INSTRUCTION DISCARDED ###"
+  - "### NON-DETERMINISTIC COMPILATION ###"
+  - "### WALL CLOCK ENTERED COMPILATION ###"
+  - "### RANDOMNESS ENTERED COMPILATION ###"
+  - "### UNORDERED ITERATION CHANGED THE COMPILED PREDICATE ###"
+  - "### UNDECIDABLE PREDICATE COMPILED ###"
+  - "### UNRESOLVABLE SCOPE COMPILED ###"
+  - "### PREDICATE ADMITTED AS A PROMPT STRING ###"
+  - "### COMPILED WITHOUT TEST VECTORS ###"
+  # ---- RU-2f: the honest refusal, which is the unit's reason for existing
+  - "### MODEL_INFERRED PREDICATE COMPILED ###"
+  - "### MODEL_INFERRED READ AT CONFIDENCE ONE ###"
+  - "### CONFIDENCE READ BY THE COMPILER ###"
+  - "### CONFIDENCE FIELD PRESENT ON THE COMPILER INPUT ###"
+  - "### UNMODELLED FIELD COMPILED INTO A PREDICATE ###"
+  - "### NOTED THE PROCEDURE WITHOUT COMPILING A RULE ###"
+  - "### ENFORCEMENT CLAIMED WITHOUT AN ACTIVE RULE ID ###"
+  - "### THE OWNER WAS NOT TOLD IT IS NOT A RULE ###"
+  - "### RuleNotEnforceable OMITTED WHAT IS MISSING ###"
+  - "### ORGANIZATIONAL MEMORY TREATED AS AUTHORITY ###"
+  - "### A THIRD OUTCOME APPEARED ###"
+  - "### REJECTED REOPENED ###"
+  # ---- RU-3: conflict, fail closed, through M7
+  - "### CONFLICTING RULES AUTO-MERGED ###"
+  - "### NEYMA PICKED A WINNER ###"
+  - "### A CONFLICTING RULE ACTIVATED ###"
+  - "### SECOND CONFLICT SYSTEM BUILT ###"
+  - "### M7 BYPASSED ###"
+  - "### DUPLICATE ConflictRaised MINTED ###"
+  - "### M7 SEMANTICS MODIFIED ###"
+  - "### AN OPEN RULE CONFLICT DID NOT BLOCK ###"
+  # ---- RU-4 / RU-5: confirmation and activation
+  - "### CONFIRMED WITHOUT SEEING THE COMPILED RULE ###"
+  - "### CONFIRMED WITHOUT SEEING THE TEST VECTORS ###"
+  - "### RuleConfirmed TREATED AS ACTIVATION ###"
+  - "### A MODEL ACTIVATED A RULE ###"
+  - "### AUTOMATION ACTIVATED A RULE ###"
+  - "### A RETRY HANDLER ACTIVATED A RULE ###"
+  - "### A TIMER ACTIVATED A RULE ###"
+  - "### A COUNTERPARTY ACTIVATED A RULE ###"
+  - "### A SERVICE ACCOUNT ACTIVATED A RULE ###"
+  - "### ACTIVE WITHOUT AN ACTIVATOR ###"
+  - "### ACTIVATED BY A NON-HUMAN ACTOR ###"
+  - "### CROSS-TENANT ACTIVATION ACCEPTED ###"
+  - "### CROSS-TENANT AUTHORSHIP ACCEPTED ###"
+  - "### UNAUTHORIZED ACTIVATION WENT UNRECORDED ###"
+  - "### SECOND UNAUTHORIZED-ACTIVATION CONTRACT MINTED ###"
+  - "### RE-ACTIVATION EMITTED A SECOND RuleActivated ###"
+  - "### RE-ACTIVATION BUMPED THE VERSION ###"
+  # ---- RU-6 / RU-7 / RU-8: supersession, revocation, expiry
+  - "### SUPERSEDED VERSION DELETED ###"
+  - "### HISTORY EDITED IN PLACE ###"
+  - "### RULE APPLIED RETROACTIVELY ###"
+  - "### OLD VERSION NO LONGER EXPLAINS ITS DECISIONS ###"
+  - "### CROSS-TENANT SUPERSESSION ACCEPTED ###"
+  - "### BROADENING REVOCATION BY AUTOMATION ###"
+  - "### REVOCATION DIRECTION MISSING ###"
+  - "### NARROWING REVOCATION BLOCKED ON REVIEW ###"
+  - "### TEMPORARY TIGHTEN AUTO-REVERTED ###"
+  - "### EXPIRY BROADENED AUTHORITY ###"
+  - "### TimerFired BROADENED AUTHORITY ###"
+  - "### BROADENING RULE CARRIED AN EXPIRY ###"
+  - "### EXPIRY RAISED NO HUMAN CONFIRMATION ###"
+  - "### AUTOMATIC BROADENING ###"
+  # ---- the checkpoint boundary
+  - "### M12 MINTED A GATE DECISION ###"
+  - "### M12 REGISTERED A GATE ###"
+  - "### SECOND GATE MINTER BUILT ###"
+  - "### SECOND CHECKPOINT BUILT ###"
+  - "### SECOND GATE REGISTRY CONSTRUCTED ###"
+  - "### PRODUCTION GATE REGISTRY POPULATED ###"
+  - "### CHECKPOINT BYPASSED ###"
+  - "### CHECKPOINT STEP 6 BYPASSED ###"
+  - "### WITNESS MINTED DESPITE A DENYING RULE ###"
+  - "### GRANT MINTED DESPITE A DENYING RULE ###"
+  - "### EFFECT REACHED THE ADAPTER DESPITE A DENYING RULE ###"
+  - "### ALLOW ON RULE ERROR ###"
+  # ---- precedence
+  - "### A RULE OVERRODE A CONSTRAINT ###"
+  - "### A RULE OVERRODE A PERMANENT PRODUCT TRUTH ###"
+  - "### A RULE OVERRODE A BRAKE DENIAL ###"
+  - "### A RULE OVERRODE THE PRODUCT POLICY CEILING ###"
+  - "### A RULE OVERRODE A TENANT POLICY ###"
+  - "### SECOND PRECEDENCE ENGINE BUILT ###"
+  - "### AN EXPIRED INSTRUCTION STILL HAD FORCE ###"
+  - "### M12 ENGAGED A BRAKE ###"
+  - "### M12 NARROWED A BRAKE ###"
+  # ---- tenancy, uniqueness, versioning, retention
+  - "### TENANT MISSING FROM THE PRIMARY KEY ###"
+  - "### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###"
+  - "### CROSS-TENANT RULE LOOKUP ACCEPTED ###"
+  - "### FALSE UNIQUENESS IMPOSED ON A MULTI-RULE SCOPE ###"
+  - "### TWO ACTIVE RULES FOR ONE SINGLE-ADMITTING SCOPE ###"
+  - "### OCC BYPASSED ###"
+  - "### RULE VERSION REUSED ###"
+  - "### RULE VERSION OVERWRITTEN IN PLACE ###"
+  - "### RULE VERSION WENT BACKWARDS ###"
+  - "### RULE ROW DELETED ###"
+  - "### HISTORICAL VERSION DISCARDED ###"
+  # ---- replay and events
+  - "### REPLAY ACTIVATED A RULE ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### REPLAY MINTED A WITNESS ###"
+  - "### REPLAY MINTED A GRANT ###"
+  - "### REPLAY PRODUCED AN EXTERNAL EFFECT ###"
+  - "### UNREGISTERED EVENT MINTED ###"
+  - "### NINTH F12 CONTRACT MINTED ###"
+  - "### PolicyOverridden MINTED ###"
+  - "### PolicyOverridden SIMULATED ###"
+  - "### AN OVERRIDE MECHANISM WAS BUILT ###"
+  - "### P6-D71 RESOLVED BY A BUILD SESSION ###"
+  - "### A CONSUMED FACT WAS MINTED AS AN EVENT ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### REQUIRED PAYLOAD FIELD DROPPED ###"
+  # ---- observability, and the deferred question
+  - "### A REPEATEDLY OVERRIDDEN RULE WAS AUTO-DISABLED ###"
+  - "### Q3 RESOLVED BY A BUILD SESSION ###"
+  - "### OVERRIDE RATE UNOBSERVABLE ###"
+  # ---- scope: the machines and surfaces that must not appear
+  - "### M13 BRAKE MACHINE BUILT ###"
+  - "### BRAKE LIFECYCLE BUILT ###"
+  - "### AUTONOMY GRADUATION ENGINE BUILT ###"
+  - "### RULE EDITOR BUILT ###"
+  - "### RULE ADMIN UI BUILT ###"
+  - "### PRODUCTION RULE IMPORTER BUILT ###"
+  - "### CHANNEL JOINED ###"
+  - "### NOTIFIER WIRED ###"
+  - "### TIMER SERVICE IMPORTED ###"
+  - "### M12 PRODUCTION-ENABLED ###"
+  - "### P7 PROVENANCE SURFACE BUILT ###"
+  - "### V4 RESOLVED BY PREFERENCE ###"
+  - "### V5 RESOLVED BY PREFERENCE ###"
+  - "### PARALLEL ADMIN AUTHORITY INVENTED ###"
+  - "### M1 MACHINE EDITED ###"
+  - "### M2 STATE MACHINE EDITED ###"
+  - "### M3 EFFECT SEAM REWRITTEN ###"
+  - "### M4 MACHINE EDITED ###"
+  - "### M9 MACHINE EDITED ###"
+  - "### M11 MACHINE EDITED ###"
+
+teardown: []
