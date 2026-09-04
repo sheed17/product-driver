@@ -349,16 +349,37 @@ class GateVerdict(BaseModel):
                 f"scenario gate: VERIFIED — {self.required_passed}/{self.required_total} "
                 "required scenario(s) passed with resolvable evidence"
             )
-        head = (
-            f"scenario gate: NOT VERIFIED — {len(self.unverified)} of {self.required_total} "
-            f"required scenario(s) did not establish a pass ({self.executed} executed)"
-        )
+        # Every blocker this verdict actually has, and only those. Leading
+        # unconditionally with the unverified count reported "0 of 9 required
+        # scenario(s) did not establish a pass" as the headline of a run whose
+        # real blocker was four generated scenarios that never reached the
+        # suite — a sentence whose own number says nothing is wrong. Which
+        # blockers exist is a property of the verdict, so the headline reads it
+        # rather than assuming one of them.
+        blockers: list[str] = []
+        if self.unverified:
+            blockers.append(
+                f"{len(self.unverified)} of {self.required_total} required scenario(s) "
+                "did not establish a pass"
+            )
         if self.uncovered_risks:
-            head += (
-                f"; {len(self.uncovered_risks)} identified acceptance-blocking risk(s) "
+            blockers.append(
+                f"{len(self.uncovered_risks)} identified acceptance-blocking risk(s) "
                 "have no passing scenario"
             )
-        return head
+        if self.generation_problems:
+            blockers.append(
+                f"{len(self.generation_problems)} verification generation/assembly "
+                "problem(s): coverage this run committed to was never built or executed"
+            )
+        if not blockers:  # pragma: no cover - NOT_VERIFIED implies a blocker
+            blockers.append("verification did not establish a pass")
+        return (
+            "scenario gate: NOT VERIFIED — "
+            + "; ".join(blockers)
+            + f" ({self.required_passed} of {self.required_total} required passed, "
+            f"{self.executed} executed)"
+        )
 
     def summary_block(self) -> str:
         lines = [self.headline()]

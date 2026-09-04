@@ -764,7 +764,12 @@ class TestResumeTimeDropsAreVisible:
         outcome = narrowed.restore_from_store()
 
         assert outcome.state == "restored"
-        assert narrowed.plan.scenarios == []
+        # The obligation is KEPT — it is what the run committed to verifying,
+        # and deleting it is what made the loss unrecoverable — but it has no
+        # executable, so it is reported and the gate refuses.
+        assert [s.id for s in narrowed.plan.scenarios] == ["gen-dup"]
+        assert "gen-dup" not in narrowed.compiled
+        assert "gen-dup" in narrowed.unbuildable_scenarios
         problems = narrowed.generation_problems()
         assert any("could not be restored on resume" in p for p in problems), problems
         assert evaluate_gate(None, generation_problems=problems).blocks_acceptance

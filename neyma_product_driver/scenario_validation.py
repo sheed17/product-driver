@@ -35,7 +35,7 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from .command_guard import classify_command, classify_worktree_ownership, is_secret_path
@@ -269,11 +269,28 @@ class ApprovedCommands:
     honest, and the string a human wrote had already been destroyed upstream.
     """
 
-    def __init__(self, entries: Iterable[str]) -> None:
+    def __init__(
+        self,
+        entries: Iterable[str],
+        *,
+        names: "Mapping[str, str] | None" = None,
+    ) -> None:
         # Deduplicated by key, so two spellings of one invocation stay one
         # entry; the first spelling wins the text, and `verbatim` is emitted in
         # `entries` order so the two tuples index the same command.
         by_key: dict[str, str] = {}
+        # key -> the human-authored NAME the command was written under. See
+        # `by_name` below for why this is not the same identity as the token.
+        name_by_key: dict[str, str] = {}
+        for raw_name, raw_command in (names or {}).items():
+            key = _norm_command(raw_command)
+            label = " ".join(str(raw_name or "").split())
+            if not key or not label:
+                continue
+            # A name that two different commands answer to identifies neither,
+            # so it identifies nothing. Marked, and dropped below.
+            if name_by_key.setdefault(key, label) != label:
+                name_by_key[key] = ""
         for raw in entries:
             key = _norm_command(raw)
             if not key:
@@ -298,6 +315,49 @@ class ApprovedCommands:
         self.by_token: dict[str, str] = {
             token: text for token, text in zip(self.tokens, self.verbatim)
         }
+        #: The same commands, in :attr:`entries` order, under the NAME a human
+        #: wrote them beside in the scenario file (``""`` where there is none).
+        self.names: tuple[str, ...] = tuple(name_by_key.get(key, "") for key in self.entries)
+        #: name -> the human's text, for names that identify exactly one command.
+        #:
+        #: ### WHY A SECOND IDENTITY EXISTS. :attr:`tokens` is a digest of the
+        #: command's own body, which is exactly what a citation needs and
+        #: exactly what a *repair* destroys. When a human legitimately corrects
+        #: an oracle — run 20260903-065810 repaired seven of them in
+        #: ``p6_m11_policy.yaml``, changing no name and adding and removing no
+        #: command — every token over those bodies changes, and a run resuming
+        #: across the repair can no longer say which approved command its
+        #: generated scenario had been built on. The name is the half a human
+        #: authored and a body repair leaves alone, so it is the identity that
+        #: survives one. It is never an approval path: nothing is approved
+        #: because of its name, and rebinding through it can only ever replace a
+        #: command with the CURRENT text of a CURRENTLY approved one.
+        self.by_name: dict[str, str] = {}
+        for key, text in zip(self.entries, self.verbatim):
+            label = name_by_key.get(key, "")
+            if not label:
+                continue
+            if label in self.by_name and self.by_name[label] != text:
+                # Ambiguous across two surviving commands: identifies neither.
+                self.by_name[label] = ""
+                continue
+            self.by_name[label] = text
+        self.by_name = {k: v for k, v in self.by_name.items() if v}
+
+    def name_for(self, command: str) -> str:
+        """The human-authored name of the approved command ``command`` IS.
+
+        Empty when the command is not approved as written, or is approved under
+        no name (a ``scenario_generation.approved_commands`` config entry), or
+        under a name two commands share. Used to record, at generation time,
+        which approved command a generated scenario was built on — see
+        :attr:`by_name`.
+        """
+        key = _norm_command(command)
+        for entry, label in zip(self.entries, self.names):
+            if entry == key and label and self.by_name.get(label):
+                return label
+        return ""
 
     def __bool__(self) -> bool:
         return bool(self.entries)
@@ -312,19 +372,40 @@ class ApprovedCommands:
         scenarios: Sequence[Scenario] = (),
         configured: Sequence[str] = (),
     ) -> "ApprovedCommands":
-        """Harvest every command a human already approved by writing it down."""
+        """Harvest every command a human already approved by writing it down.
+
+        Two things are harvested, not one: the command string, and the *name*
+        the human wrote beside it. A ``setup``/``teardown`` entry has no name
+        and gets none; everything a scenario file names carries it. See
+        :attr:`by_name` for what the second identity is for.
+        """
         entries: list[str] = list(configured)
+        names: dict[str, str] = {}
+        ambiguous: set[str] = set()
+
+        def named(label: str, command: str) -> None:
+            entries.append(command)
+            label = " ".join(str(label or "").split())
+            if not label or not command:
+                return
+            # A name two different commands answer to identifies neither, so it
+            # is dropped rather than resolved to whichever was written first.
+            if names.setdefault(label, command) != command:
+                ambiguous.add(label)
+
         for scenario in scenarios:
             entries.extend(scenario.setup)
             entries.extend(scenario.teardown)
-            entries.extend(spec.run for spec in scenario.commands)
-            entries.extend(check.command for check in scenario.expect_state)
+            for spec in scenario.commands:
+                named(spec.name, spec.run)
+            for check in scenario.expect_state:
+                named(check.name, check.command)
             for step in scenario.steps:
                 if step.command is not None:
-                    entries.append(step.command.run)
+                    named(step.command.name or step.name, step.command.run)
                 if step.state_check is not None:
-                    entries.append(step.state_check.command)
-        return cls(entries)
+                    named(step.state_check.name or step.name, step.state_check.command)
+        return cls(entries, names={k: v for k, v in names.items() if k not in ambiguous})
 
     def expand(self, command: str) -> str:
         """Resolve a citation to the human's own text. Any other string is returned as is.

@@ -58,6 +58,7 @@ from .scenario_plan import (
     RejectedScenario,
     WaveRecord,
     compile_to_scenario,
+    rebind_to_approved,
     task_digest,
 )
 from .scenario_validation import (
@@ -312,6 +313,14 @@ class ScenarioPlanner:
         #: state cannot say what it had already decided to verify, so it may not
         #: reach an acceptance — see :meth:`generation_problems`.
         self._restore_failure: str = ""
+        #: Scenarios a resume re-materialized against a repaired approved
+        #: command. Their prior evidence was produced by the superseded
+        #: measurement, so the run owes a fresh execution of each.
+        self._rebound_ids: list[str] = []
+        #: Scenarios this run committed to that have no executable under the
+        #: current approved commands: id -> why. Kept in the plan (the
+        #: obligation survives) and reported (the gate must refuse).
+        self._unbuildable: dict[str, str] = {}
 
     # -- public API --------------------------------------------------------
 
@@ -323,6 +332,23 @@ class ScenarioPlanner:
     def restore_failed(self) -> bool:
         """True when this run's plan exists on disk and could not be read."""
         return bool(self._restore_failure)
+
+    @property
+    def rebound_scenario_ids(self) -> list[str]:
+        """Scenarios re-materialized on resume, which MUST be executed again.
+
+        Their persisted evidence was produced by a measurement this run has
+        since proven defective and replaced. Re-running them is not an
+        optimisation the selection may skip: it is the difference between
+        acceptance resting on the repaired instrument and acceptance resting on
+        the broken one.
+        """
+        return list(self._rebound_ids)
+
+    @property
+    def unbuildable_scenarios(self) -> dict[str, str]:
+        """Committed scenarios with no executable under the current approved set."""
+        return dict(self._unbuildable)
 
     def generation_problems(self) -> list[str]:
         """Waves that failed rather than waves that had nothing to add.
@@ -395,7 +421,9 @@ class ScenarioPlanner:
             for rejected in record.rejected:
                 problems.append(
                     f"scenario {rejected.id!r} was planned and executed by this run and "
-                    "could not be restored on resume, so the coverage it provided is gone: "
+                    "could not be restored on resume, so the coverage it provided is gone. "
+                    "The obligation is kept in the plan, so a later resume can still see "
+                    "what this run decided to verify, but nothing verifies it now: "
                     + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
                 )
         return problems
@@ -636,7 +664,7 @@ class ScenarioPlanner:
         # exists. Recorded, never silent: the plan states which command a
         # generator named rather than reproduced.
         for scenario in parsed:
-            for before, after in scenario.rewrite_commands(self.approved_commands.expand):
+            for before, after in scenario.bind_citations(self.approved_commands):
                 record.resolved_citations.append(
                     f"{scenario.id}: {before.split()[0]} -> {after}"
                 )
@@ -1030,29 +1058,97 @@ class ScenarioPlanner:
         # Recompile rather than trusting a stored compilation: the approved
         # command set is derived from the repository as it is *now*, so a
         # scenario whose command is no longer approved must not come back to life.
+        #
+        # A scenario that fails that check is NOT simply dropped. Doing so was
+        # the defect run 20260903-065810 exposed: a legitimate repair of the
+        # measuring instrument (seven corrected oracles in the permanent
+        # scenario file) invalidated the frozen bodies four generated scenarios
+        # had been built from, and the resume deleted all four out of the plan.
+        # It took their risk linkage, dimensions and provenance with them, so
+        # nothing downstream — and no later resume — could re-establish what the
+        # run had already decided to verify. The obligation and the executable
+        # are two different things, and only the executable went stale. See
+        # `rebind_to_approved`.
         restored, dropped = 0, []
         rejected: list[RejectedScenario] = []
+        rebound_notes: list[str] = []
         for scenario in list(plan.scenarios):
-            approved = self._approved_for(scenario)
             try:
                 self.compiled[scenario.id] = compile_to_scenario(
-                    scenario, base=self.base_scenario, approved_commands=approved
+                    scenario,
+                    base=self.base_scenario,
+                    approved_commands=self._approved_for(scenario),
                 )
                 restored += 1
+                continue
             except Exception as exc:
-                dropped.append(f"{scenario.id} ({type(exc).__name__}: {exc})")
-                rejected.append(
-                    RejectedScenario(
-                        id=scenario.id,
-                        title=scenario.title,
-                        reasons=[
-                            "this run had already committed to verifying it, and on resume "
-                            f"it no longer compiles: {type(exc).__name__}: {exc}"
-                        ],
+                first = exc
+
+            # Re-materialize against the CURRENT approved vocabulary, then
+            # compile the result through exactly the same independent check.
+            # Nothing is grandfathered: if this succeeds, what will run is the
+            # human's current text, and the stale body is discarded unexecuted.
+            snapshot = scenario.model_copy(deep=True)
+            rebindings, unreconstructable = rebind_to_approved(scenario, self.approved_commands)
+            if rebindings and not unreconstructable:
+                try:
+                    self.compiled[scenario.id] = compile_to_scenario(
+                        scenario,
+                        base=self.base_scenario,
+                        approved_commands=self._approved_for(scenario),
                     )
+                except Exception as second:
+                    unreconstructable.append(
+                        "re-materializing it against the current approved commands still "
+                        f"does not compile: {type(second).__name__}: {second}"
+                    )
+                else:
+                    restored += 1
+                    # The prior evidence for this case was produced by the
+                    # measurement that has since been superseded, so it may not
+                    # satisfy the gate. Saying so is what makes the re-execution
+                    # obligation legible rather than incidental.
+                    scenario.rebound_on_resume = [r.brief() for r in rebindings]
+                    plan.executed_scenario_ids = [
+                        i for i in plan.executed_scenario_ids if i != scenario.id
+                    ]
+                    note = (
+                        f"{scenario.id} was re-materialized against the repaired harness "
+                        f"({len(rebindings)} command field(s): "
+                        + "; ".join(r.source_name for r in rebindings)
+                        + "). Its earlier evidence was produced by the superseded "
+                        "measurement and does not count; it must be executed again."
+                    )
+                    rebound_notes.append(note)
+                    self.emit(f"  {note}")
+                    continue
+
+            # Could not be re-materialized. The scenario STAYS in the plan —
+            # the run still owes this verification, and a later resume against a
+            # corrected vocabulary must be able to find it — but it has no
+            # executable, so it is reported as a problem the gate must refuse.
+            scenario.__dict__.update(snapshot.__dict__)
+            detail = "; ".join(unreconstructable) if unreconstructable else (
+                f"{type(first).__name__}: {first}"
+            )
+            dropped.append(f"{scenario.id} ({detail})")
+            rejected.append(
+                RejectedScenario(
+                    id=scenario.id,
+                    title=scenario.title,
+                    reasons=[
+                        "this run had already committed to verifying it, and on resume "
+                        f"it no longer compiles: {type(first).__name__}: {first}"
+                        + (
+                            "; and it could not be re-materialized against the current "
+                            "approved commands: " + "; ".join(unreconstructable)
+                            if unreconstructable
+                            else ""
+                        )
+                    ],
                 )
-                plan.scenarios.remove(scenario)
-        if dropped:
+            )
+        if dropped or rebound_notes:
             # Recorded in the plan, not only on the terminal. A scenario the run
             # had committed to and can no longer execute is lost coverage, and
             # coverage that vanishes between two processes with nothing but a
@@ -1064,14 +1160,33 @@ class ScenarioPlanner:
                     wave=self._wave,
                     stage=STAGE_RESUME,
                     basis=plan.generation_basis,
-                    proposed=len(rejected),
+                    proposed=len(rejected) + len(rebound_notes),
                     rejected=rejected,
+                    budget_notes=rebound_notes,
                 )
             )
+        if dropped:
             self.emit(
-                f"  {len(dropped)} restored scenario(s) no longer compile and were dropped: "
+                f"  {len(dropped)} restored scenario(s) have no executable under the "
+                "current approved commands and were kept in the plan unexecutable: "
                 + "; ".join(dropped[:4])
             )
+        # Rebound AND not executed since. `rebound_on_resume` is durable
+        # provenance — this case was re-materialized, and a reader should be
+        # able to see that forever — while the obligation it creates is
+        # discharged by actually running the case again, which `note_executed`
+        # records. Reading the provenance as the obligation would re-run it on
+        # every subsequent resume; reading it as nothing would let a resume that
+        # rebound and then died leave the stale evidence standing.
+        executed = set(plan.executed_scenario_ids)
+        self._rebound_ids = [
+            s.id
+            for s in plan.scenarios
+            if s.rebound_on_resume and s.id in self.compiled and s.id not in executed
+        ]
+        self._unbuildable = {
+            r.id: (r.reasons[0] if r.reasons else "no reason recorded") for r in rejected
+        }
         plan.recompute_coverage()
 
         note = (
@@ -1085,7 +1200,7 @@ class ScenarioPlanner:
                 "the plan was made, so its coverage was chosen against different code"
             )
         self.emit(f"  {note}")
-        if dropped:
+        if dropped or rebound_notes:
             self.persist()
         return PlanRestore(state="restored", note=note)
 

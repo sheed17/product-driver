@@ -29,7 +29,7 @@ import os
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -456,6 +456,8 @@ def _topological(entries: Sequence[SuiteEntry]) -> list[SuiteEntry]:
 def select_rerun(
     suite: ScenarioSuite,
     previous: SuiteResult | None,
+    *,
+    must_run: Sequence[str] = (),
 ) -> tuple[list[str], str]:
     """Narrow the next pass to what a fix could plausibly have affected.
 
@@ -466,8 +468,14 @@ def select_rerun(
     neighbours, because those are what a correction to the shared cause would
     move.
 
+    ``must_run`` names scenarios the narrowing may not skip whatever the previous
+    result said about them — a case re-materialized against a repaired harness,
+    whose earlier record was produced by the measurement that repair replaced.
+    Reusing that record would be accepting on the broken instrument.
+
     Returns ``(scenario_ids, reason)``. With no previous result, everything runs.
     """
+    forced = {str(i) for i in must_run if str(i)}
     if previous is None:
         return [e.scenario_id for e in suite.entries], "first pass: the full suite"
 
@@ -489,11 +497,19 @@ def select_rerun(
         elif previous.by_id(entry.scenario_id) is None:
             # Never executed yet — a scenario generated during this wave.
             selected.append(entry.scenario_id)
+        elif entry.scenario_id in forced:
+            selected.append(entry.scenario_id)
 
+    forced_here = [i for i in sorted(forced) if suite.by_id(i) is not None]
     reason = (
         f"failed scenarios, their risk neighbours, newly generated cases, and the full "
         f"permanent regression set ({len(selected)} of {len(suite)})"
     )
+    if forced_here:
+        reason += (
+            f"; plus {len(forced_here)} case(s) re-materialized against the repaired "
+            "harness, whose earlier evidence was produced by the superseded measurement"
+        )
     return selected, reason
 
 
@@ -1068,8 +1084,16 @@ def build_suite(
     *,
     permanent: Iterable[tuple[str, Scenario]] = (),
     generated: Iterable[tuple[GeneratedScenario, Scenario]] = (),
+    unbuildable: Mapping[str, str] | None = None,
 ) -> ScenarioSuite:
-    """Assemble a suite from permanent scenarios and compiled generated ones."""
+    """Assemble a suite from permanent scenarios and compiled generated ones.
+
+    ``unbuildable`` names scenarios the run committed to and could not compile,
+    with the reason for each. They are stated as assembly conflicts rather than
+    simply omitted: a scenario the plan still owes and the suite cannot execute
+    is exactly the case that used to leave the required set quietly one shorter
+    than the run's own record of what it had decided to verify.
+    """
     from .scenario_validation import identity_key
 
     suite = ScenarioSuite()
@@ -1131,6 +1155,12 @@ def build_suite(
                 required=model.priority.blocks_acceptance,
             ),
             "the generated scenario",
+        )
+    for scenario_id, reason in (unbuildable or {}).items():
+        suite.assembly_conflicts.append(
+            f"the generated scenario {scenario_id!r} is still in this run's scenario plan "
+            "and was not admitted to the suite, so it was never executed and nothing "
+            f"about it has been verified: {reason}"
         )
     return suite
 

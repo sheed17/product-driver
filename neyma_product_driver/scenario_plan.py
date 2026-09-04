@@ -431,6 +431,38 @@ class ScenarioProvenance(BaseModel):
 SCENARIO_ID_LIMIT = 64
 
 
+#: The citation form, duplicated from :mod:`scenario_validation` rather than
+#: imported, because that module imports this one. Kept narrow on purpose: this
+#: is only ever used to read a token back out of a string the validator already
+#: produced, never to decide anything.
+_CITATION_TOKEN = re.compile(r"^@([0-9a-f]{8})(?=\s|$)")
+
+
+class CommandBinding(BaseModel):
+    """Which human-approved command one of this scenario's commands came from.
+
+    Recorded when a ``@token`` citation is expanded, and read back only when a
+    resume finds the expanded text is no longer approved. See
+    :meth:`GeneratedScenario.bind_citations` for why the token alone is not
+    enough, and :func:`rebind_to_approved` for what is done with it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A path from :meth:`GeneratedScenario.command_slots`.
+    field: str
+    #: The token that was cited: a digest of the approved command's body AS IT
+    #: WAS. Still checked first on resume, because an unchanged body is the
+    #: common case and the exact one.
+    token: str = ""
+    #: The human-authored NAME the approved command was written under. This is
+    #: the identity that survives a legitimate repair of the command's body.
+    source_name: str = ""
+    #: The model's own argument tail, which was never part of the approval and
+    #: is judged on rebinding exactly as it was judged on approval.
+    tail: str = ""
+
+
 class GeneratedScenario(BaseModel):
     """One situation the driver decided is worth exercising."""
 
@@ -476,6 +508,17 @@ class GeneratedScenario(BaseModel):
     generated_from: list[str] = Field(default_factory=list)
     confidence: float = 0.5
     provenance: ScenarioProvenance = Field(default_factory=ScenarioProvenance)
+    #: Which approved command each cited command field came from. Written by
+    #: :meth:`bind_citations`; read by :func:`rebind_to_approved` on a resume.
+    #: Absent on a plan written before this existed, which is exactly the state
+    #: :func:`rebind_to_approved` reports as unreconstructable rather than
+    #: guessing at.
+    command_bindings: list[CommandBinding] = Field(default_factory=list)
+    #: Set when a resume re-materialized this scenario against a repaired
+    #: approved command. Its prior evidence was produced by the superseded
+    #: measurement and may not satisfy the gate, so the run must execute it
+    #: again. One line per rebound field.
+    rebound_on_resume: list[str] = Field(default_factory=list)
 
     @field_validator("confidence")
     @classmethod
@@ -567,33 +610,107 @@ class GeneratedScenario(BaseModel):
             a.kind == "state_check" for a in self.actions
         )
 
+    def command_slots(self) -> "list[tuple[str, str, Callable[[str], None]]]":
+        """Every place a command string can live, as ``(path, value, set)``.
+
+        One place that knows the layout, so a caller that has to touch all of
+        them — the planner resolving approved-command citations, the resume path
+        rebinding a stale one — cannot miss a field. ``path`` is stable across
+        processes and is what a persisted :class:`CommandBinding` refers to.
+        """
+        slots: list[tuple[str, str, Callable[[str], None]]] = []
+
+        def at_list(target: list[str], index: int) -> "Callable[[str], None]":
+            def setter(value: str) -> None:
+                target[index] = value
+
+            return setter
+
+        def at_attr(obj: Any, name: str) -> "Callable[[str], None]":
+            def setter(value: str) -> None:
+                setattr(obj, name, value)
+
+            return setter
+
+        for index, command in enumerate(self.setup):
+            slots.append((f"setup[{index}]", command, at_list(self.setup, index)))
+        for index, command in enumerate(self.cleanup):
+            slots.append((f"cleanup[{index}]", command, at_list(self.cleanup, index)))
+        for index, action in enumerate(self.actions):
+            if action.kind == "command" and action.command:
+                slots.append(
+                    (f"actions[{index}].command", action.command, at_attr(action, "command"))
+                )
+            if action.kind == "state_check" and action.state_check is not None:
+                slots.append(
+                    (
+                        f"actions[{index}].state_check.command",
+                        action.state_check.command,
+                        at_attr(action.state_check, "command"),
+                    )
+                )
+        for index, check in enumerate(self.persisted_state_checks):
+            slots.append(
+                (
+                    f"persisted_state_checks[{index}].command",
+                    check.command,
+                    at_attr(check, "command"),
+                )
+            )
+        return slots
+
     def rewrite_commands(self, resolve: "Callable[[str], str]") -> list[tuple[str, str]]:
         """Rewrite every command string in place through ``resolve``.
 
-        One place that knows where a command can live in a proposal, so a caller
-        that has to touch all of them — the planner resolving approved-command
-        citations before anything judges or compiles them — cannot miss a field.
         Returns the ``(before, after)`` pairs it actually changed, so the run can
         record what it resolved rather than silently substituting.
         """
         changed: list[tuple[str, str]] = []
-
-        def apply(text: str) -> str:
-            out = resolve(text)
-            if out != text:
-                changed.append((text, out))
-            return out
-
-        self.setup = [apply(c) for c in self.setup]
-        self.cleanup = [apply(c) for c in self.cleanup]
-        for action in self.actions:
-            if action.kind == "command" and action.command:
-                action.command = apply(action.command)
-            if action.kind == "state_check" and action.state_check is not None:
-                action.state_check.command = apply(action.state_check.command)
-        for check in self.persisted_state_checks:
-            check.command = apply(check.command)
+        for _path, before, assign in self.command_slots():
+            after = resolve(before)
+            if after != before:
+                changed.append((before, after))
+                assign(after)
         return changed
+
+    def bind_citations(self, approved: Any) -> list[tuple[str, str]]:
+        """Expand every ``@token`` citation AND record what it was a citation of.
+
+        Expansion alone is lossy in the one direction that matters. Once
+        ``@49eae6f0`` has become the 4,500 characters of oracle it named, the
+        only identity the command has left is its own bytes — and a token is a
+        digest of exactly those bytes. So when a human legitimately *repairs*
+        the approved command (run 20260903-065810 corrected seven oracles in
+        ``p6_m11_policy.yaml``), a resume across the repair can no longer tell
+        that this scenario was built on the command that was repaired, as
+        opposed to carrying a string nobody ever approved. Both look identical:
+        "not in the approved set".
+
+        The binding is what tells them apart. It is recorded here, at the moment
+        the information still exists, and read back by
+        :func:`rebind_to_approved`. It carries no authority of its own: it names
+        an approved command, it does not approve one.
+        """
+        recorded: list[tuple[str, str]] = []
+        for path, before, assign in self.command_slots():
+            after = approved.expand(before)
+            if after == before:
+                continue
+            assign(after)
+            recorded.append((before, after))
+            match = _CITATION_TOKEN.match((before or "").strip())
+            if match is None:  # pragma: no cover - expand only rewrites citations
+                continue
+            self.command_bindings = [b for b in self.command_bindings if b.field != path]
+            self.command_bindings.append(
+                CommandBinding(
+                    field=path,
+                    token=match.group(1),
+                    source_name=approved.name_for(approved.by_token.get(match.group(1), "")),
+                    tail=(before or "").strip()[match.end() :],
+                )
+            )
+        return recorded
 
     def command_strings(self) -> list[str]:
         """Every command string this scenario would run, from any field."""
@@ -931,6 +1048,113 @@ class GeneratedScenarioPlan(BaseModel):
             "nobody thought of are not covered by anything above.",
         ]
         return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# Re-materialization across a repaired harness
+# --------------------------------------------------------------------------
+
+
+class Rebinding(BaseModel):
+    """One command field re-materialized against the current approved set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    source_name: str
+    before: str
+    after: str
+
+    def brief(self) -> str:
+        return (
+            f"{self.field} was re-materialized from the approved command "
+            f"{self.source_name!r}, whose body the harness has since repaired"
+        )
+
+
+def rebind_to_approved(
+    scenario: GeneratedScenario, approved: Any
+) -> tuple[list[Rebinding], list[str]]:
+    """Re-materialize a scenario's stale commands against the CURRENT approved set.
+
+    Returns ``(rebindings, unreconstructable)``. A field appears in exactly one
+    of them, and a field whose command is still approved as written appears in
+    neither.
+
+    THE PROBLEM THIS SOLVES. A run generates a scenario from an approved
+    command, executes it, and then discovers a defect in the *measuring
+    instrument* — the oracle itself is wrong. The founder repairs the oracle in
+    the permanent scenario file and resumes the same run. The generated
+    scenario's persisted command is now a string no human approves: its body is
+    the superseded oracle. Three answers are available and two of them are
+    wrong. Executing it anyway grandfathers a command current policy refuses,
+    and measures with an instrument already proven defective. Deleting it
+    destroys a verification obligation the run had committed to, takes its risk
+    linkage and provenance with it, and leaves the run permanently unable to
+    say what it had decided to verify — which is what run 20260903-065810 did to
+    four cases. The third answer is this one: keep the obligation, discard the
+    stale executable, and re-materialize the measurement from the repaired
+    instrument.
+
+    WHAT MAKES IT SAFE. Nothing here approves anything. The replacement text is
+    read out of the current approved set and nowhere else, so what runs is a
+    string a human wrote *now*; the stale body is discarded unexecuted; the
+    model's argument tail is carried across unchanged and is judged by the same
+    ``approves`` check it always was; and the result is handed back to
+    :func:`compile_to_scenario` against the current approved set, which refuses
+    it independently if any of that is wrong. A binding is a *name*, not a
+    permission: a scenario edited on disk to cite a name it was not generated
+    from gains nothing, because the name can only ever resolve to a command
+    already approved. And a field with no binding, or one whose binding names
+    something the current set does not have, is reported as unreconstructable
+    rather than repaired — a secure inability to reconstruct must stay blocked.
+    """
+    rebindings: list[Rebinding] = []
+    unreconstructable: list[str] = []
+    bindings = {b.field: b for b in scenario.command_bindings}
+
+    for path, before, assign in scenario.command_slots():
+        ok, _why = approved.approves(before)
+        if ok:
+            continue
+        binding = bindings.get(path)
+        if binding is None:
+            unreconstructable.append(
+                f"{path} runs a command the current approved set refuses, and this run "
+                "did not record which approved command it was built from, so there is "
+                "nothing to re-materialize it against"
+            )
+            continue
+        current = approved.by_name.get(binding.source_name, "")
+        if not current:
+            unreconstructable.append(
+                f"{path} was built from the approved command {binding.source_name!r}, "
+                "which the current approved set no longer offers under that name, so the "
+                "measurement it made cannot be re-established"
+            )
+            continue
+        after = f"{current}{binding.tail}"
+        if after == before:
+            unreconstructable.append(
+                f"{path} was built from the approved command {binding.source_name!r} and "
+                "already carries its current text, so what the current set refuses is not "
+                "a stale body: it is this command"
+            )
+            continue
+        ok, why = approved.approves(after)
+        if not ok:
+            unreconstructable.append(
+                f"{path} was built from the approved command {binding.source_name!r}, and "
+                f"re-materializing it is still refused: {why}"
+            )
+            continue
+        assign(after)
+        rebindings.append(
+            Rebinding(
+                field=path, source_name=binding.source_name, before=before, after=after
+            )
+        )
+    return rebindings, unreconstructable
 
 
 # --------------------------------------------------------------------------

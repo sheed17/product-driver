@@ -524,7 +524,11 @@ async def run_control_loop(
             )
         else:
             suite = _assemble_suite(scenario, planner)
-            only, reason = select_rerun(suite, previous_suite)
+            only, reason = select_rerun(
+                suite,
+                previous_suite,
+                must_run=getattr(planner, "rebound_scenario_ids", ()),
+            )
             emit(f"→ running scenario suite ({len(only)} of {len(suite)}): {reason}")
 
             def new_suite_executor() -> SuiteExecutor:
@@ -961,6 +965,30 @@ async def run_control_loop(
         #     What is still not here: scoring a repository criterion, writing a
         #     status file, pushing, or deciding a product question. Those remain
         #     the repository's and the founder's.
+        #
+        #     WHETHER a review is owed is resolved on every route, not only on
+        #     the accepting one. It is a fact about the task's scope and what the
+        #     repository says about it — not about how this run went — and
+        #     computing it only inside the ACCEPT branch meant a run the scenario
+        #     gate blocked carried no requirement at all, so the founder summary
+        #     read "independent review: not required for this task" over a task
+        #     whose own completion audit said AWAITING_INDEPENDENT_REVIEW. Run
+        #     20260903-065810 shipped exactly that pair of sentences. Resolving
+        #     it here makes the two agree; TAKING the review stays where it was,
+        #     because a review of a state the gate has not accepted would be
+        #     reviewing something the run does not yet claim.
+        last_requirement["value"] = resolve_review_requirement(
+            config.neyma_repo,
+            task_scope,
+            unit=active_unit,
+            risk=risk,
+            audit_requires_review=(
+                audit is not None
+                and audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
+            ),
+        )
+        record.review_requirement = last_requirement["value"].to_dict()
+
         if decision.decision is Decision.ACCEPT:
             step = await _independent_review_step(
                 config=config,
@@ -1356,6 +1384,16 @@ def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:
             for model in planner.plan.scenarios
             if model.id in planner.compiled
         ],
+        # A scenario the plan still owes and the compiler could not build is
+        # named here rather than quietly missing from the required set.
+        unbuildable={
+            model.id: reason
+            for model, reason in (
+                (m, getattr(planner, "unbuildable_scenarios", {}).get(m.id, ""))
+                for m in planner.plan.scenarios
+            )
+            if reason and model.id not in planner.compiled
+        },
     )
 
 
@@ -1524,14 +1562,40 @@ def _apply_suite_precedence(
         # verification simply did not happen. There is no grounded correction to
         # send a builder, and inventing one would send it chasing a defect no
         # evidence describes. This is a blocked run, not a failing product.
+        #
+        # The summary names the blocker this run ACTUALLY has. It used to assert
+        # the unverified count unconditionally, and so reported "0 required
+        # scenario(s) never established a pass" as the reason a run was blocked
+        # — a sentence that is false on its own terms whenever the blocker is a
+        # generation or assembly problem instead.
+        causes: list[str] = []
+        if verdict.unverified:
+            causes.append(
+                f"{len(verdict.unverified)} required scenario(s) never established a pass"
+            )
+        if verdict.generation_problems:
+            causes.append(
+                f"{len(verdict.generation_problems)} verification generation/assembly "
+                "problem(s) mean coverage this run committed to was never built or executed"
+            )
+        if verdict.uncovered_risks:
+            causes.append(
+                f"{len(verdict.uncovered_risks)} identified acceptance-blocking risk(s) "
+                "have no passing scenario"
+            )
         emit("  product evaluation ACCEPTed, but required verification did not run.")
         for line in verdict.summary_block().splitlines():
             emit(f"  {line}")
         return EvaluatorDecision(
             decision=Decision.BLOCKED,
             summary=(
-                f"The product evaluation accepted, but {len(verdict.unverified)} required "
-                "scenario(s) never established a pass, so there is no evidence to accept on."
+                "The product evaluation accepted, but "
+                + (
+                    "; ".join(causes)
+                    if causes
+                    else "verification did not establish a pass"
+                )
+                + ", so there is no evidence to accept on."
             ),
             problems=[c.brief() for c in verdict.unverified] + list(verdict.generation_problems),
             observed_behavior=decision.observed_behavior,
@@ -3399,9 +3463,20 @@ def _review_headline(result: LoopResult) -> str:
     as reassurance by a reader who does not know what to look for.
     """
     requirement = result.review_requirement
-    if requirement is None or not getattr(requirement, "required", False):
+    if requirement is None:
+        return "not established for this run — no review requirement was resolved"
+    if not getattr(requirement, "required", False):
         return "not required for this task"
     if not result.reviews:
+        # "No reviewer produced a verdict" reads as a reviewer that ran and said
+        # nothing. When the run never reached the point of taking one, say that
+        # instead: REQUIRED, NOT YET RUN is a different state from REQUIRED and
+        # unanswered, and only one of them is a reviewer problem.
+        if result.status is not RunStatus.ACCEPTED:
+            return (
+                "REQUIRED, NOT YET RUN — this run did not reach an acceptance, so the "
+                "review it owes has not been taken yet"
+            )
         return "REQUIRED — and no reviewer produced a verdict"
     last = result.reviews[-1]
     if getattr(last, "reproduced_runtime_evidence", False):
