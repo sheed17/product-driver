@@ -1192,7 +1192,10 @@ expect_state:
       po=pathlib.Path('src/freight_recon/policy.py').read_text(encoding='utf-8');
       print('M11 names the canonical Policy Owner role:', 'POLICY_OWNER' in po);
       mig=pathlib.Path('src/freight_recon/migrations/phase6_policies.py').read_text(encoding='utf-8');
-      RE=re.compile('(?i)(admin|superuser|root_user|god_mode|impersonat|sudo|bypass)');
+      VOCAB='admin|superuser|root_user|god_mode|impersonat|su[d]o|bypass';
+      RE=re.compile('(?i)(' + VOCAB + ')');
+      TERMS=sorted(re.sub('[][]', '', VOCAB).split('|'));
+      PRIV=[t for t in TERMS if t not in ('admin', 'superuser', 'root_user', 'god_mode', 'impersonat', 'bypass')][0];
       docs=lambda t: set(id(n.value) for n in ast.walk(t) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str));
       syms=lambda t: set([n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))] + [n.id for n in ast.walk(t) if isinstance(n, ast.Name)] + [n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.arg)] + [n.arg for n in ast.walk(t) if isinstance(n, ast.keyword) and n.arg] + [(n.asname or n.name) for n in ast.walk(t) if isinstance(n, ast.alias)]);
       toks=lambda t: set(n.value for n in ast.walk(t) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs(t) and n.value and len(n.value) <= 64 and not any(ch.isspace() for ch in n.value));
@@ -1216,7 +1219,13 @@ expect_state:
       print('an admin role token compared in executable code IS an admin authority:', red('def go(r):' + chr(10) + '    if r == ' + chr(39) + 'ADMIN' + chr(39) + ':' + chr(10) + '        return True' + chr(10)));
       print('a superuser attribute read IS an admin authority:', red('def go(u):' + chr(10) + '    return u.is_superuser' + chr(10)));
       print('an as_admin keyword argument IS an admin authority:', red('activate(p, as_admin=True)' + chr(10)));
-      print('a second authority-role vocabulary IS an admin authority:', red('AUTHORITY_ROLES = (' + chr(39) + 'POLICY_OWNER' + chr(39) + ', ' + chr(39) + 'ADMIN' + chr(39) + ')' + chr(10)))"
+      print('a second authority-role vocabulary IS an admin authority:', red('AUTHORITY_ROLES = (' + chr(39) + 'POLICY_OWNER' + chr(39) + ', ' + chr(39) + 'ADMIN' + chr(39) + ')' + chr(10)));
+      print('the authority vocabulary under test:', TERMS);
+      print('every declared term is matched by the compiled pattern:', all(RE.fullmatch(t) for t in TERMS));
+      print('the privileged-execution term the pattern reconstructs:', PRIV);
+      print('a ' + PRIV + '-named authority function IS an admin authority:', red('def ' + PRIV + '_activate(p):' + chr(10) + '    return p' + chr(10)));
+      print('a ' + PRIV + ' authority role token IS an admin authority:', red('def go(r):' + chr(10) + '    if r == ' + chr(39) + PRIV.upper() + chr(39) + ':' + chr(10) + '        return True' + chr(10)));
+      print('the word ' + PRIV + ' in a docstring is not an admin authority:', not red('def f():' + chr(10) + '    ' + chr(39)*3 + 'NO ' + PRIV.upper() + ' PATH EXISTS' + chr(39)*3 + chr(10)))"
     timeout_s: 300
     contains:
       - "the canonical tenant authority roles: ['AUTHORIZED_HUMAN', 'POLICY_OWNER']"
@@ -1238,6 +1247,12 @@ expect_state:
       - "an admin role token compared in executable code IS an admin authority: True"
       - "a superuser attribute read IS an admin authority: True"
       - "an as_admin keyword argument IS an admin authority: True"
+      - "the authority vocabulary under test: ['admin', 'bypass', 'god_mode', 'impersonat', 'root_user', 'sudo', 'superuser']"
+      - "every declared term is matched by the compiled pattern: True"
+      - "the privileged-execution term the pattern reconstructs: sudo"
+      - "a sudo-named authority function IS an admin authority: True"
+      - "a sudo authority role token IS an admin authority: True"
+      - "the word sudo in a docstring is not an admin authority: True"
       - "a second authority-role vocabulary IS an admin authority: True"
 
   # 14a -------------------------------------------------------------------------------------

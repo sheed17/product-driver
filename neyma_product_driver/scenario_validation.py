@@ -279,18 +279,25 @@ class ApprovedCommands:
         # entry; the first spelling wins the text, and `verbatim` is emitted in
         # `entries` order so the two tuples index the same command.
         by_key: dict[str, str] = {}
-        # key -> the human-authored NAME the command was written under. See
-        # `by_name` below for why this is not the same identity as the token.
-        name_by_key: dict[str, str] = {}
+        # label -> command key, and key -> label. Only ONE direction is an
+        # ambiguity: a label two different commands answer to identifies
+        # neither, and is dropped. A command written under two labels is not
+        # ambiguous at all — each label still resolves to exactly one command —
+        # so both are kept, and `names` reports the lexicographically first so
+        # that what `name_for` records is stable across processes.
+        key_by_label: dict[str, str] = {}
+        ambiguous_labels: set[str] = set()
         for raw_name, raw_command in (names or {}).items():
             key = _norm_command(raw_command)
             label = " ".join(str(raw_name or "").split())
             if not key or not label:
                 continue
-            # A name that two different commands answer to identifies neither,
-            # so it identifies nothing. Marked, and dropped below.
-            if name_by_key.setdefault(key, label) != label:
-                name_by_key[key] = ""
+            if key_by_label.setdefault(label, key) != key:
+                ambiguous_labels.add(label)
+        name_by_key: dict[str, str] = {}
+        for label, key in sorted(key_by_label.items()):
+            if label not in ambiguous_labels:
+                name_by_key.setdefault(key, label)
         for raw in entries:
             key = _norm_command(raw)
             if not key:
@@ -332,17 +339,12 @@ class ApprovedCommands:
         #: survives one. It is never an approval path: nothing is approved
         #: because of its name, and rebinding through it can only ever replace a
         #: command with the CURRENT text of a CURRENTLY approved one.
-        self.by_name: dict[str, str] = {}
-        for key, text in zip(self.entries, self.verbatim):
-            label = name_by_key.get(key, "")
-            if not label:
-                continue
-            if label in self.by_name and self.by_name[label] != text:
-                # Ambiguous across two surviving commands: identifies neither.
-                self.by_name[label] = ""
-                continue
-            self.by_name[label] = text
-        self.by_name = {k: v for k, v in self.by_name.items() if v}
+        text_by_key = dict(zip(self.entries, self.verbatim))
+        self.by_name: dict[str, str] = {
+            label: text_by_key[key]
+            for label, key in key_by_label.items()
+            if label not in ambiguous_labels and key in text_by_key
+        }
 
     def name_for(self, command: str) -> str:
         """The human-authored name of the approved command ``command`` IS.

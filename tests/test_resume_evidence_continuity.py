@@ -53,7 +53,13 @@ from neyma_product_driver.scenario_suite import (
     select_rerun,
 )
 from neyma_product_driver.scenario_validation import ApprovedCommands, citation_token
-from neyma_product_driver.scenarios import CommandSpec, Scenario, ServiceSpec, load_scenario
+from neyma_product_driver.scenarios import (
+    CommandSpec,
+    Scenario,
+    ServiceSpec,
+    StateCheckSpec,
+    load_scenario,
+)
 
 from scenario_fixtures import (
     FakeFounder,
@@ -471,6 +477,50 @@ class TestRebindingApprovesNothing:
         approved = ApprovedCommands.from_sources(scenarios=[harness])
         assert ORACLE_NAME not in approved.by_name
 
+    def test_one_command_written_under_two_names_keeps_both(self):
+        """Only ONE direction is an ambiguity.
+
+        A label two different commands answer to identifies neither. A command
+        written under two labels is not ambiguous at all — each label still
+        resolves to exactly one command — and dropping those cost four M11
+        oracles their rebinding identity for no safety gain.
+        """
+        harness = _harness(ORACLE_B)
+        harness.commands = [CommandSpec(name=ORACLE_NAME, run=ORACLE_B)]
+        harness.expect_state = [
+            StateCheckSpec(name="the same battery, under the suite's name", command=ORACLE_B)
+        ]
+        approved = ApprovedCommands.from_sources(scenarios=[harness])
+
+        assert approved.by_name[ORACLE_NAME] == ORACLE_B
+        assert approved.by_name["the same battery, under the suite's name"] == ORACLE_B
+        # And what gets RECORDED is stable, not whichever was seen first.
+        assert approved.name_for(ORACLE_B) == min(
+            ORACLE_NAME, "the same battery, under the suite's name"
+        )
+
+    def test_a_binding_under_either_name_re_materializes(self):
+        old = ApprovedCommands.from_sources(
+            scenarios=[
+                _harness(ORACLE_A),
+            ]
+        )
+        harness = _harness(ORACLE_B)
+        harness.expect_state = [
+            StateCheckSpec(name="an alias for the same battery", command=ORACLE_B)
+        ]
+        new = ApprovedCommands.from_sources(scenarios=[harness])
+        assert old.by_token[citation_token(ORACLE_A)] == ORACLE_A
+
+        for label in (ORACLE_NAME, "an alias for the same battery"):
+            scenario, (rebindings, problems) = self._rebind(
+                ORACLE_A,
+                CommandBinding(field="actions[0].command", source_name=label),
+                harness,
+            )
+            assert problems == [], (label, problems)
+            assert scenario.actions[0].command == ORACLE_B
+
     def test_the_current_command_policy_still_decides(self):
         """Whatever a binding says, the replacement goes through `approves`."""
         approved = ApprovedCommands.from_sources(scenarios=[_harness(ORACLE_B)])
@@ -752,17 +802,24 @@ class TestTheRealRepairedOracles:
     """
 
     #: Every generated scenario in that run whose action command was a citation
-    #: of an oracle commit 20b49fa repaired, and whether the repaired oracle is
-    #: a command a GENERATED scenario may run at all. Three of the four are; the
-    #: fourth is not, and that is a fact about the repaired body rather than
-    #: about the resume — see `test_the_fourth_case_is_securely_unreconstructable`.
+    #: of an oracle commit 20b49fa repaired.
+    #:
+    #: All four are re-materializable. The fourth was not, at first: the repaired
+    #: admin-authority oracle searches for admin-shaped tokens and the token list
+    #: it searches FOR carried a privileged shell command verbatim, so the guard
+    #: refused the whole body for a GENERATED scenario. That was a collision
+    #: between the measurement's shape and the safety boundary, and it was
+    #: corrected on the measurement's side — the pattern spells one character as
+    #: a regex character class and proves at runtime that it still reconstructs
+    #: the same vocabulary. See tests/test_generated_command_privilege_boundary.py,
+    #: which holds down both halves of that. The guard is untouched.
     RE_MATERIALIZABLE = {
         "M11-S1-owner-singularity": "49eae6f0",
         "M11-S6-policies-uniqueness-retention-crosstenant": "e19aa628",
         "M11-A3-happy-path-positive-control-and-gate-vocab": "2388125b",
+        "M11-W2-3-no-parallel-admin-authority": "2dbc5d19",
     }
-    HARD_BLOCKED = {"M11-W2-3-no-parallel-admin-authority": "2dbc5d19"}
-    LOST = {**RE_MATERIALIZABLE, **HARD_BLOCKED}
+    LOST = dict(RE_MATERIALIZABLE)
 
     def _sets(self, tmp_path: Path):
         before = tmp_path / "before.yaml"
@@ -802,8 +859,8 @@ class TestTheRealRepairedOracles:
             assert token not in new.by_token, f"{scenario_id} would not have failed"
 
     def test_the_re_materializable_cases_are_re_materializable_by_name(self, tmp_path):
-        """Three of the four the run deleted are mechanically reconstructable —
-        which is why deleting them was a defect and not a safe refusal."""
+        """All four the run deleted are mechanically reconstructable — which is
+        why deleting them was a defect and not a safe refusal."""
         old, new = self._sets(tmp_path)
         for scenario_id, token in self.RE_MATERIALIZABLE.items():
             stale = old.by_token[token]
@@ -845,39 +902,6 @@ class TestTheRealRepairedOracles:
         assert suite.assembly_conflicts == []
         for scenario_id in self.RE_MATERIALIZABLE:
             assert suite.by_id(scenario_id) is not None
-
-    def test_the_fourth_case_is_securely_unreconstructable_and_says_why(self, tmp_path):
-        """The repaired oracle scans for admin-shaped tokens, and the token list
-        it scans FOR contains the word ``sudo``. The command guard classifies the
-        command string, so the repaired body is one a generated scenario may not
-        run at all — the permanent scenario still runs it, because a human wrote
-        that one down.
-
-        This is the negative half working. The obligation is kept, the stale
-        body is not executed, nothing is grandfathered, and the run stays blocked
-        with a reason that names the actual cause. Making it green would mean
-        weakening the command guard, which is not a thing a resume may do.
-        """
-        old, new = self._sets(tmp_path)
-        [(scenario_id, token)] = self.HARD_BLOCKED.items()
-        stale = old.by_token[token]
-        name = old.name_for(stale)
-
-        # The repaired body is refused for a reason of its own, independent of
-        # any resume: it is not in the approved set because it cannot be.
-        current = new.by_name.get(name, "")
-        assert current, "the repair kept the name"
-        ok, why = new.approves(current)
-        assert not ok and "hard-blocked" in why
-
-        scenario = self._case(scenario_id, stale, name)
-        rebindings, problems = rebind_to_approved(scenario, new)
-        assert rebindings == []
-        assert problems and "still refused" in problems[0] and "hard-blocked" in problems[0]
-        # And the stale body is still sitting there unexecuted, not swapped for
-        # something that would have run.
-        assert scenario.actions[0].command == stale
-        assert not new.approves(stale)[0]
 
     def test_the_stale_bodies_are_refused_by_the_current_set(self, tmp_path):
         """The refusal that blocked the run was correct. Only the response to it
