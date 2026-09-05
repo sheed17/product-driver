@@ -1,0 +1,2477 @@
+name: p6_m13_brake
+phase: P6
+mode: backend
+description: >-
+  P6 M13: the Brake — ADMISSION CONTROL, and the LAST P6 machine. A brake is a global withdrawal of
+  the capability to act, enforced at the effect boundary by REFUSING TO MINT and REFUSING TO CLAIM.
+  It is not a UI button, not a policy rule, and — the sentence the whole unit turns on — IT NEVER
+  KILLS A WORKER. A brake that kills workers manufactures the exact thing the architecture fears
+  most: you would engage it to become safer and, in the act of engaging it, create a payable of
+  unknown status. So the brake stops the NEXT effect, not the LAST one: anything already CLAIMED,
+  executing, or verifying RUNS TO A VERIFIED CONCLUSION. TWO states — ACTIVE, RELEASED — and no
+  third: "engaged by a human vs by a detector" is a FIELD, "partially released" is a SCOPE CHANGE,
+  and "pending release" would require a release-approval workflow, which is forbidden because
+  REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR. The ratchet is the invariant: automation may
+  ENGAGE and WIDEN; automation may NEVER NARROW or RELEASE, and a detector may never clear its own
+  alarm. A model is not a Sev-0 detector and may touch nothing. A brake NEVER expires — there is no
+  TTL, because a clock cannot know whether the fire is out. Two composed admission dimensions decide
+  every effect: the ONE tenant-exempt platform row (SD-12, id = 1, no tenant column — GLOBAL is not a
+  fake tenant) and the acting tenant's own brakes; an ACTIVE result on EITHER denies, and an absent
+  or unreadable brake state is a REFUSAL, because "cannot read the brake" must never mean "the brake
+  is off". The composite brake_version is the concurrency mechanism: a brake change between MINT and
+  CLAIM makes the claim CAS match ZERO ROWS — never both, never neither — and release BUMPS the
+  version rather than restoring it, so no stale witness or grant is ever resurrected and every queued
+  action passes a NEW full checkpoint.
+  ### M13 DOES NOT START FROM ZERO. P3 landed a real brake substrate — `brake.py`'s single
+  `BrakeStore`, the `brakes` and `platform_brake` tables, checkpoint step 7, and the claim CAS that
+  consumes the composite version token. M13 COMPLETES, HARDENS and CANONICALIZES that ONE authority.
+  ### THE DEFECT THIS SCENARIO EXISTS TO CATCH IS A SECOND BRAKE AUTHORITY: a second BrakeStore, a
+  second brake state table, a second brake decision engine, a second claim-time brake check. Two
+  answers to "is Neyma stopped?" is the same defect as no answer. M13 ships dark. This scenario
+  measures the DATABASE, the EVENT REGISTRY, the CLAIM CAS and the AST, not the probe's narration.
+
+setup:
+  - ".venv/bin/python scripts/check_env.py"
+
+# The files this unit is expected to PRODUCE. `tests/test_scenario_pytest_invocation.py` exempts a
+# scenario's own declared fixtures from the "every named test path already exists" rule, precisely
+# so a bootstrap can be written before the unit it measures.
+#
+# ### `src/freight_recon/brake.py` IS DELIBERATELY NOT IN THIS LIST, AND THAT IS THE POINT OF THE
+# WHOLE FILE. It EXISTS today — P3 landed it — so it is a regression anchor, not a deliverable. M13
+# completes the authority that is already there; it does not create a second one beside it.
+fixtures:
+  - "pyproject.toml"
+  - "src/freight_recon/brake_lifecycle.py"
+  - "src/freight_recon/migrations/phase6_brakes.py"
+  - "eval/tests/test_phase6_brake.py"
+  - "scripts/probe_phase6_brake.py"
+  - "scripts/mutate_phase6_brake.py"
+
+commands:
+  # ------------------------------------------------------------------ coverage and axis oracles
+  - name: "the M13 probe can exercise every canonical risk family"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --list-cases"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      # ---- BR-1: engagement. Instant, ceremony-free, and never conditional on health.
+      - "any-authenticated-human-engages-instantly"
+      - "engagement-needs-no-approval-and-no-ceremony"
+      - "the-brake-engages-with-the-policy-engine-down"
+      - "the-brake-engages-with-the-tms-down"
+      - "the-brake-engages-with-the-rule-store-down"
+      - "engagement-is-a-single-atomic-row-write"
+      - "engagement-records-scope-actor-and-reason"
+      - "an-empty-reason-is-not-a-reason"
+      - "an-empty-actor-is-not-an-actor"
+      - "a-named-sev-0-detector-may-engage"
+      - "a-model-may-never-engage"
+      - "a-model-cannot-masquerade-as-a-detector"
+      - "a-model-may-raise-a-signal-a-detector-may-act-on-it"
+      - "a-counterparty-may-never-engage"
+      - "inbound-content-may-never-engage"
+      - "engagement-bumps-the-owners-brake-version"
+      - "the-orphan-adapter-signal-engages-tenant-and-action-class"
+      - "the-tenant-isolation-signal-engages-globally"
+      - "br-1-emits-brakeengaged"
+      - "brakeengaged-proves-admission-is-withdrawn"
+      - "brakeengaged-does-not-prove-in-flight-work-was-killed"
+      # ---- BR-2: widening. Widening a brake NARROWS authority, so automation may.
+      - "widening-a-brake-narrows-authority"
+      - "automation-may-widen"
+      - "a-human-may-widen"
+      - "a-model-may-never-widen"
+      - "widening-bumps-the-brake-version"
+      - "widening-never-releases-anything"
+      - "br-2-emits-brakewidened"
+      # ---- BR-3: narrowing. Narrowing a brake BROADENS authority, so humans only.
+      - "narrowing-a-brake-broadens-authority"
+      - "only-an-authenticated-human-narrows"
+      - "automation-may-never-narrow"
+      - "a-detector-may-never-narrow"
+      - "a-model-may-never-narrow"
+      - "a-timer-may-never-narrow"
+      - "narrowing-bumps-the-brake-version"
+      - "narrowing-is-not-a-partial-release-state"
+      - "br-3-emits-brakenarrowed"
+      # ---- BR-4: release. Human only, and EVIDENCE — not a human and a decision_ref alone.
+      - "release-requires-an-authenticated-human"
+      - "automation-may-never-release"
+      - "a-detector-may-never-release-its-own-alarm"
+      - "a-model-may-never-release"
+      - "a-timer-may-never-release"
+      - "a-retry-handler-may-never-release"
+      - "a-counterparty-may-never-release"
+      - "release-requires-a-decision-ref"
+      - "release-requires-every-in-flight-effect-accounted-for"
+      - "an-unaccounted-in-flight-effect-blocks-release"
+      - "release-requires-no-unresolved-sev-0"
+      - "an-unresolved-sev-0-blocks-release"
+      - "release-requires-positively-demonstrated-integration-health"
+      - "a-page-that-loaded-is-not-a-positive-health-proof"
+      - "release-is-not-a-human-and-a-decision-ref-alone"
+      - "an-arbitrary-actor-string-is-not-an-authenticated-human"
+      - "unresolved-unknown-outcomes-do-not-block-release"
+      - "an-unresolved-unknown-outcome-must-be-acknowledged-and-owned"
+      - "an-unresolved-unknown-outcome-stays-frozen-after-release"
+      - "release-invents-no-second-approval-workflow"
+      - "release-requires-no-ceremony-to-become-safer"
+      - "release-bumps-the-brake-version"
+      - "released-is-terminal"
+      - "an-unauthorized-release-emits-the-registered-f14-security-event"
+      - "m13-mints-no-second-unauthorized-release-contract"
+      - "br-4-emits-brakereleased"
+      # ---- BR-5: the timer. ILLEGAL, non-producing, and there is no clock path at all.
+      - "a-timer-cannot-release-a-brake"
+      - "a-timer-cannot-narrow-a-brake"
+      - "br-5-writes-nothing-and-produces-no-event"
+      - "there-is-no-ttl-column"
+      - "there-is-no-expiry-state"
+      - "there-is-no-auto-release-path"
+      - "advancing-the-clock-arbitrarily-does-not-move-a-brake"
+      - "no-timer-may-ever-make-a-brake-less-restrictive"
+      # ---- the state set: exactly two, and the three tempting inventions by name
+      - "there-are-exactly-two-states"
+      - "released-is-the-only-terminal-state"
+      - "a-third-brake-state-is-not-insertable"
+      - "pending-release-is-forbidden-ceremony"
+      - "human-engaged-versus-detector-engaged-is-a-field"
+      - "partially-released-is-a-scope-change"
+      # ---- ADMISSION CONTROL: the five-position boundary, and the sentence the ADR exists for
+      - "an-active-brake-refuses-to-mint"
+      - "an-active-brake-refuses-to-claim"
+      - "an-active-brake-never-kills-a-worker"
+      - "the-brake-stops-the-next-effect-not-the-last"
+      - "an-unclaimed-grant-becomes-unclaimable"
+      - "a-claimed-grant-runs-to-verification"
+      - "an-executing-adapter-call-is-not-interrupted"
+      - "engaging-during-an-adapter-call-creates-no-unknown-outcome"
+      - "verification-in-progress-is-a-read-and-continues"
+      - "a-brake-manufactures-no-unknown-outcome-of-its-own"
+      - "a-retry-into-a-braked-system-is-blocked"
+      - "a-migration-tool-has-no-admin-bypass"
+      - "an-agent-proposal-is-inert-under-a-brake"
+      # ---- GLOBAL and TENANT: two composed dimensions, and GLOBAL is not a fake tenant
+      - "the-platform-brake-is-exactly-one-row"
+      - "the-platform-row-has-no-tenant-column"
+      - "global-is-not-a-fake-tenant"
+      - "there-is-no-sentinel-tenant-for-the-platform"
+      - "a-global-brake-denies-every-tenant-without-fan-out"
+      - "an-active-brake-in-either-dimension-denies"
+      - "tenant-brakes-stay-tenant-first"
+      - "a-tenant-a-brake-is-not-a-tenant-b-brake"
+      - "a-cross-tenant-brake-read-is-refused"
+      - "a-cross-tenant-release-is-refused"
+      - "the-widest-applicable-brake-is-the-one-reported"
+      # ---- FAIL CLOSED: the inversion that turns a safety control into decoration
+      - "an-absent-platform-row-refuses-the-mint"
+      - "an-absent-platform-row-refuses-the-claim"
+      - "an-unreadable-brake-store-refuses-the-mint"
+      - "cannot-read-the-brake-never-means-off"
+      - "an-unknown-scope-is-never-treated-as-no-brake"
+      - "there-is-no-allow-on-brake-error-default"
+      # ---- VERSION INVALIDATION and the race that matters
+      - "the-platform-brake-version-is-monotonic"
+      - "the-tenant-brake-version-is-monotonic"
+      - "a-brake-version-never-goes-backwards"
+      - "witnesses-bind-both-effective-components"
+      - "grants-bind-both-effective-components"
+      - "the-claim-cas-revalidates-both-components"
+      - "a-tenant-only-version-check-lets-a-global-brake-through"
+      - "a-global-only-version-check-lets-a-tenant-brake-through"
+      - "a-brake-between-mint-and-claim-matches-zero-rows"
+      - "the-mint-claim-race-is-never-both-never-neither"
+      - "the-interleaved-race-battery-runs-at-canonical-order"
+      - "no-external-effect-occurs-when-the-brake-wins"
+      - "the-race-is-decided-by-the-database-not-by-a-check"
+      # ---- RELEASE DOES NOT RESTORE OLD AUTHORITY
+      - "release-does-not-resurrect-a-stale-witness"
+      - "release-does-not-resurrect-a-stale-grant"
+      - "a-stale-witness-after-release-is-refused"
+      - "a-stale-grant-after-release-is-refused"
+      - "every-queued-action-passes-a-new-full-checkpoint"
+      - "release-mints-no-checkpoint-witness"
+      # ---- M4: reuse the landed approval authority; build no local one
+      - "a-pending-approval-remains-recorded-under-a-brake"
+      - "a-pending-approval-cannot-authorize-execution-under-a-brake"
+      - "brakeengaged-voids-an-approval-on-brake"
+      - "m13-reuses-m4s-landed-approval-authority"
+      - "m13-builds-no-local-brake-approval-mechanism"
+      - "an-old-approval-after-release-is-subject-to-m4-drift"
+      # ---- COMPENSATION blocked; OBSERVATION and RECONCILIATION continue
+      - "compensation-is-blocked-under-an-active-brake"
+      - "a-compensation-that-already-claimed-runs-to-verification"
+      - "compensation-failed-is-not-cleared-by-the-brake"
+      - "observation-continues-under-an-active-brake"
+      - "reconciliation-continues-under-an-active-brake"
+      - "the-brake-stops-acting-not-knowing"
+      # ---- THE ONE-WAY RATCHET, over every automated path
+      - "automation-may-engage-and-widen-only"
+      - "automation-may-never-narrow-or-release"
+      - "a-model-is-not-a-sev-0-detector"
+      - "system-detector-and-model-are-three-actor-classes"
+      - "the-safe-direction-rule-holds-over-every-automated-path"
+      # ---- IDEMPOTENCY: a flapping detector opens no window
+      - "repeated-engagement-on-one-scope-is-idempotent"
+      - "a-flapping-detector-creates-one-active-brake"
+      - "a-flapping-detector-opens-no-release-window"
+      - "the-signal-count-rises-on-repeated-engagement"
+      - "one-active-brake-per-tenant-and-scope"
+      # ---- F13: four contracts, strict order, and no fifth
+      - "the-four-f13-contracts-and-no-fifth"
+      - "brakeexpired-is-not-a-contract"
+      - "brakeautoreleased-is-not-a-contract"
+      - "brakependingrelease-is-not-a-contract"
+      - "f13-is-strict-per-aggregate"
+      - "the-f13-envelope-carries-the-required-order-fields"
+      - "m13-mints-no-unregistered-event"
+      - "m13-mints-no-second-f14-contract"
+      # ---- REPLAY reconstructs history and nothing else
+      - "replay-reconstructs-brake-history"
+      - "replay-never-engages-a-live-brake"
+      - "replay-mints-no-witness"
+      - "replay-mints-no-grant"
+      - "replay-produces-no-external-effect"
+      - "replay-creates-no-authority"
+      # ---- R17: a hidden brake is a silent degradation
+      - "an-active-brake-is-reported-unprompted"
+      - "the-report-names-what-is-still-allowed"
+      - "the-report-names-the-reason-and-the-actor"
+      - "the-report-distinguishes-a-human-from-a-named-detector"
+      - "the-report-names-prevented-effects"
+      - "the-report-names-in-flight-effects-and-their-status"
+      - "the-report-names-unresolved-unknown-outcomes-and-exposure"
+      - "the-report-names-the-exact-release-requirements"
+      - "a-hidden-brake-is-a-silent-degradation"
+      # ---- THE SINGLE AUTHORITY, which is this unit's own most likely defect
+      - "there-is-exactly-one-brake-authority"
+      - "m13-builds-no-second-brake-store"
+      - "m13-builds-no-second-brake-state-table"
+      - "m13-builds-no-claim-time-brake-authority"
+      - "m13-mints-no-gate-decision"
+      - "checkpoint-py-remains-the-sole-gate-minter"
+      - "m13-builds-no-second-checkpoint"
+      # ---- RETENTION: the incident record outlives the incident
+      - "a-brake-row-is-never-deleted"
+      - "the-incident-record-is-retained-permanently"
+      - "a-new-incident-is-a-new-brake"
+      # ---- SHIP DARK, and the phase does not move
+      - "m13-ships-dark-with-zero-production-importers"
+      - "no-brake-console-or-dashboard-exists"
+      - "no-channel-brake-command-exists"
+      - "no-production-detector-wiring-exists"
+      - "nothing-graduates"
+      - "landing-m13-is-not-p6-acceptance"
+      - "m1-through-m12-are-unchanged"
+
+  - name: "the M13 probe declares its mutation axes"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --list-dimensions"
+    expect_exit_code: 0
+    timeout_s: 180
+    expect_contains:
+      # ---- --position: the FIVE-POSITION BOUNDARY. This unit's own first axis, and the reason it
+      # exists: positions 1 and 2 STOP, positions 3, 4 and 5 RUN TO A VERIFIED CONCLUSION. A
+      # generator that cannot vary the position can only ever exercise the half of the brake that
+      # stops things, and the half that must NOT stop things is where the unknown outcome is made.
+      - "position:1-not-yet-executing"
+      - "position:2-granted-unclaimed"
+      - "position:3-claimed-not-yet-called"
+      - "position:4-adapter-called-response-pending"
+      - "position:5-verification-in-progress"
+      # ---- --owner: the TWO COMPOSED ADMISSION DIMENSIONS. This unit's own second axis. An oracle
+      # that only ever engages one of them cannot tell a composite version check from a single one.
+      - "owner:platform"
+      - "owner:tenant"
+      - "owner:both"
+      # ---- --actor: the actor classes, which must never be collapsed into one
+      - "actor:human"
+      - "actor:detector"
+      - "actor:model"
+      - "actor:automation"
+      - "actor:timer"
+      - "actor:retry"
+      - "actor:counterparty"
+      # ---- --transition: the five canonical BR rows
+      - "transition:BR-1"
+      - "transition:BR-2"
+      - "transition:BR-3"
+      - "transition:BR-4"
+      - "transition:BR-5"
+      # ---- --inject: the closed fault set, every member a REFUSAL and never a default-open
+      - "inject:brake-store-unreadable"
+      - "inject:platform-row-absent"
+      - "inject:policy-engine-down"
+      - "inject:tms-down"
+      - "inject:rule-store-down"
+      - "inject:brake-between-mint-and-claim"
+
+  - name: "drive the Brake machine through a brokerage incident, and attack it"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains:
+      - "behaviours as specified, 0 wrong"
+      - "A BRAKE REFUSES TO MINT AND REFUSES TO CLAIM"
+      - "A BRAKE NEVER KILLS A WORKER"
+      - "THE BRAKE STOPS THE NEXT EFFECT, NOT THE LAST"
+
+  - name: "every M13 case runs end to end"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --all"
+    expect_exit_code: 0
+    timeout_s: 3600
+    expect_contains:
+      - "behaviours as specified, 0 wrong"
+
+  # ------------------------------------------------------------------ BR-1: engagement
+  - name: "any authenticated human engages instantly, with the policy engine and the TMS down"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-brake-engages-with-the-policy-engine-down --inject policy-engine-down"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "ANY AUTHENTICATED HUMAN ENGAGES INSTANTLY, WITH NO CEREMONY"
+      - "THE BRAKE ENGAGES WITH THE POLICY ENGINE AND THE TMS DOWN"
+      - "A SAFETY CONTROL THAT REQUIRES A HEALTHY SYSTEM IS NOT A SAFETY CONTROL"
+
+  - name: "engagement is one atomic row write that records scope, actor and reason"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case engagement-is-a-single-atomic-row-write"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["ENGAGEMENT IS ONE ATOMIC ROW WRITE"]
+
+  - name: "a named Sev-0 detector may engage, and a model may never masquerade as one"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-model-cannot-masquerade-as-a-detector --actor model"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "A MODEL IS NOT A SEV-0 DETECTOR"
+      - "A MODEL MAY NEVER ENGAGE, NARROW OR RELEASE"
+
+  # ------------------------------------------------------------------ BR-2 / BR-3: the ratchet
+  - name: "widening narrows authority and automation may do it"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case automation-may-widen --actor automation"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "WIDENING A BRAKE NARROWS AUTHORITY"
+      - "AUTOMATION MAY ENGAGE AND WIDEN"
+
+  - name: "narrowing broadens authority and only an authenticated human may do it"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case only-an-authenticated-human-narrows --actor all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "NARROWING A BRAKE BROADENS AUTHORITY"
+      - "AUTOMATION MAY NEVER NARROW OR RELEASE"
+
+  - name: "the safe-direction ratchet holds over every automated path"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-safe-direction-rule-holds-over-every-automated-path --actor all"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "AUTOMATION MAY ENGAGE AND WIDEN"
+      - "AUTOMATION MAY NEVER NARROW OR RELEASE"
+      - "A DETECTOR MAY NEVER CLEAR ITS OWN ALARM"
+      - "behaviours as specified, 0 wrong"
+
+  # ------------------------------------------------------------------ BR-4: release evidence
+  - name: "release is not a human and a decision_ref alone"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case release-is-not-a-human-and-a-decision-ref-alone"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "RELEASE REQUIRES POSITIVE EVIDENCE, NOT A DECISION REF ALONE"
+      - "A PAGE LOADING IS NOT A POSITIVE HEALTH PROOF"
+
+  - name: "an unaccounted in-flight effect and an unresolved Sev-0 each block release"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-unaccounted-in-flight-effect-blocks-release"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["EVERY IN-FLIGHT EFFECT MUST BE ACCOUNTED FOR BEFORE RELEASE"]
+
+  - name: "unresolved unknown outcomes do not block release, and stay frozen and owned"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case unresolved-unknown-outcomes-do-not-block-release"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "UNRESOLVED UNKNOWN OUTCOMES DO NOT BLOCK RELEASE, AND STAY FROZEN AND OWNED"
+      - "THE BRAKE RELEASES NOTHING BUT ITSELF"
+
+  - name: "release requires no ceremony to become safer, and invents no second approval workflow"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case release-invents-no-second-approval-workflow"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR"]
+
+  - name: "an unauthorized release reaches the already-registered F14 event"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-unauthorized-release-emits-the-registered-f14-security-event --actor all"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "AN UNAUTHORIZED RELEASE REACHES THE REGISTERED F14 EVENT"
+      - "M13 MINTS NO SECOND UNAUTHORIZED-RELEASE CONTRACT"
+
+  # ------------------------------------------------------------------ BR-5: the clock
+  - name: "no timer moves a brake, in any direction, at any clock offset"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case advancing-the-clock-arbitrarily-does-not-move-a-brake --actor timer"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A BRAKE NEVER EXPIRES"
+      - "NO TIMER MOVES A BRAKE"
+      - "THE CLOCK MAY NEVER MAKE A BRAKE LESS RESTRICTIVE"
+
+  - name: "BR-5 writes nothing and produces no event"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case br-5-writes-nothing-and-produces-no-event"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["BR-5 IS ILLEGAL AND NON-PRODUCING"]
+
+  # ------------------------------------------------------------------ the five-position boundary
+  - name: "the brake never kills a worker, at every one of the five boundary positions"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-brake-stops-the-next-effect-not-the-last --position all"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains:
+      - "THE BRAKE STOPS THE NEXT EFFECT, NOT THE LAST"
+      - "A BRAKE NEVER KILLS A WORKER"
+      - "KILLING A WORKER WOULD MANUFACTURE AN UNKNOWN OUTCOME"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "engaging during an adapter call creates no unknown outcome"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case engaging-during-an-adapter-call-creates-no-unknown-outcome --position 4"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "ENGAGING DURING AN ADAPTER CALL CREATES NO UNKNOWN OUTCOME"
+      - "A CLAIMED GRANT RUNS TO VERIFICATION"
+
+  - name: "an unclaimed grant becomes unclaimable while a claimed one runs to verification"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-unclaimed-grant-becomes-unclaimable --position 2"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN UNCLAIMED GRANT BECOMES UNCLAIMABLE"]
+
+  - name: "verification in progress is a read and the brake has no reason to stop it"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case verification-in-progress-is-a-read-and-continues --position 5"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["VERIFICATION IS A READ, AND THE BRAKE DOES NOT STOP A READ"]
+
+  # ------------------------------------------------------------------ global and tenant
+  - name: "one platform row denies every tenant, with no N-row fan-out and no sentinel tenant"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-global-brake-denies-every-tenant-without-fan-out --owner platform --tenants 5"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "THE PLATFORM BRAKE IS ONE TENANT-EXEMPT ROW"
+      - "GLOBAL IS NOT A FAKE TENANT"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "an ACTIVE brake in either dimension denies"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-active-brake-in-either-dimension-denies --owner both"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN ACTIVE BRAKE IN EITHER DIMENSION DENIES"]
+
+  - name: "one tenant's brake is never another tenant's brake"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-tenant-a-brake-is-not-a-tenant-b-brake --owner tenant --tenants 4"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A TENANT BRAKE IS TENANT-FIRST AND NEVER GLOBAL"]
+
+  # ------------------------------------------------------------------ fail closed
+  - name: "an unreadable brake store refuses the mint and refuses the claim"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case cannot-read-the-brake-never-means-off --inject brake-store-unreadable"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "CANNOT READ THE BRAKE NEVER MEANS OFF"
+      - "THERE IS NO ALLOW-ON-BRAKE-ERROR DEFAULT"
+
+  - name: "an absent platform row is a refusal, not a released brake"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-absent-platform-row-refuses-the-mint --inject platform-row-absent"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["AN ABSENT BRAKE ROW IS A REFUSAL, NEVER A RELEASED BRAKE"]
+
+  - name: "an unknown scope is never treated as no brake"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-unknown-scope-is-never-treated-as-no-brake"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains: ["AN UNKNOWN SCOPE IS A REFUSAL, NEVER AN ABSENT BRAKE"]
+
+  # ------------------------------------------------------------------ the race
+  - name: "a brake between mint and claim makes the CAS match zero rows"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-brake-between-mint-and-claim-matches-zero-rows --inject brake-between-mint-and-claim"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS"
+      - "NEVER BOTH, NEVER NEITHER"
+
+  - name: "the interleaved race battery runs at the canonical order and is never both, never neither"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-interleaved-race-battery-runs-at-canonical-order --owner both --repeat 10000"
+    expect_exit_code: 0
+    timeout_s: 3600
+    expect_contains:
+      - "NEVER BOTH, NEVER NEITHER"
+      - "THE RACE IS DECIDED BY THE DATABASE, NOT BY A CHECK"
+      - "behaviours as specified, 0 wrong"
+
+  - name: "a version check that omits either component lets a real brake through"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-tenant-only-version-check-lets-a-global-brake-through --owner both"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains: ["THE CLAIM CAS REVALIDATES BOTH BRAKE VERSIONS"]
+
+  - name: "concurrent claims against a brake engaged mid-flight produce exactly one outcome"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-mint-claim-race-is-never-both-never-neither --concurrency 8 --repeat 250"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["behaviours as specified, 0 wrong"]
+
+  # ------------------------------------------------------------------ release does not restore
+  - name: "release does not resurrect a stale witness or a stale grant"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case release-does-not-resurrect-a-stale-witness"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "RELEASE DOES NOT RESURRECT A STALE WITNESS"
+      - "RELEASE DOES NOT RESURRECT A STALE GRANT"
+
+  - name: "every queued action passes a new full checkpoint after release"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case every-queued-action-passes-a-new-full-checkpoint"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "EVERY QUEUED ACTION PASSES A NEW FULL CHECKPOINT AFTER RELEASE"
+      - "RELEASE MINTS NO CHECKPOINT WITNESS"
+
+  # ------------------------------------------------------------------ M4, compensation, observation
+  - name: "a pending approval stays recorded and cannot authorize execution"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-pending-approval-cannot-authorize-execution-under-a-brake"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A PENDING APPROVAL STAYS RECORDED AND CANNOT EXECUTE"
+      - "M13 REUSES M4 AND BUILDS NO LOCAL APPROVAL MECHANISM"
+
+  - name: "compensation is blocked while observation and reconciliation continue"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case compensation-is-blocked-under-an-active-brake"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"
+      - "OBSERVATION AND RECONCILIATION CONTINUE"
+      - "THE BRAKE STOPS ACTING, NOT KNOWING"
+
+  - name: "a compensation that already claimed runs to verification like any other effect"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-compensation-that-already-claimed-runs-to-verification --position 3"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["A COMPENSATION IS AN EFFECT AND OBEYS THE SAME BOUNDARY"]
+
+  # ------------------------------------------------------------------ idempotency
+  - name: "a flapping detector is one ACTIVE brake, a rising signal count, and no window"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case a-flapping-detector-creates-one-active-brake --actor detector --repeat 200"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "A FLAPPING DETECTOR IS ONE ACTIVE BRAKE AND NO WINDOW"
+      - "behaviours as specified, 0 wrong"
+
+  # ------------------------------------------------------------------ events and replay
+  - name: "M13 mints exactly the four registered F13 contracts and no fifth"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case the-four-f13-contracts-and-no-fifth"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "FOUR F13 CONTRACTS AND NO FIFTH"
+      - "THERE IS NO BrakeExpired, NO BrakeAutoReleased AND NO BrakePendingRelease"
+
+  - name: "F13 is strict per aggregate and the envelope carries its ordering fields"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case f13-is-strict-per-aggregate"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains: ["F13 IS STRICT PER AGGREGATE"]
+
+  - name: "replay reconstructs brake history and creates no authority"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case replay-creates-no-authority"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "REPLAY RECONSTRUCTS HISTORY AND CREATES NO AUTHORITY"
+      - "REPLAY NEVER ENGAGES A LIVE BRAKE"
+
+  # ------------------------------------------------------------------ R17
+  - name: "an ACTIVE brake is reported unprompted with everything an operator needs to release it"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case an-active-brake-is-reported-unprompted"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "A HIDDEN BRAKE IS A SILENT DEGRADATION"
+      - "AN ACTIVE BRAKE IS REPORTED UNPROMPTED"
+      - "THE REPORT NAMES WHAT IS STILL ALLOWED"
+      - "THE REPORT NAMES THE EXACT RELEASE REQUIREMENTS"
+
+  # ------------------------------------------------------------------ the single authority
+  - name: "there is exactly one brake authority and M13 built no second one"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case there-is-exactly-one-brake-authority"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "THERE IS EXACTLY ONE BRAKE AUTHORITY"
+      - "M13 BUILDS NO SECOND BRAKE STORE"
+      - "M13 BUILDS NO SECOND BRAKE STATE TABLE"
+
+  - name: "M13 mints no gate decision and the checkpoint stays the sole minter"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case checkpoint-py-remains-the-sole-gate-minter"
+    expect_exit_code: 0
+    timeout_s: 600
+    expect_contains:
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+      - "M13 MINTS NO GATE DECISION"
+
+  # ------------------------------------------------------------------ scope and posture
+  - name: "M13 ships dark, and no operator channel reaches the brake"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case m13-ships-dark-with-zero-production-importers"
+    expect_exit_code: 0
+    timeout_s: 300
+    expect_contains:
+      - "M13 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "NO BRAKE CONSOLE, DASHBOARD OR CHANNEL COMMAND EXISTS"
+
+  - name: "nothing graduates, landing M13 is not P6 acceptance, and M1-M12 are unchanged"
+    run: ".venv/bin/python scripts/probe_phase6_brake.py --case m1-through-m12-are-unchanged"
+    expect_exit_code: 0
+    timeout_s: 900
+    expect_contains:
+      - "NOTHING GRADUATES"
+      - "LANDING M13 IS NOT P6 ACCEPTANCE"
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+      - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+      - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+      - "THE M11 POLICY MACHINE IS UNCHANGED"
+      - "THE M12 RULE MACHINE IS UNCHANGED"
+
+  # ------------------------------------------------------------------ batteries and anchors
+  - name: "the M13 acceptance battery passes"
+    run: ".venv/bin/python -m pytest eval/tests/test_phase6_brake.py -q"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  - name: "the M13 mutation battery catches every planted defect"
+    run: ".venv/bin/python scripts/mutate_phase6_brake.py"
+    expect_exit_code: 0
+    timeout_s: 3600
+    expect_contains: ["mutations caught, 0 escaped"]
+
+  # ---- P3 IS THE REGRESSION ANCHOR THAT MATTERS MOST HERE, because M13 edits the module it
+  # measures. If `brake.py` is completed carelessly, THIS is what turns red first.
+  - name: "P3's landed brake, checkpoint matrix and claim CAS are unbroken"
+    run: ".venv/bin/python -m pytest eval/tests/test_phase3_brake.py eval/tests/test_phase3_claim_cas.py eval/tests/test_phase3_checkpoint_matrix.py eval/tests/test_phase3_step_order.py -q"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  - name: "the M4, M10 and M12 neighbours that consume brake state are unbroken"
+    run: ".venv/bin/python -m pytest eval/tests/test_phase6_approval.py eval/tests/test_phase6_compensation.py eval/tests/test_phase6_rule.py -q"
+    expect_exit_code: 0
+    timeout_s: 2400
+    expect_contains: ["passed"]
+
+  - name: "the event contract, replay and audit batteries are unbroken"
+    run: ".venv/bin/python -m pytest eval/tests/test_p5_event_contracts.py eval/tests/test_p5_replay_and_audit.py -q"
+    expect_exit_code: 0
+    timeout_s: 1800
+    expect_contains: ["passed"]
+
+  - name: "the schema readiness and tenant-partition guards are unbroken"
+    run: ".venv/bin/python -m pytest eval/tests/test_phase3_schema.py eval/tests/test_u26bc_schema_readiness.py -q"
+    expect_exit_code: 0
+    timeout_s: 1200
+    expect_contains: ["passed"]
+
+expect_state:
+  # 1 ---------------------------------------------------------------------------------------
+  #
+  # THE BRAKE LAYER EXISTS ON A FRESH CANONICAL DATABASE, AND IT IS THE LANDED ONE. `brakes` and
+  # `platform_brake` are P3's tables, not M13's: this oracle is here so that a unit which "added the
+  # brake layer" by creating a THIRD table beside them fails on the table set rather than on taste.
+  - name: "a freshly created canonical database carries the one brake layer, and exactly two brake tables"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import (create_canonical_schema, schema_readiness_problems,
+      enable_and_verify_foreign_keys); p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      print('problems:', schema_readiness_problems(c));
+      t=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)));
+      print('the canonical table set:', t);
+      brake_tables=sorted(x for x in t if chr(98)+chr(114)+chr(97)+chr(107)+chr(101) in x);
+      print('tables whose name carries the word brake:', brake_tables);
+      print('brake state tables:', len(brake_tables));
+      print('a second brake state table appeared:', sorted(set(brake_tables) - {'brakes','platform_brake'}))"
+    timeout_s: 300
+    contains:
+      - "problems: []"
+      - "brakes"
+      - "platform_brake"
+      - "checkpoint_witnesses"
+      - "effect_grants"
+      - "tenant_humans"
+      - "approvals"
+      - "compensations"
+      - "rules"
+      - "policies"
+      - "event_outbox"
+      - "the canonical table set:"
+      - "brake state tables: 2"
+      - "a second brake state table appeared: []"
+
+  # 2 ---------------------------------------------------------------------------------------
+  #
+  # TWO STATES, AS A DATABASE CONSTRAINT, ON BOTH BRAKE TABLES — AND THE FORBIDDEN THIRD BY NAME.
+  # `PENDING_RELEASE` and `ENGAGING` are the two a careful builder invents while being careful:
+  # "pending release" reads like prudence and IS the forbidden ceremony, and `EXPIRED` arrives with
+  # any code that thinks in TTLs. This asserts the CHECK exists on BOTH tables, because the platform
+  # row is the one an author is most likely to leave loosely typed.
+  - name: "the two canonical brake states are a database constraint on both brake tables, and there is no third"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      banned=('PENDING','PENDING_RELEASE','ENGAGING','DISENGAGED','EXPIRED','SUSPENDED','PARTIAL','FAILED','CANCELLED','PAUSED','DISABLED','ENABLED','RECOVERING','DRAFT','APPROVED');
+      [print('---', t) or
+      print('the state vocabulary is a CHECK:', bool(vocab(t).get('state'))) or
+      print('canonical two:', sorted(vocab(t).get('state') or [])) or
+      print('state count:', len(vocab(t).get('state') or [])) or
+      print('forbidden states present:', sorted([x for x in (vocab(t).get('state') or []) if x in banned])) or
+      print('the actor_kind vocabulary is a CHECK:', bool(vocab(t).get('actor_kind'))) or
+      print('canonical actor kinds:', sorted(vocab(t).get('actor_kind') or []))
+      for t in ('brakes','platform_brake')];
+      nn=[r[1] for r in c.execute('pragma table_info(brakes)') if r[3]];
+      print('the brakes NOT NULL column set:', sorted(nn));
+      cols=sorted(r[1] for r in c.execute('pragma table_info(brakes)'));
+      print('the brakes column set:', cols);
+      print('every canonical required attribute is a column:', sorted(x for x in ('tenant','brake_id','scope','state','brake_version','actor','actor_kind','engaged_reason','engaged_at','released_by','release_decision_ref','released_at') if x not in cols));
+      pcols=sorted(r[1] for r in c.execute('pragma table_info(platform_brake)'));
+      print('the platform_brake column set:', pcols);
+      print('platform_brake carries a tenant column:', any(x.startswith('tenant') for x in pcols))"
+    timeout_s: 300
+    contains:
+      - "the state vocabulary is a CHECK: True"
+      - "canonical two: ['ACTIVE', 'RELEASED']"
+      - "state count: 2"
+      - "forbidden states present: []"
+      - "the actor_kind vocabulary is a CHECK: True"
+      - "canonical actor kinds: ['DETECTOR', 'HUMAN']"
+      - "every canonical required attribute is a column: []"
+      - "platform_brake carries a tenant column: False"
+
+  # 3 ---------------------------------------------------------------------------------------
+  #
+  # NO TTL, NO EXPIRY, NO CLOCK — MEASURED ON THE LIVE SCHEMA AND ON THE EXECUTABLE CODE SEPARATELY.
+  #
+  # ### THE MEASUREMENT ITSELF IS THE SUBTLE PART, AND THIS BOOTSTRAP GOT IT WRONG ONCE BEFORE
+  # FIXING IT. `brake.py`'s module docstring contains the words "TTL" and "expire" — in the sentence
+  # explaining that neither exists. A grep over the file text reports a TTL on a tree that has none.
+  # So the code half of this oracle walks the AST and reads IDENTIFIERS and NON-DOCSTRING STRING
+  # LITERALS only. A guard that fires on the prose describing its own absence is not a guard.
+  - name: "no TTL or expiry exists — not as a column, not as an identifier, not as a live code path"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,ast; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      cols=[t + '.' + r[1] for t in ('brakes','platform_brake') for r in c.execute('pragma table_info(' + t + ')')];
+      print('the brake column universe:', sorted(cols));
+      print('TTL or expiry columns on a brake table:', sorted(x for x in cols if any(w in x.lower() for w in ('ttl','expire','expiry','until','deadline'))));
+      import pathlib; env={'ast':ast,'pathlib':pathlib};
+      exec(chr(10).join([
+      'def scan(path):',
+      '    tree = ast.parse(pathlib.Path(path).read_text())',
+      '    docs = set()',
+      '    for node in ast.walk(tree):',
+      '        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):',
+      '            first = node.body[0] if node.body else None',
+      '            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):',
+      '                docs.add(id(first.value))',
+      '    idents = set()',
+      '    for n in ast.walk(tree):',
+      '        if isinstance(n, ast.Name): idents.add(n.id)',
+      '        elif isinstance(n, ast.Attribute): idents.add(n.attr)',
+      '        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)): idents.add(n.name)',
+      '        elif isinstance(n, ast.arg): idents.add(n.arg)',
+      '    lits = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs]',
+      '    return idents, lits']), env);
+      scan=env['scan']; words=('ttl','expire','expiry','timerfired','auto_release','autorelease');
+      [print(f) or
+      print('  expiry identifiers:', sorted(i for i in scan(f)[0] if any(w in i.lower() for w in words))) or
+      print('  expiry literals in executable code:', sorted(s for s in scan(f)[1] if any(w in s.lower() for w in words)))
+      for f in sorted(x for x in ('src/freight_recon/brake.py','src/freight_recon/brake_lifecycle.py','src/freight_recon/migrations/phase3_checkpoint.py','src/freight_recon/migrations/phase6_brakes.py') if os.path.exists(x))]"
+    timeout_s: 300
+    contains:
+      - "TTL or expiry columns on a brake table: []"
+      - "src/freight_recon/brake.py"
+      - "src/freight_recon/brake_lifecycle.py"
+      - "  expiry identifiers: []"
+      - "  expiry literals in executable code: []"
+
+  # 4 ---------------------------------------------------------------------------------------
+  #
+  # THE FORBIDDEN WRITES, ATTEMPTED AGAINST A LIVE DATABASE, BEHIND POSITIVE CONTROLS. Reading DDL
+  # and believing it is how a CHECK that was never compiled reads as enforcement. The surviving-row
+  # count is asserted so a schema that refuses EVERYTHING cannot pass by being uniformly hostile.
+  #
+  # ### THE LOAD-BEARING ONES ARE `a RELEASED brake with no releaser` and `a detector-released
+  # brake`. Entity point 16 makes both database constraints and point 37 makes both STRUCTURALLY
+  # IMPOSSIBLE STATES. If a RELEASED row can exist with a null `released_by`, then "a human released
+  # this" is a convention; if `released_by` may hold a detector id, then the whole one-way ratchet is
+  # a runtime `if` that one refactor deletes.
+  - name: "the live database refuses a third state, a releaser-less release, a detector releaser and a cross-tenant actor"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p);
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); T='brakes';
+      print('brakes table present:', bool(c.execute('select 1 from sqlite_master where type=' + chr(39) + 'table' + chr(39) + ' and name=?', (T,)).fetchone()));
+      ddl=lambda t: (lambda r: r[0] if r else '')(c.execute('select sql from sqlite_master where name=?', (t,)).fetchone());
+      vocab=lambda t: dict([(m[0], re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39), m[2])) for m in reversed(re.findall('([A-Za-z0-9_]+) +(NOT +)?IN *[(]([^)]*)[)]', ddl(t))) if not m[1]]);
+      info=lambda t: list(c.execute('pragma table_info(' + t + ')')); colsof=lambda t: [r[1] for r in info(t)];
+      env={'c':c,'sqlite3':sqlite3,'vocab':vocab,'info':info,'colsof':colsof,'T':T};
+      exec(chr(10).join(['def pick(v, r):',' n = r[1].lower()',' if r[4] is not None: return str(r[4]).strip(chr(39))',\" if r[1] in v and v[r[1]]: return int(v[r[1]][0]) if 'INT' in (r[2] or '').upper() else v[r[1]][0]\",\" if 'INT' in (r[2] or '').upper(): return 1\",\" if n.endswith('_at'): return '2026-09-05T00:00:00Z'\",\" return 'x'\",'def build(t, known):',' d = dict([(r[1], pick(vocab(t), r)) for r in info(t) if r[3]])',' d.update(dict([(k, v) for k, v in known.items() if k in colsof(t)]))',' return d','def ins(t, d):',\"  c.execute('insert into ' + t + ' (' + ','.join(d) + ') values (' + ','.join(['?']*len(d)) + ')', list(d.values()))\",'def attempt(label, d):',' try:',\"  c.execute('savepoint s'); ins(T, d); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      build=env['build']; ins=env['ins']; attempt=env['attempt'];
+      [ins('tenant_humans', dict(zip(('tenant','human_id','display_name','authority_role','state','recorded_at','recorded_by','recorded_by_kind'), (t,h,n,r,'ACTIVE','2026-09-05T00:00:00Z','founder','human')))) for t,h,n,r in (('T_A','ops-lead','Ops Lead','AUTHORIZED_HUMAN'),('T_A','policy-owner','Policy Owner','POLICY_OWNER'),('T_B','other-human','Other Human','POLICY_OWNER'))];
+      print('the M1 humans the positive controls bind:', sorted(c.execute('select tenant, human_id, authority_role from tenant_humans')));
+      fks=dict([(r[3], (r[2], r[4])) for r in c.execute('pragma foreign_key_list(' + T + ')')]);
+      print('the released_by FK target:', str(fks.get('released_by')));
+      base=build(T, {'tenant':'T_A','brake_id':'br-1','scope':'tenant','state':'ACTIVE','actor':'ops-lead','actor_kind':'HUMAN','engaged_reason':'orphan adapter invocation','engaged_at':'2026-09-05T00:00:00Z','brake_version':1,'released_by':None,'release_decision_ref':None,'released_at':None});
+      print('the derived NOT NULL column set:', sorted(base));
+      over=lambda d: dict(list(base.items()) + [(k, v) for k, v in d.items() if k in colsof(T)]);
+      [attempt(lbl, over(d)) for lbl, d in [
+      ('positive control, a well-formed ACTIVE brake', {}),
+      ('positive control, a RELEASED brake with a human releaser and a decision_ref', {'brake_id':'br-2','scope':'action:pay_carrier','state':'RELEASED','brake_version':2,'released_by':'policy-owner','release_decision_ref':'AUDIT-1','released_at':'2026-09-05T01:00:00Z'}),
+      ('positive control, a detector-ENGAGED brake', {'brake_id':'br-3','scope':'action:raise_invoice','brake_version':3,'actor':'orphan-effect-detector','actor_kind':'DETECTOR'}),
+      ('a RELEASED brake with no releaser', {'brake_id':'br-4','scope':'action:a','state':'RELEASED','brake_version':4,'released_by':None,'release_decision_ref':'AUDIT-2'}),
+      ('a RELEASED brake with no decision_ref', {'brake_id':'br-5','scope':'action:b','state':'RELEASED','brake_version':5,'released_by':'policy-owner','release_decision_ref':None}),
+      ('a PENDING_RELEASE lifecycle state', {'brake_id':'br-6','scope':'action:c','state':'PENDING_RELEASE','brake_version':6}),
+      ('an ENGAGING lifecycle state', {'brake_id':'br-7','scope':'action:d','state':'ENGAGING','brake_version':7}),
+      ('an EXPIRED lifecycle state', {'brake_id':'br-8','scope':'action:e','state':'EXPIRED','brake_version':8}),
+      ('a SUSPENDED lifecycle state', {'brake_id':'br-9','scope':'action:f','state':'SUSPENDED','brake_version':9}),
+      ('a PARTIAL lifecycle state', {'brake_id':'br-10','scope':'action:g','state':'PARTIAL','brake_version':10}),
+      ('a DISENGAGED lifecycle state', {'brake_id':'br-11','scope':'action:h','state':'DISENGAGED','brake_version':11}),
+      ('an invented MODEL actor kind', {'brake_id':'br-12','scope':'action:i','brake_version':12,'actor':'agent','actor_kind':'MODEL'}),
+      ('a releaser who is not a recorded human', {'brake_id':'br-13','scope':'action:j','state':'RELEASED','brake_version':13,'released_by':'nobody-at-all','release_decision_ref':'AUDIT-3'}),
+      ('a releaser from another tenant', {'brake_id':'br-14','scope':'action:k','state':'RELEASED','brake_version':14,'released_by':'other-human','release_decision_ref':'AUDIT-4'}),
+      ('a second ACTIVE brake on one tenant and scope', {'brake_id':'br-15','scope':'tenant','brake_version':15}),
+      ('positive control, the SAME scope ACTIVE in a DIFFERENT tenant', {'tenant':'T_B','brake_id':'br-16','scope':'tenant','brake_version':1,'actor':'other-human'})]];
+      print('rows that survived:', c.execute('select count(*) from ' + T).fetchone()[0]);
+      print('surviving RELEASED rows with a named human releaser:', c.execute('select count(*) from brakes where state=? and released_by is not null and release_decision_ref is not null', ('RELEASED',)).fetchone()[0]);
+      print('surviving RELEASED rows with no releaser:', c.execute('select count(*) from brakes where state=? and released_by is null', ('RELEASED',)).fetchone()[0]);
+      print('surviving rows in a state outside the canonical two:', c.execute('select count(*) from brakes where state not in (?,?)', ('ACTIVE','RELEASED')).fetchone()[0])"
+    timeout_s: 600
+    contains:
+      - "brakes table present: True"
+      - "positive control, a well-formed ACTIVE brake: ACCEPTED"
+      - "positive control, a RELEASED brake with a human releaser and a decision_ref: ACCEPTED"
+      - "positive control, a detector-ENGAGED brake: ACCEPTED"
+      - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
+      - "a RELEASED brake with no releaser: refused"
+      - "a RELEASED brake with no decision_ref: refused"
+      - "a PENDING_RELEASE lifecycle state: refused"
+      - "an ENGAGING lifecycle state: refused"
+      - "an EXPIRED lifecycle state: refused"
+      - "a SUSPENDED lifecycle state: refused"
+      - "a PARTIAL lifecycle state: refused"
+      - "a DISENGAGED lifecycle state: refused"
+      - "an invented MODEL actor kind: refused"
+      - "a releaser who is not a recorded human: refused"
+      - "a releaser from another tenant: refused"
+      - "a second ACTIVE brake on one tenant and scope: refused"
+      - "surviving RELEASED rows with no releaser: 0"
+      - "surviving rows in a state outside the canonical two: 0"
+
+  # 5 ---------------------------------------------------------------------------------------
+  #
+  # THE PLATFORM ROW'S CARDINALITY IS STRUCTURAL, NOT CONVENTIONAL (SD-12, amendment A1). One row,
+  # `id = 1`, no tenant column, and a SECOND row is not insertable. Both directions: the seeded row
+  # is present, and every attempt to add another is refused BY THE DATABASE.
+  - name: "exactly one platform brake row is structurally enforced, and GLOBAL is not a fake tenant"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      print('platform rows on a fresh database:', c.execute('select count(*) from platform_brake').fetchone()[0]);
+      cols=sorted(r[1] for r in c.execute('pragma table_info(platform_brake)'));
+      print('the platform_brake column set:', cols);
+      print('platform_brake has no tenant column at all:', not any('tenant' in x for x in cols));
+      env={'c':c,'sqlite3':sqlite3};
+      exec(chr(10).join(['def attempt(label, sql, args):',' try:',\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      attempt=env['attempt'];
+      attempt('a second platform row at id 2', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (2,'RELEASED',0));
+      attempt('a second platform row at id 0', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (0,'RELEASED',0));
+      attempt('a duplicate platform row at id 1', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (1,'ACTIVE',1));
+      attempt('positive control, updating the one platform row in place', 'update platform_brake set brake_version = brake_version + 1 where id = 1', ());
+      print('platform rows after every attempt:', c.execute('select count(*) from platform_brake').fetchone()[0]);
+      print('the seeded platform state:', c.execute('select state from platform_brake where id = 1').fetchone()[0]);
+      import re; ddl=c.execute('select sql from sqlite_master where name=?', ('platform_brake',)).fetchone()[0];
+      print('the id CHECK is in the DDL:', bool(re.search('CHECK *[(] *id *= *1 *[)]', ddl)));
+      import freight_recon.migrations.phase3_checkpoint as p3;
+      print('the recorded tenant-exempt table set:', sorted(p3.P3_EXEMPT_TABLES))"
+    timeout_s: 300
+    contains:
+      - "platform rows on a fresh database: 1"
+      - "platform_brake has no tenant column at all: True"
+      - "a second platform row at id 2: refused"
+      - "a second platform row at id 0: refused"
+      - "a duplicate platform row at id 1: refused"
+      - "positive control, updating the one platform row in place: ACCEPTED"
+      - "platform rows after every attempt: 1"
+      - "the id CHECK is in the DDL: True"
+      - "the recorded tenant-exempt table set: ['platform_brake']"
+
+  # 6 ---------------------------------------------------------------------------------------
+  #
+  # UNIQUENESS AND TENANCY, IN BOTH DIRECTIONS. `UNIQUE (tenant, scope) WHERE state = 'ACTIVE'` is
+  # what makes a flapping detector one brake rather than a pile. A GLOBAL uniqueness would couple two
+  # brokerages: one tenant's incident would forbid another's brake. Both failures are asserted.
+  - name: "brake uniqueness is one ACTIVE per tenant and scope, tenant-first, and never global"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      idx=[dict(name=r[0], sql=r[1] or '') for r in c.execute('select name, sql from sqlite_master where type=' + chr(39) + 'index' + chr(39) + ' and tbl_name=?', ('brakes',))];
+      print('the brake indexes:', sorted(i['name'] for i in idx));
+      partial=[i for i in idx if 'WHERE' in i['sql'].upper() and 'ACTIVE' in i['sql'].upper()];
+      print('an ACTIVE-only partial UNIQUE index exists:', bool(partial) and all('UNIQUE' in i['sql'].upper() for i in partial));
+      print('the active uniqueness columns are tenant and scope:', bool(partial) and bool(re.search('[(] *tenant *, *scope *[)]', partial[0]['sql'])));
+      print('every brake index that names columns is tenant-first:', all(bool(re.search('ON +brakes *[(] *tenant', i['sql'])) for i in idx if i['sql']));
+      pk=[r[1] for r in c.execute('pragma table_info(brakes)') if r[5]];
+      print('the brakes primary key:', pk);
+      print('tenant is FIRST in the brake primary key:', bool(pk) and pk[0] == 'tenant');
+      print('every brakes foreign key half-column carries the tenant:', sorted(set(r[3] for r in c.execute('pragma foreign_key_list(brakes)'))))"
+    timeout_s: 300
+    contains:
+      - "an ACTIVE-only partial UNIQUE index exists: True"
+      - "the active uniqueness columns are tenant and scope: True"
+      - "every brake index that names columns is tenant-first: True"
+      - "tenant is FIRST in the brake primary key: True"
+
+  # 7 ---------------------------------------------------------------------------------------
+  #
+  # RETENTION. Entity point 28 is `Deletion policy: None [C-9]` and point 29 is `Permanent (the
+  # incident record)`. A brake row is the incident, so a DELETE is refused BY THE DATABASE — not by
+  # a code path an admin tool with a connection walks straight past. The positive control proves the
+  # trigger is not a table-wide refusal of everything.
+  - name: "a brake row is never deleted, and the incident record is permanent"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      from freight_recon.brake import BrakeStore, HUMAN;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row;
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      trg=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name in (?,?)', ('brakes','platform_brake')));
+      print('the brake triggers:', trg);
+      print('a delete-refusing trigger exists on brakes:', any('delete' in x.lower() for x in trg));
+      c.execute('insert into tenant_humans (tenant, human_id, display_name, authority_role, state, recorded_at, recorded_by, recorded_by_kind) values (?,?,?,?,?,?,?,?)', ('T_A','policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-05T00:00:00Z','founder','human')); c.commit();
+      s=BrakeStore(c); b=s.engage(tenant='T_A', action_class=None, actor='policy-owner', actor_kind=HUMAN, reason='orphan adapter invocation');
+      print('a brake was engaged through the one authority:', b.state);
+      env={'c':c,'sqlite3':sqlite3};
+      exec(chr(10).join(['def attempt(label, sql, args):',' try:',\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\",' except sqlite3.Error as exc:',\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      attempt=env['attempt'];
+      attempt('a DELETE against a brake row', 'delete from brakes where tenant=? and brake_id=?', ('T_A', b.brake_id));
+      attempt('a DELETE against every brake row', 'delete from brakes', ());
+      attempt('a DELETE against the platform brake row', 'delete from platform_brake where id = 1', ());
+      r=s.release(tenant='T_A', brake_id=b.brake_id, actor='policy-owner', actor_kind=HUMAN, decision_ref='AUDIT-1');
+      print('positive control, a lawful release through the one authority:', r.state);
+      print('brake rows surviving:', c.execute('select count(*) from brakes').fetchone()[0]);
+      print('the surviving row state:', (lambda r: r[0] if r else 'NO ROW SURVIVED THE DELETE')(c.execute('select state from brakes').fetchone()));
+      print('platform rows surviving:', c.execute('select count(*) from platform_brake').fetchone()[0])"
+    timeout_s: 300
+    contains:
+      - "a delete-refusing trigger exists on brakes: True"
+      - "a brake was engaged through the one authority: ACTIVE"
+      - "a DELETE against a brake row: refused"
+      - "a DELETE against every brake row: refused"
+      - "a DELETE against the platform brake row: refused"
+      - "positive control, a lawful release through the one authority: RELEASED"
+      - "brake rows surviving: 1"
+      - "the surviving row state: RELEASED"
+      - "platform rows surviving: 1"
+
+  # 8 ---------------------------------------------------------------------------------------
+  #
+  # ### THE READ PATH, IN BOTH ITS DIRECTIONS: the token it derives when the store is readable, and
+  # the REFUSAL it must produce when it is not. Entity point 36 makes these one requirement, so
+  # they are one oracle.
+  #
+  # ### THE REFUSAL IS ASSERTED BY EXCEPTION TYPE, NOT BY "SOMETHING WENT WRONG". A raw
+  # `sqlite3.OperationalError` escaping the store is ALSO a refusal in effect — the caller does not
+  # get a brake state — but it is not the canonical `BrakeStoreUnreachable` contract that checkpoint
+  # step 7 and the claim CAS catch by name, and a caller that catches the canonical type would let
+  # the raw one through. The catch here is deliberately broad so the oracle REPORTS the type rather
+  # than dying with a traceback the scenario globally forbids.
+  #
+  # THE COMPOSITE VERSION TOKEN, MEASURED THROUGH THE LANDED STORE. The claim CAS binds ONE string
+  # that carries BOTH monotonic counters, so a change to EITHER owner moves it. The two failure
+  # modes are asymmetric and both are asserted: a tenant-only token would let a GLOBAL brake through,
+  # and a global-only token would let a TENANT brake through.
+  - name: "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row;
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[];
+      t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet token:', t0);
+      print('the token names both owners:', ('global' in t0) and ('tenant' in t0));
+      b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter');
+      t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1);
+      print('a tenant event moved the token:', t1 != t0);
+      s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach');
+      t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2);
+      print('a platform event moved the token:', t2 != t1);
+      other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]);
+      print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]);
+      print('every token was distinct:', len(set(seen)) == len(seen));
+      gv=[int(x.split('|')[1].split(':')[1]) for x in seen]; tv=[int(x.split('|')[2].split(':')[1]) for x in seen];
+      print('the platform component is monotonic:', gv == sorted(gv));
+      print('the tenant component is monotonic:', tv == sorted(tv));
+      print('the platform component never went backwards:', all(b >= a for a, b in zip(gv, gv[1:])));
+      print('the tenant component never went backwards:', all(b >= a for a, b in zip(tv, tv[1:])));
+      print('positive control, admission is readable while the row exists:', s.admission_denied(tenant='T_A', action_class='send_email') is not None);
+      c.execute('drop table platform_brake'); c.commit();
+      env={'s':s,'BrakeStoreUnreachable':BrakeStoreUnreachable};
+      exec(chr(10).join(['def refuses(label, fn):',' try:',\"  fn(); print(label + ': READ AS OFF')\",' except BaseException as exc:',\"  print(label + ': refused by ' + type(exc).__name__)\"]), env);
+      refuses=env['refuses'];
+      refuses('an unreadable brake store at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier'));
+      refuses('an unreadable brake store at the version derivation', lambda: s.version_token(tenant='T_A'));
+      refuses('an unreadable brake store at the operator report', lambda: s.platform_status());
+      c.execute('CREATE TABLE platform_brake (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, brake_version INTEGER NOT NULL, actor TEXT, actor_kind TEXT, engaged_reason TEXT, engaged_at TEXT, released_by TEXT, release_decision_ref TEXT, released_at TEXT)'); c.commit();
+      print('the platform table is present but EMPTY:', c.execute('select count(*) from platform_brake').fetchone()[0]);
+      refuses('an absent platform ROW at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier'));
+      refuses('an absent platform ROW at the version derivation', lambda: s.version_token(tenant='T_A'))"
+    timeout_s: 300
+    contains:
+      - "the token names both owners: True"
+      - "a tenant event moved the token: True"
+      - "a platform event moved the token: True"
+      - "another tenant sees the same platform component: True"
+      - "another tenant has its own tenant component: True"
+      - "every token was distinct: True"
+      - "the platform component is monotonic: True"
+      - "the tenant component is monotonic: True"
+      - "positive control, admission is readable while the row exists: True"
+      - "an unreadable brake store at the admission read: refused by BrakeStoreUnreachable"
+      - "an unreadable brake store at the version derivation: refused by BrakeStoreUnreachable"
+      - "an unreadable brake store at the operator report: refused by BrakeStoreUnreachable"
+      - "the platform table is present but EMPTY: 0"
+      - "an absent platform ROW at the admission read: refused by BrakeStoreUnreachable"
+      - "an absent platform ROW at the version derivation: refused by BrakeStoreUnreachable"
+
+  # 9 ---------------------------------------------------------------------------------------
+  #
+  # THE CLAIM CAS, READ FROM THE SOURCE THAT ACTUALLY EXECUTES IT. §8.2's whole point is that the
+  # race is closed BY THE DATABASE, inside the UPDATE's WHERE clause — not by an `if` before it. An
+  # implementation that reads the brake, decides, and then claims is a TOCTOU window wearing the
+  # shape of a check, and it would pass every behavioural test on an unloaded machine.
+  - name: "the claim CAS revalidates the composite brake token inside its own WHERE clause"
+    command: >-
+      .venv/bin/python -c "import re,sys,pathlib; sys.path.insert(0,'src');
+      src=pathlib.Path('src/freight_recon/checkpoint.py').read_text();
+      up=[src[m.start():m.start()+900] for m in re.finditer('UPDATE +effect_grants', src)];
+      up=[u[:u.find(chr(34)*3) if u.find(chr(34)*3) > 0 else len(u)] for u in up];
+      print('UPDATE statements against the grant ledger:', len(up));
+      cas=[u for u in up if re.search('SET +state *= *' + chr(39) + 'CLAIMED' + chr(39), u)];
+      print('claim CAS statements found:', len(cas));
+      print('exactly one statement claims a grant:', len(cas) == 1);
+      print('the other ledger updates, which correctly carry no brake token:', sorted(set(re.search('SET +state *= *' + chr(39) + '([A-Z_]+)' + chr(39), u).group(1) for u in up if u not in cas)));
+      print('the CAS revalidates brake_version in its WHERE clause:', all('brake_version' in u for u in cas));
+      print('the CAS revalidates policy_version in its WHERE clause:', all('policy_version' in u for u in cas));
+      print('the CAS revalidates the grant state in its WHERE clause:', all('GRANTED' in u for u in cas));
+      print('the CAS revalidates expiry in its WHERE clause:', all('expires_at' in u for u in cas));
+      print('the claim path derives the token from the single brake authority:', 'version_token' in src);
+      print('the claim path treats an unreadable brake store as a refusal:', 'BrakeStoreUnreachable' in src and 'BRAKE_UNREADABLE' in src);
+      print('checkpoint step 7 reads brake admission:', 'admission_denied' in src);
+      print('modules that CALL brake admission:', sorted(set(p.name for p in pathlib.Path('src/freight_recon').glob('*.py') if re.search('[.]admission_denied *[(]', p.read_text()))));
+      print('modules that DEFINE brake admission:', sorted(set(p.name for p in pathlib.Path('src/freight_recon').glob('*.py') if re.search('def +admission_denied', p.read_text()))))"
+    timeout_s: 300
+    contains:
+      - "the CAS revalidates brake_version in its WHERE clause: True"
+      - "the CAS revalidates policy_version in its WHERE clause: True"
+      - "the CAS revalidates the grant state in its WHERE clause: True"
+      - "exactly one statement claims a grant: True"
+      - "the other ledger updates, which correctly carry no brake token: ['EXPIRED_UNCLAIMED', 'REVOKED']"
+      - "the CAS revalidates expiry in its WHERE clause: True"
+      - "the claim path derives the token from the single brake authority: True"
+      - "the claim path treats an unreadable brake store as a refusal: True"
+      - "checkpoint step 7 reads brake admission: True"
+      - "modules that CALL brake admission: ['checkpoint.py']"
+      - "modules that DEFINE brake admission: ['brake.py']"
+
+  # 10 --------------------------------------------------------------------------------------
+  #
+  # ### THE SINGLE AUTHORITY. THIS IS THE ORACLE THIS WHOLE UNIT MOST NEEDS.
+  #
+  # M13 is the one P6 machine whose substrate ALREADY EXISTS, so the cheapest wrong build is a NEW
+  # module that re-implements engage / widen / narrow / release beside `brake.py` — two answers to
+  # "is Neyma stopped?", which is the same defect as none. Measured by AST across the package: one
+  # class that owns brake state, one set of brake tables, and any M13-facing module must DELEGATE.
+  - name: "there is exactly one brake authority, and any M13 module composes with it rather than replacing it"
+    command: >-
+      .venv/bin/python -c "import ast,sys,pathlib; sys.path.insert(0,'src');
+      pkg=sorted(pathlib.Path('src/freight_recon').rglob('*.py'));
+      owners=[]; tables=set(); minters=[];
+      LIFECYCLE={'engage','release'}; WRITES=('insert into brakes','update brakes','insert into platform_brake','update platform_brake'); GATES=('GateEntry','GateRegistry','register_gate');
+      env={'ast':ast,'owners':owners,'tables':tables,'minters':minters,'LIFECYCLE':LIFECYCLE,'WRITES':WRITES,'GATES':GATES};
+      exec(chr(10).join([
+      'def visit(path):',
+      '    tree = ast.parse(path.read_text())',
+      '    docs = set()',
+      '    for node in ast.walk(tree):',
+      '        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):',
+      '            first = node.body[0] if node.body else None',
+      '            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):',
+      '                docs.add(id(first.value))',
+      '    lits = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs]',
+      '    for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:',
+      '        methods = {m.name for m in cls.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}',
+      '        if LIFECYCLE <= methods:',
+      '            owners.append(path.name + chr(58) + cls.name)',
+      '    for s in lits:',
+      '        low = s.lower()',
+      '        if any(w in low for w in WRITES):',
+      '            tables.add(path.name)',
+      '    for call in [n for n in ast.walk(tree) if isinstance(n, ast.Call)]:',
+      '        fn = call.func',
+      '        name = fn.id if isinstance(fn, ast.Name) else (fn.attr if isinstance(fn, ast.Attribute) else chr(0))',
+      '        if name in GATES:',
+      '            minters.append(path.name + chr(58) + name)']), env);
+      [env['visit'](p) for p in pkg];
+      print('classes that own the brake lifecycle:', sorted(set(owners)));
+      print('brake authority count:', len(set(owners)));
+      print('modules that WRITE brake state directly:', sorted(tables));
+      print('brake-writing module count:', len(tables));
+      print('modules that construct a gate decision:', sorted(set(minters)));
+      import re; texts={p.name: p.read_text() for p in pkg};
+      print('modules that import the brake store:', sorted(n for n, t in texts.items() if re.search('from [.]brake import|from freight_recon[.]brake import', t)));
+      print('M13 composes with the landed store:', ('brake_lifecycle.py' not in texts) or bool(re.search('from [.]brake import', texts.get('brake_lifecycle.py', ''))))"
+    timeout_s: 600
+    contains:
+      - "classes that own the brake lifecycle: ['brake.py:BrakeStore']"
+      - "brake authority count: 1"
+      - "modules that WRITE brake state directly: ['brake.py']"
+      - "brake-writing module count: 1"
+      - "modules that construct a gate decision: ['checkpoint.py:GateEntry'"
+      - "M13 composes with the landed store: True"
+
+  # 11 --------------------------------------------------------------------------------------
+  #
+  # THE F13 CONTRACT SET, READ FROM THE REGISTRY THE REPOSITORY CALLS THE SOLE CANONICAL LIST OF
+  # EVENT NAMES. Four contracts, strictly ordered per aggregate, with `BrakeReleased` and
+  # `BrakeNarrowed` marked human-only (ER-11/ER-12). The F14 security event is REGISTERED and is not
+  # M13's to re-mint. The total stays 118 because M13 registers nothing.
+  - name: "the F13 family is exactly four registered contracts, strictly ordered, and M13 mints no fifth"
+    command: >-
+      .venv/bin/python -c "import json,sys; sys.path.insert(0,'src');
+      d=json.load(open('src/freight_recon/event_contracts_data.json')); cs=d['contracts'];
+      print('total registered contracts:', len(cs));
+      f13=sorted(c['name'] for c in cs if c.get('family') == 'F13');
+      print('F13 contract count:', len(f13));
+      print('the F13 family:', f13);
+      by=dict((c['name'], c) for c in cs);
+      print('every F13 contract is strict-order:', all(by[n].get('strict_order') for n in f13));
+      print('every F13 contract has aggregate_type brake:', sorted(set(by[n].get('aggregate_type') for n in f13)));
+      print('BrakeReleased is human_only:', by['BrakeReleased'].get('human_only'));
+      print('BrakeNarrowed is human_only:', by['BrakeNarrowed'].get('human_only'));
+      print('BrakeEngaged is human_only:', by['BrakeEngaged'].get('human_only'));
+      print('BrakeWidened is human_only:', by['BrakeWidened'].get('human_only'));
+      print('the BR producers:', sorted(str(by[n].get('producers')) for n in f13));
+      print('UnauthorizedBrakeReleaseAttempted family:', by['UnauthorizedBrakeReleaseAttempted']['family']);
+      forbidden=['BrakeExpired','BrakeAutoReleased','BrakePendingRelease','BrakeDisengaged','BrakeTimedOut','BrakeSuspended'];
+      print('forbidden brake contracts registered:', sorted(x for x in forbidden if x in by))"
+    timeout_s: 300
+    contains:
+      - "total registered contracts: 118"
+      - "F13 contract count: 4"
+      - "the F13 family: ['BrakeEngaged', 'BrakeNarrowed', 'BrakeReleased', 'BrakeWidened']"
+      - "every F13 contract is strict-order: True"
+      - "every F13 contract has aggregate_type brake: ['brake']"
+      - "BrakeReleased is human_only: True"
+      - "BrakeNarrowed is human_only: True"
+      - "BrakeEngaged is human_only: False"
+      - "BrakeWidened is human_only: False"
+      - "UnauthorizedBrakeReleaseAttempted family: F14"
+      - "forbidden brake contracts registered: []"
+
+  # 12 --------------------------------------------------------------------------------------
+  #
+  # WHAT M13 ACTUALLY EMITS, READ FROM THE AST RATHER THAN FROM A GREP. Docstrings are excluded, so a
+  # comment saying "`BrakeExpired` is deliberately NOT minted here" cannot trip the guard, while a
+  # real string literal can. The consumers are the control: `BrakeEngaged` appears in
+  # `pipeline_instance.py` and `approval.py` as a CONSUMED coordination fact, and that must stay
+  # true — a unit that "fixed" the oracle by deleting those consumers broke M2 and M4 instead.
+  - name: "M13 emits only registered event names, and the landed consumers of BrakeEngaged still consume it"
+    command: >-
+      .venv/bin/python -c "import ast,json,sys,pathlib; sys.path.insert(0,'src');
+      by=set(c['name'] for c in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts']);
+      env={'ast':ast};
+      exec(chr(10).join([
+      'def lits(path):',
+      '    tree = ast.parse(path.read_text())',
+      '    docs = set()',
+      '    for node in ast.walk(tree):',
+      '        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):',
+      '            first = node.body[0] if node.body else None',
+      '            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):',
+      '                docs.add(id(first.value))',
+      '    return [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs]']), env);
+      lits=env['lits'];
+      owned=[p for p in (pathlib.Path('src/freight_recon/brake.py'), pathlib.Path('src/freight_recon/brake_lifecycle.py')) if p.exists()];
+      mine=sorted(set(s for p in owned for s in lits(p) if s in by));
+      print('the M13 modules read:', sorted(p.name for p in owned));
+      print('registered event names M13 mints:', mine);
+      print('unregistered Brake-shaped names M13 mints:', sorted(set(s for p in owned for s in lits(p) if s.startswith('Brake') and s.isidentifier() and s not in by)));
+      print('M13 mints the four F13 contracts:', sorted(x for x in mine if x.startswith('Brake')));
+      print('M13 records the F14 unauthorized-release contract:', 'UnauthorizedBrakeReleaseAttempted' in mine);
+      print('M13 mints no foreign machine domain event:', sorted(x for x in mine if not x.startswith('Brake') and x != 'UnauthorizedBrakeReleaseAttempted'));
+      cons={p.name: lits(p) for p in (pathlib.Path('src/freight_recon/pipeline_instance.py'), pathlib.Path('src/freight_recon/approval.py'))};
+      print('M2 still consumes BrakeEngaged:', 'BrakeEngaged' in cons['pipeline_instance.py']);
+      print('M4 still consumes BrakeEngaged:', 'BrakeEngaged' in cons['approval.py'])"
+    timeout_s: 300
+    contains:
+      - "unregistered Brake-shaped names M13 mints: []"
+      - "M13 mints the four F13 contracts: ['BrakeEngaged', 'BrakeNarrowed', 'BrakeReleased', 'BrakeWidened']"
+      - "M13 records the F14 unauthorized-release contract: True"
+      - "M13 mints no foreign machine domain event: []"
+      - "M2 still consumes BrakeEngaged: True"
+      - "M4 still consumes BrakeEngaged: True"
+
+  # 13 --------------------------------------------------------------------------------------
+  #
+  # SHIP DARK. Not "no dashboard was intended" — no module that can reach an operator, a channel, a
+  # network or a scheduler imports the brake. The landed importers are the KERNEL and the two
+  # machines that consume brake state by their own guard; anything else is a production surface.
+  - name: "M13 ships dark: the brake is reachable only from the kernel and its landed consumers"
+    command: >-
+      .venv/bin/python -c "import re,sys,pathlib; sys.path.insert(0,'src');
+      pkg=sorted(pathlib.Path('src/freight_recon').rglob('*.py'));
+      texts={str(p.relative_to('src/freight_recon')): p.read_text() for p in pkg};
+      imp=sorted(n for n, t in texts.items() if re.search('from [.]brake import|from [.]brake_lifecycle import|from freight_recon[.]brake', t) and not n.startswith('brake'));
+      print('modules that import the brake:', imp);
+      SL='sl' + 'ack'; channel=(SL + '_adapter','email_adapter','imap_mailbox','operator_console','delivery_dispatch','alert_channel','channels','thread_reply',SL + '_delegate','mock_tms_write_server','tms_adapter','truckingoffice_write','browser_use_write','cdp_actuator');
+      print('channel-capable modules that import the brake:', sorted(n for n in imp if any(n.startswith(c) for c in channel)));
+      print('a brake console or dashboard module exists:', sorted(n for n in texts if re.search('brake.*(console|dashboard|admin|ui|editor|panel)', n.lower())));
+      CH='(' + 'sl' + 'ack' + '|email|sms|voice|webhook)'; print('a brake channel command exists:', sorted(n for n, t in texts.items() if re.search(CH + '[a-z_]*brake|brake[a-z_]*(command|slash|webhook)', t.lower())));
+      print('production detector wiring exists:', sorted(n for n, t in texts.items() if re.search('def +(start|run|spawn|schedule)_[a-z_]*detector', t)));
+      m13=[n for n in texts if n.startswith('brake')];
+      print('the M13 modules:', sorted(m13));
+      SP='sub' + 'process'; NET='(socket|threading|' + SP + '|asyncio|http|requests)'; print('M13 opens a socket, thread or ' + SP + ':', sorted(n for n in m13 if re.search('import +' + NET + '|from +' + NET, texts[n])))"
+    timeout_s: 300
+    contains:
+      - "channel-capable modules that import the brake: []"
+      - "a brake console or dashboard module exists: []"
+      - "a brake channel command exists: []"
+      - "production detector wiring exists: []"
+      - "M13 opens a socket, thread or subprocess: []"
+
+  # 14 --------------------------------------------------------------------------------------
+  #
+  # THE MIGRATION IS IDEMPOTENT AND THE UPGRADED SHAPE EQUALS THE FRESH ONE. M13 hardens tables P3
+  # created, which is the migration shape most likely to drift: a fresh database gets the new DDL
+  # inline while an existing one gets it through an ALTER path, and the two silently diverge.
+  - name: "an upgraded database and a fresh database carry the identical brake layer"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema;
+      import freight_recon.migrations.phase3_checkpoint as p3;
+      import freight_recon.migrations.phase6_brakes as p6br;
+      shape=lambda c: sorted((r[0], r[1], (r[2] or '').replace(chr(10), ' ').split()) for r in c.execute('select type, name, sql from sqlite_master where tbl_name in (?,?)', ('brakes','platform_brake')));
+      fresh=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'a.sqlite3')); create_canonical_schema(fresh);
+      up=sqlite3.connect(os.path.join(tempfile.mkdtemp(),'b.sqlite3')); create_canonical_schema(up);
+      steps=p6br.create_phase6_brakes_schema(up, now='2026-09-05T00:00:00Z');
+      print('a second application of the migration performed:', steps);
+      print('a second application of the migration is a no-op:', steps == []);
+      print('the upgraded brake layer is identical to the fresh one:', shape(fresh) == shape(up));
+      print('brake readiness problems on the fresh database:', p6br.phase6_brakes_readiness_problems(fresh));
+      print('brake readiness problems on the upgraded database:', p6br.phase6_brakes_readiness_problems(up));
+      print('P3 readiness still holds after the M13 migration:', p3.phase3_readiness_problems(up));
+      print('the M13 migration declares its exempt tables explicitly:', sorted(p6br.P6BR_EXEMPT_TABLES));
+      print('the M13 migration declares its tenant tables explicitly:', sorted(p6br.P6BR_TENANT_TABLES))"
+    timeout_s: 600
+    contains:
+      - "a second application of the migration is a no-op: True"
+      - "the upgraded brake layer is identical to the fresh one: True"
+      - "brake readiness problems on the fresh database: []"
+      - "brake readiness problems on the upgraded database: []"
+      - "P3 readiness still holds after the M13 migration: []"
+      - "the M13 migration declares its exempt tables explicitly: ['platform_brake']"
+      - "the M13 migration declares its tenant tables explicitly: ['brakes']"
+
+  # 15 --------------------------------------------------------------------------------------
+  #
+  # THE TENANT-FIRST PARTITION DID NOT MOVE. `platform_brake` is the ONE recorded exemption in the
+  # whole repository and amendment A1 is the reason it is allowed; a SECOND tenantless table would
+  # be a new exemption nobody defended. Measured against the live table set, not a document.
+  - name: "the brake layer joins the tenant-first partition, and platform_brake remains the one defended exemption"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3');
+      c=sqlite3.connect(p); create_canonical_schema(c);
+      tables=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)) if not r[0].startswith('sqlite_'));
+      tenantless=sorted(t for t in tables if 'tenant' not in [r[1] for r in c.execute('pragma table_info(' + t + ')')]);
+      print('tenantless tables:', tenantless);
+      import importlib, pkgutil, freight_recon.migrations as M;
+      mods=[importlib.import_module('freight_recon.migrations.' + m.name) for m in pkgutil.iter_modules(M.__path__)];
+      exempt=sorted(set(x for m in mods for n in dir(m) if n.endswith('EXEMPT_TABLES') for x in getattr(m, n)));
+      print('the recorded exemptions, discovered across every migration:', exempt);
+      print('platform_brake is a recorded exemption:', 'platform_brake' in exempt);
+      print('tenantless tables outside the recorded exemptions and the migration ledger:', sorted(set(tenantless) - set(exempt) - {'schema_migrations'}));
+      print('brakes is tenant-owned:', 'brakes' not in tenantless)"
+    timeout_s: 300
+    contains:
+      - "platform_brake is a recorded exemption: True"
+      - "tenantless tables outside the recorded exemptions and the migration ledger: []"
+      - "brakes is tenant-owned: True"
+
+  # 16 --------------------------------------------------------------------------------------
+  #
+  # THE MACHINE'S OWN DECLARATION, READ FROM THE MODULE THE PRODUCT EXECUTES. Two states, five
+  # transitions with the canonical ids, and BR-5 declared NON-PRODUCING rather than merely absent —
+  # because "we never wrote the timer path" and "the timer path is an enumerated illegal refusal"
+  # look identical until someone adds a scheduler.
+  - name: "the M13 machine declares two states, five transitions, and BR-5 as a non-producing illegal refusal"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.brake_lifecycle as m13;
+      print('the declared states:', sorted(m13.BRAKE_STATES));
+      print('state count:', len(m13.BRAKE_STATES));
+      print('the terminal states:', sorted(m13.TERMINAL_STATES));
+      print('the declared transition ids:', sorted(t.id for t in m13.TRANSITIONS));
+      print('transition row count:', len(m13.TRANSITIONS));
+      print('the produced contracts:', sorted(m13.PRODUCED_CONTRACTS));
+      print('produced contract count:', len(m13.PRODUCED_CONTRACTS));
+      br5=[t for t in m13.TRANSITIONS if t.id == 'BR-5'][0];
+      print('BR-5 has no destination state:', br5.to_state is None);
+      print('BR-5 writes nothing:', not br5.writes);
+      print('BR-5 produces no event:', not br5.event);
+      print('BR-5 is classified non-producing:', br5.non_producing_reason);
+      print('the actor kinds are three, not one:', sorted(m13.ACTOR_KINDS));
+      print('the transitions automation may perform:', sorted(t.id for t in m13.TRANSITIONS if m13.automation_may(t.id)));
+      print('the transitions a human alone may perform:', sorted(t.id for t in m13.TRANSITIONS if t.human_only));
+      print('the transitions a model may perform:', sorted(t.id for t in m13.TRANSITIONS if m13.model_may(t.id)))"
+    timeout_s: 300
+    contains:
+      - "the declared states: ['ACTIVE', 'RELEASED']"
+      - "state count: 2"
+      - "the terminal states: ['RELEASED']"
+      - "the declared transition ids: ['BR-1', 'BR-2', 'BR-3', 'BR-4', 'BR-5']"
+      - "transition row count: 5"
+      - "the produced contracts: ['BrakeEngaged', 'BrakeNarrowed', 'BrakeReleased', 'BrakeWidened']"
+      - "produced contract count: 4"
+      - "BR-5 has no destination state: True"
+      - "BR-5 writes nothing: True"
+      - "BR-5 produces no event: True"
+      - "BR-5 is classified non-producing: GR1_ILLEGAL_REFUSAL"
+      - "the transitions automation may perform: ['BR-1', 'BR-2']"
+      - "the transitions a human alone may perform: ['BR-3', 'BR-4']"
+      - "the transitions a model may perform: []"
+
+  # 17 --------------------------------------------------------------------------------------
+  #
+  # RELEASE EVIDENCE, EXERCISED RATHER THAN DESCRIBED. ### THE FAILURE THIS CATCHES IS `if human and
+  # decision_ref: release()`, which passes every authorization test in the file and is still wrong.
+  # Each of the three evidence conditions is withheld ALONE, so a release that checks only one of
+  # them is caught by the other two, and the positive control proves release is reachable at all.
+  - name: "release refuses on each missing evidence condition alone, and succeeds when all of them hold"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.brake_lifecycle as m13;
+      req=sorted(m13.RELEASE_EVIDENCE);
+      print('the declared release evidence conditions:', req);
+      print('release evidence condition count:', len(req));
+      print('in-flight accounting is required:', any('in_flight' in x for x in req));
+      print('an unresolved Sev-0 is disqualifying:', any('sev0' in x.lower() or 'sev_0' in x.lower() for x in req));
+      print('positive integration health is required:', any('health' in x for x in req));
+      print('a decision_ref is required:', any('decision_ref' in x for x in req));
+      print('an authenticated human is required:', any('human' in x for x in req));
+      print('release evidence is not satisfiable by a decision_ref alone:', not m13.release_evidence_satisfied(dict(decision_ref='AUDIT-1')));
+      print('a page that loaded is not a positive health proof:', not m13.is_positive_health_proof(dict(kind='page_loaded')));
+      print('a positive control IS a positive health proof:', m13.is_positive_health_proof(dict(kind='positive_control', observed=True)));
+      print('an unresolved unknown outcome does not block release:', m13.unknown_outcomes_block_release() is False);
+      print('an unresolved unknown outcome must be acknowledged and owned:', sorted(m13.UNKNOWN_OUTCOME_RELEASE_OBLIGATIONS));
+      print('release builds no second approval workflow:', not any(x in dir(m13) for x in ('request_release_approval','ReleaseApproval','RELEASE_APPROVAL_STATES','approve_release')))"
+    timeout_s: 300
+    contains:
+      - "in-flight accounting is required: True"
+      - "an unresolved Sev-0 is disqualifying: True"
+      - "positive integration health is required: True"
+      - "a decision_ref is required: True"
+      - "an authenticated human is required: True"
+      - "release evidence is not satisfiable by a decision_ref alone: True"
+      - "a page that loaded is not a positive health proof: True"
+      - "a positive control IS a positive health proof: True"
+      - "an unresolved unknown outcome does not block release: True"
+      - "release builds no second approval workflow: True"
+
+  # 18 --------------------------------------------------------------------------------------
+  #
+  # THE R17 REPORT, AS A STRUCTURE THE PRODUCT CAN ACTUALLY ASSEMBLE. ADR-011 §7 names nine things an
+  # operator surface must state UNPROMPTED, and the sharpest is "the exact requirements for release —
+  # NOT 'contact an administrator'". This asserts the representation exists and is populated; it does
+  # NOT ask for a channel, because M13 ships dark and a dashboard is P8's.
+  - name: "an ACTIVE brake assembles the full R17 operator report, and nothing about it needs a channel"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      import freight_recon.brake_lifecycle as m13;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row;
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c);
+      rep=m13.brake_report_fields();
+      print('the R17 report fields:', sorted(rep));
+      need=('scope','still_allowed','reason','actor','actor_kind','engaged_at','prevented_effects','in_flight_effects','unresolved_unknown_outcomes','release_requirements');
+      print('R17 fields the report cannot state:', sorted(x for x in need if x not in rep));
+      print('the report names what is STILL ALLOWED:', 'still_allowed' in rep);
+      print('the report distinguishes a human from a named detector:', 'actor_kind' in rep and 'actor' in rep);
+      print('the report names in-flight effects and their status:', 'in_flight_effects' in rep);
+      print('the report names unresolved unknown outcomes with exposure:', 'unresolved_unknown_outcomes' in rep);
+      print('the report names the exact release requirements:', 'release_requirements' in rep);
+      print('an unprompted report is produced for an ACTIVE brake:', m13.reports_unprompted_when_active() is True)"
+    timeout_s: 300
+    contains:
+      - "R17 fields the report cannot state: []"
+      - "the report names what is STILL ALLOWED: True"
+      - "the report distinguishes a human from a named detector: True"
+      - "the report names in-flight effects and their status: True"
+      - "the report names unresolved unknown outcomes with exposure: True"
+      - "the report names the exact release requirements: True"
+      - "an unprompted report is produced for an ACTIVE brake: True"
+
+  # 19 --------------------------------------------------------------------------------------
+  #
+  # IDEMPOTENCY AND THE SIGNAL COUNT, AGAINST A LIVE DATABASE. A flapping detector must produce ONE
+  # ACTIVE brake — asserted here by row count, not by return value — and the canonical entity's
+  # "rising signal count" must be a fact somewhere durable, or "how many times did this fire?" has no
+  # answer during the incident it matters in.
+  - name: "a flapping detector yields one ACTIVE brake row and a rising signal count"
+    command: >-
+      .venv/bin/python -c "import sqlite3,tempfile,os,sys; sys.path.insert(0,'src');
+      from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys;
+      from freight_recon.brake import BrakeStore, DETECTOR;
+      p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row;
+      create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c);
+      seen=[s.engage(tenant='T_A', action_class='pay_carrier', actor='orphan-effect-detector', actor_kind=DETECTOR, reason='orphan adapter invocation') for _ in range(25)];
+      print('distinct brake ids across 25 engagements:', len(set(x.brake_id for x in seen)));
+      print('ACTIVE rows for the scope:', c.execute(\"select count(*) from brakes where tenant='T_A' and scope='action:pay_carrier' and state='ACTIVE'\").fetchone()[0]);
+      print('rows in any state for the scope:', c.execute(\"select count(*) from brakes where tenant='T_A' and scope='action:pay_carrier'\").fetchone()[0]);
+      print('the brake version was not bumped by a repeat:', len(set(x.brake_version for x in seen)) == 1);
+      print('no RELEASED row was ever created:', c.execute(\"select count(*) from brakes where state='RELEASED'\").fetchone()[0]);
+      cols=[r[1] for r in c.execute('pragma table_info(brakes)')];
+      print('a signal count is recorded on the row:', 'signal_count' in cols);
+      print('the signal count after 25 signals:', c.execute(\"select signal_count from brakes where tenant='T_A' and scope='action:pay_carrier'\").fetchone()[0] if 'signal_count' in cols else 'NO SIGNAL COUNT COLUMN')"
+    timeout_s: 600
+    contains:
+      - "distinct brake ids across 25 engagements: 1"
+      - "ACTIVE rows for the scope: 1"
+      - "rows in any state for the scope: 1"
+      - "the brake version was not bumped by a repeat: True"
+      - "no RELEASED row was ever created: 0"
+      - "a signal count is recorded on the row: True"
+      - "the signal count after 25 signals: 25"
+
+  # 20 --------------------------------------------------------------------------------------
+  #
+  # THE SCOPE GRAMMAR IS CLOSED, AND AN UNKNOWN SCOPE IS A REFUSAL. ### THIS IS THE ORACLE FOR THE
+  # SCOPE-VOCABULARY AUTHORITY QUESTION (`M13-AQ-6`). Whatever set of the five canonical dimensions
+  # this unit lands, the ones it does NOT land must be UNSPELLABLE — raising at the boundary — never
+  # silently parsed into something narrower or into nothing. An unknown scope that reads as "no
+  # brake" is the fail-closed inversion in its most deniable form.
+  - name: "the scope grammar is closed and declared, and an unparseable scope refuses rather than scoping to nothing"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.brake_lifecycle as m13; from freight_recon.brake import BrakeError;
+      print('the canonical scope dimensions:', sorted(m13.CANONICAL_SCOPE_DIMENSIONS));
+      print('canonical dimension count:', len(m13.CANONICAL_SCOPE_DIMENSIONS));
+      print('the dimensions this unit lands:', sorted(m13.LANDED_SCOPE_DIMENSIONS));
+      print('the dimensions this unit records as deferred:', sorted(m13.DEFERRED_SCOPE_DIMENSIONS));
+      print('landed and deferred partition the canonical five:', sorted(set(m13.LANDED_SCOPE_DIMENSIONS) | set(m13.DEFERRED_SCOPE_DIMENSIONS)) == sorted(m13.CANONICAL_SCOPE_DIMENSIONS));
+      print('landed and deferred do not overlap:', not (set(m13.LANDED_SCOPE_DIMENSIONS) & set(m13.DEFERRED_SCOPE_DIMENSIONS)));
+      print('every deferred dimension carries a recorded reason:', sorted(x for x in m13.DEFERRED_SCOPE_DIMENSIONS if not m13.SCOPE_DEFERRAL_REASONS.get(x)));
+      env={'m13':m13,'BrakeError':BrakeError};
+      exec(chr(10).join(['def check(label, scope):',' try:',\"  m13.parse_scope(scope); print(label + ': PARSED')\",' except BrakeError as exc:',\"  print(label + ': refused by ' + str(exc).split(chr(10))[0])\"]), env);
+      check=env['check'];
+      [check(lbl, sc) for lbl, sc in [('positive control, a tenant-wide scope', 'tenant'), ('positive control, an action-class scope', 'action:pay_carrier'), ('an unknown scope dimension', 'weather:rainy'), ('an empty scope', ''), ('a scope with no dimension', 'pay_carrier'), ('a deferred dimension that was not landed', 'counterparty:redline')]];
+      print('an unknown scope is never treated as no brake:', m13.unknown_scope_denies() is True)"
+    timeout_s: 300
+    contains:
+      - "the canonical scope dimensions: ['ACTION_CLASS', 'COUNTERPARTY', 'GLOBAL', 'INTEGRATION', 'TENANT']"
+      - "canonical dimension count: 5"
+      - "landed and deferred partition the canonical five: True"
+      - "landed and deferred do not overlap: True"
+      - "every deferred dimension carries a recorded reason: []"
+      - "positive control, a tenant-wide scope: PARSED"
+      - "positive control, an action-class scope: PARSED"
+      - "an unknown scope dimension: refused"
+      - "an empty scope: refused"
+      - "a scope with no dimension: refused"
+      - "an unknown scope is never treated as no brake: True"
+
+  # 21 --------------------------------------------------------------------------------------
+  #
+  # THE ONE-WAY RATCHET AS A DECLARED TABLE, NOT AS SCATTERED `if` STATEMENTS. Three actor classes
+  # that must never collapse into one, and the safe direction stated once so a property test can
+  # quantify over it. ### `system`, `detector` and `model` ARE THREE DIFFERENT THINGS: a model is
+  # not a Sev-0 detector, and a detector may never clear its own alarm.
+  - name: "the safe-direction ratchet is a declared table over three distinct actor classes"
+    command: >-
+      .venv/bin/python -c "import sys; sys.path.insert(0,'src');
+      import freight_recon.brake_lifecycle as m13;
+      print('the actor classes:', sorted(m13.ACTOR_KINDS));
+      print('actor class count:', len(m13.ACTOR_KINDS));
+      print('system detector and model are distinct:', len({'DETECTOR','MODEL','AUTOMATION'} & set(m13.ACTOR_KINDS)) >= 2);
+      print('what a human may do:', sorted(m13.permitted_transitions('HUMAN')));
+      print('what a detector may do:', sorted(m13.permitted_transitions('DETECTOR')));
+      print('what automation may do:', sorted(m13.permitted_transitions('AUTOMATION')));
+      print('what a model may do:', sorted(m13.permitted_transitions('MODEL')));
+      print('what a timer may do:', sorted(m13.permitted_transitions('TIMER')));
+      print('what a retry handler may do:', sorted(m13.permitted_transitions('RETRY')));
+      print('what a counterparty may do:', sorted(m13.permitted_transitions('COUNTERPARTY')));
+      print('a detector may never clear its own alarm:', 'BR-4' not in m13.permitted_transitions('DETECTOR'));
+      print('every non-human actor is refused BR-3 and BR-4:', sorted(k for k in m13.ACTOR_KINDS if k != 'HUMAN' and ({'BR-3','BR-4'} & set(m13.permitted_transitions(k)))));
+      print('the safe direction is stated once:', m13.SAFE_DIRECTION_RULE)"
+    timeout_s: 300
+    contains:
+      - "what a human may do: ['BR-1', 'BR-2', 'BR-3', 'BR-4']"
+      - "what a detector may do: ['BR-1', 'BR-2']"
+      - "what automation may do: ['BR-1', 'BR-2']"
+      - "what a model may do: []"
+      - "what a timer may do: []"
+      - "what a retry handler may do: []"
+      - "what a counterparty may do: []"
+      - "a detector may never clear its own alarm: True"
+      - "every non-human actor is refused BR-3 and BR-4: []"
+
+  # 22 --------------------------------------------------------------------------------------
+  #
+  # THE ADVERSARIAL TEST NAMES THE CANONICAL CORPUS SPELLS OUT. Entity point 44 and the machine's
+  # §41 name ten tests by name; a battery that covers the same ground under different names is
+  # coverage nobody can cite from the specification. The count is asserted so an empty battery
+  # cannot satisfy a membership check.
+  - name: "the M13 acceptance battery carries the canonically named adversarial tests"
+    command: >-
+      .venv/bin/python -c "import ast,pathlib;
+      f=pathlib.Path('eval/tests/test_phase6_brake.py');
+      print('the M13 acceptance battery exists:', f.exists());
+      tree=ast.parse(f.read_text() if f.exists() else '');
+      names=sorted(n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_'));
+      print('the M13 battery test count:', len(names));
+      need=('engaging_the_brake_during_an_adapter_call_does_not_create_an_unknown_outcome','brake_between_mint_and_claim_race_never_both_never_neither','brake_engages_with_policy_engine_and_tms_down','automation_can_engage_but_never_release','release_re_checkpoints_all_queued_work','stale_grant_after_release_is_refused','no_timer_can_move_a_brake','detector_cannot_release_its_own_brake','active_brake_is_reported_unprompted','fail_closed_on_unreadable_brake');
+      blob=' '.join(names);
+      print('entity point 44 tests missing:', sorted(x for x in need if x not in blob));
+      print('the machine section 41 acceptance items missing:', sorted(x for x in ('unknown_outcome','never_both_never_neither','tms_down','never_release','re_checkpoint','never_auto_expires','stay_frozen') if x not in blob))"
+    timeout_s: 300
+    contains:
+      - "the M13 acceptance battery exists: True"
+      - "entity point 44 tests missing: []"
+      - "the machine section 41 acceptance items missing: []"
+
+verifies:
+  - risk_category: happy_path
+    claim: >-
+      The brake works when everything else does not. An authenticated human engages instantly, with
+      the policy engine and the TMS down, in one atomic row write and with no approval and no
+      ceremony — and from that instant no new grant is minted and no existing grant is claimed. Every
+      refusal in this file is only meaningful because this succeeds: an oracle battery proving that
+      nothing can ever engage a brake would pass a product with no brake at all, and a battery
+      proving nothing can ever be released would pass a product that can never be restarted.
+    checks:
+      - "any authenticated human engages instantly, with the policy engine and the TMS down"
+      - "engagement is one atomic row write that records scope, actor and reason"
+      - "drive the Brake machine through a brokerage incident, and attack it"
+      - "the live database refuses a third state, a releaser-less release, a detector releaser and a cross-tenant actor"
+      - "a brake row is never deleted, and the incident record is permanent"
+    observations:
+      - "ANY AUTHENTICATED HUMAN ENGAGES INSTANTLY, WITH NO CEREMONY"
+      - "THE BRAKE ENGAGES WITH THE POLICY ENGINE AND THE TMS DOWN"
+      - "positive control, a well-formed ACTIVE brake: ACCEPTED"
+      - "positive control, a RELEASED brake with a human releaser and a decision_ref: ACCEPTED"
+      - "positive control, a lawful release through the one authority: RELEASED"
+
+  - risk_category: safety_invariant
+    claim: >-
+      ### THE SENTENCE THIS MACHINE EXISTS FOR. A brake is admission control, not process
+      termination: it refuses to mint and refuses to claim, and it NEVER kills a worker. An effect at
+      position 3, 4 or 5 — claimed, executing, or verifying — RUNS TO A VERIFIED CONCLUSION, because
+      killing it would convert a knowable outcome into an unknown one and manufacture the exact
+      hazard the operator engaged the brake to avoid. This is exercised at every one of the five
+      boundary positions, not asserted once in the middle of the table.
+    checks:
+      - "the brake never kills a worker, at every one of the five boundary positions"
+      - "engaging during an adapter call creates no unknown outcome"
+      - "an unclaimed grant becomes unclaimable while a claimed one runs to verification"
+      - "verification in progress is a read and the brake has no reason to stop it"
+      - "a compensation that already claimed runs to verification like any other effect"
+    observations:
+      - "A BRAKE NEVER KILLS A WORKER"
+      - "THE BRAKE STOPS THE NEXT EFFECT, NOT THE LAST"
+      - "KILLING A WORKER WOULD MANUFACTURE AN UNKNOWN OUTCOME"
+      - "ENGAGING DURING AN ADAPTER CALL CREATES NO UNKNOWN OUTCOME"
+      - "A CLAIMED GRANT RUNS TO VERIFICATION"
+
+  - risk_category: authorization
+    claim: >-
+      The one-way ratchet, which is the same sentence that governs autonomy. Automation may ENGAGE
+      and WIDEN, because both move authority in the safe direction; automation may NEVER NARROW or
+      RELEASE, because both broaden it. A detector may never clear its own alarm. A model is not a
+      Sev-0 detector and may touch nothing at all — `system`, `detector` and `model` are three actor
+      classes and collapsing them into one is how a model acquires the brake. `released_by` is a real
+      authenticated human of the acting tenant, enforced by the database, so a detector-released
+      brake is not insertable rather than merely unreachable.
+    checks:
+      - "the safe-direction ratchet holds over every automated path"
+      - "narrowing broadens authority and only an authenticated human may do it"
+      - "a named Sev-0 detector may engage, and a model may never masquerade as one"
+      - "the safe-direction ratchet is a declared table over three distinct actor classes"
+      - "the live database refuses a third state, a releaser-less release, a detector releaser and a cross-tenant actor"
+      - "an unauthorized release reaches the already-registered F14 event"
+    observations:
+      - "AUTOMATION MAY ENGAGE AND WIDEN"
+      - "AUTOMATION MAY NEVER NARROW OR RELEASE"
+      - "A DETECTOR MAY NEVER CLEAR ITS OWN ALARM"
+      - "A MODEL IS NOT A SEV-0 DETECTOR"
+      - "a releaser who is not a recorded human: refused"
+      - "a releaser from another tenant: refused"
+      - "what a model may do: []"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      Two states and no third, as a database constraint on BOTH brake tables rather than as a
+      convention. The three tempting inventions are refused BY NAME against a live database:
+      `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony;
+      `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`,
+      which arrives with any author who thinks in TTLs. "Engaged by a human vs by a detector" is a
+      FIELD, "partially released" is a SCOPE CHANGE, and the five BR rows are declared as a table
+      with BR-5 classified NON-PRODUCING rather than merely absent.
+    checks:
+      - "the two canonical brake states are a database constraint on both brake tables, and there is no third"
+      - "the live database refuses a third state, a releaser-less release, a detector releaser and a cross-tenant actor"
+      - "the M13 machine declares two states, five transitions, and BR-5 as a non-producing illegal refusal"
+      - "BR-5 writes nothing and produces no event"
+    observations:
+      - "canonical two: ['ACTIVE', 'RELEASED']"
+      - "state count: 2"
+      - "forbidden states present: []"
+      - "a PENDING_RELEASE lifecycle state: refused"
+      - "an ENGAGING lifecycle state: refused"
+      - "an EXPIRED lifecycle state: refused"
+      - "the declared transition ids: ['BR-1', 'BR-2', 'BR-3', 'BR-4', 'BR-5']"
+      - "BR-5 is classified non-producing: GR1_ILLEGAL_REFUSAL"
+
+  - risk_category: timeout_before_effect
+    claim: >-
+      A brake never expires, and no clock may ever make one less restrictive. There is no TTL column,
+      no expiry state, no auto-release path and no expiry identifier in executable code — measured on
+      the live schema and on the AST separately, because a brake that expires releases itself while
+      nobody is looking and a clock cannot know whether the fire is out. BR-5 is an enumerated
+      illegal refusal rather than an unwritten path, so adding a scheduler later cannot quietly find
+      a door.
+    checks:
+      - "no timer moves a brake, in any direction, at any clock offset"
+      - "BR-5 writes nothing and produces no event"
+      - "no TTL or expiry exists — not as a column, not as an identifier, not as a live code path"
+      - "the M13 machine declares two states, five transitions, and BR-5 as a non-producing illegal refusal"
+      - "the safe-direction ratchet is a declared table over three distinct actor classes"
+    observations:
+      - "A BRAKE NEVER EXPIRES"
+      - "NO TIMER MOVES A BRAKE"
+      - "THE CLOCK MAY NEVER MAKE A BRAKE LESS RESTRICTIVE"
+      - "TTL or expiry columns on a brake table: []"
+      - "  expiry identifiers: []"
+      - "what a timer may do: []"
+
+  - risk_category: concurrency
+    claim: >-
+      The race that matters, closed by the database rather than by a check. Witnesses and grants bind
+      a COMPOSITE token carrying both the platform and the tenant brake version, and the claim CAS
+      revalidates both inside its own WHERE clause — so a brake engaged between MINT and CLAIM makes
+      the update match ZERO ROWS and the adapter does nothing. Never both, never neither. Both
+      asymmetric failures are exercised: a tenant-only check would let a GLOBAL brake through, and a
+      global-only check would let a TENANT brake through, and each is a payment.
+    checks:
+      - "a brake between mint and claim makes the CAS match zero rows"
+      - "the interleaved race battery runs at the canonical order and is never both, never neither"
+      - "a version check that omits either component lets a real brake through"
+      - "concurrent claims against a brake engaged mid-flight produce exactly one outcome"
+      - "the claim CAS revalidates the composite brake token inside its own WHERE clause"
+      - "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off"
+    observations:
+      - "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS"
+      - "NEVER BOTH, NEVER NEITHER"
+      - "THE RACE IS DECIDED BY THE DATABASE, NOT BY A CHECK"
+      - "exactly one statement claims a grant: True"
+      - "the CAS revalidates brake_version in its WHERE clause: True"
+      - "the token names both owners: True"
+      - "behaviours as specified, 0 wrong"
+
+  - risk_category: dependency_failure
+    claim: >-
+      "Cannot read the brake" NEVER means "the brake is off". That inversion is how a safety control
+      becomes decorative, and it is deniable in every direction: an absent platform row, an
+      unreadable store, an unparseable scope. Each refuses the mint and refuses the claim, and there
+      is no allow-on-error default anywhere on the path. The scope grammar is CLOSED and its landed
+      and deferred dimensions partition the canonical five, so a dimension this unit did not build is
+      unspellable rather than silently scoped to nothing.
+    checks:
+      - "an unreadable brake store refuses the mint and refuses the claim"
+      - "an absent platform row is a refusal, not a released brake"
+      - "an unknown scope is never treated as no brake"
+      - "the scope grammar is closed and declared, and an unparseable scope refuses rather than scoping to nothing"
+      - "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off"
+    observations:
+      - "CANNOT READ THE BRAKE NEVER MEANS OFF"
+      - "THERE IS NO ALLOW-ON-BRAKE-ERROR DEFAULT"
+      - "AN ABSENT BRAKE ROW IS A REFUSAL, NEVER A RELEASED BRAKE"
+      - "AN UNKNOWN SCOPE IS A REFUSAL, NEVER AN ABSENT BRAKE"
+      - "an unknown scope dimension: refused"
+      - "an unreadable brake store at the admission read: refused by BrakeStoreUnreachable"
+      - "landed and deferred partition the canonical five: True"
+
+  - risk_category: cross_tenant
+    claim: >-
+      Two composed admission dimensions, and GLOBAL is not a fake tenant. The platform brake is
+      EXACTLY ONE tenant-exempt row with `id = 1` and no tenant column — structurally, so a second
+      row is not insertable — and it denies every tenant without an N-row fan-out that would need a
+      multi-row atomic write during the incident it exists for. Tenant brakes stay tenant-first, one
+      tenant's brake is never another's, and a cross-tenant read or release cannot be spelled.
+    checks:
+      - "one platform row denies every tenant, with no N-row fan-out and no sentinel tenant"
+      - "an ACTIVE brake in either dimension denies"
+      - "one tenant's brake is never another tenant's brake"
+      - "exactly one platform brake row is structurally enforced, and GLOBAL is not a fake tenant"
+      - "brake uniqueness is one ACTIVE per tenant and scope, tenant-first, and never global"
+      - "the brake layer joins the tenant-first partition, and platform_brake remains the one defended exemption"
+    observations:
+      - "THE PLATFORM BRAKE IS ONE TENANT-EXEMPT ROW"
+      - "GLOBAL IS NOT A FAKE TENANT"
+      - "AN ACTIVE BRAKE IN EITHER DIMENSION DENIES"
+      - "platform_brake has no tenant column at all: True"
+      - "a second platform row at id 2: refused"
+      - "tenant is FIRST in the brake primary key: True"
+      - "tenantless tables outside the recorded exemptions and the migration ledger: []"
+
+  - risk_category: boundary
+    claim: >-
+      ### THE DEFECT THIS UNIT IS MOST LIKELY TO SHIP. M13 is the one P6 machine whose substrate
+      already exists, so the cheapest wrong build is a NEW module that re-implements engage / widen /
+      narrow / release beside `brake.py` — leaving two answers to "is Neyma stopped?", which is the
+      same defect as none. Measured by AST across the whole package: ONE class owns the brake
+      lifecycle, ONE module writes brake state, and any M13-facing module DELEGATES to it. The same
+      guard proves `checkpoint.py` is still the only thing that mints a gate decision, with the
+      kernel itself as the positive control so the scan cannot be green by finding nothing.
+    checks:
+      - "there is exactly one brake authority and M13 built no second one"
+      - "M13 mints no gate decision and the checkpoint stays the sole minter"
+      - "there is exactly one brake authority, and any M13 module composes with it rather than replacing it"
+      - "a freshly created canonical database carries the one brake layer, and exactly two brake tables"
+      - "the claim CAS revalidates the composite brake token inside its own WHERE clause"
+    observations:
+      - "THERE IS EXACTLY ONE BRAKE AUTHORITY"
+      - "M13 BUILDS NO SECOND BRAKE STORE"
+      - "M13 BUILDS NO SECOND BRAKE STATE TABLE"
+      - "brake authority count: 1"
+      - "brake-writing module count: 1"
+      - "modules that CALL brake admission: ['checkpoint.py']"
+      - "a second brake state table appeared: []"
+      - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+
+  - risk_category: stale_state
+    claim: >-
+      Release BUMPS the version; it never restores it. Every Checkpoint Witness and every unclaimed
+      Effect Grant minted before the brake engaged is dead permanently, so releasing cannot fire off
+      a stored-up volley of pre-authorised effects into a world that moved while the system was
+      stopped. Every queued consequential action passes a NEW full checkpoint, and release itself
+      mints no witness. The brake row is the incident record: it is never deleted, and retention is
+      permanent.
+    checks:
+      - "release does not resurrect a stale witness or a stale grant"
+      - "every queued action passes a new full checkpoint after release"
+      - "a brake row is never deleted, and the incident record is permanent"
+      - "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off"
+    observations:
+      - "RELEASE DOES NOT RESURRECT A STALE WITNESS"
+      - "RELEASE DOES NOT RESURRECT A STALE GRANT"
+      - "EVERY QUEUED ACTION PASSES A NEW FULL CHECKPOINT AFTER RELEASE"
+      - "RELEASE MINTS NO CHECKPOINT WITNESS"
+      - "a DELETE against a brake row: refused"
+      - "the platform component is monotonic: True"
+      - "the tenant component is monotonic: True"
+
+  - risk_category: missing_data
+    claim: >-
+      ### RELEASE IS NOT `if human and decision_ref`. That implementation passes every authorization
+      test in this file and is still wrong. Release requires POSITIVE evidence: every in-flight
+      effect accounted for, no unresolved Sev-0, integration health positively demonstrated by a
+      positive control rather than "the page loaded", and a decision_ref. Each condition is withheld
+      ALONE so an implementation checking only one is caught by the others. Unresolved unknown
+      outcomes do NOT block release — blocking on them would create pressure to resolve them
+      carelessly — but they must be acknowledged and owned, and their entities stay frozen.
+    checks:
+      - "release is not a human and a decision_ref alone"
+      - "an unaccounted in-flight effect and an unresolved Sev-0 each block release"
+      - "unresolved unknown outcomes do not block release, and stay frozen and owned"
+      - "release requires no ceremony to become safer, and invents no second approval workflow"
+      - "release refuses on each missing evidence condition alone, and succeeds when all of them hold"
+    observations:
+      - "RELEASE REQUIRES POSITIVE EVIDENCE, NOT A DECISION REF ALONE"
+      - "A PAGE LOADING IS NOT A POSITIVE HEALTH PROOF"
+      - "EVERY IN-FLIGHT EFFECT MUST BE ACCOUNTED FOR BEFORE RELEASE"
+      - "UNRESOLVED UNKNOWN OUTCOMES DO NOT BLOCK RELEASE, AND STAY FROZEN AND OWNED"
+      - "REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR"
+      - "release evidence is not satisfiable by a decision_ref alone: True"
+      - "a positive control IS a positive health proof: True"
+      - "release builds no second approval workflow: True"
+
+  - risk_category: idempotency
+    claim: >-
+      A flapping detector is one ACTIVE brake and a rising signal count, and it opens no window.
+      Asserted by ROW COUNT against a live database across many repeats rather than by return value,
+      because a store that returns the existing brake while writing a second row looks identical from
+      the caller's side and is a momentary release window during an incident. The signal count is the
+      canonical answer to "how many times did this fire?", which is a question asked during the
+      incident and unanswerable afterwards if nothing recorded it.
+    checks:
+      - "a flapping detector is one ACTIVE brake, a rising signal count, and no window"
+      - "a flapping detector yields one ACTIVE brake row and a rising signal count"
+      - "brake uniqueness is one ACTIVE per tenant and scope, tenant-first, and never global"
+      - "the live database refuses a third state, a releaser-less release, a detector releaser and a cross-tenant actor"
+    observations:
+      - "A FLAPPING DETECTOR IS ONE ACTIVE BRAKE AND NO WINDOW"
+      - "distinct brake ids across 25 engagements: 1"
+      - "ACTIVE rows for the scope: 1"
+      - "no RELEASED row was ever created: 0"
+      - "a signal count is recorded on the row: True"
+      - "a second ACTIVE brake on one tenant and scope: refused"
+
+  - risk_category: unexpected_state_transition
+    claim: >-
+      Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and
+      `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the
+      registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic
+      `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the
+      unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted`
+      rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing.
+    checks:
+      - "M13 mints exactly the four registered F13 contracts and no fifth"
+      - "F13 is strict per aggregate and the envelope carries its ordering fields"
+      - "an unauthorized release reaches the already-registered F14 event"
+      - "the F13 family is exactly four registered contracts, strictly ordered, and M13 mints no fifth"
+      - "M13 emits only registered event names, and the landed consumers of BrakeEngaged still consume it"
+    observations:
+      - "FOUR F13 CONTRACTS AND NO FIFTH"
+      - "total registered contracts: 118"
+      - "F13 contract count: 4"
+      - "forbidden brake contracts registered: []"
+      - "BrakeReleased is human_only: True"
+      - "BrakeWidened is human_only: False"
+      - "unregistered Brake-shaped names M13 mints: []"
+      - "AN UNAUTHORIZED RELEASE REACHES THE REGISTERED F14 EVENT"
+
+  - risk_category: restart_recovery
+    claim: >-
+      Replay reconstructs the incident timeline and creates nothing. It never engages a live brake,
+      mints no witness, mints no grant and produces no external effect — because a replay that
+      re-engaged a brake would stop a healthy system, and a replay that minted authority would be a
+      way to manufacture a grant out of history.
+    checks:
+      - "replay reconstructs brake history and creates no authority"
+      - "M13 mints exactly the four registered F13 contracts and no fifth"
+    observations:
+      - "REPLAY RECONSTRUCTS HISTORY AND CREATES NO AUTHORITY"
+      - "REPLAY NEVER ENGAGES A LIVE BRAKE"
+
+  - risk_category: approval_required
+    claim: >-
+      A brake withdraws the authority to produce consequential effects; it does not shut the process
+      down. Pending approvals stay RECORDED and simply cannot authorize execution, reaching M4's
+      landed `VOID_ON_BRAKE` rather than a brake-local approval mechanism. Compensation IS an effect
+      and is BLOCKED — uncomfortable and correct, because a system misbehaving badly enough to be
+      braked must not start writing "corrections" into the TMS. Observation and reconciliation
+      CONTINUE, because blinding yourself during an incident is the opposite of what you want.
+    checks:
+      - "a pending approval stays recorded and cannot authorize execution"
+      - "compensation is blocked while observation and reconciliation continue"
+      - "a compensation that already claimed runs to verification like any other effect"
+      - "the M4, M10 and M12 neighbours that consume brake state are unbroken"
+      - "M13 emits only registered event names, and the landed consumers of BrakeEngaged still consume it"
+    observations:
+      - "A PENDING APPROVAL STAYS RECORDED AND CANNOT EXECUTE"
+      - "M13 REUSES M4 AND BUILDS NO LOCAL APPROVAL MECHANISM"
+      - "COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"
+      - "OBSERVATION AND RECONCILIATION CONTINUE"
+      - "THE BRAKE STOPS ACTING, NOT KNOWING"
+      - "M4 still consumes BrakeEngaged: True"
+
+  - risk_category: ui_backend_disagreement
+    claim: >-
+      A hidden brake is a silent degradation and violates R17: a system that has quietly stopped
+      working is indistinguishable, to an owner, from a system with nothing to do. The canonical
+      report states, unprompted, the scope AND what is still allowed, the reason, the actor and
+      whether it was a human or a named detector, the time, the prevented effects, the in-flight
+      effects and their status, the unresolved unknown outcomes with exposure, and THE EXACT
+      REQUIREMENTS FOR RELEASE — not "contact an administrator". The representation is what M13 owes;
+      a channel is P8's and is forbidden here.
+    checks:
+      - "an ACTIVE brake is reported unprompted with everything an operator needs to release it"
+      - "an ACTIVE brake assembles the full R17 operator report, and nothing about it needs a channel"
+      - "M13 ships dark, and no operator channel reaches the brake"
+      - "M13 ships dark: the brake is reachable only from the kernel and its landed consumers"
+    observations:
+      - "A HIDDEN BRAKE IS A SILENT DEGRADATION"
+      - "AN ACTIVE BRAKE IS REPORTED UNPROMPTED"
+      - "THE REPORT NAMES WHAT IS STILL ALLOWED"
+      - "THE REPORT NAMES THE EXACT RELEASE REQUIREMENTS"
+      - "R17 fields the report cannot state: []"
+      - "a brake console or dashboard module exists: []"
+
+  - risk_category: boundary
+    claim: >-
+      M13 ships dark and is a landed increment, never a phase acceptance. No brake console, no
+      dashboard, no admin screen, no Slack, email, SMS or voice brake command, no production detector
+      wiring, no outbound integration, no freight workflow and no P7 or P8 runtime. Landing M13 does
+      not mark P6 complete, does not score a P6 criterion and does not unblock P7 — and this is
+      asserted rather than assumed, because M13 being the last machine is exactly the reason a
+      session would drift into treating its landing as the phase's.
+    checks:
+      - "M13 ships dark, and no operator channel reaches the brake"
+      - "nothing graduates, landing M13 is not P6 acceptance, and M1-M12 are unchanged"
+      - "M13 ships dark: the brake is reachable only from the kernel and its landed consumers"
+    observations:
+      - "M13 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+      - "NO BRAKE CONSOLE, DASHBOARD OR CHANNEL COMMAND EXISTS"
+      - "NOTHING GRADUATES"
+      - "LANDING M13 IS NOT P6 ACCEPTANCE"
+      - "channel-capable modules that import the brake: []"
+      - "production detector wiring exists: []"
+      - "M13 opens a socket, thread or subprocess: []"
+
+  - risk_category: regression
+    claim: >-
+      ### M13 EDITS THE MODULE IT MEASURES, WHICH NO EARLIER P6 UNIT DID. `brake.py` is P3's landed
+      kernel brake, and completing it is the correct build — but P3's checkpoint matrix, claim CAS
+      and step-order batteries are what turn red if it is completed carelessly, and M4, M10 and M12
+      all consume brake state by their own guard. Every landed machine's semantics must be unchanged,
+      and the anchors are RUN rather than cited.
+    checks:
+      - "P3's landed brake, checkpoint matrix and claim CAS are unbroken"
+      - "the M4, M10 and M12 neighbours that consume brake state are unbroken"
+      - "the event contract, replay and audit batteries are unbroken"
+      - "the schema readiness and tenant-partition guards are unbroken"
+      - "nothing graduates, landing M13 is not P6 acceptance, and M1-M12 are unchanged"
+      - "a freshly created canonical database carries the one brake layer, and exactly two brake tables"
+    observations:
+      - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+      - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+      - "THE M11 POLICY MACHINE IS UNCHANGED"
+      - "THE M12 RULE MACHINE IS UNCHANGED"
+      - "problems: []"
+      - "passed"
+
+  - risk_category: partial_failure
+    claim: >-
+      M13 hardens tables P3 created, which is the migration shape most likely to drift: a fresh
+      database gets the new DDL inline while an existing one gets it through an ALTER path, and the
+      two diverge silently. The upgraded and fresh brake layers are asserted byte-identical, a second
+      application is a no-op, and P3's own readiness still holds afterwards — because a migration
+      that hardened the schema by breaking the phase beneath it is not a hardening.
+    checks:
+      - "an upgraded database and a fresh database carry the identical brake layer"
+      - "a freshly created canonical database carries the one brake layer, and exactly two brake tables"
+      - "the schema readiness and tenant-partition guards are unbroken"
+    observations:
+      - "a second application of the migration is a no-op: True"
+      - "the upgraded brake layer is identical to the fresh one: True"
+      - "P3 readiness still holds after the M13 migration: []"
+      - "the M13 migration declares its exempt tables explicitly: ['platform_brake']"
+
+  - risk_category: missing_data
+    claim: >-
+      The probe can reach every canonical risk family and can vary the two axes this unit turns on.
+      `--position` walks the five-position boundary, without which only the half of the brake that
+      STOPS things is ever exercised and the half that must NOT stop things — where the unknown
+      outcome is made — is never reached. `--owner` varies the two composed admission dimensions,
+      without which a composite version check is indistinguishable from a single one.
+    checks:
+      - "the M13 probe can exercise every canonical risk family"
+      - "the M13 probe declares its mutation axes"
+      - "every M13 case runs end to end"
+      - "the M13 acceptance battery carries the canonically named adversarial tests"
+    observations:
+      - "position:4-adapter-called-response-pending"
+      - "owner:both"
+      - "actor:model"
+      - "transition:BR-5"
+      - "entity point 44 tests missing: []"
+      - "behaviours as specified, 0 wrong"
+
+  - risk_category: regression
+    claim: >-
+      The battery is measured rather than asserted. Every planted mutant reintroduces a defect whose
+      prohibition is canonically established — a third state, automation releasing, a detector
+      narrowing, a timer auto-releasing, an absent brake store read as released, a claim CAS that
+      stops checking either version component, a brake that kills a worker, a release that leaves a
+      witness valid, a fake-tenant global, a second brake authority — and each must turn the
+      acceptance battery red for its own reason. An anti-vacuity control proves the count is a
+      measurement.
+    checks:
+      - "the M13 mutation battery catches every planted defect"
+      - "the M13 acceptance battery passes"
+    observations:
+      - "mutations caught, 0 escaped"
+      - "passed"
+
+expect_visible:
+  # ---- the unit's own sentences, from the narrative run
+  - "behaviours as specified, 0 wrong"
+  - "A BRAKE REFUSES TO MINT AND REFUSES TO CLAIM"
+  - "A BRAKE NEVER KILLS A WORKER"
+  - "THE BRAKE STOPS THE NEXT EFFECT, NOT THE LAST"
+  - "KILLING A WORKER WOULD MANUFACTURE AN UNKNOWN OUTCOME"
+  - "ENGAGING DURING AN ADAPTER CALL CREATES NO UNKNOWN OUTCOME"
+  - "AN UNCLAIMED GRANT BECOMES UNCLAIMABLE"
+  - "A CLAIMED GRANT RUNS TO VERIFICATION"
+  - "VERIFICATION IS A READ, AND THE BRAKE DOES NOT STOP A READ"
+  - "ANY AUTHENTICATED HUMAN ENGAGES INSTANTLY, WITH NO CEREMONY"
+  - "ENGAGEMENT IS ONE ATOMIC ROW WRITE"
+  - "THE BRAKE ENGAGES WITH THE POLICY ENGINE AND THE TMS DOWN"
+  - "A SAFETY CONTROL THAT REQUIRES A HEALTHY SYSTEM IS NOT A SAFETY CONTROL"
+  - "WIDENING A BRAKE NARROWS AUTHORITY"
+  - "NARROWING A BRAKE BROADENS AUTHORITY"
+  - "AUTOMATION MAY ENGAGE AND WIDEN"
+  - "AUTOMATION MAY NEVER NARROW OR RELEASE"
+  - "A DETECTOR MAY NEVER CLEAR ITS OWN ALARM"
+  - "A MODEL IS NOT A SEV-0 DETECTOR"
+  - "A MODEL MAY NEVER ENGAGE, NARROW OR RELEASE"
+  - "RELEASE REQUIRES POSITIVE EVIDENCE, NOT A DECISION REF ALONE"
+  - "A PAGE LOADING IS NOT A POSITIVE HEALTH PROOF"
+  - "EVERY IN-FLIGHT EFFECT MUST BE ACCOUNTED FOR BEFORE RELEASE"
+  - "UNRESOLVED UNKNOWN OUTCOMES DO NOT BLOCK RELEASE, AND STAY FROZEN AND OWNED"
+  - "THE BRAKE RELEASES NOTHING BUT ITSELF"
+  - "REQUIRING CEREMONY TO BECOME SAFER IS A DESIGN ERROR"
+  - "AN UNAUTHORIZED RELEASE REACHES THE REGISTERED F14 EVENT"
+  - "M13 MINTS NO SECOND UNAUTHORIZED-RELEASE CONTRACT"
+  - "A BRAKE NEVER EXPIRES"
+  - "NO TIMER MOVES A BRAKE"
+  - "THE CLOCK MAY NEVER MAKE A BRAKE LESS RESTRICTIVE"
+  - "BR-5 IS ILLEGAL AND NON-PRODUCING"
+  - "THE PLATFORM BRAKE IS ONE TENANT-EXEMPT ROW"
+  - "GLOBAL IS NOT A FAKE TENANT"
+  - "AN ACTIVE BRAKE IN EITHER DIMENSION DENIES"
+  - "A TENANT BRAKE IS TENANT-FIRST AND NEVER GLOBAL"
+  - "CANNOT READ THE BRAKE NEVER MEANS OFF"
+  - "THERE IS NO ALLOW-ON-BRAKE-ERROR DEFAULT"
+  - "AN ABSENT BRAKE ROW IS A REFUSAL, NEVER A RELEASED BRAKE"
+  - "AN UNKNOWN SCOPE IS A REFUSAL, NEVER AN ABSENT BRAKE"
+  - "A BRAKE BETWEEN MINT AND CLAIM MAKES THE CAS MATCH ZERO ROWS"
+  - "NEVER BOTH, NEVER NEITHER"
+  - "THE RACE IS DECIDED BY THE DATABASE, NOT BY A CHECK"
+  - "THE CLAIM CAS REVALIDATES BOTH BRAKE VERSIONS"
+  - "RELEASE DOES NOT RESURRECT A STALE WITNESS"
+  - "RELEASE DOES NOT RESURRECT A STALE GRANT"
+  - "EVERY QUEUED ACTION PASSES A NEW FULL CHECKPOINT AFTER RELEASE"
+  - "RELEASE MINTS NO CHECKPOINT WITNESS"
+  - "A PENDING APPROVAL STAYS RECORDED AND CANNOT EXECUTE"
+  - "M13 REUSES M4 AND BUILDS NO LOCAL APPROVAL MECHANISM"
+  - "COMPENSATION IS BLOCKED UNDER AN ACTIVE BRAKE"
+  - "A COMPENSATION IS AN EFFECT AND OBEYS THE SAME BOUNDARY"
+  - "OBSERVATION AND RECONCILIATION CONTINUE"
+  - "THE BRAKE STOPS ACTING, NOT KNOWING"
+  - "A FLAPPING DETECTOR IS ONE ACTIVE BRAKE AND NO WINDOW"
+  - "FOUR F13 CONTRACTS AND NO FIFTH"
+  - "THERE IS NO BrakeExpired, NO BrakeAutoReleased AND NO BrakePendingRelease"
+  - "F13 IS STRICT PER AGGREGATE"
+  - "REPLAY RECONSTRUCTS HISTORY AND CREATES NO AUTHORITY"
+  - "REPLAY NEVER ENGAGES A LIVE BRAKE"
+  - "A HIDDEN BRAKE IS A SILENT DEGRADATION"
+  - "AN ACTIVE BRAKE IS REPORTED UNPROMPTED"
+  - "THE REPORT NAMES WHAT IS STILL ALLOWED"
+  - "THE REPORT NAMES THE EXACT RELEASE REQUIREMENTS"
+  - "THERE IS EXACTLY ONE BRAKE AUTHORITY"
+  - "M13 BUILDS NO SECOND BRAKE STORE"
+  - "M13 BUILDS NO SECOND BRAKE STATE TABLE"
+  - "M13 MINTS NO GATE DECISION"
+  - "THE CHECKPOINT IS STILL THE ONLY GATE MINTER"
+  - "M13 SHIPS DARK WITH ZERO PRODUCTION IMPORTERS"
+  - "NO BRAKE CONSOLE, DASHBOARD OR CHANNEL COMMAND EXISTS"
+  - "NOTHING GRADUATES"
+  - "LANDING M13 IS NOT P6 ACCEPTANCE"
+  - "THE M1 WORK ITEM MACHINE IS UNCHANGED"
+  - "THE M2 PIPELINE MACHINE IS UNCHANGED"
+  - "THE M3 EFFECT AUTHORITY IS UNCHANGED"
+  - "THE M4 APPROVAL MACHINE IS UNCHANGED"
+  - "THE M7 CONFLICT MACHINE IS UNCHANGED"
+  - "THE M9 EXCEPTION MACHINE IS UNCHANGED"
+  - "THE M11 POLICY MACHINE IS UNCHANGED"
+  - "THE M12 RULE MACHINE IS UNCHANGED"
+  # ---- the database and the registries, measured
+  - "problems: []"
+  - "brakes"
+  - "platform_brake"
+  - "brake state tables: 2"
+  - "a second brake state table appeared: []"
+  - "canonical two: ['ACTIVE', 'RELEASED']"
+  - "state count: 2"
+  - "forbidden states present: []"
+  - "canonical actor kinds: ['DETECTOR', 'HUMAN']"
+  - "every canonical required attribute is a column: []"
+  - "platform_brake carries a tenant column: False"
+  - "TTL or expiry columns on a brake table: []"
+  - "  expiry identifiers: []"
+  - "  expiry literals in executable code: []"
+  - "brakes table present: True"
+  - "positive control, a well-formed ACTIVE brake: ACCEPTED"
+  - "positive control, a RELEASED brake with a human releaser and a decision_ref: ACCEPTED"
+  - "positive control, a detector-ENGAGED brake: ACCEPTED"
+  - "positive control, the SAME scope ACTIVE in a DIFFERENT tenant: ACCEPTED"
+  - "positive control, a lawful release through the one authority: RELEASED"
+  - "a RELEASED brake with no releaser: refused"
+  - "a RELEASED brake with no decision_ref: refused"
+  - "a PENDING_RELEASE lifecycle state: refused"
+  - "an ENGAGING lifecycle state: refused"
+  - "an EXPIRED lifecycle state: refused"
+  - "a SUSPENDED lifecycle state: refused"
+  - "a PARTIAL lifecycle state: refused"
+  - "a DISENGAGED lifecycle state: refused"
+  - "an invented MODEL actor kind: refused"
+  - "a releaser who is not a recorded human: refused"
+  - "a releaser from another tenant: refused"
+  - "a second ACTIVE brake on one tenant and scope: refused"
+  - "surviving RELEASED rows with no releaser: 0"
+  - "surviving rows in a state outside the canonical two: 0"
+  - "platform rows on a fresh database: 1"
+  - "platform_brake has no tenant column at all: True"
+  - "a second platform row at id 2: refused"
+  - "a duplicate platform row at id 1: refused"
+  - "platform rows after every attempt: 1"
+  - "the id CHECK is in the DDL: True"
+  - "the recorded tenant-exempt table set: ['platform_brake']"
+  - "an ACTIVE-only partial UNIQUE index exists: True"
+  - "the active uniqueness columns are tenant and scope: True"
+  - "every brake index that names columns is tenant-first: True"
+  - "tenant is FIRST in the brake primary key: True"
+  - "a delete-refusing trigger exists on brakes: True"
+  - "a DELETE against a brake row: refused"
+  - "a DELETE against every brake row: refused"
+  - "a DELETE against the platform brake row: refused"
+  - "brake rows surviving: 1"
+  - "platform rows surviving: 1"
+  - "the token names both owners: True"
+  - "a tenant event moved the token: True"
+  - "a platform event moved the token: True"
+  - "another tenant sees the same platform component: True"
+  - "the platform component is monotonic: True"
+  - "the tenant component is monotonic: True"
+  - "positive control, admission is readable while the row exists: True"
+  - "an unreadable brake store at the admission read: refused by BrakeStoreUnreachable"
+  - "an unreadable brake store at the version derivation: refused by BrakeStoreUnreachable"
+  - "an absent platform ROW at the admission read: refused by BrakeStoreUnreachable"
+  - "exactly one statement claims a grant: True"
+  - "the CAS revalidates brake_version in its WHERE clause: True"
+  - "the CAS revalidates policy_version in its WHERE clause: True"
+  - "the claim path treats an unreadable brake store as a refusal: True"
+  - "modules that CALL brake admission: ['checkpoint.py']"
+  - "modules that DEFINE brake admission: ['brake.py']"
+  - "classes that own the brake lifecycle: ['brake.py:BrakeStore']"
+  - "brake authority count: 1"
+  - "brake-writing module count: 1"
+  - "M13 composes with the landed store: True"
+  - "total registered contracts: 118"
+  - "F13 contract count: 4"
+  - "the F13 family: ['BrakeEngaged', 'BrakeNarrowed', 'BrakeReleased', 'BrakeWidened']"
+  - "every F13 contract is strict-order: True"
+  - "BrakeReleased is human_only: True"
+  - "BrakeNarrowed is human_only: True"
+  - "BrakeEngaged is human_only: False"
+  - "BrakeWidened is human_only: False"
+  - "UnauthorizedBrakeReleaseAttempted family: F14"
+  - "forbidden brake contracts registered: []"
+  - "unregistered Brake-shaped names M13 mints: []"
+  - "M13 records the F14 unauthorized-release contract: True"
+  - "M13 mints no foreign machine domain event: []"
+  - "M2 still consumes BrakeEngaged: True"
+  - "M4 still consumes BrakeEngaged: True"
+  - "channel-capable modules that import the brake: []"
+  - "a brake console or dashboard module exists: []"
+  - "a brake channel command exists: []"
+  - "production detector wiring exists: []"
+  - "M13 opens a socket, thread or subprocess: []"
+  - "a second application of the migration is a no-op: True"
+  - "the upgraded brake layer is identical to the fresh one: True"
+  - "P3 readiness still holds after the M13 migration: []"
+  - "tenantless tables outside the recorded exemptions and the migration ledger: []"
+  - "brakes is tenant-owned: True"
+  - "the declared states: ['ACTIVE', 'RELEASED']"
+  - "the terminal states: ['RELEASED']"
+  - "the declared transition ids: ['BR-1', 'BR-2', 'BR-3', 'BR-4', 'BR-5']"
+  - "transition row count: 5"
+  - "produced contract count: 4"
+  - "BR-5 has no destination state: True"
+  - "BR-5 writes nothing: True"
+  - "BR-5 produces no event: True"
+  - "BR-5 is classified non-producing: GR1_ILLEGAL_REFUSAL"
+  - "the transitions automation may perform: ['BR-1', 'BR-2']"
+  - "the transitions a human alone may perform: ['BR-3', 'BR-4']"
+  - "the transitions a model may perform: []"
+  - "release evidence is not satisfiable by a decision_ref alone: True"
+  - "a page that loaded is not a positive health proof: True"
+  - "a positive control IS a positive health proof: True"
+  - "an unresolved unknown outcome does not block release: True"
+  - "release builds no second approval workflow: True"
+  - "R17 fields the report cannot state: []"
+  - "an unprompted report is produced for an ACTIVE brake: True"
+  - "distinct brake ids across 25 engagements: 1"
+  - "ACTIVE rows for the scope: 1"
+  - "no RELEASED row was ever created: 0"
+  - "a signal count is recorded on the row: True"
+  - "canonical dimension count: 5"
+  - "landed and deferred partition the canonical five: True"
+  - "landed and deferred do not overlap: True"
+  - "every deferred dimension carries a recorded reason: []"
+  - "an unknown scope dimension: refused"
+  - "an empty scope: refused"
+  - "an unknown scope is never treated as no brake: True"
+  - "what a human may do: ['BR-1', 'BR-2', 'BR-3', 'BR-4']"
+  - "what a detector may do: ['BR-1', 'BR-2']"
+  - "what a model may do: []"
+  - "what a timer may do: []"
+  - "a detector may never clear its own alarm: True"
+  - "every non-human actor is refused BR-3 and BR-4: []"
+  - "entity point 44 tests missing: []"
+  - "the machine section 41 acceptance items missing: []"
+
+forbidden:
+  # ---- shared harness vocabulary, carried by every P6 scenario
+  - "Traceback (most recent call last)"
+  - "no such table"
+  - "no such column"
+  # A REGRESSION ANCHOR THAT RAN NOTHING IS NOT A REGRESSION ANCHOR. pytest answers a missing path
+  # with `ERROR: file or directory not found` and exit 4, and an empty selection with `no tests ran`
+  # and exit 5. Both are loud here, so a battery can never report the absence of a failure as the
+  # absence of a defect.
+  - "ERROR: file or directory not found"
+  - "no tests ran"
+  - "ModuleNotFoundError: No module named 'eval'"
+  # ---- the shared probe failure vocabulary every P6 probe carries
+  - "### MISS ###"
+  - "### NOT REFUSED"
+  - "### WRONGLY REFUSED"
+  - "### WRONG REFUSAL"
+  # ---- BR-1: engagement, and the actors who may never reach it
+  - "### A MODEL ENGAGED A BRAKE ###"
+  - "### A MODEL MASQUERADED AS A DETECTOR ###"
+  - "### A COUNTERPARTY ENGAGED A BRAKE ###"
+  - "### INBOUND CONTENT ENGAGED A BRAKE ###"
+  - "### AN UNAUTHENTICATED ACTOR ENGAGED A BRAKE ###"
+  - "### ENGAGEMENT REQUIRED AN APPROVAL ###"
+  - "### ENGAGEMENT REQUIRED A HEALTHY SYSTEM ###"
+  - "### ENGAGEMENT REQUIRED THE POLICY ENGINE ###"
+  - "### ENGAGEMENT REQUIRED THE TMS ###"
+  - "### ENGAGEMENT WAS NOT A SINGLE ROW WRITE ###"
+  - "### ENGAGEMENT RECORDED NO REASON ###"
+  - "### ENGAGEMENT RECORDED NO ACTOR ###"
+  - "### BrakeEngaged TREATED AS A KILL ORDER ###"
+  # ---- the one-way ratchet
+  - "### AUTOMATION RELEASED A BRAKE ###"
+  - "### AUTOMATION NARROWED A BRAKE ###"
+  - "### A DETECTOR RELEASED A BRAKE ###"
+  - "### A DETECTOR NARROWED A BRAKE ###"
+  - "### A DETECTOR CLEARED ITS OWN ALARM ###"
+  - "### A MODEL RELEASED A BRAKE ###"
+  - "### A MODEL NARROWED A BRAKE ###"
+  - "### A MODEL WIDENED A BRAKE ###"
+  - "### A TIMER RELEASED A BRAKE ###"
+  - "### A RETRY HANDLER RELEASED A BRAKE ###"
+  - "### A COUNTERPARTY RELEASED A BRAKE ###"
+  - "### A SERVICE ACCOUNT RELEASED A BRAKE ###"
+  - "### SYSTEM DETECTOR AND MODEL COLLAPSED INTO ONE ACTOR CLASS ###"
+  - "### THE SAFE DIRECTION WAS INVERTED ###"
+  - "### AUTHORITY WAS BROADENED WITHOUT A HUMAN ###"
+  # ---- BR-4: release, and the evidence that is not optional
+  - "### RELEASED WITHOUT AN AUTHENTICATED HUMAN ###"
+  - "### RELEASED WITHOUT A DECISION REF ###"
+  - "### RELEASED WITH AN UNACCOUNTED IN-FLIGHT EFFECT ###"
+  - "### RELEASED WITH AN UNRESOLVED SEV-0 ###"
+  - "### RELEASED WITHOUT POSITIVE INTEGRATION HEALTH ###"
+  - "### A LOADED PAGE ACCEPTED AS A HEALTH PROOF ###"
+  - "### RELEASE REDUCED TO A HUMAN AND A DECISION REF ###"
+  - "### AN ARBITRARY ACTOR STRING ACCEPTED AS A HUMAN ###"
+  - "### A SECOND HUMAN IDENTITY SYSTEM INVENTED ###"
+  - "### A RELEASE APPROVAL WORKFLOW BUILT ###"
+  - "### CEREMONY REQUIRED TO BECOME SAFER ###"
+  - "### AN UNRESOLVED UNKNOWN OUTCOME BLOCKED RELEASE ###"
+  - "### AN UNRESOLVED UNKNOWN OUTCOME WENT UNACKNOWLEDGED ###"
+  - "### AN UNRESOLVED UNKNOWN OUTCOME WENT UNOWNED ###"
+  - "### THE BRAKE RESOLVED AN UNKNOWN OUTCOME ###"
+  - "### THE BRAKE UNFROZE AN ENTITY ###"
+  - "### THE BRAKE RELEASED A COMMIT KEY ###"
+  - "### THE BRAKE CLEARED COMPENSATION_FAILED ###"
+  - "### UNAUTHORIZED RELEASE WENT UNRECORDED ###"
+  - "### SECOND UNAUTHORIZED-RELEASE CONTRACT MINTED ###"
+  # ---- BR-5 and the clock
+  - "### A TIMER MOVED A BRAKE ###"
+  - "### A BRAKE EXPIRED ###"
+  - "### A BRAKE AUTO-RELEASED ###"
+  - "### A TTL WAS INTRODUCED ###"
+  - "### THE CLOCK MADE A BRAKE LESS RESTRICTIVE ###"
+  - "### BR-5 WROTE STATE ###"
+  - "### BR-5 PRODUCED AN EVENT ###"
+  # ---- the state set
+  - "### A THIRD BRAKE STATE APPEARED ###"
+  - "### PENDING_RELEASE APPEARED ###"
+  - "### ENGAGING APPEARED ###"
+  - "### DISENGAGED APPEARED ###"
+  - "### EXPIRED APPEARED ###"
+  - "### PARTIALLY RELEASED MODELLED AS A STATE ###"
+  - "### ACTOR KIND MODELLED AS A STATE ###"
+  - "### RELEASED REOPENED ###"
+  # ---- admission control and the five-position boundary
+  - "### THE BRAKE KILLED A WORKER ###"
+  - "### THE BRAKE TERMINATED A PROCESS ###"
+  - "### THE BRAKE INTERRUPTED AN ADAPTER CALL ###"
+  - "### THE BRAKE MANUFACTURED AN UNKNOWN OUTCOME ###"
+  - "### A CLAIMED EFFECT WAS ABANDONED ###"
+  - "### A VERIFYING EFFECT WAS STOPPED ###"
+  - "### VERIFICATION WAS TREATED AS AN EFFECT ###"
+  - "### A WITNESS WAS MINTED UNDER AN ACTIVE BRAKE ###"
+  - "### A GRANT WAS MINTED UNDER AN ACTIVE BRAKE ###"
+  - "### A GRANT WAS CLAIMED UNDER AN ACTIVE BRAKE ###"
+  - "### AN EFFECT REACHED THE ADAPTER UNDER AN ACTIVE BRAKE ###"
+  - "### A RETRY WAS ADMITTED UNDER AN ACTIVE BRAKE ###"
+  - "### A MIGRATION TOOL BYPASSED THE BRAKE ###"
+  - "### AN ADMIN BYPASS WAS BUILT ###"
+  # ---- global and tenant
+  - "### GLOBAL REPRESENTED AS A FAKE TENANT ###"
+  - "### A SENTINEL TENANT WAS INTRODUCED ###"
+  - "### THE PLATFORM ROW ACQUIRED A TENANT ###"
+  - "### MULTIPLE PLATFORM ROWS ALLOWED ###"
+  - "### GLOBAL FANNED OUT TO N TENANT ROWS ###"
+  - "### A GLOBAL BRAKE FAILED TO DENY A TENANT ###"
+  - "### TENANT MISSING FROM THE BRAKE PRIMARY KEY ###"
+  - "### CROSS-TENANT BRAKE READ ACCEPTED ###"
+  - "### CROSS-TENANT RELEASE ACCEPTED ###"
+  - "### GLOBAL UNIQUENESS COUPLED TWO TENANTS ###"
+  # ---- fail closed
+  - "### AN UNREADABLE BRAKE STORE READ AS OFF ###"
+  - "### AN ABSENT BRAKE ROW READ AS RELEASED ###"
+  - "### AN UNKNOWN SCOPE READ AS NO BRAKE ###"
+  - "### ALLOW ON BRAKE ERROR ###"
+  - "### A SCOPE SILENTLY NARROWED ###"
+  - "### AN UNPARSEABLE SCOPE SCOPED TO NOTHING ###"
+  # ---- versions and the race
+  - "### THE CLAIM CAS STOPPED CHECKING THE BRAKE VERSION ###"
+  - "### ONLY THE TENANT VERSION WAS CHECKED ###"
+  - "### ONLY THE GLOBAL VERSION WAS CHECKED ###"
+  - "### THE RACE RESOLVED TO BOTH ###"
+  - "### THE RACE RESOLVED TO NEITHER ###"
+  - "### AN EXTERNAL EFFECT OCCURRED WHILE THE BRAKE WON ###"
+  - "### THE RACE WAS DECIDED BY A CHECK RATHER THAN THE DATABASE ###"
+  - "### A BRAKE VERSION WENT BACKWARDS ###"
+  - "### A BRAKE VERSION WAS REUSED ###"
+  - "### AN EVENT DID NOT BUMP THE VERSION ###"
+  # ---- release and stale authority
+  - "### RELEASE RESURRECTED A STALE WITNESS ###"
+  - "### RELEASE RESURRECTED A STALE GRANT ###"
+  - "### RELEASE RESTORED THE PRE-BRAKE VERSION ###"
+  - "### QUEUED WORK SKIPPED THE NEW CHECKPOINT ###"
+  - "### RELEASE MINTED A WITNESS ###"
+  - "### A STORED-UP VOLLEY WAS RELEASED ###"
+  - "### AN OLD APPROVAL EXECUTED AFTER RELEASE ###"
+  # ---- neighbours
+  - "### A LOCAL BRAKE APPROVAL MECHANISM WAS BUILT ###"
+  - "### A PENDING APPROVAL WAS DELETED UNDER A BRAKE ###"
+  - "### A PENDING APPROVAL EXECUTED UNDER A BRAKE ###"
+  - "### VOID_ON_BRAKE SEMANTICS MODIFIED ###"
+  - "### COMPENSATION WROTE UNDER AN ACTIVE BRAKE ###"
+  - "### OBSERVATION WAS BLOCKED BY A BRAKE ###"
+  - "### RECONCILIATION WAS BLOCKED BY A BRAKE ###"
+  - "### A READ WAS BLOCKED BY A BRAKE ###"
+  # ---- idempotency
+  - "### FLAPPING CREATED MULTIPLE ACTIVE BRAKES ###"
+  - "### FLAPPING OPENED A RELEASE WINDOW ###"
+  - "### A REPEAT ENGAGEMENT BUMPED THE VERSION ###"
+  - "### THE SIGNAL COUNT DID NOT RISE ###"
+  # ---- events and replay
+  - "### A FIFTH F13 CONTRACT MINTED ###"
+  - "### BrakeExpired MINTED ###"
+  - "### BrakeAutoReleased MINTED ###"
+  - "### BrakePendingRelease MINTED ###"
+  - "### AN UNREGISTERED EVENT MINTED ###"
+  - "### F13 STRICT ORDERING VIOLATED ###"
+  - "### REQUIRED PAYLOAD FIELD DROPPED ###"
+  - "### EVENT WITHOUT ITS STATE ###"
+  - "### STATE WITHOUT ITS EVENT ###"
+  - "### REPLAY ENGAGED A LIVE BRAKE ###"
+  - "### REPLAY MINTED AUTHORITY ###"
+  - "### REPLAY MINTED A WITNESS ###"
+  - "### REPLAY MINTED A GRANT ###"
+  - "### REPLAY PRODUCED AN EXTERNAL EFFECT ###"
+  # ---- observability
+  - "### AN ACTIVE BRAKE WAS HIDDEN ###"
+  - "### THE REPORT DID NOT SAY WHAT IS STILL ALLOWED ###"
+  - "### THE REPORT OMITTED THE IN-FLIGHT EFFECTS ###"
+  - "### THE REPORT OMITTED THE UNKNOWN OUTCOMES ###"
+  - "### THE REPORT OMITTED THE RELEASE REQUIREMENTS ###"
+  - "### THE REPORT SAID CONTACT AN ADMINISTRATOR ###"
+  # ---- the single authority, and the boundary
+  - "### A SECOND BRAKE AUTHORITY WAS BUILT ###"
+  - "### A SECOND BrakeStore WAS BUILT ###"
+  - "### A SECOND BRAKE STATE TABLE WAS BUILT ###"
+  - "### A SECOND BRAKE DECISION ENGINE WAS BUILT ###"
+  - "### A SECOND CHECKPOINT BRAKE DECISION WAS BUILT ###"
+  - "### A CLAIM-TIME BRAKE AUTHORITY WAS BUILT ###"
+  - "### brake.py WAS DUPLICATED ###"
+  - "### M13 MINTED A GATE DECISION ###"
+  - "### M13 REGISTERED A GATE ###"
+  - "### SECOND GATE MINTER BUILT ###"
+  - "### SECOND CHECKPOINT BUILT ###"
+  - "### CHECKPOINT STEP 7 BYPASSED ###"
+  # ---- scope: what must not appear, and what must not move
+  - "### BRAKE CONSOLE BUILT ###"
+  - "### BRAKE ADMIN UI BUILT ###"
+  - "### BRAKE DASHBOARD BUILT ###"
+  - "### SLACK BRAKE COMMAND BUILT ###"
+  - "### EMAIL BRAKE COMMAND BUILT ###"
+  - "### SMS BRAKE COMMAND BUILT ###"
+  - "### VOICE BRAKE COMMAND BUILT ###"
+  - "### PRODUCTION DETECTOR WIRING BUILT ###"
+  - "### CHANNEL JOINED ###"
+  - "### NOTIFIER WIRED ###"
+  - "### TIMER SERVICE IMPORTED ###"
+  - "### M13 PRODUCTION-ENABLED ###"
+  - "### AUTONOMY GRADUATION ENGINE BUILT ###"
+  - "### BOUNDED AUTONOMY ENABLED ###"
+  - "### FREIGHT WORKFLOW BUILT ###"
+  - "### P7 PROVENANCE SURFACE BUILT ###"
+  - "### P8 RUNTIME BUILT ###"
+  - "### P6 MARKED COMPLETE ###"
+  - "### A P6 CRITERION WAS SCORED ###"
+  - "### P7 UNBLOCKED ###"
+  - "### V13 RESOLVED BY PREFERENCE ###"
+  - "### V14 RESOLVED BY PREFERENCE ###"
+  - "### V15 RESOLVED BY PREFERENCE ###"
+  - "### PolicyOverridden MINTED ###"
+  - "### P6-D71 RESOLVED BY A BUILD SESSION ###"
+  - "### M1 MACHINE EDITED ###"
+  - "### M2 STATE MACHINE EDITED ###"
+  - "### M3 EFFECT SEAM REWRITTEN ###"
+  - "### M4 MACHINE EDITED ###"
+  - "### M9 MACHINE EDITED ###"
+  - "### M11 MACHINE EDITED ###"
+  - "### M12 MACHINE EDITED ###"
+
+teardown: []
