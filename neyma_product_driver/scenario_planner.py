@@ -65,10 +65,14 @@ from .scenario_validation import (
     ApprovedInvocationProbe,
     ApprovedCommands,
     ValidationContext,
+    bind_observations,
     established_observations_from,
     grounding_tokens_from,
     permanent_signatures,
     principle_tokens_from,
+    rebind_observations_to_approved,
+    reconstruct_miscited_commands,
+    restored_coherence_problems,
     validate_plan,
 )
 from .scenarios import Scenario
@@ -285,6 +289,7 @@ class ScenarioPlanner:
         #: running the real program. Left unset on the real path, where the
         #: probe is built against the repository under test.
         self._contract_probe_cache = contract_probe
+        self._established_cache: dict[str, frozenset[str]] | None = None
 
         self.plan = GeneratedScenarioPlan()
         # The base scenario alone: it is the only permanent scenario a run's
@@ -668,6 +673,12 @@ class ScenarioPlanner:
                 record.resolved_citations.append(
                     f"{scenario.id}: {before.split()[0]} -> {after}"
                 )
+            # And the measurement half, at the same moment and for the same
+            # reason: once the proposal is written down, the only identity its
+            # expectations have left is their own bytes, and a repair of the
+            # oracle destroys exactly those. Recorded here, read back by
+            # `rebind_observations_to_approved` on a resume.
+            bind_observations(scenario, self.approved_commands, self._established_observations)
         # Which STAGE rejected a candidate is what classifies it, not what the
         # reason string happens to say. Everything in `malformed` failed before
         # it was ever a model: the payload did not satisfy the structured schema
@@ -807,18 +818,119 @@ class ScenarioPlanner:
             self._contract_probe_cache = probe
         return probe
 
-    def _validation_context(self) -> ValidationContext:
-        return ValidationContext(
-            approved_commands=self.approved_commands,
-            # Harvested from exactly the sources the approved command set is
-            # harvested from, so "which commands may run" and "what has a human
-            # said those commands print" can never drift apart.
-            established_observations=established_observations_from(
+    @property
+    def _established_observations(self) -> dict[str, frozenset[str]]:
+        """What a human has written down that each approved command prints.
+
+        Harvested from exactly the sources the approved command set is harvested
+        from, so "which commands may run" and "what has a human said those
+        commands print" can never drift apart. Cached per planner: it is derived
+        from files that do not change inside a run, and BOTH the generation path
+        and the resume path read it — which is the point. A resume that judged a
+        restored scenario against a different map from the one that accepted it
+        is the drift this whole correction is about.
+        """
+        cached = self._established_cache
+        if cached is None:
+            cached = established_observations_from(
                 [
                     *self.permanent_scenarios,
                     *([self.base_scenario] if self.base_scenario else []),
                 ]
-            ),
+            )
+            self._established_cache = cached
+        return cached
+
+    def _recohere(
+        self,
+        plan: GeneratedScenarioPlan,
+        scenario: GeneratedScenario,
+        repaired: dict[str, str],
+        rebound_notes: list[str],
+    ) -> str:
+        """Make a restored scenario's measurement agree with what it runs.
+
+        Returns ``""`` when the scenario is coherent — the overwhelmingly common
+        case, in which nothing is touched and nothing is recorded — and the
+        reason it could not be made coherent otherwise.
+
+        Three steps, cheapest first, each one reading only from authority that
+        exists NOW:
+
+        1. **Re-materialize stale expectations.** Where an approved command was
+           repaired, the literals it owns went stale with its body. Only the
+           executable half was ever rebuilt, so ``P6-M13-W3-07`` ran the
+           corrected oracle while demanding the broken one's output.
+        2. **Ask whether the measurement still coheres**, with the same rule
+           generation applies. A restored scenario that generation would refuse
+           must not execute merely because an earlier process accepted it.
+        3. **Re-bind a miscitation.** Where the literals themselves point,
+           unanimously, at a different approved command, the field is re-bound
+           to the command the repository says prints them — which is what
+           ``P6-M13-W3-03`` had needed since the wave that proposed it.
+
+        A scenario that survives with changes is marked for re-execution: its
+        earlier evidence was produced by a measurement that no longer exists.
+        One that cannot be made coherent STAYS IN THE PLAN and is reported, so
+        the coverage it owed is a gap the gate refuses rather than a silence.
+        """
+        established = self._established_observations
+        changed: list[str] = []
+
+        rebindings, unreconstructable = rebind_observations_to_approved(
+            scenario,
+            self.approved_commands,
+            established,
+            probe=self._contract_probe,
+            also_repaired=repaired,
+        )
+        changed += [r.brief() for r in rebindings]
+
+        problems = list(unreconstructable)
+        if not problems:
+            problems = restored_coherence_problems(scenario, self._validation_context())
+            if problems:
+                reconstructed, refused = reconstruct_miscited_commands(
+                    scenario, self.approved_commands, established
+                )
+                changed += [r.brief() for r in reconstructed]
+                problems = refused or restored_coherence_problems(
+                    scenario, self._validation_context()
+                )
+        if problems:
+            return "; ".join(problems)
+        if not changed:
+            return ""
+
+        try:
+            self.compiled[scenario.id] = compile_to_scenario(
+                scenario,
+                base=self.base_scenario,
+                approved_commands=self._approved_for(scenario),
+            )
+        except Exception as exc:
+            return (
+                "its measurement was re-materialized against the current approved "
+                f"commands and the result does not compile: {type(exc).__name__}: {exc}"
+            )
+        scenario.rebound_on_resume = list(scenario.rebound_on_resume) + changed
+        plan.executed_scenario_ids = [i for i in plan.executed_scenario_ids if i != scenario.id]
+        note = (
+            f"{scenario.id} had its measurement re-materialized against current approved "
+            f"authority ({len(changed)} expectation field(s)). Its earlier evidence was "
+            "produced by a measurement that no longer exists and does not count; it must "
+            "be executed again."
+        )
+        rebound_notes.append(note)
+        self.emit(f"  {note}")
+        for line in changed:
+            self.emit(f"    {line}")
+        return ""
+
+    def _validation_context(self) -> ValidationContext:
+        return ValidationContext(
+            approved_commands=self.approved_commands,
+            established_observations=self._established_observations,
             # The one thing no file in either repository can answer: what a
             # selector-narrowed invocation actually prints. Asked only when the
             # established map contests an attribution, at most once per
@@ -1072,6 +1184,23 @@ class ScenarioPlanner:
         restored, dropped = 0, []
         rejected: list[RejectedScenario] = []
         rebound_notes: list[str] = []
+
+        def incoherent(scenario: GeneratedScenario, problem: str) -> None:
+            """Keep the obligation, refuse the executable, and say why.
+
+            The scenario is NOT removed from the plan — the run still owes this
+            verification and a later resume against a corrected vocabulary must
+            be able to find it — but it has no measurement anything can trust,
+            so the gate is told rather than left to credit it.
+            """
+            nonlocal restored
+            restored -= 1
+            dropped.append(f"{scenario.id} ({problem})")
+            rejected.append(
+                RejectedScenario(id=scenario.id, title=scenario.title, reasons=[problem])
+            )
+            self.compiled.pop(scenario.id, None)
+
         for scenario in list(plan.scenarios):
             try:
                 self.compiled[scenario.id] = compile_to_scenario(
@@ -1079,10 +1208,21 @@ class ScenarioPlanner:
                     base=self.base_scenario,
                     approved_commands=self._approved_for(scenario),
                 )
-                restored += 1
-                continue
             except Exception as exc:
                 first = exc
+            else:
+                # Compiling is only half the question. It asks whether what this
+                # scenario RUNS is approved now; it never asked whether what the
+                # scenario MEASURES still coheres with it. Run 20260905-230030
+                # executed two cases that compiled perfectly and could not pass
+                # against a correct product — one holding an expectation the
+                # repaired oracle no longer prints, one measuring an oracle that
+                # was never the one its literals belong to.
+                restored += 1
+                problem = self._recohere(plan, scenario, {}, rebound_notes)
+                if problem:
+                    incoherent(scenario, problem)
+                continue
 
             # Re-materialize against the CURRENT approved vocabulary, then
             # compile the result through exactly the same independent check.
@@ -1121,6 +1261,14 @@ class ScenarioPlanner:
                     )
                     rebound_notes.append(note)
                     self.emit(f"  {note}")
+                    problem = self._recohere(
+                        plan,
+                        scenario,
+                        {r.field: r.source_name for r in rebindings},
+                        rebound_notes,
+                    )
+                    if problem:
+                        incoherent(scenario, problem)
                     continue
 
             # Could not be re-materialized. The scenario STAYS in the plan —

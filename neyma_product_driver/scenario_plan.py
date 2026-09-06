@@ -519,6 +519,49 @@ class CommandBinding(BaseModel):
         return text
 
 
+class ObservationBinding(BaseModel):
+    """Which approved command's reviewed expectations one literal field came from.
+
+    :class:`CommandBinding` records where a scenario's *executable* came from.
+    This records where its *measurement* came from, and the two are not the same
+    fact. Run 20260905-230030 proved they need to be recorded separately: it
+    re-materialized ``P6-M13-W3-07``'s command against a repaired oracle and
+    left the literals that command is judged by frozen at the wording the
+    superseded oracle printed. The case then ran the corrected instrument
+    against the broken instrument's output, and could not pass against any
+    product.
+
+    Only literals the approved command's OWN reviewed expectations establish are
+    recorded here. A literal the model wrote itself is not owned by anybody, is
+    not recorded, and is never rewritten — see
+    :func:`~neyma_product_driver.scenario_validation.rebind_observations_to_approved`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A path from :meth:`GeneratedScenario.observation_slots`.
+    field: str
+    #: The command slot this literal field measures. Its
+    #: :class:`CommandBinding` and this binding name the same approved command,
+    #: and a resume that repairs one must repair the other.
+    command_field: str
+    #: The human-authored NAME of the approved command whose expectations these
+    #: are. The same identity :class:`CommandBinding` uses, for the same reason:
+    #: it survives a legitimate repair of the command's body.
+    source_name: str = ""
+    #: The literals AS THEY WERE ESTABLISHED when this scenario was generated.
+    #: A literal in this list that the current approved command no longer
+    #: establishes is a superseded measurement, and that is the whole signal.
+    #:
+    #: Marked execution-semantics deliberately. These bytes are compared against
+    #: product output on resume, and the blunt redactor is what turned
+    #: ``moved the token: True`` into ``moved the token: [REDACTED]`` in the
+    #: plan this class exists because of.
+    literals: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
+
+
 class GeneratedScenario(BaseModel):
     """One situation the driver decided is worth exercising."""
 
@@ -574,6 +617,13 @@ class GeneratedScenario(BaseModel):
     #: :func:`rebind_to_approved` reports as unreconstructable rather than
     #: guessing at.
     command_bindings: list[CommandBinding] = Field(default_factory=list)
+    #: Which approved command's reviewed expectations each literal field was
+    #: drawn from. The measurement half of the same record
+    #: :attr:`command_bindings` keeps for the executable half. Absent on a plan
+    #: written before this existed, which
+    #: :func:`~neyma_product_driver.scenario_validation.rebind_observations_to_approved`
+    #: handles narrowly rather than guessing at.
+    observation_bindings: list[ObservationBinding] = Field(default_factory=list)
     #: Set when a resume re-materialized this scenario against a repaired
     #: approved command. Its prior evidence was produced by the superseded
     #: measurement and may not satisfy the gate, so the run must execute it
@@ -715,6 +765,61 @@ class GeneratedScenario(BaseModel):
                     f"persisted_state_checks[{index}].command",
                     check.command,
                     at_attr(check, "command"),
+                )
+            )
+        return slots
+
+    def observation_slots(
+        self,
+    ) -> "list[tuple[str, str, list[str], Callable[[list[str]], None]]]":
+        """Every literal list that measures a command, as ``(path, command path, value, set)``.
+
+        The expectation half of :meth:`command_slots`, and the same argument for
+        existing: one place that knows the layout, so a caller that has to touch
+        all of them cannot miss a field. Each entry names the command slot the
+        literals are asserted *of*, because that pairing is the whole point — a
+        literal is stale or miscited only relative to the invocation it is
+        measured against.
+
+        Only literal lists with a command behind them appear. An HTTP
+        ``expect_contains`` and a browser ``expect_text`` have no invocation to
+        re-materialize against, and scenario-level ``expected_observations``
+        names no operation at all; both are left to the rules that cover them.
+        """
+        slots: list[tuple[str, str, list[str], Callable[[list[str]], None]]] = []
+
+        def at_attr(obj: Any, name: str) -> "Callable[[list[str]], None]":
+            def setter(value: list[str]) -> None:
+                setattr(obj, name, list(value))
+
+            return setter
+
+        for index, action in enumerate(self.actions):
+            if action.kind == "command" and action.command:
+                slots.append(
+                    (
+                        f"actions[{index}].expect_contains",
+                        f"actions[{index}].command",
+                        list(action.expect_contains),
+                        at_attr(action, "expect_contains"),
+                    )
+                )
+            if action.kind == "state_check" and action.state_check is not None:
+                slots.append(
+                    (
+                        f"actions[{index}].state_check.contains",
+                        f"actions[{index}].state_check.command",
+                        list(action.state_check.contains),
+                        at_attr(action.state_check, "contains"),
+                    )
+                )
+        for index, check in enumerate(self.persisted_state_checks):
+            slots.append(
+                (
+                    f"persisted_state_checks[{index}].contains",
+                    f"persisted_state_checks[{index}].command",
+                    list(check.contains),
+                    at_attr(check, "contains"),
                 )
             )
         return slots

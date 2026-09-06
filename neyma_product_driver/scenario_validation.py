@@ -42,9 +42,11 @@ from .command_guard import classify_command, classify_worktree_ownership, is_sec
 from .runner import child_env
 from .scenario_plan import (
     EFFECT_FAMILY,
+    CommandBinding,
     GeneratedRequest,
     GeneratedScenario,
     GeneratedScenarioPlan,
+    ObservationBinding,
     Priority,
     RiskCategory,
 )
@@ -969,23 +971,38 @@ def _operation_assertions(
 
 
 def contested_producers(
-    invocation: str, literal: str, established: dict[str, frozenset[str]]
+    invocation: str, literal: str, established: Mapping[str, frozenset[str]]
 ) -> tuple[str, ...]:
     """Invocations a human bound ``literal`` to that ``invocation`` is not.
 
     Contested means the repository already says where this sentence comes from,
-    and it does not say it comes from here. Two shapes count, and both are the
-    same fact — a selector was applied and the binding sits on the other side of
-    it:
+    and it does not say it comes from here. Three shapes count, and all three are
+    the same fact — the binding sits somewhere other than where the assertion is:
 
     * ``invocation`` narrows an approved form the literal is bound to. The
       approved form runs the whole program; this one runs a selection of it;
     * ``invocation`` and the bound form are *sibling* narrowings of one approved
-      form — different selections of the same program.
+      form — different selections of the same program;
+    * ``invocation`` is itself a command a human wrote the expectations of, and
+      those expectations are not this literal, while some other command's are.
 
-    Silence is still not contested. A literal no file binds to anything returns
-    ``()`` here and keeps the cheap path, which is what leaves a scenario free to
-    name output no human has written down.
+    ### WHY THE THIRD SHAPE HAD TO BE ADDED. The first two both require a
+    selector: they ask whether the assertion sits on the other side of one. That
+    left the plainest miscitation of all uncontested — running approved oracle
+    *A* verbatim while demanding the sentence approved oracle *B* prints.
+    ``approves`` says yes (the command is approved), rebinding says nothing to do
+    (the body is current), and self-attribution supplied the basis, so run
+    20260905-230030's ``P6-M13-W3-03`` measured the wrong oracle for its entire
+    life and arrived at the gate as an uncovered risk. A verbatim approved
+    command narrows nothing, so no amount of selector reasoning reaches it.
+
+    Silence is still not contested, and that is deliberate. A literal no file
+    binds to anything returns ``()`` here and keeps the cheap path, which is what
+    leaves a scenario free to name output no human has written down — and what
+    keeps a genuine product failure a product failure rather than a citation
+    error. Being contested is never itself the refusal either: it is the reason
+    to ask the invocation what it prints, and an invocation that does print the
+    sentence is accepted.
     """
     normalized = _norm_command(invocation)
     # A human wrote this exact invocation down and said it prints this. That is
@@ -993,13 +1010,23 @@ def contested_producers(
     # sibling form — there is nothing left to contest.
     if _emitted_by(literal, established.get(normalized, ())):
         return ()
+    elsewhere = {
+        command: literals
+        for command, literals in established.items()
+        if command != normalized and _emitted_by(literal, literals)
+    }
+    if not elsewhere:
+        return ()
+    # The third shape. A human wrote down what THIS invocation prints, this is
+    # not among it, and the same human wrote the sentence down against another
+    # command. Nothing about a selector is involved, so nothing below reaches it.
+    if normalized in established:
+        return tuple(sorted(elsewhere))
     approved_forms = [key for key in established if _narrows(normalized, key)]
     if not approved_forms:
         return ()
     out: list[str] = []
-    for command, literals in established.items():
-        if command == normalized or not _emitted_by(literal, literals):
-            continue
+    for command in elsewhere:
         if any(command == form or _narrows(command, form) for form in approved_forms):
             out.append(command)
     return tuple(sorted(out))
@@ -1139,6 +1166,525 @@ def unattributed_observations(
         )
         out.append((literal, producers))
     return out
+
+
+def coherence_problems(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """Every reason this scenario's expectations do not cohere with what it runs.
+
+    Two rules, one principle: an assertion Product Driver cannot attribute to
+    something it runs is not evidence about the product. The first refuses a
+    literal asserted *of* an invocation that has no basis for printing it; the
+    second refuses a scenario-level observation no operation accounts for.
+
+    Factored out of :func:`_check_quality` so the resume path can apply the
+    identical rule to a restored scenario — see
+    :func:`restored_coherence_problems`. Generation and resume asking different
+    questions of the same plan is exactly how run 20260905-230030 executed a
+    case that generation would have refused.
+    """
+    reasons: list[str] = []
+    for invocation, label, literal, producers, detail in cross_contract_observations(
+        generated, context
+    ):
+        reasons.append(
+            f"{label!r} runs {invocation!r} and requires {literal!r}, which that "
+            f"invocation has no basis for printing: {detail}. This repository binds "
+            "that literal to " + "; ".join(repr(command) for command in producers[:3])
+            + " — a different command. An observation belonging to one command is not "
+            "evidence about another, and this assertion would fail against a correct "
+            "product. Assert what the invocation this scenario runs actually prints, or "
+            "run the invocation the literal belongs to."
+        )
+
+    for literal, producers in unattributed_observations(generated, context):
+        where = ""
+        if producers:
+            where = (
+                " In this repository's own scenario files that literal is established "
+                "by: " + "; ".join(repr(command) for command in producers[:3])
+                + ". This scenario runs none of those invocations as written — an "
+                "argument tail narrows what a command does, and nothing here can know "
+                "what the narrowed form still prints."
+            )
+        reasons.append(
+            f"expected_observations requires {literal!r}, and no operation this scenario "
+            "performs has a basis for emitting it: no action's expect_contains, no state "
+            "check's contains and no browser step's expect_text names it, and the scenario "
+            "runs no approved command a human already bound it to. This is a generation "
+            "contract error, not a statement about the product: the assertion is matched "
+            "against everything the run produced, so it cannot be attributed to any "
+            "command, and it would fail against a correct product. Name the operation that "
+            "prints it, in that operation's own expectations." + where
+        )
+    return _dedupe(reasons)
+
+
+def restored_coherence_problems(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """:func:`coherence_problems`, asked of a scenario a resume brought back.
+
+    THE GAP THIS CLOSES. A resume reconstructed the executable half of the
+    verification plan from current approved authority and restored the
+    expectation half verbatim from a snapshot, and never asked whether the two
+    halves still agreed. So a generated scenario could carry a superseded
+    expectation, a miscitation, or an output contract the current approved
+    source no longer matches, and execute as if valid — blocking the gate
+    forever on a product that is correct, with no channel able to say why.
+
+    Refusing here is not a licence to delete: what the run committed to
+    verifying is an obligation, and a case that cannot be made coherent stays in
+    the plan as unexecutable coverage the gate must report. See
+    :func:`rebind_observations_to_approved` and
+    :func:`reconstruct_miscited_commands` for the two ways it can instead be
+    rebuilt out of authority that exists now.
+    """
+    return [
+        f"{reason} (restored from a persisted plan: the scenario was accepted against an "
+        "earlier state of the approved commands, and no longer coheres with the current "
+        "one)"
+        for reason in coherence_problems(generated, context)
+    ]
+
+
+# --------------------------------------------------------------------------
+# Resume — re-materializing the measurement, not only the executable
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ObservationRebinding:
+    """One literal field rebuilt out of the approved command that owns it."""
+
+    field: str
+    source_name: str
+    removed: tuple[str, ...]
+    added: tuple[str, ...]
+    #: ``"observation_binding"`` when this run recorded which literals came from
+    #: the approved command; ``"repaired_command"`` when it did not and the
+    #: field's own re-materialization note is what identified it; ``"citation"``
+    #: when the literals themselves identified a different owning command.
+    identified_by: str = "observation_binding"
+
+    def brief(self) -> str:
+        removed = "; ".join(repr(text) for text in self.removed[:3])
+        added = "; ".join(repr(text) for text in self.added[:3])
+        if self.identified_by == "citation":
+            return (
+                f"{self.field} and the command it measures were re-bound to the approved "
+                f"command {self.source_name!r}, which is what this repository says prints "
+                f"the literals it asserts ({removed or 'none'})"
+            )
+        return (
+            f"{self.field} was re-materialized from the approved command "
+            f"{self.source_name!r}, whose reviewed expectations no longer establish "
+            f"{removed}; it now measures {added or 'nothing new'}"
+        )
+
+
+def _owned_anywhere(literal: str, established: Mapping[str, frozenset[str]]) -> bool:
+    """Does any command in the repository say it prints this?"""
+    return any(_emitted_by(literal, literals) for literals in established.values())
+
+
+def _cannot_produce(
+    literal: str,
+    established_now: Iterable[str],
+    command: str,
+    probe: "Callable[[str], ContractProbeResult] | None",
+    *,
+    silence_decides: bool,
+) -> bool:
+    """Is ``literal`` beyond what ``command`` can currently print?
+
+    The reviewed expectations answer first and cheaply: a literal a human
+    currently binds to this command is producible, full stop. When they are
+    silent the invocation itself is asked, because a human writing down four of
+    a command's twenty lines says nothing about the other sixteen — and treating
+    silence as proof of absence would delete a correct assertion.
+
+    ``silence_decides`` is what an unanswerable question means, and the two
+    callers need opposite answers. Where this run RECORDED that the literal came
+    from the command's reviewed expectations, silence means the human took it
+    out, which is the staleness itself. Where ownership was never recorded and
+    the field is only *suspected* stale, silence means we do not know — and
+    deleting a model's own correct assertion on a guess would turn a real
+    product failure into a quiet rewrite.
+    """
+    if _emitted_by(literal, established_now):
+        return False
+    if probe is not None:
+        answer = probe(command)
+        if answer.determined:
+            return literal not in answer.output
+    return silence_decides
+
+
+def bind_observations(
+    generated: GeneratedScenario,
+    approved: "ApprovedCommands",
+    established: Mapping[str, frozenset[str]],
+) -> list[ObservationBinding]:
+    """Record which approved command's reviewed expectations each literal came from.
+
+    The measurement half of :meth:`GeneratedScenario.bind_citations`, recorded at
+    the same moment and for the same reason: once a scenario has been written
+    down, the only identity its expectations have left is their own bytes, and a
+    legitimate repair of the oracle destroys exactly those. What survives a
+    repair is the NAME a human wrote beside the command, so that is what is
+    recorded.
+
+    Deliberately narrow. A binding is created only where the scenario runs a
+    *named approved command verbatim* — no argument tail — because that is the
+    only case where a human's reviewed expectations are authoritative about what
+    this invocation prints. A tail makes it a different invocation, and nothing
+    in this repository can say what the narrowed form still emits. And only
+    literals the approved command itself establishes are recorded: a literal the
+    model wrote is owned by nobody, is never listed here, and is therefore never
+    rewritten by a resume.
+    """
+    commands = {path: value for path, value, _assign in generated.command_slots()}
+    recorded: list[ObservationBinding] = []
+    for path, command_path, literals, _assign in generated.observation_slots():
+        command = commands.get(command_path, "")
+        source_name = approved.name_for(command) if command else ""
+        if not source_name:
+            continue
+        owned_now = established.get(_norm_command(command), frozenset())
+        owned = [text for text in literals if _emitted_by(unwrap_literal(text), owned_now)]
+        if not owned:
+            continue
+        recorded.append(
+            ObservationBinding(
+                field=path,
+                command_field=command_path,
+                source_name=source_name,
+                literals=owned,
+            )
+        )
+    replaced = {binding.field for binding in recorded}
+    generated.observation_bindings = [
+        binding for binding in generated.observation_bindings if binding.field not in replaced
+    ] + recorded
+    return recorded
+
+
+#: How :meth:`~neyma_product_driver.scenario_plan.Rebinding.brief` opens. Read
+#: back only to learn WHICH field a previous resume re-materialized; the source
+#: name is taken from the structured :class:`CommandBinding`, never from prose.
+_REMATERIALIZED = " was re-materialized from the approved command "
+
+
+def _repaired_command_fields(generated: GeneratedScenario) -> dict[str, str]:
+    """Command fields a resume has already re-materialized, and their source.
+
+    A plan written before :class:`ObservationBinding` existed records no
+    ownership for its literals. It does record, durably, that a particular
+    command field was rebuilt because the approved command behind it was
+    repaired — and that note is the one thing that distinguishes "these
+    expectations were written against an instrument that has since changed" from
+    "the model asserted a sentence nobody wrote down", which must never be
+    touched. So the note is read for its field path only, and validated against
+    the scenario's own slots; the name comes from the binding.
+    """
+    slots = {path for path, _value, _assign in generated.command_slots()}
+    named = {b.field: b.source_name for b in generated.command_bindings if b.source_name}
+    out: dict[str, str] = {}
+    for note in generated.rebound_on_resume:
+        head = str(note).split(_REMATERIALIZED, 1)[0].strip()
+        if head in slots and named.get(head):
+            out[head] = named[head]
+    return out
+
+
+def rebind_observations_to_approved(
+    generated: GeneratedScenario,
+    approved: "ApprovedCommands",
+    established: Mapping[str, frozenset[str]],
+    *,
+    probe: "Callable[[str], ContractProbeResult] | None" = None,
+    also_repaired: Mapping[str, str] | None = None,
+) -> tuple[list[ObservationRebinding], list[str]]:
+    """Re-materialize stale literals against the CURRENT reviewed expectations.
+
+    Returns ``(rebindings, unreconstructable)``, exactly as
+    :func:`~neyma_product_driver.scenario_plan.rebind_to_approved` does for the
+    executable half — and for the same reason. When a human repairs an oracle,
+    the generated scenarios built on it hold two things that went stale
+    together: the command's body, and the sentences that body used to print.
+    Repairing only the first is what run 20260905-230030 did, and it left
+    ``P6-M13-W3-07`` running the corrected instrument while demanding the broken
+    one's output, unable to pass against any product forever.
+
+    WHAT IS REPLACED, AND WHAT IS NOT. Only literals the approved command *owned*
+    and no longer produces. A literal the model wrote itself was never owned and
+    is left exactly as it is, so a genuine wrong expectation stays a genuine
+    wrong expectation and reaches the gate as product evidence. Where a literal
+    is replaced, the replacement is the approved command's current reviewed
+    expectations, read out of the repository as it is now and nowhere else —
+    there is no correspondence to infer between an old sentence and a new one,
+    and inventing one by comparing their prose is precisely the matching this
+    module refuses everywhere else. The result is a strictly human-authored
+    measurement of the command the scenario actually runs.
+
+    A field whose source the current approved set no longer offers is reported
+    as unreconstructable rather than repaired: a secure inability to reconstruct
+    must stay blocked.
+    """
+    commands = {path: value for path, value, _assign in generated.command_slots()}
+    bindings = {b.field: b for b in generated.observation_bindings}
+    repaired = dict(_repaired_command_fields(generated))
+    repaired.update(dict(also_repaired or {}))
+
+    rebindings: list[ObservationRebinding] = []
+    unreconstructable: list[str] = []
+    for path, command_path, literals, assign in generated.observation_slots():
+        binding = bindings.get(path)
+        if binding is not None:
+            source_name, owned_then = binding.source_name, set(binding.literals)
+            identified_by = "observation_binding"
+        elif command_path in repaired:
+            source_name, owned_then = repaired[command_path], None
+            identified_by = "repaired_command"
+        else:
+            continue
+        if not source_name:
+            continue
+
+        current = approved.by_name.get(source_name, "")
+        now = established.get(_norm_command(current), frozenset()) if current else frozenset()
+        command = commands.get(command_path, "")
+
+        if owned_then is not None:
+            # Exact knowledge: this run recorded that these literals came from
+            # that command's own reviewed expectations.
+            candidates = [text for text in literals if text in owned_then]
+        else:
+            # No record of ownership, and the instrument behind this field was
+            # repaired. Suspicion, not knowledge — so it is bounded twice. The
+            # command must have reviewed expectations NOW, or this repository
+            # says nothing about what it prints and cannot be the authority for
+            # anything in this field; and only a literal no command establishes
+            # at all is even a candidate, because a sentence some human wrote
+            # down somewhere is not superseded text.
+            if not now:
+                continue
+            candidates = [
+                text
+                for text in literals
+                if not _owned_anywhere(unwrap_literal(text), established)
+            ]
+        stale = [
+            text
+            for text in candidates
+            if _cannot_produce(
+                unwrap_literal(text),
+                now,
+                command,
+                probe,
+                silence_decides=owned_then is not None,
+            )
+        ]
+        if not stale:
+            continue
+        if not current:
+            unreconstructable.append(
+                f"{path} was measured by the approved command {source_name!r}, which the "
+                "current approved set no longer offers under that name, so the "
+                f"expectations it established ({'; '.join(repr(t) for t in stale[:3])}) "
+                "cannot be re-established"
+            )
+            continue
+        if not now:
+            unreconstructable.append(
+                f"{path} was measured by the approved command {source_name!r}, whose "
+                "reviewed expectations no longer establish anything, so there is nothing "
+                "to re-materialize the superseded literals "
+                f"({'; '.join(repr(t) for t in stale[:3])}) against"
+            )
+            continue
+
+        kept = [text for text in literals if text not in set(stale)]
+        added = [text for text in sorted(now) if text not in kept]
+        if not kept and not added:  # pragma: no cover - `now` is non-empty here
+            unreconstructable.append(
+                f"{path} would be left with no expectation at all, which is not a "
+                "measurement; it is refused rather than made unfalsifiable"
+            )
+            continue
+        assign(kept + added)
+        _mirror_into_expected_observations(generated, stale, added)
+        bindings[path] = ObservationBinding(
+            field=path,
+            command_field=command_path,
+            source_name=source_name,
+            literals=[text for text in kept + added if _emitted_by(unwrap_literal(text), now)],
+        )
+        rebindings.append(
+            ObservationRebinding(
+                field=path,
+                source_name=source_name,
+                removed=tuple(stale),
+                added=tuple(added),
+                identified_by=identified_by,
+            )
+        )
+    if rebindings:
+        generated.observation_bindings = [bindings[key] for key in sorted(bindings)]
+    return rebindings, unreconstructable
+
+
+def _mirror_into_expected_observations(
+    generated: GeneratedScenario, stale: Sequence[str], added: Sequence[str]
+) -> None:
+    """Carry a field's re-materialization into the scenario-level observations.
+
+    ``expected_observations`` names no operation, so it cannot be rebound on its
+    own — but it is matched against everything the run produced, which means a
+    superseded sentence left there fails the scenario just as surely. It is only
+    touched where it actually holds one of the literals that went stale: a
+    scenario-level observation that never mentioned them is the model's own
+    statement of outcome and stays untouched.
+    """
+    superseded = set(stale)
+    present = [text for text in generated.expected_observations if text in superseded]
+    if not present:
+        return
+    kept = [text for text in generated.expected_observations if text not in superseded]
+    generated.expected_observations = kept + [text for text in added if text not in kept]
+
+
+def reconstruct_miscited_commands(
+    generated: GeneratedScenario,
+    approved: "ApprovedCommands",
+    established: Mapping[str, frozenset[str]],
+) -> tuple[list[ObservationRebinding], list[str]]:
+    """Re-bind a field whose literals belong to a command it does not run.
+
+    The other half of the resume problem, and the opposite shape from
+    :func:`rebind_observations_to_approved`. There the expectations went stale
+    under a command that was right; here the expectations were right all along
+    and the command was never the one that prints them. Run 20260905-230030's
+    ``P6-M13-W3-03`` asserted the four sentences the flapping-detector oracle
+    prints while running the no-DELETE oracle, which prints none of them. It was
+    a P1 risk the run believed it had covered and had never once measured.
+
+    Nothing is inferred from prose. The literals a human bound to a command are
+    read out of the repository's own scenario files, and a field is re-bound only
+    when they point, unanimously and unambiguously, at exactly one approved
+    command:
+
+    * every contested literal in the field must resolve to the same owner;
+    * that owner must establish *every* literal in the field, so a
+      reconstruction can never satisfy the contested half by breaking the rest;
+    * the owner must be currently approved, under a name, and the text installed
+      is read from the current approved set and re-checked by ``approves``.
+
+    Anything else is reported as unreconstructable. Guessing which of two owners
+    was meant, or rebuilding a field out of two commands, would be Product
+    Driver deciding what the run had committed to verifying — which is the
+    authority it does not have.
+    """
+    commands = {path: value for path, value, _assign in generated.command_slots()}
+    setters = {path: assign for path, _value, assign in generated.command_slots()}
+    rebindings: list[ObservationRebinding] = []
+    unreconstructable: list[str] = []
+
+    for path, command_path, literals, _assign in generated.observation_slots():
+        command = commands.get(command_path, "")
+        if not command or not literals:
+            continue
+        contested: dict[str, set[str]] = {}
+        for text in literals:
+            producers = contested_producers(command, unwrap_literal(text), established)
+            if producers:
+                contested[text] = set(producers)
+        if not contested:
+            continue
+
+        owners = set.intersection(*contested.values())
+        if not owners:
+            unreconstructable.append(
+                f"{path} asserts literals this repository binds to different commands "
+                f"({'; '.join(sorted(repr(t) for t in contested)[:3])}), so no single "
+                "approved command establishes what it measures"
+            )
+            continue
+        if len(owners) > 1:
+            unreconstructable.append(
+                f"{path} asserts literals more than one approved command establishes "
+                f"({'; '.join(sorted(owners)[:3])}), so which one it was meant to measure "
+                "cannot be established without guessing"
+            )
+            continue
+
+        owner = next(iter(owners))
+        owned = established.get(owner, frozenset())
+        orphans = [text for text in literals if not _emitted_by(unwrap_literal(text), owned)]
+        if orphans:
+            unreconstructable.append(
+                f"{path} would be re-bound to {owner!r}, which does not establish every "
+                f"literal it asserts ({'; '.join(repr(t) for t in orphans[:3])}), so "
+                "re-binding it would trade one unsatisfiable assertion for another"
+            )
+            continue
+
+        source_name = approved.name_for(owner)
+        current = approved.by_name.get(source_name, "") if source_name else ""
+        if not current:
+            unreconstructable.append(
+                f"{path} asserts literals bound to {owner!r}, which the current approved "
+                "set does not offer under a name of its own, so there is nothing to "
+                "re-bind the measurement to"
+            )
+            continue
+        ok, why = approved.approves(current)
+        if not ok:
+            unreconstructable.append(
+                f"{path} would be re-bound to the approved command {source_name!r}, and "
+                f"what that name currently resolves to is itself refused: {why}"
+            )
+            continue
+        if _norm_command(current) == _norm_command(command):  # pragma: no cover - contested implies differs
+            continue
+
+        setters[command_path](current)
+        generated.command_bindings = [
+            b for b in generated.command_bindings if b.field != command_path
+        ] + [
+            CommandBinding(
+                field=command_path,
+                command_digest=citation_token(current),
+                source_name=source_name,
+                tail="",
+            )
+        ]
+        generated.observation_bindings = [
+            b for b in generated.observation_bindings if b.field != path
+        ] + [
+            ObservationBinding(
+                field=path,
+                command_field=command_path,
+                source_name=source_name,
+                literals=[
+                    text
+                    for text in literals
+                    if _emitted_by(unwrap_literal(text), established.get(_norm_command(current), frozenset()))
+                ],
+            )
+        ]
+        rebindings.append(
+            ObservationRebinding(
+                field=path,
+                source_name=source_name,
+                removed=tuple(sorted(contested)),
+                added=(),
+                identified_by="citation",
+            )
+        )
+    return rebindings, unreconstructable
 
 
 def grounding_tokens_from(unit: object | None) -> set[str]:
@@ -1479,40 +2025,7 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
     # and the invocation is asked what it prints. A sentence it cannot print is
     # unsatisfiable however correct the product is, and refusing it here is the
     # difference between a generation contract error and a false product defect.
-    for invocation, label, literal, producers, detail in cross_contract_observations(
-        generated, context
-    ):
-        reasons.append(
-            f"{label!r} runs {invocation!r} and requires {literal!r}, which that "
-            f"invocation has no basis for printing: {detail}. This repository binds "
-            "that literal to " + "; ".join(repr(command) for command in producers[:3])
-            + " — a different invocation of the same program. A selector narrows what a "
-            "command does, so an observation belonging to one selection is not evidence "
-            "about another, and this assertion would fail against a correct product. "
-            "Assert what the invocation this scenario runs actually prints, or run the "
-            "invocation the literal belongs to."
-        )
-
-    for literal, producers in unattributed_observations(generated, context):
-        where = ""
-        if producers:
-            where = (
-                " In this repository's own scenario files that literal is established "
-                "by: " + "; ".join(repr(command) for command in producers[:3])
-                + ". This scenario runs none of those invocations as written — an "
-                "argument tail narrows what a command does, and nothing here can know "
-                "what the narrowed form still prints."
-            )
-        reasons.append(
-            f"expected_observations requires {literal!r}, and no operation this scenario "
-            "performs has a basis for emitting it: no action's expect_contains, no state "
-            "check's contains and no browser step's expect_text names it, and the scenario "
-            "runs no approved command a human already bound it to. This is a generation "
-            "contract error, not a statement about the product: the assertion is matched "
-            "against everything the run produced, so it cannot be attributed to any "
-            "command, and it would fail against a correct product. Name the operation that "
-            "prints it, in that operation's own expectations." + where
-        )
+    reasons += coherence_problems(generated, context)
 
     # -- cleanup / isolation ----------------------------------------------
     if generated.mutates_local_state() and not (generated.cleanup or generated.isolation_note.strip()):
