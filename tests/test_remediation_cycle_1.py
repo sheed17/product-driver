@@ -505,12 +505,18 @@ class TestRedactionPreservesTypes:
         planner.persist()
         good = (store.run_dir / PLAN_FILENAME).read_text(encoding="utf-8")
 
-        def corrupting(obj: Any) -> Any:
-            payload = redact_obj(obj)
+        def corrupting(model: Any) -> Any:
+            payload = redact_obj(model.model_dump(mode="json"))
             payload["coverage_summary"]["by_risk_category"]["authorization"] = "[REDACTED]"
             return payload
 
-        monkeypatch.setattr("neyma_product_driver.scenario_planner.redact_obj", corrupting)
+        # Whatever the write-time transform IS. It used to be `redact_obj` over
+        # the dumped plan and is now `redact_persisted` over the plan itself;
+        # what this asserts is unchanged, and deliberately so — the refusal is a
+        # property of `persist`, not of the particular transform it calls.
+        monkeypatch.setattr(
+            "neyma_product_driver.scenario_planner.redact_persisted", corrupting
+        )
         planner.persist()
 
         assert (store.run_dir / PLAN_FILENAME).read_text(encoding="utf-8") == good

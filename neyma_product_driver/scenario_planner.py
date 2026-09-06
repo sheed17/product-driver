@@ -40,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .config import ScenarioGenerationConfig
 from .evidence import EvidenceStore
 from .failure_clustering import FailureCluster
-from .models import redact_obj, utcnow
+from .models import redact_persisted, utcnow
 from .scenario_generator import (
     GenerationBrief,
     ScenarioReasoner,
@@ -1267,6 +1267,20 @@ class ScenarioPlanner:
           resume found the plan unreadable. Refusing the write when the payload
           will not re-validate makes that class of failure loud at the moment it
           is caused rather than at the moment it is fatal.
+
+        A third thing is load-bearing and was not, until run 20260905-230030
+        showed what its absence costs: the write must not change what the plan
+        MEANS. That run's plan records two of P6-M13-W3-07's expectations as
+        "a tenant event moved the token: [REDACTED]", because the redactor read
+        the word "token" followed by a colon as an assignment of a credential
+        and masked the ``True`` the oracle prints. Unparseable is loud;
+        semantically altered is silent, and a resume executes what it reads. So
+        the plan goes to disk through
+        :func:`~neyma_product_driver.models.redact_persisted`, which keeps the
+        blunt heuristic for the foreign text this file carries (rendered product
+        failures, raw rejected proposals) and applies only the patterns that
+        IDENTIFY a credential to the commands and expectations a resume has to
+        reload byte for byte.
         """
         if self.store is None:
             return
@@ -1275,7 +1289,7 @@ class ScenarioPlanner:
         self.plan.observed_failure_ids = sorted(self._observed_failure_ids)
         self.plan.observed_cluster_ids = sorted(self._observed_cluster_ids)
 
-        payload = redact_obj(self.plan.model_dump(mode="json"))
+        payload = redact_persisted(self.plan)
         text = json.dumps(payload, indent=2, default=str, ensure_ascii=False)
         try:
             GeneratedScenarioPlan.model_validate_json(text)

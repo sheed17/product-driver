@@ -169,7 +169,7 @@ class TestARepairedInstrumentDoesNotCostTheRunItsCoverage:
         assert scenario.actions[0].command == ORACLE_A, "the human's text is what runs"
         binding = scenario.command_bindings[0]
         assert binding.field == "actions[0].command"
-        assert binding.token == citation_token(ORACLE_A)
+        assert binding.command_digest == citation_token(ORACLE_A)
         assert binding.source_name == ORACLE_NAME
         assert binding.tail == ""
 

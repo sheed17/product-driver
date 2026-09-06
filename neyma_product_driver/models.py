@@ -400,10 +400,30 @@ class RunState(BaseModel):
 # --- Redaction -------------------------------------------------------------
 #
 # Applied to every string before it is written to disk, printed, or handed to
-# the evaluator. Deliberately blunt: a false positive costs a masked token, a
-# false negative persists a credential.
+# the evaluator. Blunt on purpose: a false negative persists a credential, so
+# where the two are genuinely in tension the mask wins. They are not always in
+# tension, and treating them as though they always are is its own failure — a
+# false positive that lands in an oracle's expectation does not cost a masked
+# token, it costs the measurement.
+#
+# The two halves below are deliberately kept apart, because they are not the
+# same kind of claim and must not be applied to the same things.
+#
+# ``_CREDENTIAL_PATTERNS`` *identify*. Each one matches a credential by its own
+# published shape — an Anthropic key, a GitHub token, a JWT, an AWS access key,
+# a PEM block, a URL with a password in it. A match is a credential, wherever it
+# was found, and there is nothing to weigh up.
+#
+# ``_SECRET_KEY_ASSIGNMENT`` *guesses*. It reads any word containing TOKEN,
+# SECRET, PASSWORD, API_KEY, CREDENTIAL or PRIVATE_KEY followed by ``=`` or
+# ``:`` as an assignment of a credential, and masks whatever comes next. That is
+# the right trade for foreign output, where the cost of a miss is a persisted
+# password. It is the wrong trade for a record whose exact text is the thing
+# being kept — which is how run 20260905-230030 wrote "a tenant event moved the
+# token: True" into its own scenario plan as "…: [REDACTED]" and made a passing
+# product look broken.
 
-_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+_CREDENTIAL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), "[REDACTED:anthropic-key]"),
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "[REDACTED:api-key]"),
     (re.compile(r"gh[pousr]_[A-Za-z0-9]{16,}"), "[REDACTED:github-token]"),
@@ -413,27 +433,62 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"AKIA[0-9A-Z]{16}"), "[REDACTED:aws-key]"),
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S), "[REDACTED:private-key]"),
     (re.compile(r"(?i)\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?)://[^\s:@/]+:[^\s@]+@"), r"\1://[REDACTED:credentials]@"),
-    # KEY=value / "key": "value" forms for anything that smells like a secret.
-    (
-        re.compile(
-            r"(?i)\b([A-Z0-9_]*(?:API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE[_-]?KEY)[A-Z0-9_]*)"
-            r"(\s*[=:]\s*)(\"?)([^\s\"',;]{4,})(\3)"
-        ),
-        r"\1\2\3[REDACTED]\5",
-    ),
 ]
+
+#: KEY=value / "key": "value" forms for anything that smells like a secret.
+_SECRET_KEY_ASSIGNMENT = re.compile(
+    r"(?i)\b([A-Z0-9_]*(?:API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE[_-]?KEY)[A-Z0-9_]*)"
+    r"(\s*[=:]\s*)(\"?)([^\s\"',;]{4,})(\3)"
+)
+
+#: A value that cannot be a credential, whatever key it sits under: a boolean, a
+#: null, a number. Masking one of these protects nothing and falsifies the
+#: record — which is the argument :func:`_mask_secret_value` already makes for
+#: typed values ("a credential is always text"), written out for the textual
+#: form the same fact takes in a line of output. ``token: True`` is a diagnostic
+#: an oracle printed, not an assignment of a secret, and an assertion against it
+#: is the measurement.
+_NON_CREDENTIAL_LITERAL = re.compile(
+    r"(?i)\A(?:true|false|none|null|nil|[+-]?\d+(?:\.\d+)?)\Z"
+)
 
 _SAFE_ENV_MARKER = "[REDACTED:environment-dump]"
 
 
-def redact(text: str | None) -> str:
-    """Mask credential-shaped substrings. Never raises."""
+def _mask_assignment(match: re.Match[str]) -> str:
+    """Mask the right-hand side of a secret-shaped assignment, unless it is a
+    literal no credential could be."""
+    if _NON_CREDENTIAL_LITERAL.match(match.group(4)):
+        return match.group(0)
+    return f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]{match.group(5)}"
+
+
+def redact_credentials(text: str | None) -> str:
+    """Mask substrings that ARE credentials, by their own published shape.
+
+    No heuristic: every pattern here identifies a specific credential format, so
+    a match is a finding rather than a guess. This is what runs over text whose
+    exact bytes are load-bearing — the persisted scenario plan's commands and
+    expectations, which a resume reloads and executes against. See
+    :func:`~neyma_product_driver.models.redact_persisted`.
+    """
     if not text:
         return ""
     out = str(text)
-    for pattern, replacement in _SECRET_PATTERNS:
+    for pattern, replacement in _CREDENTIAL_PATTERNS:
         out = pattern.sub(replacement, out)
     return out
+
+
+def redact(text: str | None) -> str:
+    """Mask credential-shaped substrings. Never raises.
+
+    Identification plus the key-name heuristic: the blunt instrument, for
+    foreign output, prose and logs.
+    """
+    if not text:
+        return ""
+    return _SECRET_KEY_ASSIGNMENT.sub(_mask_assignment, redact_credentials(text))
 
 
 #: Dict keys whose *value* is treated as credential material.
@@ -458,7 +513,11 @@ def _mask_secret_value(value: Any) -> Any:
     are left exactly as they were.
     """
     if isinstance(value, str):
-        return "[REDACTED]"
+        # The same exemption the textual form gets: "True" under a key called
+        # ``token`` is a diagnostic, not a credential, and masking it only
+        # falsifies the record. Kept identical to ``_mask_assignment`` so the
+        # dict form and the line-of-text form of one fact agree.
+        return value if _NON_CREDENTIAL_LITERAL.match(value) else "[REDACTED]"
     if isinstance(value, dict):
         return {k: _mask_secret_value(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -481,6 +540,97 @@ def redact_obj(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [redact_obj(v) for v in obj]
     return obj
+
+
+def redact_credentials_obj(obj: Any) -> Any:
+    """:func:`redact_obj` without the key-name heuristic. Identification only."""
+    if isinstance(obj, str):
+        return redact_credentials(obj)
+    if isinstance(obj, dict):
+        return {k: redact_credentials_obj(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [redact_credentials_obj(v) for v in obj]
+    return obj
+
+
+#: Marks a model field as EXECUTION SEMANTICS. Pass it as a field's
+#: ``json_schema_extra`` and :func:`redact_persisted` will carry that field to
+#: disk through :func:`redact_credentials_obj` rather than :func:`redact_obj`.
+#:
+#: THE DISTINCTION IT DRAWS. Three kinds of text end up in a run's files and
+#: they do not have the same security semantics:
+#:
+#: 1. **Authoritative execution metadata** — the commands a run decided to
+#:    execute and the observations it decided to assert. Product Driver's own
+#:    validated pipeline authored these, every command among them is a string a
+#:    human already approved, and a resume reloads them and runs against them.
+#:    Their exact bytes ARE the measurement.
+#: 2. **Foreign output** — product stdout, rendered failures, anything echoed
+#:    from a subprocess or a model's raw reply. Untrusted; the blunt instrument
+#:    is correct for it.
+#: 3. **Presentation** — journals, summaries, prompts. Also blunt.
+#:
+#: Running one context-free string redactor over all three is what damaged run
+#: 20260905-230030's plan. Marking a field does NOT declare it trusted: the
+#: patterns that identify a credential by its own shape still run over it, so a
+#: real key is still masked. What the mark withholds is the *guess* — the rule
+#: that reads the word "token" followed by a colon as an assignment of a secret,
+#: which cannot be right about a line an oracle prints.
+#:
+#: Mark narrowly. A field is execution semantics only if a resume depends on its
+#: exact bytes AND nothing foreign is ever copied into it. Request headers, a
+#: fixture's contents and a browser step's fill value are none of those things.
+EXECUTION_SEMANTICS: dict[str, Any] = {"neyma_redaction": "execution-semantics"}
+
+
+def _is_execution_semantics(field: Any) -> bool:
+    extra = getattr(field, "json_schema_extra", None)
+    return isinstance(extra, dict) and extra.get("neyma_redaction") == "execution-semantics"
+
+
+def redact_persisted(model: BaseModel) -> Any:
+    """Serialize a model for persistence, redacting each field by its trust class.
+
+    Fields marked :data:`EXECUTION_SEMANTICS` go through
+    :func:`redact_credentials_obj`; everything else goes through
+    :func:`redact_obj`, exactly as before. Nested models are walked so a mark
+    deep in the tree is honoured and an unmarked field beside it is not.
+
+    The invariant this exists to hold: writing a plan and reading it back is a
+    no-op on what the plan MEANS. A transform applied on the way to disk is a
+    transform applied to the run's own semantics, and a resume executes what it
+    reads.
+    """
+    dumped = model.model_dump(mode="json")
+    if not isinstance(dumped, dict):  # pragma: no cover - models dump to dicts
+        return redact_obj(dumped)
+    fields = type(model).model_fields
+    out: dict[str, Any] = {}
+    for key, value in dumped.items():
+        field = fields.get(key)
+        if field is not None and _is_execution_semantics(field):
+            out[key] = redact_credentials_obj(value)
+        else:
+            out[key] = _redact_persisted_value(getattr(model, key, None), value)
+    return out
+
+
+def _redact_persisted_value(live: Any, dumped: Any) -> Any:
+    """Recurse into nested models; redact anything else the ordinary way."""
+    if isinstance(live, BaseModel):
+        return redact_persisted(live)
+    if isinstance(live, (list, tuple)) and isinstance(dumped, list) and len(live) == len(dumped):
+        if any(isinstance(v, BaseModel) for v in live):
+            return [_redact_persisted_value(v, d) for v, d in zip(live, dumped)]
+    if isinstance(live, dict) and isinstance(dumped, dict):
+        if any(isinstance(v, BaseModel) for v in live.values()):
+            return {
+                k: _redact_persisted_value(live.get(k), d)
+                if isinstance(live.get(k), BaseModel)
+                else redact_obj(d)
+                for k, d in dumped.items()
+            }
+    return redact_obj(dumped)
 
 
 def looks_like_env_dump(text: str) -> bool:

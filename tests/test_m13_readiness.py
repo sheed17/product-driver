@@ -997,22 +997,39 @@ class TestTheOraclesAreLegibleThroughTheStdoutRedactor:
         ):
             assert redact(line) == line, f"the redactor rewrites the oracle's own output: {line!r}"
 
-    def test_the_old_wording_really_was_the_collision_and_is_gone(self, m13):
-        """The guard is only worth having if it would have caught the thing that happened, so it is
-        asserted directly: the retired labels DO collide, and the scenario no longer uses them."""
+    def test_the_collision_this_wording_worked_around_no_longer_exists(self):
+        """The rename was a workaround. The defect it worked around is now fixed.
+
+        This assertion used to read the other way: it required that the retired labels STILL
+        collide, so that the guard above could be shown to catch something real. That was the
+        honest test to write while the redactor masked ``token: True`` — the scenario could only
+        protect itself by not saying "token".
+
+        It is the wrong test now. The redactor no longer masks a value that cannot be a credential
+        (``_NON_CREDENTIAL_LITERAL``), so the retired wording is legible too, and demanding that it
+        stay broken would pin Product Driver to the defect. What is asserted instead is the fix:
+        the wording that cost run 20260905-230030 two false reds survives the redactor unchanged.
+        """
         for retired in (
             "a tenant event moved the token: True",
             "a platform event moved the token: True",
         ):
-            assert redact(retired) != retired, (
-                "the collision this section exists for cannot be reproduced, so the guard below "
-                "proves nothing; re-derive it against the current redactor"
+            assert redact(retired) == retired, (
+                "the stdout redactor is masking a diagnostic boolean again; run "
+                "20260905-230030 is what that costs — P6-M13-W3-07 went red against a product "
+                "that was behaving correctly, and its persisted plan lost the expectation"
             )
+
+    def test_the_scenario_still_uses_the_wording_it_was_corrected_to(self, m13):
+        """The correction stands whether or not the redactor still needs it.
+
+        "The defect is fixed" is not a reason to churn a permanent scenario back to its old
+        labels: the current wording is what run 20260905-230030's evidence, its journal and its
+        founder summary all quote, and rewording it again would strand every one of them.
+        """
         body = M13_PATH.read_text(encoding="utf-8")
-        assert "moved the token" not in body, (
-            "the retired label is back in the M13 scenario; it will be redacted into [REDACTED] "
-            "and the permanent scenario will go falsely red again"
-        )
+        assert "moved the token" not in body
+        assert "moved the composite version" in body
 
     def test_credential_shaped_output_is_still_redacted(self):
         """### B. THE PRICE OF A. IS NOT PAID IN SECRETS.

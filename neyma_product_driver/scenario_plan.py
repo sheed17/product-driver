@@ -34,7 +34,7 @@ from typing import Any, Callable, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .models import utcnow
+from .models import EXECUTION_SEMANTICS, utcnow
 from .scenarios import (
     BrowserSpec,
     BrowserStep,
@@ -242,7 +242,9 @@ class GeneratedRequest(BaseModel):
     json_body: Any = None
     body: str = ""
     expect_status: int | None = None
-    expect_contains: list[str] = Field(default_factory=list)
+    expect_contains: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
     #: Seconds, fractional allowed. A scenario probing "timed out before the
     #: effect landed" needs a sub-second deadline; the runtime takes a float, so
     #: refusing one only stopped the model expressing what it meant.
@@ -270,7 +272,7 @@ class GeneratedBrowserStep(BaseModel):
     wait_for: str | None = None
     wait_ms: int | None = None
     screenshot: str | None = None
-    expect_text: str | None = None
+    expect_text: str | None = Field(default=None, json_schema_extra=EXECUTION_SEMANTICS)
 
 
 class GeneratedStateCheck(BaseModel):
@@ -279,9 +281,13 @@ class GeneratedStateCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = ""
-    command: str
-    contains: list[str] = Field(default_factory=list)
-    not_contains: list[str] = Field(default_factory=list)
+    command: str = Field(json_schema_extra=EXECUTION_SEMANTICS)
+    contains: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
+    not_contains: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
     #: Seconds, fractional allowed. See GeneratedRequest.timeout_s.
     timeout_s: float | None = None
 
@@ -300,9 +306,11 @@ class GeneratedAction(BaseModel):
     name: str = ""
     #: For ``command``. Must match the approved command set or the scenario is
     #: rejected before compilation — see scenario_validation.approve_commands.
-    command: str = ""
+    command: str = Field(default="", json_schema_extra=EXECUTION_SEMANTICS)
     expect_exit_code: int | None = 0
-    expect_contains: list[str] = Field(default_factory=list)
+    expect_contains: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
     #: Seconds, fractional allowed. See GeneratedRequest.timeout_s.
     timeout_s: float | None = None
     request: GeneratedRequest | None = None
@@ -437,6 +445,9 @@ SCENARIO_ID_LIMIT = 64
 #: produced, never to decide anything.
 _CITATION_TOKEN = re.compile(r"^@([0-9a-f]{8})(?=\s|$)")
 
+#: The shape of a citation digest on its own, for validating a persisted one.
+_DIGEST = re.compile(r"[0-9a-f]{8}")
+
 
 class CommandBinding(BaseModel):
     """Which human-approved command one of this scenario's commands came from.
@@ -451,16 +462,61 @@ class CommandBinding(BaseModel):
 
     #: A path from :meth:`GeneratedScenario.command_slots`.
     field: str
-    #: The token that was cited: a digest of the approved command's body AS IT
-    #: WAS. Still checked first on resume, because an unchanged body is the
+    #: The citation that was expanded: a digest of the approved command's body
+    #: AS IT WAS. Checked first on resume, because an unchanged body is the
     #: common case and the exact one.
-    token: str = ""
+    #:
+    #: ### WHY IT IS NOT CALLED ``token``. It was, and every one of run
+    #: 20260905-230030's twenty-four bindings reads ``[REDACTED]`` on disk
+    #: because of it: this is Product Driver's own binding identity, but the
+    #: redactor masks the value under any dict key whose name contains "token",
+    #: and it has no way to tell an internal digest from an API credential that
+    #: happens to share the word. Renaming is the fix that needs no exemption —
+    #: it does not make the redactor trust a field, it stops the field claiming
+    #: to be something it is not. The generic key is still masked; see
+    #: ``test_a_generic_key_named_token_is_still_masked``.
+    command_digest: str = Field(default="", json_schema_extra=EXECUTION_SEMANTICS)
     #: The human-authored NAME the approved command was written under. This is
     #: the identity that survives a legitimate repair of the command's body.
     source_name: str = ""
     #: The model's own argument tail, which was never part of the approval and
     #: is judged on rebinding exactly as it was judged on approval.
     tail: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_token(cls, data: Any) -> Any:
+        """Read a plan written before the rename, without inventing a digest.
+
+        Every such plan has the field spelled ``token``, and every value it
+        holds was already destroyed by the write that stored it. So a legacy
+        value that is a digest is kept, and one that is the mask is read as the
+        absence it actually is — which is what :func:`rebind_to_approved`
+        already handles, by falling back to the name.
+        """
+        if not isinstance(data, dict) or "token" not in data:
+            return data
+        data = dict(data)
+        legacy = str(data.pop("token") or "")
+        if "command_digest" not in data:
+            data["command_digest"] = legacy if _DIGEST.fullmatch(legacy) else ""
+        return data
+
+    @field_validator("command_digest")
+    @classmethod
+    def _digest_shape(cls, v: str) -> str:
+        """Eight hex characters or nothing.
+
+        This is what makes carrying the field past the key-name heuristic a
+        proof rather than a declaration: a field that refuses every string but a
+        short hex digest cannot be smuggling a credential through persistence.
+        """
+        text = (v or "").strip()
+        if text and not _DIGEST.fullmatch(text):
+            raise ValueError(
+                f"a command binding digest is eight hex characters, not {text!r}"
+            )
+        return text
 
 
 class GeneratedScenario(BaseModel):
@@ -489,15 +545,19 @@ class GeneratedScenario(BaseModel):
 
     mode: ExecutionMode = "backend"
     #: Approved commands run before the product is exercised.
-    setup: list[str] = Field(default_factory=list)
+    setup: list[str] = Field(default_factory=list, json_schema_extra=EXECUTION_SEMANTICS)
     #: Names of services declared by the base scenario. A generated scenario may
     #: never introduce a service command of its own.
     service_refs: list[str] = Field(default_factory=list)
     actions: list[GeneratedAction] = Field(default_factory=list)
     persisted_state_checks: list[GeneratedStateCheck] = Field(default_factory=list)
-    expected_observations: list[str] = Field(default_factory=list)
-    forbidden_observations: list[str] = Field(default_factory=list)
-    cleanup: list[str] = Field(default_factory=list)
+    expected_observations: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
+    forbidden_observations: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
+    cleanup: list[str] = Field(default_factory=list, json_schema_extra=EXECUTION_SEMANTICS)
     #: How this scenario avoids contaminating the next one, when it mutates
     #: state that no cleanup command can undo.
     isolation_note: str = ""
@@ -705,7 +765,7 @@ class GeneratedScenario(BaseModel):
             self.command_bindings.append(
                 CommandBinding(
                     field=path,
-                    token=match.group(1),
+                    command_digest=match.group(1),
                     source_name=approved.name_for(approved.by_token.get(match.group(1), "")),
                     tail=(before or "").strip()[match.end() :],
                 )
@@ -1064,8 +1124,19 @@ class Rebinding(BaseModel):
     source_name: str
     before: str
     after: str
+    #: Which recorded identity resolved the replacement: ``"command_digest"``
+    #: when the cited body is still current under that exact digest, or
+    #: ``"source_name"`` when it is not — which is what a repair looks like.
+    #: Defaulted to the name for a record written before this was distinguished.
+    identified_by: str = "source_name"
 
     def brief(self) -> str:
+        if self.identified_by == "command_digest":
+            return (
+                f"{self.field} was re-materialized from the approved command "
+                f"{self.source_name!r}, identified by the exact digest this run "
+                "recorded when it cited it"
+            )
         return (
             f"{self.field} was re-materialized from the approved command "
             f"{self.source_name!r}, whose body the harness has since repaired"
@@ -1125,7 +1196,17 @@ def rebind_to_approved(
                 "nothing to re-materialize it against"
             )
             continue
-        current = approved.by_name.get(binding.source_name, "")
+        # Exact identity first. The digest names the approved body this field
+        # was actually built on, so when it still resolves there is nothing to
+        # infer: that command IS the one cited, whatever it is now called. The
+        # name is the fallback, and it is the RIGHT fallback for exactly one
+        # situation — a repair, which changes the body and so destroys every
+        # digest over it while leaving the name a human wrote alone.
+        current = approved.by_token.get(binding.command_digest, "")
+        identified_by = "command_digest"
+        if not current:
+            current = approved.by_name.get(binding.source_name, "")
+            identified_by = "source_name"
         if not current:
             unreconstructable.append(
                 f"{path} was built from the approved command {binding.source_name!r}, "
@@ -1151,7 +1232,11 @@ def rebind_to_approved(
         assign(after)
         rebindings.append(
             Rebinding(
-                field=path, source_name=binding.source_name, before=before, after=after
+                field=path,
+                source_name=binding.source_name,
+                before=before,
+                after=after,
+                identified_by=identified_by,
             )
         )
     return rebindings, unreconstructable
