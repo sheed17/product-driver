@@ -82,7 +82,7 @@ import yaml
 
 from neyma_product_driver.command_guard import classify_command
 from neyma_product_driver.config import ScenarioGenerationConfig
-from neyma_product_driver.models import RunStatus
+from neyma_product_driver.models import RunStatus, redact
 from neyma_product_driver.review_cycle import resolve_review_requirement
 from neyma_product_driver.scenario_generator import MAX_RENDERED_COMMANDS
 from neyma_product_driver.scenario_plan import (
@@ -914,6 +914,137 @@ class TestPersistedStateIsTheOracle:
         assert "the M13 acceptance battery exists: True" in contains
         assert "entity point 44 tests missing: []" in contains
         assert "the machine section 41 acceptance items missing: []" in contains
+
+
+# --------------------------------------------------------------------------
+# 3b. ### THE MEASUREMENT SURVIVES ITS OWN REDACTOR
+# --------------------------------------------------------------------------
+
+
+class TestTheOraclesAreLegibleThroughTheStdoutRedactor:
+    """### AN ORACLE THAT CANNOT BE READ THROUGH THE REDACTOR IS A FALSE RED, AND IT IS THE WORST
+    KIND: the product is correct, the evidence is correct, and the harness reports a contradiction
+    against a machine that did exactly what it was asked.
+
+    Run `20260905-230030` produced exactly that. The composite-version oracle narrated its two
+    asymmetry checks as ``a tenant event moved the token: True`` and ``a platform event moved the
+    token: True``. The stdout redactor masks the value after any label whose last word smells like a
+    credential — ``TOKEN`` is on that list — so both booleans reached the assertion engine as
+    ``[REDACTED]``, and the permanent scenario went red while `brake.py` was right.
+
+    The fix belongs on the MEASUREMENT side, and this is the guard that keeps it there. Two halves,
+    and BOTH are load-bearing:
+
+    * **A.** every string M13 asserts on must survive `redact` UNCHANGED, so no future oracle can
+      word itself into a collision the way this one did;
+    * **B.** genuinely credential-shaped output must STILL be masked, so nobody is ever tempted to
+      buy A by weakening the redactor. The narrow correction was three labels in a YAML file; the
+      wide one would have been a hole in secret handling.
+    """
+
+    #: Every place the M13 scenario states a literal it will later look for in output.
+    def _asserted_literals(self, m13) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        for command in m13.commands:
+            out += [(f"command {command.name!r} expect_contains", s) for s in command.expect_contains]
+        for check in m13.expect_state:
+            out += [(f"expect_state {check.name!r} contains", s) for s in check.contains]
+            out += [(f"expect_state {check.name!r} not_contains", s) for s in check.not_contains]
+        out += [("expect_visible", s) for s in m13.expect_visible]
+        out += [("forbidden", s) for s in m13.forbidden]
+        return out
+
+    def test_every_asserted_literal_survives_redaction_unchanged(self, m13):
+        """### A. THE ORACLE MUST BE ABLE TO SEE WHAT THE PRODUCT PRINTED.
+
+        The suite redacts command output before matching, so a literal that the redactor rewrites
+        can never be found no matter how correct the product is.
+        """
+        collisions = [
+            (where, literal, redact(literal))
+            for where, literal in self._asserted_literals(m13)
+            if redact(literal) != literal
+        ]
+        assert not collisions, (
+            "these M13 assertions are worded so the stdout redactor rewrites them, which makes "
+            "them unmatchable against real output and the scenario falsely red: "
+            + "; ".join(f"{w}: {lit!r} -> {red!r}" for w, lit, red in collisions)
+        )
+
+    def test_the_composite_version_asymmetry_is_still_asserted_on_both_owners(self, state_checks):
+        """The correction renamed the labels; it did not soften what they prove. A tenant event and
+        a platform event must EACH move the one string the claim CAS revalidates — a tenant-only
+        token would let a GLOBAL brake through and a global-only one would let a TENANT brake
+        through.
+        """
+        contains = state_checks[TOKEN]
+        assert "a tenant event moved the composite version: True" in contains
+        assert "a platform event moved the composite version: True" in contains
+        assert "the token names both owners: True" in contains
+        assert "the platform component is monotonic: True" in contains
+        assert "the tenant component is monotonic: True" in contains
+        assert "an unreadable brake store at the version derivation: refused by BrakeStoreUnreachable" in contains
+
+    def test_the_two_asymmetry_booleans_are_readable_as_the_product_prints_them(self):
+        """Measured on the exact bytes the oracle emits, not on the assertion alone: the label AND
+        its value have to survive together, because the redactor masks the value, not the label."""
+        for line in (
+            "a tenant event moved the composite version: True",
+            "a platform event moved the composite version: True",
+            "the quiet composite version: bv1|global:0|tenant:0",
+            "after a TENANT event: bv1|global:0|tenant:1",
+            "after a PLATFORM event: bv1|global:1|tenant:1",
+        ):
+            assert redact(line) == line, f"the redactor rewrites the oracle's own output: {line!r}"
+
+    def test_the_old_wording_really_was_the_collision_and_is_gone(self, m13):
+        """The guard is only worth having if it would have caught the thing that happened, so it is
+        asserted directly: the retired labels DO collide, and the scenario no longer uses them."""
+        for retired in (
+            "a tenant event moved the token: True",
+            "a platform event moved the token: True",
+        ):
+            assert redact(retired) != retired, (
+                "the collision this section exists for cannot be reproduced, so the guard below "
+                "proves nothing; re-derive it against the current redactor"
+            )
+        body = M13_PATH.read_text(encoding="utf-8")
+        assert "moved the token" not in body, (
+            "the retired label is back in the M13 scenario; it will be redacted into [REDACTED] "
+            "and the permanent scenario will go falsely red again"
+        )
+
+    def test_credential_shaped_output_is_still_redacted(self):
+        """### B. THE PRICE OF A. IS NOT PAID IN SECRETS.
+
+        Every one of these is masked today. If a change to the redactor ever lets one through, this
+        fails here rather than in a run artifact that has already been written to disk.
+        """
+        leaks = [
+            secret
+            for secret in (
+                "ANTHROPIC_API_KEY: sk-ant-api03-abcdefghijklmnop",
+                "GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+                "brake_release_token: hunter2-please-do-not-log",
+                "slack_token = xoxb-11111111111-abcdefghij",
+                "db password: correct-horse-battery",
+                "postgres://brake:s3cr3t@db.internal:5432/freight",
+                "AKIAIOSFODNN7EXAMPLE",
+            )
+            if redact(secret) == secret
+        ]
+        assert not leaks, f"the redactor no longer masks credential-shaped output: {leaks}"
+
+    def test_the_scenario_did_not_buy_legibility_by_dropping_the_word(self, m13):
+        """A cheap "fix" would have been to stop printing the composite version at all. The oracle
+        still names it, still derives it through the one authority, and still prints both component
+        values, so the rename cost the evidence nothing."""
+        check = {c.name: c for c in m13.expect_state}[TOKEN]
+        assert "version_token(tenant='T_A')" in check.command
+        assert "the quiet composite version:" in check.command
+        assert "after a TENANT event:" in check.command
+        assert "after a PLATFORM event:" in check.command
+        assert "brake version token" in TOKEN
 
 
 # --------------------------------------------------------------------------

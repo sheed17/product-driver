@@ -1029,14 +1029,14 @@ expect_state:
       from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR;
       p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row;
       create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[];
-      t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet token:', t0);
+      t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet composite version:', t0);
       print('the token names both owners:', ('global' in t0) and ('tenant' in t0));
       b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter');
       t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1);
-      print('a tenant event moved the token:', t1 != t0);
+      print('a tenant event moved the composite version:', t1 != t0);
       s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach');
       t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2);
-      print('a platform event moved the token:', t2 != t1);
+      print('a platform event moved the composite version:', t2 != t1);
       other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]);
       print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]);
       print('every token was distinct:', len(set(seen)) == len(seen));
@@ -1060,8 +1060,8 @@ expect_state:
     timeout_s: 300
     contains:
       - "the token names both owners: True"
-      - "a tenant event moved the token: True"
-      - "a platform event moved the token: True"
+      - "a tenant event moved the composite version: True"
+      - "a platform event moved the composite version: True"
       - "another tenant sees the same platform component: True"
       - "another tenant has its own tenant component: True"
       - "every token was distinct: True"
@@ -2171,8 +2171,8 @@ expect_visible:
   - "brake rows surviving: 1"
   - "platform rows surviving: 1"
   - "the token names both owners: True"
-  - "a tenant event moved the token: True"
-  - "a platform event moved the token: True"
+  - "a tenant event moved the composite version: True"
+  - "a platform event moved the composite version: True"
   - "another tenant sees the same platform component: True"
   - "the platform component is monotonic: True"
   - "the tenant component is monotonic: True"
