@@ -246,6 +246,10 @@ class LoopResult:
     #: What this run changed in the target repository's authority documents,
     #: from a snapshot taken before the first builder turn.
     authority_report: dict[str, Any] = field(default_factory=dict)
+    #: The phase-closure attempt, when this run claimed the phase. Read-only
+    #: inside the loop: it reports where phase acceptance stands and changes no
+    #: terminal state. See :mod:`~neyma_product_driver.phase_closure`.
+    phase_closure: Any = None
 
 
 # --------------------------------------------------------------------------
@@ -332,6 +336,9 @@ async def run_control_loop(
     review_ledger = ReviewLedger()
     last_requirement: dict[str, Any] = {"value": None}
     satisfying: dict[str, Any] = {"value": None}
+    # Where phase acceptance stands, when this run claims the phase. Computed
+    # read-only at the end of the run and carried out for the founder summary.
+    phase_closure: dict[str, Any] = {"value": None}
     # Watched from before the first builder turn, so "what did this run change"
     # is answerable. An edit that removes or softens a mandatory control makes
     # the change high-consequence whatever else it did, and that is the one
@@ -371,6 +378,7 @@ async def run_control_loop(
             satisfying_review=satisfying["value"],
             protocol_diagnostics=list(protocol_diagnostics),
             authority_report=authority_watcher.report(),
+            phase_closure=phase_closure["value"],
         )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
@@ -1053,6 +1061,39 @@ async def run_control_loop(
                     record.scoped_completion = audit.completion.model_dump(mode="json")
                 store.save_completion_audit(iteration, record.completion_audit)
                 emit(f"  after review: {audit.headline}")
+
+        # 6e. WHERE PHASE ACCEPTANCE STANDS.
+        #
+        #     Deterministic, read-only, and it changes no terminal state. A run
+        #     that claims the phase is the run that will be asked "so is the
+        #     phase closable?", and the founder used to answer it by hand:
+        #     checking which criteria were instantiated, which had evidence
+        #     attached to this exact tree, whether CI had run on this commit,
+        #     and which of a reviewer's remarks were blockers. All of that is
+        #     computable, so it is computed here and reported.
+        #
+        #     What is NOT here: adjudicating the phase, scoring a criterion,
+        #     writing a status file, or preparing a commit. Those live behind
+        #     `phase close`, which is an explicit act.
+        if task_scope.requires_phase_acceptance and config.phase_closure.enabled:
+            try:
+                controller = _phase_controller(
+                    config,
+                    store,
+                    phase_id=task_scope.parent_phase_id or task_scope.scope_id,
+                    builder_session_ids=_builder_lineage(state),
+                )
+                controller.preflight(suite_result=suite_result, gate=last_gate["value"])
+                phase_closure["value"] = controller
+                record.notes.append(
+                    f"phase closure: {controller.record.state.value}"
+                )
+                emit(f"→ phase acceptance: {controller.record.state.value}")
+                for line in controller.preflight_block().splitlines():
+                    emit(f"  {line}")
+            except Exception as exc:  # never break a run over a report
+                emit(f"  phase-closure preflight error: {type(exc).__name__}: {redact(str(exc))}")
+                record.notes.append(f"phase-closure preflight error: {type(exc).__name__}")
 
         record.decision = decision
         _print_decision(decision, emit)
@@ -3382,6 +3423,7 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     for finding in unresolved[:6]:
         out(f"      - {finding}")
     out(f"  independent review:            {_review_headline(result)}")
+    out(f"  phase acceptance:              {_phase_headline(result)}")
     out(f"  local commit:                  {commit or 'none created this run'}")
     if dirty:
         out(f"  uncommitted tracked changes:   {len(dirty.splitlines())} file(s)")
@@ -3434,6 +3476,21 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         f"{'Yes.' if verified and not failures else 'Not yet — see 6 and 7.'}")
     out(f"9. Is it ready to push or merge?    {_push_readiness(result, shippable, dirty, commit)}")
 
+    controller = result.phase_closure
+    if controller is not None and getattr(controller, "record", None) is not None:
+        header("PHASE ACCEPTANCE")
+        out(controller.preflight_block())
+        out("")
+        out(controller.record.ledger.render())
+        routing = controller.routing()
+        if routing.routes:
+            out("")
+            out(routing.render())
+        note(
+            "\nThis is a report. Nothing here scored a criterion, adjudicated the phase or\n"
+            "wrote a status file. Run `phase close` to take the phase's own adjudication."
+        )
+
     out("\n10. What should we build next?")
     for suggestion in _next_steps(result)[:8] or ["     Nothing outstanding was recorded."]:
         out(suggestion if suggestion.startswith("     ") else f"     - {suggestion}")
@@ -3453,6 +3510,31 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         )
 
     out(f"\nrun artifacts: {store.run_dir}")
+
+
+def _phase_headline(result: LoopResult) -> str:
+    """One line: where the phase stands, and what would move it.
+
+    Only ever a report. A run that did not claim the phase says so, rather than
+    producing a blank that reads like "nothing is outstanding".
+    """
+    controller = result.phase_closure
+    if controller is None:
+        return "not assessed — this run did not claim the phase"
+    record = getattr(controller, "record", None)
+    if record is None:
+        return "not assessed"
+    ledger = record.ledger
+    state = record.state.value
+    if state == "AUTHORITY_GAP":
+        return "AUTHORITY_GAP — the repository states no acceptance criteria for this phase"
+    if state == "ALREADY_ACCEPTED":
+        return f"{ledger.phase} is already recorded as accepted"
+    detail = (
+        f"{ledger.criteria_pass}/{ledger.criteria_required} required criteria pass, "
+        f"{ledger.blocking_residuals} blocking residual(s)"
+    )
+    return f"{state} — {detail}"
 
 
 def _review_headline(result: LoopResult) -> str:
@@ -4177,6 +4259,70 @@ async def cmd_doctor(args: argparse.Namespace) -> int:
         True,
         "HEAD + tree + working-tree digest; a later change retires it and a new "
         "reviewer is taken",
+        fatal=False,
+    )
+
+    # -- phase closure ----------------------------------------------------
+    #
+    # Reported here because the two facts an operator needs before starting a
+    # phase closure are not visible anywhere else: whether the phase they are
+    # about to close states its own acceptance criteria, and how the external
+    # gate will be answered. Both are read-only.
+    out("\nPhase closure")
+    closure = config.phase_closure
+    check(
+        "phase-acceptance preflight",
+        closure.enabled,
+        "a run that claims the phase reports where phase acceptance stands"
+        if closure.enabled
+        else "OFF — a phase-scope run will not report where phase acceptance stands",
+        fatal=False,
+    )
+    try:
+        from .phase_authority import resolve_phase_authority
+
+        # An empty registry_paths means "the built-in list", which is the
+        # function's own default — passing the empty list through would look
+        # for a registry in nowhere.
+        where = {"registry_paths": closure.registry_paths} if closure.registry_paths else {}
+        authority = resolve_phase_authority(config.neyma_repo, **where)
+    except Exception as exc:  # doctor never fails on a diagnostic
+        authority = None
+        note(f"  phase authority unreadable: {type(exc).__name__}: {redact(str(exc))[:160]}")
+    if authority is not None:
+        check(
+            f"the selected phase states its acceptance criteria"
+            + (f" ({authority.phase_id})" if authority.phase_id else ""),
+            authority.declared,
+            (
+                f"{len(authority.criteria.required)} required criterion/criteria, "
+                f"fingerprint {authority.criteria.fingerprint()}"
+                if authority.declared
+                else "AUTHORITY GAP — "
+                + (authority.problem or "the repository states none")[:200]
+            ),
+            fatal=False,
+        )
+        if authority.declared:
+            check(
+                "external verification will be answered",
+                bool(closure.external_probe_command) or not authority.external_criteria,
+                (
+                    "no phase criterion demands an external gate"
+                    if not authority.external_criteria
+                    else f"a configured read-only probe: {closure.external_probe_command}"
+                    if closure.external_probe_command
+                    else "no probe is configured, so the run will stop at "
+                    "WAITING_FOR_EXTERNAL_VERIFICATION and you supply the record"
+                ),
+                fatal=False,
+            )
+    check(
+        "the acceptance record is the only thing an acceptance commit may touch",
+        True,
+        "runtime, test, migration, CI and specification changes refuse the whole "
+        "preparation; the driver prints the exact commit and makes none itself, "
+        "because allow_auto_commit is refused outright; nothing pushes",
         fatal=False,
     )
 
@@ -4979,6 +5125,442 @@ async def cmd_review(args: argparse.Namespace) -> int:
     return 0 if review.verdict == "SUPPORTED" else 20
 
 
+# --------------------------------------------------------------------------
+# Phase closure
+# --------------------------------------------------------------------------
+
+
+def _phase_controller(
+    config: DriverConfig,
+    store: Any,
+    *,
+    phase_id: str = "",
+    builder_session_ids: Sequence[str] = (),
+    resume: bool = True,
+) -> Any:
+    """Build the phase-closure controller from configuration and, if asked, disk.
+
+    Resuming is the default because every command below is a step in one
+    conversation with the same phase: a preflight, then a wait for CI, then an
+    adjudication. Starting fresh each time would re-freeze the criteria, lose
+    the findings' classifications and forget which tree the evidence was about —
+    which is the whole failure this controller exists to remove.
+    """
+    from .phase_closure import PhaseClosureController
+
+    closure = config.phase_closure
+    controller = PhaseClosureController(
+        config.neyma_repo,
+        store=store,
+        phase_id=phase_id,
+        builder_session_ids=builder_session_ids,
+        registry_paths=closure.registry_paths or None,
+        stale_verification_blocks=closure.stale_verification_blocks,
+        acceptance_record_globs=closure.acceptance_record_globs,
+        external_probe_command=closure.external_probe_command,
+        external_probe_timeout_s=closure.external_probe_timeout_s,
+        emit=lambda m: out(_indent(m)),
+    )
+    if resume:
+        restored = controller.load()
+        if restored is not None and phase_id and restored.phase_id != phase_id:
+            # A different phase is a different attempt. The persisted one is not
+            # discarded — it is simply not this phase's — so a fresh record is
+            # started rather than the wrong one continued.
+            controller.record = type(restored)(
+                run_id=getattr(store, "run_id", "") or "", phase_id=phase_id
+            )
+            controller.phase_id = phase_id
+    return controller
+
+
+def _report_phase_closure(controller: Any) -> None:
+    """Print the preflight, the ledger and the routing, in that order."""
+    record = controller.record
+    header("PHASE ACCEPTANCE PREFLIGHT")
+    out(controller.preflight_block())
+
+    if record.state.value == "AUTHORITY_GAP":
+        header("AUTHORITY GAP — STOPPED")
+        for finding in record.findings:
+            if finding.classification.value == "AUTHORITY_GAP":
+                out(f"  {finding.summary}")
+                out(f"  closes when: {finding.closure_condition}")
+        out(
+            "\nProduct Driver does not write acceptance criteria. What makes this phase\n"
+            "done is a founder or architect decision, and the run stops here rather than\n"
+            "inventing a bar it could then meet."
+        )
+        return
+
+    header("PHASE LEDGER")
+    out(record.ledger.render())
+
+    routing = controller.routing()
+    if routing.routes:
+        out("")
+        out(routing.render())
+
+    if record.external_requirement.required and record.external_evidence is None:
+        out("")
+        out(record.external_requirement.waiting_block())
+
+
+async def cmd_phase_preflight(args: argparse.Namespace) -> int:
+    """The deterministic phase-acceptance preflight. Reads; changes nothing."""
+    config = _config_from_args(args)
+    problems = config.validate_repo()
+    if problems:
+        for problem in problems:
+            error(problem)
+        return 2
+
+    # Only a NAMED run is written to. A bare ``phase preflight`` is a question
+    # about the repository, and answering a question must not leave a record in
+    # whichever run happened to be most recent — that run is somebody else's
+    # evidence.
+    named = getattr(args, "run", None)
+    store = _open_store(config, named, create=False) if named else None
+    controller = _phase_controller(
+        config, store, phase_id=getattr(args, "phase", "") or "", resume=bool(store)
+    )
+    controller.preflight()
+    _report_phase_closure(controller)
+    return _phase_exit_code(controller.record.state)
+
+
+async def cmd_phase_ledger(args: argparse.Namespace) -> int:
+    """Print the persisted phase ledger. Reads only what a previous step wrote."""
+    config = _config_from_args(args)
+    store = _open_store(config, getattr(args, "run", None), create=False)
+    if store is None:
+        error(f"No runs found under {config.runs_dir}. Pass --run <run-id>.")
+        return 2
+    controller = _phase_controller(config, store, phase_id=getattr(args, "phase", "") or "")
+    if controller.load() is None:
+        error(f"Run {store.run_id} has recorded no phase-closure attempt.")
+        note("run:  python -m neyma_product_driver phase preflight")
+        return 2
+    if getattr(args, "as_json", False):
+        out(json.dumps(controller.record.model_dump(mode="json"), indent=2, default=str))
+    else:
+        out(controller.record.ledger.render())
+    return _phase_exit_code(controller.record.state)
+
+
+async def cmd_phase_external_evidence(args: argparse.Namespace) -> int:
+    """Supply the external verifier's report for the candidate tree.
+
+    The record is refused unless it is about the exact commit the attempt named.
+    That refusal is the point of the command: CI green on the previous commit is
+    a true sentence about a tree nobody is accepting.
+    """
+    from .external_verification import evidence_from_payload
+
+    config = _config_from_args(args)
+    store = _open_store(config, getattr(args, "run", None), create=False)
+    if store is None:
+        error(f"No runs found under {config.runs_dir}. Pass --run <run-id>.")
+        return 2
+    controller = _phase_controller(config, store)
+    if controller.load() is None:
+        error(f"Run {store.run_id} has recorded no phase-closure attempt to supply evidence to.")
+        return 2
+
+    payload: Any
+    if getattr(args, "file", None):
+        path = Path(args.file).expanduser()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            error(f"could not read {path}: {exc}")
+            return 2
+    elif getattr(args, "sha", None):
+        payload = {
+            "sha": args.sha,
+            "status": args.status or "SUCCESS",
+            "conclusion": args.status or "success",
+            "url": getattr(args, "url", "") or "",
+            "gate_name": controller.record.external_requirement.gate_name,
+        }
+    else:
+        error("supply either --file <record.json> or --sha <commit> [--status SUCCESS].")
+        return 2
+
+    evidence = evidence_from_payload(
+        payload,
+        source="operator",
+        default_gate=controller.record.external_requirement.gate_name,
+    )
+    accepted, reason = controller.record_external_evidence(evidence)
+    header("EXTERNAL VERIFICATION")
+    out(f"  {evidence.brief()}")
+    (good if accepted else error)(("accepted — " if accepted else "REFUSED — ") + reason)
+    if not accepted:
+        out("")
+        out(controller.record.external_requirement.waiting_block())
+        return 11
+    controller.decide()
+    controller.save()
+    out("")
+    out(controller.record.ledger.render())
+    return _phase_exit_code(controller.record.state)
+
+
+async def cmd_phase_close(args: argparse.Namespace) -> int:
+    """Take a phase from implementation complete to ready for formal acceptance.
+
+    Preflight, then the external gate, then — only if both leave something worth
+    paying for — one fresh independent adjudication, then routing, then the
+    local acceptance record. Every stop along the way is a resting place with a
+    persisted state, not a failure.
+    """
+    config = _config_from_args(args)
+    problems = config.validate_repo()
+    if problems:
+        for problem in problems:
+            error(problem)
+        return 2
+
+    analysis = bool(getattr(args, "analysis", False))
+    store = _phase_store(config, getattr(args, "run", None), analysis=analysis)
+    state = store.load_state() if store is not None else None
+    builder_ids = _builder_lineage(state)
+    controller = _phase_controller(
+        config,
+        store,
+        phase_id=getattr(args, "phase", "") or "",
+        builder_session_ids=builder_ids,
+    )
+
+    controller.preflight()
+    record = controller.record
+
+    # The external gate, before an adjudication is paid for.
+    if (
+        record.external_requirement.required
+        and record.external_evidence is None
+        and config.phase_closure.external_probe_command
+        and not analysis
+    ):
+        out("→ asking the configured external verification probe...")
+        controller.fetch_external_evidence()
+
+    # The independent adjudication, when the phase's own criteria demand one and
+    # the preflight says it is worth paying for.
+    if (
+        not analysis
+        and record.state.value == "READY_FOR_ADJUDICATION"
+        and not getattr(args, "no_adjudication", False)
+    ):
+        code = await _run_phase_adjudication(config, store, controller, args)
+        if code is not None:
+            _report_phase_closure(controller)
+            return code
+
+    controller.decide()
+    controller.save()
+    _report_phase_closure(controller)
+
+    # The acceptance record, when everything required passes.
+    if record.state.value == "READY_FOR_ACCEPTANCE_COMMIT" and not analysis:
+        _prepare_phase_acceptance_commit(config, controller, args)
+
+    if store is not None:
+        out(f"\nrun artifacts: {store.run_dir}")
+    elif analysis:
+        note("\nanalysis mode: nothing was written, and nothing was launched.")
+    return _phase_exit_code(record.state)
+
+
+def _phase_store(config: DriverConfig, run_id: str | None, *, analysis: bool):
+    """Which run a phase-closure step reads and writes.
+
+    Three cases, and the middle one is the one that matters. A NAMED run is the
+    run. An ANALYSIS pass writes nothing at all, because answering a question
+    must not leave a record in whichever run happened to be most recent — that
+    run is somebody else's evidence. Otherwise the latest run is continued only
+    when it already carries a phase-closure attempt, and a new run is started
+    when it does not; anything else appends this phase's attempt to an unrelated
+    run's artifacts.
+    """
+    assert config.runs_dir is not None
+    if run_id:
+        return EvidenceStore.open_run(config.runs_dir, run_id)
+    if analysis:
+        return None
+    latest = EvidenceStore.latest_run(config.runs_dir)
+    if latest is not None and latest.load_phase_closure() is not None:
+        return latest
+    return EvidenceStore(config.runs_dir, new_run_id())
+
+
+def _builder_lineage(state: Any) -> list[str]:
+    """Every builder session this run used, not merely the last one.
+
+    Independence is checked against the whole lineage, because a run that
+    resumed a session and then started another has two sessions that must not be
+    the reviewer, and remembering only the current one lets the earlier one
+    review its own work.
+    """
+    if state is None:
+        return []
+    ids = [str(getattr(state, "builder_session_id", "") or "")]
+    for record in list(getattr(state, "iterations", []) or []):
+        ids.append(str(getattr(record, "builder_session_id", "") or ""))
+    return [i for i in dict.fromkeys(ids) if i]
+
+
+async def _run_phase_adjudication(
+    config: DriverConfig, store: Any, controller: Any, args: argparse.Namespace
+) -> int | None:
+    """Launch one fresh session to adjudicate the phase. Returns a code to stop on.
+
+    ``None`` means "carry on"; anything else is the exit code the command should
+    return, because the adjudication could not be taken or did not count.
+    """
+    from .phase_closure import phase_adjudication_prompt
+    from .reviewer import IndependentReviewerSession
+
+    if not _preflight_api_key(config):
+        return 3
+
+    record = controller.record
+    fingerprint = capture_fingerprint(config.neyma_repo)
+    base_scenario = Scenario(name="(none)")
+    try:
+        base_scenario = load_scenario(config.scenario_path(None))
+    except Exception:
+        pass
+    policy = _reviewer_command_policy(config, base_scenario)
+
+    note(
+        "\nThis launches a FRESH Claude session. It does not resume or inherit any builder\n"
+        "conversation, it cannot write, commit, push, deploy or read a secret, and it will\n"
+        "not write any status file. It scores exactly the frozen criteria and may not add\n"
+        "one."
+    )
+    out(f"  adjudicating: {fingerprint.describe()}")
+    out(f"  criteria:     {record.criteria_fingerprint} ({len(record.criteria.required)} required)")
+
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            error("\nRefusing to launch an adjudicator non-interactively. Re-run with --yes.")
+            return 3
+        reply = input("\nAuthorize the independent phase adjudication? Type 'yes': ")
+        if reply.strip().lower() != "yes":
+            out("Aborted. No adjudicator was launched.")
+            return 0
+
+    repo_context = ""
+    try:
+        repo_context = RepositoryContextLoader(config.neyma_repo).load(
+            topics=["product", "architecture", "acceptance"]
+        ).render()
+    except ContextResolutionError:
+        repo_context = ""
+
+    prompt = phase_adjudication_prompt(
+        record,
+        authority=controller.authority,
+        evidence_dir=str(store.run_dir) if store is not None else "",
+        repository_context=repo_context,
+        policy=policy,
+    )
+    if store is not None:
+        store.write_text("phase-adjudication-prompt.md", prompt)
+
+    out("\n→ independent phase adjudicator working...")
+    async with IndependentReviewerSession(
+        config.neyma_repo,
+        model=config.review.model or config.evaluator.model,
+        on_progress=lambda m: out(_indent(m)),
+        command_policy=policy,
+        fingerprint=fingerprint,
+        scope_id=record.phase_id,
+        builder_session_id=(record.builder_session_ids[0] if record.builder_session_ids else ""),
+    ) as reviewer:
+        review = await reviewer.review(prompt)
+
+    if store is not None:
+        store.write_json("phase-adjudication.json", review.model_dump(mode="json"))
+    adjudication = controller.ingest_review(review, reviewed_tree=fingerprint.identity)
+
+    header("PHASE ADJUDICATION")
+    out(f"  {adjudication.brief()}")
+    for result in adjudication.criterion_results:
+        mark = "  outside authority" if result.outside_authority else ""
+        out(f"    {result.verdict:<18} {result.criterion_id}{mark}")
+    if not adjudication.independent:
+        error(f"\nThis adjudication does not count: {adjudication.independence_problem}")
+        controller.decide()
+        controller.save()
+        return 21
+    return None
+
+
+def _prepare_phase_acceptance_commit(
+    config: DriverConfig, controller: Any, args: argparse.Namespace
+) -> None:
+    """Work out the acceptance record, print it, and refuse anything else.
+
+    **The driver control process does not make this commit.** That is not a
+    decision taken here: ``DriverConfig`` refuses ``allow_auto_commit``
+    outright, on the grounds that the driver never commits or pushes on the
+    owner's behalf, and this respects that rather than reaching around it. The
+    builder session may create local commits when the target repository's own
+    authority requires them, and so may the founder — both act under the
+    repository's rules, and neither is this process.
+
+    So what happens here is the part that is genuinely worth automating: every
+    dirty path is classified by surface, anything outside the acceptance record
+    refuses the whole preparation with the file and its surface named, and the
+    exact change plus the command to make it is printed.
+    """
+    from .acceptance_commit import plan_acceptance_commit, prepare_acceptance_commit
+
+    record = controller.record
+    plan = plan_acceptance_commit(
+        config.neyma_repo,
+        phase_id=record.phase_id,
+        acceptance_globs=config.phase_closure.acceptance_record_globs,
+    )
+    # Always False from this process. The parameter exists because the module is
+    # the correct implementation of the operation and is tested as one; the
+    # caller that may use it is not this one.
+    plan = prepare_acceptance_commit(config.neyma_repo, plan, allow_commit=False)
+
+    header("ACCEPTANCE RECORD")
+    out(plan.render())
+    if not plan.permitted:
+        return
+    out("")
+    out("  Product Driver does not commit in the product repository, so this is the")
+    out("  exact change and nothing has been staged. Make it under the repository's")
+    out("  own rules:")
+    out(f"    git -C {config.neyma_repo} add -- " + " ".join(p.path for p in plan.allowed_paths))
+    out(f"    git -C {config.neyma_repo} commit -m {plan.message!r}")
+    out("")
+    out("  Then push. Publishing is your action and the driver has no path to it.")
+    record.note("acceptance record prepared for the founder; nothing staged, nothing pushed")
+    controller.save()
+
+
+def _phase_exit_code(state: Any) -> int:
+    """One exit code per resting place, so a script can tell them apart."""
+    value = getattr(state, "value", str(state))
+    return {
+        "READY_FOR_ACCEPTANCE_COMMIT": 0,
+        "READY_FOR_FOUNDER_PUSH": 0,
+        "ALREADY_ACCEPTED": 0,
+        "READY_FOR_ADJUDICATION": 10,
+        "WAITING_FOR_EXTERNAL_VERIFICATION": 11,
+        "PREFLIGHT_BLOCKED": 12,
+        "BLOCKED": 13,
+        "AUTHORITY_GAP": 14,
+    }.get(value, 1)
+
+
 async def cmd_feedback(args: argparse.Namespace) -> int:
     """Record explicit founder direction for one run. Never permanent."""
     config = _config_from_args(args)
@@ -5315,6 +5897,62 @@ def build_parser() -> argparse.ArgumentParser:
     review_p.add_argument("--run", help="run id (defaults to the latest)")
     review_p.add_argument("--yes", action="store_true", help="skip the authorization prompt")
     review_p.set_defaults(func=cmd_review)
+
+    phase_p = sub.add_parser(
+        "phase",
+        help="take a completed phase to ready-for-acceptance (preflight, gate, adjudication)",
+    )
+    phase_sub = phase_p.add_subparsers(dest="phase_command", required=True)
+
+    pre_p = phase_sub.add_parser(
+        "preflight",
+        help="the deterministic phase-acceptance preflight (reads only; launches nothing)",
+    )
+    common(pre_p)
+    pre_p.add_argument("--phase", help="phase id (defaults to the repository's selected unit)")
+    pre_p.add_argument("--run", help="run id (defaults to the latest)")
+    pre_p.set_defaults(func=cmd_phase_preflight)
+
+    close_p = phase_sub.add_parser(
+        "close",
+        help="preflight, external gate, independent adjudication and the local acceptance record",
+    )
+    common(close_p)
+    close_p.add_argument("--phase", help="phase id (defaults to the repository's selected unit)")
+    close_p.add_argument("--run", help="run id (defaults to the latest)")
+    close_p.add_argument(
+        "--analysis",
+        action="store_true",
+        help="read-only: preflight and report, launch nothing and prepare nothing",
+    )
+    close_p.add_argument(
+        "--no-adjudication",
+        action="store_true",
+        help="do not launch the independent adjudicator; stop at READY_FOR_ADJUDICATION",
+    )
+    close_p.add_argument("--yes", action="store_true", help="skip the adjudication prompt")
+    close_p.set_defaults(func=cmd_phase_close)
+
+    ext_p = phase_sub.add_parser(
+        "external-evidence",
+        help="supply the external verifier's report for the candidate tree",
+    )
+    common(ext_p)
+    ext_p.add_argument("--run", help="run id (defaults to the latest)")
+    ext_p.add_argument("--file", help="a JSON record of the verifier's result")
+    ext_p.add_argument("--sha", help="the exact commit the verifier ran against")
+    ext_p.add_argument("--status", help="SUCCESS | FAILURE | PENDING | INFRASTRUCTURE")
+    ext_p.add_argument("--url", help="where a human can check it")
+    ext_p.set_defaults(func=cmd_phase_external_evidence)
+
+    ledger_p = phase_sub.add_parser(
+        "ledger", help="print the persisted phase ledger for a run"
+    )
+    common(ledger_p)
+    ledger_p.add_argument("--phase", help="phase id")
+    ledger_p.add_argument("--run", help="run id (defaults to the latest)")
+    ledger_p.add_argument("--json", action="store_true", dest="as_json")
+    ledger_p.set_defaults(func=cmd_phase_ledger)
 
     fb_p = sub.add_parser(
         "feedback",

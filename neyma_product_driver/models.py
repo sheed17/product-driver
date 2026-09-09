@@ -369,6 +369,14 @@ class RunStatus(str, Enum):
     # Repository governance blocks finalization, and clearing it needs a human
     # decision about history or authority. Also neither failure nor completion.
     REQUIRES_APPROVAL = "REQUIRES_APPROVAL"
+    # The phase's acceptance needs a verifier this driver does not own — CI, or
+    # another external gate — to report on the exact candidate tree. A resting
+    # place, not a failure: the run knows exactly what it is waiting for and
+    # exactly which commit the answer must be about.
+    WAITING_FOR_EXTERNAL_VERIFICATION = "WAITING_FOR_EXTERNAL_VERIFICATION"
+    # Every required acceptance criterion passes and the local acceptance record
+    # is prepared. The only remaining step is the one the driver may never take.
+    READY_FOR_FOUNDER_PUSH = "READY_FOR_FOUNDER_PUSH"
 
 
 class RunState(BaseModel):

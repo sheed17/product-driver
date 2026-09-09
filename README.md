@@ -686,6 +686,264 @@ Nothing about this is a relaxation, and the fail-closed directions are explicit:
 `task-scope.json` and `scoped-completion.json` are written per iteration, and
 the founder summary states the parent phase's position beside the task's.
 
+## Phase closure: implementation complete → ready for formal acceptance
+
+The step above stops at "this unit is verified". Closing a **phase** is a
+different job, and until now it was the one you did by hand: reading the run
+output, checking whether the phase's acceptance criteria were actually
+instantiated, whether each one's evidence was attached to the exact tree being
+accepted, whether a reviewer's finding was a product defect or a Product Driver
+defect or a nice-to-have, whether CI had run on *this* commit or the one before
+it, whether a residual could be closed or needed your decision — and then
+relaying every one of those answers between sessions.
+
+All of it is determinate, so all of it is computed:
+
+```
+BUILD
+  ↓
+CHECKPOINT VERIFICATION            (the loop above)
+  ↓
+PHASE ACCEPTANCE PREFLIGHT         deterministic; launches nothing
+  ↓
+PHASE EVIDENCE ASSEMBLY            every criterion → concrete, falsifiable evidence
+  ↓
+CI / EXTERNAL VERIFICATION GATE    green on the EXACT candidate commit
+  ↓
+FRESH INDEPENDENT PHASE ADJUDICATION
+  ↓
+CLASSIFY FINDINGS                  defect / gap / harness / CI / authority / debt
+  ↓
+┌─ a genuine blocker ──→ routed to the layer that owns it ──→ repeat
+│
+└─ every required criterion PASS
+     ↓
+   prepare the minimal acceptance record LOCALLY
+     ↓
+   STOP. READY_FOR_FOUNDER_PUSH.
+```
+
+### The six rules that make it terminate
+
+**1. Acceptance authority must already exist.** The preflight resolves the
+phase's acceptance criterion set from the repository. If the repository states
+none, the answer is `AUTHORITY_GAP` and the run stops:
+
+```
+=== AUTHORITY GAP — STOPPED ===
+  P7 declares no explicit acceptance criterion set in
+  docs/implementation/IMPLEMENTATION-REGISTRY.yaml.
+
+Product Driver does not write acceptance criteria. What makes this phase
+done is a founder or architect decision, and the run stops here rather
+than inventing a bar it could then meet.
+```
+
+**2. The criteria are frozen for the attempt.** The set is fingerprinted at the
+start — over what the criteria *demand*, deliberately not over how they scored,
+so an adjudication doing its job cannot break its own freeze. A reviewer may
+find a criterion FALSE. It may not add one. Anything it scores that the frozen
+set does not contain is recorded as *outside the current authority*: kept,
+because it is often a good idea, and unable to reopen the phase, because
+widening the bar mid-acceptance is your decision rather than a reviewer's.
+
+**3. Blocking is not severity.** A finding blocks phase acceptance only when it
+names a criterion in the frozen **required** set, **mechanically demonstrates**
+that criterion is false, and is of a class that can falsify a criterion at all.
+A `blocker`-severity note that a nicer guard could exist names no criterion and
+demonstrates nothing; it is debt. A `minor`-severity finding that shows a
+required invariant breaking under a probe blocks.
+
+**4. Every finding is routed to the layer that owns it.**
+
+| classification | repaired at |
+|---|---|
+| `PRODUCT_DEFECT`, `RUNTIME_SAFETY_DEFECT` | the product builder, as a grounded correction |
+| `VERIFICATION_GAP`, `EVIDENCE_GAP`, `STALE_VERIFICATION` | a product verification task — tests and guards only |
+| `HARNESS_DEFECT` | **Product Driver.** The product run stops. |
+| `CI_INFRASTRUCTURE_DEFECT` | a CI-only correction |
+| `AUTHORITY_GAP` | you |
+| `BOOKKEEPING_DEBT`, `NONBLOCKING_DEBT`, `UNCLASSIFIED` | recorded and carried |
+| `EXTERNAL_BLOCKER` | someone outside this machine |
+
+The `HARNESS_DEFECT` row is the one that costs money when it is missing:
+patching the product to satisfy a broken measurement fixes nothing and hides the
+measurement bug. When one is found, the routing plan says `stop_product_run` and
+Product Driver is repaired separately.
+
+**5. Evidence is bound to the exact tree, and has to be able to be wrong.** Every
+piece of evidence records the tree identity it was observed against and, where it
+declares them, the paths it depends on. When the tree moves, the evidence that
+the change could have touched is retired by blast radius — evidence that
+declares its dependencies and whose dependencies are untouched survives; evidence
+that declares none does not, because nothing can vouch for it. External evidence
+is *always* retired, because a CI record is a fact about one commit.
+
+And a criterion does not become PASS because a string exists. A citation is a
+fact about a document; only a test node, probe, battery, guard, invariant query,
+scenario, CI job or independent adjudication is falsifiable, and a mutation
+battery carries `control_green`, `mutant_expected_red`, `mutant_observed_red`,
+`escaped_mutants` and `population_denominator` so a battery that catches nothing
+because it mutates nothing is visible as such.
+
+**6. The stop rule.** A phase is ready to close when its canonical scope is
+built, every REQUIRED current criterion passes, the required external
+verification is green on the exact tree, and no blocking product or safety defect
+remains. **Everything else is debt**, and the output says so in two lists.
+
+### Independence, mechanically
+
+The phase adjudicator is a fresh session by construction (`resume=None`,
+`continue_conversation=False`, `fork_session=False`) and every check that can be
+made from the artifact alone is made and stored: the reviewer's session id
+against the run's **whole** builder lineage, the inherited-context flag, the tree
+it read, and the criteria fingerprint it was given. Any of the four failing
+means the adjudication does not count — which is not the same as the phase being
+blocked. An adjudication that does not count is an adjudication that has not been
+taken, and the repair is to take a real one.
+
+An adjudication discharges the phase on its **per-criterion scoring**, not on its
+summary adjective. A reviewer that scores every required criterion PASS and then
+writes `NOT_SUPPORTED` because it also wants a guard nobody asked for has said
+one thing inside the authority and one outside it; reading the adjective as the
+answer is how phase closure used to run forever.
+
+### The external gate
+
+Nothing here knows about any particular CI provider. Either you configure one
+read-only probe command (`phase_closure.external_probe_command`, `{sha}`
+substituted, checked against the command guard when the config is *read* so a
+mutating command fails at startup), or the driver waits:
+
+```
+WAITING_FOR_EXTERNAL_VERIFICATION: ci_green_on_the_accepted_tree
+  expected tree:   e6b1753131f33016cf7beb77206b77eaf361b89e
+  settles:         P6-AC-16
+  supply evidence with:
+    python -m neyma_product_driver phase external-evidence --file <record.json>
+  the record must contain:
+    sha: the exact commit the verifier ran against
+    status: SUCCESS | FAILURE | PENDING | INFRASTRUCTURE
+    ...
+  evidence for any other commit is refused: it is a fact about a different tree.
+```
+
+On resume, evidence for the wrong commit is refused with both SHAs side by side.
+A *cancelled* or *timed-out* run is classified `CI_INFRASTRUCTURE_DEFECT`, not
+as a failing product — that distinction is what stops a CI outage becoming a
+series of product corrections.
+
+### The acceptance record
+
+When every required criterion passes, the driver prepares the **minimum local**
+status/evidence change the repository's own authority needs. It classifies every
+dirty path by surface and refuses the whole preparation if anything outside the
+acceptance record is dirty:
+
+```
+=== ACCEPTANCE RECORD ===
+  + ACCEPTANCE_RECORD  docs/implementation/IMPLEMENTATION-REGISTRY.yaml
+  REFUSED RUNTIME      src/freight_recon/work_item.py
+  REFUSED: acceptance recording may only touch the acceptance record, and this
+  tree also changes 1 file(s) outside it. Commit or revert them under their own
+  review first.
+```
+
+All-or-nothing on purpose: staging only the status files out of a tree that also
+carries a runtime edit produces a commit whose message says "the phase is
+accepted" over unverified product changes.
+
+**The driver does not make the commit.** That is not a decision taken here:
+`DriverConfig` refuses `allow_auto_commit` outright — the driver control process
+never commits or pushes on your behalf — and this respects that rather than
+reaching around it. When the preparation is permitted, the exact change and the
+command to make it are printed, and you or a builder session make it under the
+repository's own rules. Nothing is staged, and nothing is pushed: there is no
+push code path in `acceptance_commit.py`, and a test asserts that.
+
+### Commands
+
+```bash
+# The deterministic preflight. Read-only, launches nothing, writes nothing
+# unless you name a run.
+python -m neyma_product_driver phase preflight [--phase P7]
+
+# The whole controller. --analysis is read-only.
+python -m neyma_product_driver phase close [--phase P6] [--analysis] \
+    [--no-adjudication] [--yes]
+
+# Supply the external verifier's report for the candidate tree.
+python -m neyma_product_driver phase external-evidence --sha <commit> --status SUCCESS
+python -m neyma_product_driver phase external-evidence --file ci.json
+
+# The persisted ledger.
+python -m neyma_product_driver phase ledger [--run <id>] [--json]
+```
+
+Exit codes are one per resting place, so a script can tell them apart: `0` ready
+or already accepted, `10` ready for adjudication, `11` waiting for external
+verification, `12` preflight blocked, `13` blocked, `14` authority gap.
+
+### The phase ledger
+
+Written to `runs/<run-id>/phase-closure.json` — one file, machine- and
+human-readable, and the unit a resume reads back:
+
+```
+phase: P6
+state: READY_FOR_ACCEPTANCE_COMMIT
+candidate_tree: e6b1753131f3/9c1a2b3c4d5e/-
+tree_clean: yes
+checkpoints:
+  expected: 13
+  landed: 13
+acceptance:
+  fingerprint: fa8fd74ff98d9cb3af7a52f7d7cce571
+  required: 17
+  pass: 17
+  fail: 0
+blocking_residuals: 0
+nonblocking_residuals: 29
+closable_now: P6-D82, P6-D88, P6-D89
+ci:
+  required: true
+  status: SUCCESS
+  sha: e6b1753131f33016cf7beb77206b77eaf361b89e
+independent_review:
+  status: SUPPORTED
+  reviewer: <session id>
+  inherited_builder_context: false
+production_enabled: false
+ready_for_acceptance_commit: true
+next_phase: P7
+```
+
+### What a resume restores
+
+The frozen criteria and their fingerprint; which tree the evidence was about;
+every finding *with its classification and blocking status*, so nonblocking debt
+does not turn blocking because a process restarted; whether the phase owes an
+adjudication; which residuals need your decision; and the external requirement
+with its expected commit. No acceptance decision is reconstructed from prose.
+
+### The operator experience
+
+1. Start Product Driver on a phase.
+2. It builds and verifies.
+3. It says `WAITING_FOR_EXTERNAL_VERIFICATION`, `BLOCKED: <exact blocker>`, or
+   `READY_FOR_FOUNDER_PUSH`.
+4. You push.
+5. It resumes against the external evidence.
+6. It adjudicates independently.
+7. It prepares the acceptance record.
+8. You push.
+9. Next phase.
+
+You no longer relay reviewer findings between sessions by hand. What still
+requires you: stating acceptance criteria that do not exist, deciding a residual
+whose closure condition is a judgement, repairing Product Driver when a harness
+defect is found, making the acceptance commit, and every push.
+
 ## The completion auditor
 
 A builder saying something is done is a **claim**, not a fact. Before any
@@ -1719,6 +1977,37 @@ same builder and a *new* reviewer judges the correction; an unresolvable review
 fails closed and sends the builder nothing; an external action is reported rather
 than performed; and accepting a reviewed task still moves no phase.
 
+The phase-closure proofs are in five files. `tests/test_phase_acceptance.py`
+covers the vocabulary: the freeze is over what the criteria demand and not over
+how they scored, blocking is not severity, a citation does not establish a
+criterion, and a residual whose closure condition is a judgement is never marked
+closable. `tests/test_phase_closure.py` drives the controller through every
+resting place: all criteria passing with green external evidence reaches
+`READY_FOR_ACCEPTANCE_COMMIT`; one required criterion failing blocks; a reviewer
+inventing a criterion is recorded and cannot reopen the phase; a product defect
+routes to the builder while a harness defect stops the product run; evidence from
+a previous tree and CI SUCCESS for the wrong commit are both refused; a review
+from a builder session or an inherited conversation does not count; and a phase
+with no acceptance criteria stops at `AUTHORITY_GAP`.
+`tests/test_phase_closure_resume.py` restarts the attempt at each of those
+points and checks that nothing is reconstructed from prose.
+`tests/test_external_verification.py` covers the gate, including that a
+mutating probe command is refused when the *config* is read.
+`tests/test_acceptance_commit.py` proves the acceptance commit may contain the
+acceptance record and nothing else — and that there is no push code path in the
+module at all.
+
+`tests/test_phase_closure_mutation.py` is a failure-injection battery over those
+guards. Each case establishes a control, removes exactly one guard, and shows the
+unsafe thing then happens: widen `FALSIFYING_CLASSES` and a suggestion reopens
+the phase; make every commit compare equal and CI for the wrong tree is accepted;
+stub out `check_independence` and a builder passes its own phase; make citations
+falsifiable and a string establishes a criterion; blind the judgement guard and a
+founder-decision residual auto-closes; widen `WRITABLE_SURFACES` and runtime code
+lands in an acceptance commit; fingerprint the result and the freeze breaks on
+its own success. A mutant that survived would mean the test beside it was
+covering nothing.
+
 `tests/test_autonomy_boundaries.py` holds the permission and safety proofs:
 ordinary file work, broad refactors, pytest and repository scripts, local
 commits and authorized finalizers all run unattended; push, remote mutation,
@@ -1767,6 +2056,40 @@ emptied so a repository secret cannot leak into a run.
   see what the code does.
 - One automatic reviewer, sequentially. There is no panel and no second opinion
   on the reviewer itself.
+- Phase-closure **evidence assembly reads the repository's own recorded evidence
+  as prose.** It extracts test node ids, paths, bare filenames and bare test
+  names and checks each resolves in the tree; a criterion whose evidence is a
+  derivation written entirely in sentences resolves to no locator and is
+  reported `VACUOUS` — correctly, since nothing named there can be run, but the
+  criterion may still be perfectly well evidenced somewhere the registry does
+  not cite. The repair is a citation, not a code change.
+- **A criterion's PASS is still the repository's record.** The preflight reports
+  whether a criterion has falsifiable evidence attached to the exact tree; it
+  does not re-derive the criterion. Re-deriving is what the independent
+  adjudication is for, and a phase closed without one is closed on the
+  repository's own say-so.
+- **Finding classification reads a reviewer's prose.** The classifier is ordered
+  and deterministic, and a sentence matching nothing is `UNCLASSIFIED`, which
+  routes to record-only and can never block. That fails safe against reopening a
+  phase and fails *open* against a real defect described in words the classifier
+  does not know — a blocking defect must also name a frozen criterion, which is
+  the check that actually carries the weight.
+- **Blast-radius invalidation depends on declared dependencies.** Evidence that
+  declares the paths it depends on and whose paths are untouched survives a
+  commit. The declaration comes from the locator that produced the evidence, so
+  a test whose behaviour depends on a file it does not name can survive a change
+  that broke it. Evidence that declares nothing is always retired, which is the
+  conservative direction.
+- **`expected_checkpoints` is only as good as the repository's own count.** Where
+  a registry records the checkpoints that landed but never states how many were
+  expected, "expected" is reported as "landed" and a missing checkpoint cannot be
+  detected. The preflight says so in its derivation rather than implying the
+  scope is complete.
+- The acceptance-commit surface classifier is path-based and **fails closed**: an
+  unfamiliar path is `UNKNOWN` and refuses the whole preparation. A repository
+  with an unusual layout configures `acceptance_record_globs`; those globs are
+  additive and cannot reclassify runtime, test, migration, CI or specification
+  code.
 - A repository's independent-review rule is applied to every nested unit it
   governs, not only to the units its sentence is really about. "A change that
   touches an effect boundary needs one focused review" is honoured as *this unit

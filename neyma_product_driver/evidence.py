@@ -259,6 +259,32 @@ class EvidenceStore:
             return None
         return data if isinstance(data, dict) else None
 
+    def save_phase_closure(self, record: dict[str, Any], iteration: int | None = None) -> Path:
+        """Persist the phase-closure attempt, at the run root and per iteration.
+
+        The run-root copy is the resume unit: ``phase close`` and
+        ``phase external-evidence`` read it back, exactly as ``approve`` reads
+        back the protocol resolution. The per-iteration copy is history.
+        """
+        from .phase_closure import CLOSURE_FILE
+
+        if iteration is not None:
+            rel = self.iteration_dir(iteration).relative_to(self.run_dir)
+            self.write_json(rel / CLOSURE_FILE, record)
+        return self.write_json(CLOSURE_FILE, record)
+
+    def load_phase_closure(self) -> dict[str, Any] | None:
+        from .phase_closure import CLOSURE_FILE
+
+        path = self.run_dir / CLOSURE_FILE
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
     def save_independent_review(self, iteration: int, review: dict[str, Any]) -> Path:
         """Persist an independent reviewer's findings."""
         rel = self.iteration_dir(iteration).relative_to(self.run_dir)

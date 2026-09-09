@@ -217,6 +217,73 @@ review:
   # human, like the scenario approved-command list — never inferred.
   reviewer_extra_read_only: []
 
+# --------------------------------------------------------------------------
+# Phase closure: implementation complete -> ready for formal phase acceptance
+# --------------------------------------------------------------------------
+#
+# The step you used to perform by hand between "the last unit landed" and "the
+# phase is accepted": checking that the phase's acceptance criteria are actually
+# instantiated, that each one's evidence is attached to the exact tree being
+# accepted, that CI ran on THIS commit, that a reviewer's finding is a defect
+# rather than a suggestion, and that a residual can be closed rather than
+# needing your decision.
+#
+# What it will never do: write acceptance criteria the repository does not
+# state, adopt a criterion a reviewer invented mid-acceptance, accept evidence
+# about a different tree, close a residual whose closure condition is your
+# judgement, or push.
+
+phase_closure:
+  # Compute the deterministic preflight at the end of a run that claims the
+  # phase. Read-only; it changes no terminal state and launches nothing.
+  enabled: true
+
+  # Where this repository keeps its unit registry. Empty means the built-in
+  # list (docs/implementation/IMPLEMENTATION-REGISTRY.yaml and friends).
+  registry_paths: []
+
+  # Whether a stale-but-harmless probe BLOCKS phase acceptance. This is your
+  # acceptance authority's call, not the driver's, so it is configuration
+  # rather than a rule. Default: a probe that cannot false-green is debt.
+  stale_verification_blocks: false
+
+  # Extra paths that carry THIS repository's acceptance record, as globs.
+  # Additive only: a glob can name an unusual status file as part of the
+  # record, and it can never reclassify runtime, test, migration, CI or
+  # specification code as one.
+  #   acceptance_record_globs: ["state/PHASES.json"]
+  acceptance_record_globs: []
+
+  # ONE read-only command that reports your external verifier's result for a
+  # commit. `{sha}` is substituted with the exact candidate commit. Written by
+  # a human, like the scenario approved-command list — never inferred, never
+  # generated, and checked against the command guard when this file is READ, so
+  # a mutating command fails at startup rather than mid-closure.
+  #
+  # Nothing here knows about any particular CI provider. Examples:
+  #   external_probe_command: "curl -s https://ci.example.com/status/{sha}"
+  #   external_probe_command: "python3 tools/ci_status.py {sha}"
+  #
+  # Leave it empty and the driver simply WAITS instead: it reports
+  # WAITING_FOR_EXTERNAL_VERIFICATION with the expected commit and the exact
+  # record to bring back, and you supply it with
+  #   python -m neyma_product_driver phase external-evidence --sha <commit>
+  external_probe_command: ""
+  external_probe_timeout_s: 120
+  # What to call the gate when your criterion does not name it.
+  external_gate_name: ""
+
+  # There is deliberately NO switch here for "let the driver make the acceptance
+  # commit". allow_auto_commit below is refused outright — the driver control
+  # process never commits or pushes on your behalf — and a second knob that
+  # could never take effect would read like a capability this does not have.
+  #
+  # What the driver does instead is the part worth automating: it classifies
+  # every dirty path by surface, refuses the whole preparation if anything
+  # outside the acceptance record is dirty (naming each file and its surface),
+  # and prints the exact change plus the command to make it. You or a builder
+  # session make the commit under the repository's own rules.
+
 # Neyma is normally dirty mid-phase, so this defaults to true.
 
 allow_dirty_tree: true

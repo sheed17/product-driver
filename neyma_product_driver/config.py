@@ -331,6 +331,80 @@ class ReviewPolicyConfig(BaseModel):
         return v
 
 
+class PhaseClosureConfig(BaseModel):
+    """Taking a finished phase from implementation complete to ready to accept.
+
+    Every default here is the conservative one. The preflight runs — it is
+    read-only and it is the cheap half — and nothing else happens without being
+    asked. The acceptance record is reported rather than committed: see the
+    note where the commit switch would otherwise be.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Whether a phase-scope run computes the deterministic phase-closure
+    #: preflight at the end. Read-only; it changes no terminal state.
+    enabled: bool = True
+
+    #: Files that may hold the repository's unit registry. Empty means the
+    #: built-in list in :mod:`~neyma_product_driver.phase_authority`.
+    registry_paths: list[str] = Field(default_factory=list)
+
+    #: Whether a stale-but-harmless probe blocks phase acceptance. This is the
+    #: acceptance authority's call and not the driver's, so it is configuration
+    #: rather than a rule: a probe that cannot false-green is verification debt
+    #: by default.
+    stale_verification_blocks: bool = False
+
+    #: Extra paths that carry THIS repository's acceptance record, as globs.
+    #: Additive only — see
+    #: :func:`~neyma_product_driver.acceptance_commit.classify_surface`, which
+    #: refuses to let a glob reclassify runtime, test, migration, CI or spec.
+    acceptance_record_globs: list[str] = Field(default_factory=list)
+
+    #: One read-only command that reports the external verifier's result for a
+    #: commit. ``{sha}`` is substituted. Human-authored, like the scenario
+    #: approved-command list — never inferred and never generated. Empty means
+    #: the driver waits for the evidence to be supplied instead.
+    external_probe_command: str = ""
+    external_probe_timeout_s: int = 120
+    #: What to call the gate when the repository's criterion does not name it.
+    external_gate_name: str = ""
+
+    #: There is deliberately no switch here for "let the driver make the
+    #: acceptance commit". ``allow_auto_commit`` on :class:`DriverConfig` is
+    #: refused outright — the driver control process never commits or pushes on
+    #: the owner's behalf — and a second knob that could never take effect would
+    #: read like a capability this does not have. The driver classifies the
+    #: change, refuses anything outside the acceptance record, and prints the
+    #: exact commit for the founder or a builder session to make under the
+    #: repository's own rules.
+
+    @field_validator("external_probe_timeout_s")
+    @classmethod
+    def _bounded_probe(cls, v: int) -> int:
+        if v < 1 or v > 900:
+            raise ValueError("external_probe_timeout_s must be between 1 and 900 seconds")
+        return v
+
+    @field_validator("external_probe_command")
+    @classmethod
+    def _read_only_probe(cls, v: str) -> str:
+        """Refuse a probe the driver may not run, at load rather than at use.
+
+        A configured command that turns out to be a push is a problem to find
+        when the config is read, not thirty minutes into a phase closure.
+        """
+        if not str(v or "").strip():
+            return ""
+        from .external_verification import check_probe_command
+
+        reason = check_probe_command(v)
+        if reason:
+            raise ValueError(f"external_probe_command is not a read-only verification probe: {reason}")
+        return v
+
+
 class DriverConfig(BaseModel):
     """Top-level configuration for a driver run."""
 
@@ -367,6 +441,7 @@ class DriverConfig(BaseModel):
         default_factory=ScenarioGenerationConfig
     )
     review: ReviewPolicyConfig = Field(default_factory=ReviewPolicyConfig)
+    phase_closure: PhaseClosureConfig = Field(default_factory=PhaseClosureConfig)
 
     # Safety switches. All default to the conservative choice.
     allow_dirty_tree: bool = True  # Neyma is normally mid-phase and dirty.
