@@ -146,10 +146,11 @@ class ExternalEvidence(BaseModel):
     def satisfies(self, requirement: ExternalRequirement) -> tuple[bool, str]:
         """Whether this record discharges ``requirement``. Fails closed.
 
-        The SHA comparison is prefix-tolerant in one direction only: a short SHA
-        that prefixes the expected one is the same commit, and a long SHA that
-        the expected one prefixes is too. Anything else is a different tree,
-        and no amount of green makes it this tree's evidence.
+        The SHA comparison is prefix-tolerant: a short SHA that prefixes the
+        expected one is the same commit, and a long SHA that the expected one
+        prefixes is too — but only for real object ids abbreviated no shorter
+        than :data:`MIN_ABBREVIATED_SHA`. Anything else is a different tree, and
+        no amount of green makes it this tree's evidence.
         """
         if not requirement.required:
             return True, "no external verification is required"
@@ -157,7 +158,7 @@ class ExternalEvidence(BaseModel):
             return False, "the candidate tree's commit was never captured, so nothing can match it"
         if not self.sha:
             return False, "the evidence names no commit, so it cannot be about this tree"
-        if not _same_commit(self.sha, requirement.expected_sha):
+        if not same_commit(self.sha, requirement.expected_sha):
             return False, (
                 f"the evidence is about {self.sha[:12]} and the candidate tree is "
                 f"{requirement.expected_sha[:12]} — a different tree"
@@ -181,8 +182,35 @@ class ExternalEvidence(BaseModel):
         )
 
 
-def _same_commit(a: str, b: str) -> bool:
-    a, b = str(a or "").strip().lower(), str(b or "").strip().lower()
+#: The shortest abbreviation this gate will read as naming a commit. Git's own
+#: default abbreviation is 7 characters; below that a "prefix" stops being an
+#: identity claim at all — one hex character matches a sixteenth of every tree
+#: there is, and evidence that matches a sixteenth of all trees is not evidence
+#: about this one.
+MIN_ABBREVIATED_SHA = 7
+
+#: SHA-1 object ids are 40 hex characters and SHA-256 ones 64. A value outside
+#: that shape is not an object id, whatever else it may be.
+_OBJECT_ID = re.compile(rf"[0-9a-f]{{{MIN_ABBREVIATED_SHA},64}}")
+
+
+def _object_id(value: Any) -> str:
+    """``value`` as a canonical object id, or ``""`` when it is not one."""
+    candidate = str(value or "").strip().lower()
+    return candidate if _OBJECT_ID.fullmatch(candidate) else ""
+
+
+def same_commit(a: Any, b: Any) -> bool:
+    """Whether two possibly abbreviated object ids name the same commit.
+
+    The single place Product Driver decides that a piece of evidence is about a
+    given tree. Prefix-tolerant in both directions, but only between real
+    hexadecimal object ids of at least :data:`MIN_ABBREVIATED_SHA` characters:
+    below that floor, and for anything that is not an object id, this is False.
+    A gate whose whole purpose is binding evidence to one tree cannot accept
+    ``"a"`` as evidence about ``abc123...``.
+    """
+    a, b = _object_id(a), _object_id(b)
     if not a or not b:
         return False
     return a.startswith(b) or b.startswith(a)

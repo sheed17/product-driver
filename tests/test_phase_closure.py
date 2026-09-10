@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from neyma_product_driver import external_verification, phase_closure
 from neyma_product_driver.external_verification import (
+    MIN_ABBREVIATED_SHA,
     ExternalStatus,
     evidence_from_payload,
 )
@@ -504,6 +506,64 @@ class TestExternalEvidenceIsCommitBound:
         assert found[0].classification is FindingClass.CI_INFRASTRUCTURE_DEFECT
         assert found[0].repair_layer is RepairLayer.CI_INFRASTRUCTURE
         assert not found[0].blocks_phase_acceptance
+
+    def test_a_stub_prefix_of_the_candidate_head_cannot_satisfy_closure(
+        self, tmp_path: Path
+    ) -> None:
+        # The controller shares one commit-binding helper with the external
+        # gate, so a prefix too short to identify a tree is refused here too.
+        repo = phase_repo(tmp_path)
+        control = controller(repo)
+        control.preflight()
+        accepted, reason = control.record_external_evidence(
+            evidence_from_payload(
+                {
+                    "sha": head(repo)[:4],
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            )
+        )
+        assert not accepted
+        assert "a different tree" in reason
+        assert control.record.external_evidence is None
+        assert control.decide() not in (
+            ClosureState.READY_FOR_ACCEPTANCE_COMMIT,
+            ClosureState.READY_FOR_FOUNDER_PUSH,
+            ClosureState.ALREADY_ACCEPTED,
+        )
+
+    def test_a_seven_character_head_abbreviation_still_satisfies_the_gate(
+        self, tmp_path: Path
+    ) -> None:
+        repo = phase_repo(tmp_path)
+        control = controller(repo)
+        control.preflight()
+        accepted, _ = control.record_external_evidence(
+            evidence_from_payload(
+                {
+                    "sha": head(repo)[:MIN_ABBREVIATED_SHA],
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            )
+        )
+        assert accepted
+
+    def test_the_controller_binds_with_the_same_helper_as_the_gate(
+        self, tmp_path: Path
+    ) -> None:
+        # Not two copies of the rule: classification of a refusal consults the
+        # canonical helper, so patching it moves the controller with it.
+        assert phase_closure.same_commit is external_verification.same_commit
+        repo = phase_repo(tmp_path)
+        control = controller(repo)
+        control.preflight()
+        control.record_external_evidence(
+            evidence_from_payload({"sha": head(repo)[:3], "conclusion": "success"})
+        )
+        classes = {f.classification for f in control.record.findings}
+        assert FindingClass.STALE_VERIFICATION in classes
 
     def test_every_offered_record_is_kept_including_the_refused_ones(
         self, tmp_path: Path

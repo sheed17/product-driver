@@ -159,10 +159,10 @@ class TestTheCommitBindingIsLoadBearing:
     def test_mutant_making_every_commit_equal_accepts_it(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(external_verification, "_same_commit", lambda a, b: True)
+        monkeypatch.setattr(external_verification, "same_commit", lambda a, b: True)
         requirement = ExternalRequirement(required=True, expected_sha=SHA)
         assert self._wrong_tree().satisfies(requirement)[0], (
-            "the mutant escaped: _same_commit is not what binds evidence to a tree"
+            "the mutant escaped: same_commit is not what binds evidence to a tree"
         )
 
     def test_mutant_escapes_into_the_controller_too(
@@ -176,7 +176,7 @@ class TestTheCommitBindingIsLoadBearing:
         )
         assert not accepted
 
-        monkeypatch.setattr(external_verification, "_same_commit", lambda a, b: True)
+        monkeypatch.setattr(external_verification, "same_commit", lambda a, b: True)
         other = PhaseClosureController(repo, phase_id="P9")
         other.preflight()
         accepted, _ = other.record_external_evidence(

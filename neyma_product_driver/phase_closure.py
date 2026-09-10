@@ -66,6 +66,7 @@ from .external_verification import (
     ExternalStatus,
     requirement_from_criteria,
     run_probe,
+    same_commit,
 )
 from .models import utcnow
 from .phase_acceptance import (
@@ -1342,7 +1343,7 @@ class PhaseClosureController:
 
         if evidence.status is ExternalStatus.INFRASTRUCTURE:
             classification = FindingClass.CI_INFRASTRUCTURE_DEFECT
-        elif not _shas_match(evidence.sha, record.external_requirement.expected_sha):
+        elif not same_commit(evidence.sha, record.external_requirement.expected_sha):
             classification = FindingClass.STALE_VERIFICATION
         elif evidence.status is ExternalStatus.FAILURE:
             classification = FindingClass.PRODUCT_DEFECT
@@ -1365,7 +1366,7 @@ class PhaseClosureController:
                 # about another tree demonstrates nothing about this one.
                 mechanically_demonstrated=(
                     classification is FindingClass.PRODUCT_DEFECT
-                    and _shas_match(evidence.sha, record.external_requirement.expected_sha)
+                    and same_commit(evidence.sha, record.external_requirement.expected_sha)
                 ),
                 observed_at_tree=record.fingerprint().identity,
                 source="external verification gate",
@@ -2291,11 +2292,6 @@ def classify_review_finding(text: str) -> FindingClass:
 def _slug(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "")).strip("-")
     return (cleaned or "x")[:48]
-
-
-def _shas_match(a: str, b: str) -> bool:
-    a, b = str(a or "").strip().lower(), str(b or "").strip().lower()
-    return bool(a and b and (a.startswith(b) or b.startswith(a)))
 
 
 def _review_tree(review: Any) -> str:

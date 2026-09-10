@@ -14,6 +14,7 @@ import pytest
 
 from neyma_product_driver.config import PhaseClosureConfig
 from neyma_product_driver.external_verification import (
+    MIN_ABBREVIATED_SHA,
     ExternalEvidence,
     ExternalRequirement,
     ExternalStatus,
@@ -22,6 +23,7 @@ from neyma_product_driver.external_verification import (
     evidence_from_payload,
     requirement_from_criteria,
     run_probe,
+    same_commit,
 )
 from neyma_product_driver.phase_acceptance import AcceptanceCriterion
 
@@ -41,6 +43,30 @@ class TestEvidenceIsAboutOneCommit:
     def test_a_short_sha_that_prefixes_the_expected_one_is_the_same_commit(self) -> None:
         evidence = ExternalEvidence(sha=SHA[:12], status=ExternalStatus.SUCCESS)
         assert evidence.satisfies(requirement())[0]
+
+    def test_a_seven_character_abbreviation_is_still_the_same_commit(self) -> None:
+        evidence = ExternalEvidence(sha=SHA[:7], status=ExternalStatus.SUCCESS)
+        assert evidence.satisfies(requirement())[0]
+
+    def test_an_abbreviation_below_gits_own_floor_is_not_evidence_about_this_tree(
+        self,
+    ) -> None:
+        for length in range(1, MIN_ABBREVIATED_SHA):
+            evidence = ExternalEvidence(sha=SHA[:length], status=ExternalStatus.SUCCESS)
+            ok, reason = evidence.satisfies(requirement())
+            assert not ok, f"a {length}-character prefix was accepted as this tree"
+            assert "a different tree" in reason
+
+    def test_a_one_character_prefix_of_the_expected_commit_is_refused(self) -> None:
+        assert not ExternalEvidence(
+            sha=SHA[:1], status=ExternalStatus.SUCCESS
+        ).satisfies(requirement())[0]
+
+    def test_a_short_expected_sha_cannot_be_matched_either(self) -> None:
+        # The floor is symmetric: a requirement carrying a stub for a commit is
+        # no more bindable than evidence carrying one.
+        evidence = ExternalEvidence(sha=SHA, status=ExternalStatus.SUCCESS)
+        assert not evidence.satisfies(requirement(sha=SHA[:4]))[0]
 
     def test_green_on_another_commit_does_not(self) -> None:
         evidence = ExternalEvidence(sha="0" * 40, status=ExternalStatus.SUCCESS)
@@ -252,3 +278,51 @@ class TestConfigurationRefusesEarly:
         """``allow_auto_commit`` is refused outright, so a second knob here
         would read like a capability this does not have."""
         assert "prepare_acceptance_commit" not in PhaseClosureConfig.model_fields
+
+
+class TestTheAbbreviationFloorOnObjectIds:
+    """``same_commit`` is the one place evidence is bound to a tree."""
+
+    def test_a_full_sha_matches_itself(self) -> None:
+        assert same_commit(SHA, SHA)
+
+    def test_a_twelve_character_abbreviation_matches_the_full_sha(self) -> None:
+        assert same_commit(SHA[:12], SHA) and same_commit(SHA, SHA[:12])
+
+    def test_seven_characters_is_the_floor_and_it_matches(self) -> None:
+        assert MIN_ABBREVIATED_SHA == 7
+        assert same_commit(SHA[:MIN_ABBREVIATED_SHA], SHA)
+
+    @pytest.mark.parametrize("length", list(range(1, 7)))
+    def test_shorter_than_the_floor_never_matches(self, length: int) -> None:
+        assert not same_commit(SHA[:length], SHA)
+        assert not same_commit(SHA, SHA[:length])
+
+    def test_comparison_stays_case_insensitive(self) -> None:
+        assert same_commit(SHA.upper(), SHA)
+        assert same_commit(f"  {SHA[:12].upper()}  ", SHA)
+
+    def test_a_sha256_length_object_id_matches_itself(self) -> None:
+        assert same_commit("a" * 64, "a" * 64)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "",
+            "   ",
+            "not-a-sha",
+            "e6b1753131f33016cf7beb77206b77eaf361b89g",  # 'g' is not hex
+            "e6b17 53131f3",
+            SHA + "0" * 40,  # longer than any object id
+            "0x" + SHA[:10],
+        ],
+    )
+    def test_a_malformed_value_never_matches(self, value: str) -> None:
+        assert not same_commit(value, SHA)
+        assert not same_commit(SHA, value)
+
+    def test_two_malformed_values_do_not_match_each_other(self) -> None:
+        assert not same_commit("zzz", "zzz")
+
+    def test_an_unrelated_sha_does_not_match(self) -> None:
+        assert not same_commit("0" * 40, SHA)

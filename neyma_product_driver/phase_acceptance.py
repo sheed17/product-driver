@@ -61,9 +61,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # 1. Criteria
 # --------------------------------------------------------------------------
 
-#: How a repository writes "this criterion passed". Mirrors
-#: :data:`~neyma_product_driver.completion_auditor.PASSING_RESULTS`; kept as its
-#: own constant so this module does not import the auditor.
+#: How a repository writes "this criterion passed". Deliberately wider than
+#: :data:`~neyma_product_driver.completion_auditor.PASSING_RESULTS`, which does
+#: not accept ``SATISFIED``: the auditor scores weight from a completion
+#: registry, while phase acceptance also reads criteria a reviewer marked
+#: satisfied. Kept as its own constant so this module does not import the
+#: auditor, and so neither set drifts into the other by accident.
 PASSING_RESULTS = ("PASS", "PASSED", "COMPLETE", "SATISFIED")
 
 #: How a repository writes "this criterion is known to be false". Distinct from
