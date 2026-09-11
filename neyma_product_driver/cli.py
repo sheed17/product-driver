@@ -451,16 +451,33 @@ async def run_control_loop(
     sent_corrections: list[str] = []
     previous_suite: SuiteResult | None = None
 
-    for iteration in range(1, config.max_iterations + 1):
+    # The budget is a number of iterations THIS invocation may perform, which
+    # is not the same thing as the number an iteration is filed under. They
+    # were one variable, so a resume counted from one again and wrote its first
+    # iteration over the first iteration of the run it was continuing. The
+    # budget is counted here; the number is claimed from the store, which is
+    # the only thing that knows what the run already has.
+    for attempt in range(1, config.max_iterations + 1):
         if store.stop_requested():
             emit("\nStop requested — halting before the next iteration.")
             state.status = RunStatus.STOPPED
             store.save_state(state)
             return LoopResult(status=RunStatus.STOPPED, state=state)
 
+        # Claimed after the stop check, so a halted run spends no number, and
+        # before anything writes, because every artifact below lands inside the
+        # directory this claim creates.
+        iteration = store.allocate_iteration(state)
         state.iteration = iteration
         record = IterationRecord(iteration=iteration)
-        header(f"ITERATION {iteration} / {config.max_iterations}")
+        header(
+            f"ITERATION {iteration}"
+            + (
+                f" (step {attempt} of {config.max_iterations} this run)"
+                if iteration != attempt
+                else f" / {config.max_iterations}"
+            )
+        )
 
         # 1. builder works
         emit("→ builder working...")
@@ -1160,7 +1177,7 @@ async def run_control_loop(
                         record.decision = decision
                         _print_decision(decision, emit)
                         prior_problems = list(decision.problems)
-                        if iteration >= config.max_iterations:
+                        if attempt >= config.max_iterations:
                             record.notes.append(
                                 "the repository's own verification failed on the final iteration"
                             )
@@ -1241,7 +1258,7 @@ async def run_control_loop(
 
         # FIX — correct and retest, unless this was the last permitted iteration.
         prior_problems = list(decision.problems)
-        if iteration >= config.max_iterations:
+        if attempt >= config.max_iterations:
             record.notes.append("iteration budget exhausted before the fix could be retested")
             return _terminate(RunStatus.MAX_ITERATIONS, decision, record)
 
@@ -1461,6 +1478,9 @@ class GapClosure:
     #: True once new coverage has actually been executed, so the suite record,
     #: the gate verdict and the decision all moved.
     ran: bool = False
+    #: True when ``decision`` routes a gap no approved measurement can express
+    #: to the builder as verification work. See :func:`_verification_gap_decision`.
+    verification_gap: bool = False
 
 
 async def _close_coverage_gaps(
@@ -1502,6 +1522,7 @@ async def _close_coverage_gaps(
     one of the planner's bounded waves, so the bound is the run's existing one.
     """
     closure = GapClosure(suite=suite, suite_result=suite_result, verdict=verdict)
+    routed: EvaluatorDecision | None = None
 
     while True:
         gaps = _gap_risks(planner, closure.verdict)
@@ -1525,6 +1546,7 @@ async def _close_coverage_gaps(
             emit(f"    [{risk.severity.value} {risk.risk_category.value}] {risk.description}")
 
         known = {s.id for s in planner.plan.scenarios}
+        waves_before = len(planner.plan.waves)
         # Failures and evaluator requests are deliberately absent. This wave
         # answers the deterministic gap set and nothing else: an evaluator's
         # prose about what else might be worth testing is not what is blocking
@@ -1549,6 +1571,23 @@ async def _close_coverage_gaps(
             )
             closure.notes.append(note)
             emit(f"  {note}")
+            this_round = planner.plan.waves[waves_before:]
+            routed = _verification_gap_decision(
+                planner=planner,
+                wave=this_round[-1] if this_round else None,
+                gaps=gaps,
+                verdict=closure.verdict,
+                accepted=accepted,
+                scenario=scenario,
+            )
+            if routed is not None:
+                note = (
+                    f"{len(gaps)} acceptance-blocking risk(s) cannot be expressed by any "
+                    "currently approved measurement; routed to the builder as "
+                    "product-verification work, not as a product defect"
+                )
+                closure.notes.append(note)
+                emit(f"  {note}")
             break
 
         emit(f"  generated {len(fresh)} coverage-gap scenario(s): {', '.join(fresh)}")
@@ -1589,7 +1628,146 @@ async def _close_coverage_gaps(
             generation_problems=planner.generation_problems(),
             risks=_identified_risks(planner),
         )
+    # A defect an executed scenario actually observed outranks a gap: that FIX
+    # carries a real failure. Anything else — the refusal a remaining gap
+    # already earns — is replaced by the one move that can close it.
+    if routed is not None and (
+        closure.decision is None or closure.decision.decision is not Decision.FIX
+    ):
+        closure.decision = routed
+        closure.verification_gap = True
     return closure
+
+
+def _verification_gap_decision(
+    *,
+    planner: Any,
+    wave: Any,
+    gaps: Sequence[Any],
+    verdict: Any,
+    accepted: EvaluatorDecision,
+    scenario: Scenario,
+) -> EvaluatorDecision | None:
+    """Route a gap no approved measurement can express to the builder, as verification work.
+
+    A wave was aimed at exactly these risks and produced nothing that can run,
+    which means the currently approved measurements cannot express the hostile
+    case each one needs. That is not a product defect, and it is not something
+    the harness may paper over by composing an invocation the program does not
+    support: the invocation would be refused, and the refusal would be read as
+    the product failing. Nor is it a reason to stop — the one move that closes
+    it is a small test, probe case or guard under the repository's own
+    authority, and the builder is the one who can add it.
+
+    Nothing here marks a risk covered. The risks stay in the gate's uncovered
+    list, and leave it only when an executed scenario passes against them.
+
+    ``None`` — leaving the ordinary refusal standing — unless all of:
+
+    * the evaluator ACCEPTed. A FIX, ASK_USER or BLOCKED it returned carries
+      reasoning this must not overwrite, exactly as suite precedence respects it;
+    * a wave was actually generated for these gaps — ``wave`` is the record
+      this closure round produced, never an older one — and generation itself
+      worked: its generator answered and Product Driver could read every
+      candidate. A wave that failed says nothing about what the approved
+      measurements can express;
+    * the wave is actual evidence of inexpressibility: it proposed nothing, or
+      everything it proposed was refused as an invocation its program does not
+      accept. A duplicate, an ungrounded requirement or an unsafe command says
+      only that the generator chose badly, and asking a builder for new
+      measurement on that basis would be inventing work out of a bad proposal;
+    * budget remains for a later wave, since that is what would turn the
+      builder's new measurement into executed coverage. Without it the honest
+      outcome is the refusal the spent budget already produces.
+    """
+    if accepted.decision is not Decision.ACCEPT or not gaps:
+        return None
+    if wave is None or wave.reasoner_error or wave.contract_rejections:
+        return None
+    if any(not rejected.is_invocation_defect for rejected in wave.rejected):
+        return None
+    if planner.budget_exhausted():
+        return None
+
+    risks = [
+        f"[{r.severity.value} {r.risk_category.value}] {r.description}" for r in gaps
+    ]
+    refusals = [
+        f"{rejected.id or '(unnamed)'}: "
+        + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
+        for rejected in wave.rejected
+    ][:8]
+    correction = "\n".join(
+        [
+            "PRODUCT-VERIFICATION GAP — this is NOT a product defect. Nothing about the "
+            "product was observed to be wrong.",
+            "",
+            "This run identified acceptance-blocking risk(s) that no currently approved "
+            "measurement can express:",
+            *(f"  - {line}" for line in risks),
+            "",
+            "Product Driver generated coverage aimed at exactly these and none of it can "
+            "run" + (":" if refusals else "."),
+            *(f"  - {line}" for line in refusals),
+            "",
+            "They stay UNCOVERED, and acceptance stays blocked, until an executed "
+            "scenario passes against each one.",
+            "",
+            "What to do:",
+            "  1. Add the smallest appropriate test, probe case or guard, under this "
+            "repository's own authority, that exercises exactly the hostile case each "
+            "risk names and fails if the risk is realised. Put it where the repository's "
+            "verification authority expects it, reachable through one of its "
+            "already-approved verification entry points (for example, a test the "
+            "approved test command collects).",
+            "  2. Do NOT widen, weaken or rename any closed fault or argument vocabulary, "
+            "probe grammar, refusal control or acceptance requirement to make an "
+            "existing command pass. A program refusing an argument it does not have is "
+            "correct behaviour.",
+            "  3. If the repository's authority does not define the behaviour a risk "
+            "asks about, say so rather than inventing it.",
+            "  4. Report the exact command that now establishes each risk.",
+        ]
+    )
+    return EvaluatorDecision(
+        decision=Decision.FIX,
+        summary=(
+            f"Verification gap, not a product defect: {len(gaps)} acceptance-blocking "
+            "risk(s) cannot be expressed by any currently approved measurement, so the "
+            "builder is asked to add the smallest test, probe case or guard that "
+            "establishes them."
+        ),
+        problems=[f"no approved measurement expresses {line}" for line in risks] + refusals,
+        observed_behavior=list(accepted.observed_behavior),
+        evidence_paths=list(accepted.evidence_paths),
+        correction_prompt=correction,
+        requirement_reference=(
+            "the acceptance-blocking risks this run identified: "
+            + "; ".join(risks)
+        )[:2000],
+        product_principle_reference=(
+            "an unmeasured risk is not a covered risk: it is verified only by an executed "
+            "scenario that passed with resolvable evidence"
+        ),
+        scenario=scenario.name,
+        observed_result=verdict.summary_block() if verdict is not None else "",
+        expected_result=(
+            "A repository test, probe case or guard, reachable through an approved "
+            "verification command, that exercises exactly each risk's hostile case and "
+            "fails if the risk is realised."
+        ),
+        preserve=(
+            "Every closed fault and argument vocabulary, every probe grammar and refusal "
+            "control, every acceptance requirement, and every passing scenario. Nothing "
+            "may be widened, weakened or deleted to make an existing command pass."
+        ),
+        retest=(
+            "Product Driver generates coverage for these risks against the approved "
+            "commands and executes it; each risk leaves the uncovered list only when an "
+            "executed scenario passes against it."
+        ),
+        confidence=0.6,
+    )
 
 
 def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:
@@ -1622,7 +1800,7 @@ def _assemble_suite(scenario: Scenario, planner: Any) -> ScenarioSuite:
 def _summarize_verification(scenario: Scenario, planner: Any) -> str:
     """What the builder is told about how its work will be exercised."""
     parts = [scenario.summary()]
-    generated = planner.plan.scenarios
+    generated = planner.plan.active_scenarios()
     if generated:
         parts += [
             "",
@@ -3136,6 +3314,7 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
         error(str(exc))
         return 2
 
+    from .invocation_grammar import InvocationGrammar
     from .scenario_validation import ValidationContext, safety_reasons
 
     approved = _approved_commands(config, base)
@@ -3155,9 +3334,17 @@ async def cmd_scenarios_run_generated(args: argparse.Namespace) -> int:
         # repository of the day; replay re-checks safety, not authorship.
         grounding_tokens=set(),
         principle_tokens=set(),
+        # Whether each program accepts what the plan passes it is re-checked,
+        # like safety, against the scenario files as they are now.
+        invocation_grammar=InvocationGrammar.from_scenarios(
+            [*_permanent_scenarios(config), base], approved
+        ),
     )
     compiled: list[tuple[Any, Scenario]] = []
     for model in plan.scenarios:
+        if model.retired_reason:
+            warn(f"not replaying {model.id}: retired as a harness-generation defect")
+            continue
         unsafe = safety_reasons(model, context)
         if unsafe:
             warn(f"refusing to replay {model.id}: {unsafe[0]}")
@@ -4839,7 +5026,13 @@ async def cmd_status(args: argparse.Namespace) -> int:
     out(f"updated:    {state.updated_at}")
     out(f"repo:       {state.neyma_repo}")
     out(f"scenario:   {state.scenario_name}")
-    out(f"iterations: {state.iteration} / {state.max_iterations}")
+    # The number an iteration is filed under is not a count of them: a resumed
+    # run continues past its per-invocation budget by design, and reporting
+    # "7 / 5" as though the budget had been blown would be a false alarm.
+    out(
+        f"iterations: {len(state.iterations)} recorded, last was iteration "
+        f"{state.iteration} ({state.max_iterations} per invocation)"
+    )
     out(f"builder session:   {state.builder_session_id or '(none)'}")
     out(f"evaluator session: {state.evaluator_session_id or '(none)'}")
     if state.stop_requested or store.stop_requested():
@@ -4908,16 +5101,21 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
     header("EVALUATE (no builder session)")
     out(f"scenario: {scenario.name} ({scenario.mode})")
     out(f"run:      {store.run_dir}")
+    # Claimed, not assumed. The run id is second-resolution, so two evaluations
+    # in one second share a directory; the number this hands back is one no
+    # iteration of that directory has used, which is what keeps the first
+    # evaluation's evidence where it was written.
+    iteration = store.allocate_iteration(state)
 
     suite = build_suite(permanent=[(scenario.name, scenario)])
     executor = SuiteExecutor(
         make_executor=lambda artifact_dir: ScenarioExecutor(
             config.neyma_repo, config.run, artifact_dir
         ),
-        artifact_root=store.iteration_dir(1),
+        artifact_root=store.iteration_dir(iteration),
         browser_enabled=config.run.browser_enabled,
         run_id=run_id,
-        iteration=1,
+        iteration=iteration,
         emit=out,
     )
     out("→ running scenario...")
@@ -4946,23 +5144,23 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
     feedback_store = FounderFeedbackStore(store.run_dir)
     prompt = evaluator_prompt(
         task=state.task,
-        iteration=1,
+        iteration=iteration,
         max_iterations=1,
         builder_summary="(no builder ran; this is an evaluate-only pass)",
         git=git,
         scenario=result,
         service_logs=executor.service_logs,
-        evidence_dir=str(store.iteration_dir(1)),
+        evidence_dir=str(store.iteration_dir(iteration)),
         founder=founder,
         repo_context=repo_context,
         founder_feedback=feedback_store.render(),
     )
     provenance = _build_provenance(
         founder=founder, repo_context=repo_context, git=git, scenario_result=result,
-        store=store, iteration=1, feedback_count=len(feedback_store.load()),
+        store=store, iteration=iteration, feedback_count=len(feedback_store.load()),
         prompt_chars=len(prompt),
     )
-    store.save_prompt_manifest(1, provenance.model_dump(mode="json"), prompt)
+    store.save_prompt_manifest(iteration, provenance.model_dump(mode="json"), prompt)
 
     out("→ evaluating...")
     async with EvaluatorSession(config.neyma_repo, config.evaluator) as evaluator:
@@ -4987,7 +5185,7 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
     decision = _apply_suite_precedence(suite_result, decision, scenario.name, out)
 
     record = IterationRecord(
-        iteration=1,
+        iteration=iteration,
         git=git,
         scenario=result,
         decision=decision,
@@ -4996,7 +5194,7 @@ async def cmd_evaluate(args: argparse.Namespace) -> int:
     )
     record.suite = suite_result.model_dump(mode="json")
     store.write_json(
-        store.iteration_dir(1).relative_to(store.run_dir) / "suite-result.json",
+        store.iteration_dir(iteration).relative_to(store.run_dir) / "suite-result.json",
         record.suite,
     )
     store.save_iteration(record)
@@ -5385,7 +5583,15 @@ async def cmd_review(args: argparse.Namespace) -> int:
 
     last = state.iterations[-1] if state.iterations else None
     builder_report = last.builder_summary if last else ""
-    iteration = last.iteration if last else 1
+    # A review belongs to the iteration whose tree it reviews. Where the state
+    # records none — truncated, or written by an older version — the run's own
+    # directories are the better claim, because guessing 1 would file this
+    # review inside an iteration that already happened.
+    iteration = (
+        last.iteration
+        if last
+        else max(store.existing_iterations(), default=1)
+    )
 
     auditor = CompletionAuditor(config.neyma_repo)
     # The reviewer has to know what was asked for. Reviewing a one-unit build

@@ -35,7 +35,7 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from .command_guard import classify_command, classify_worktree_ownership, is_secret_path
@@ -51,6 +51,9 @@ from .scenario_plan import (
     RiskCategory,
 )
 from .scenarios import Scenario, _join_url
+
+if TYPE_CHECKING:  # pragma: no cover - the grammar module imports this one
+    from .invocation_grammar import InvocationGrammar
 
 #: Loopback hosts a generated request may address. A scenario that wants to talk
 #: to anything else is trying to produce an external effect, which is refused
@@ -614,6 +617,13 @@ class ValidationContext:
     #: planner; ``None`` in a context that cannot run anything, which is safe
     #: because an unanswerable contest is refused rather than waved through.
     contract_probe: "Callable[[str], ContractProbeResult] | None" = None
+    #: What the permanent scenario files say each program accepts and refuses:
+    #: reviewed exit contracts, refusal controls, closed option vocabularies and
+    #: the risks a refusal establishes. ``None`` where nothing was harvested,
+    #: which checks nothing — every rule it carries is a repository declaration,
+    #: and a repository that declares none has made nothing mechanical. See
+    #: :mod:`~neyma_product_driver.invocation_grammar`.
+    invocation_grammar: "InvocationGrammar | None" = None
 
     def grounds_requirement(self, reference: str) -> bool:
         text = (reference or "").strip().lower()
@@ -1734,9 +1744,38 @@ def validate_scenario(
     """Return every reason ``generated`` must be refused. Empty means accepted."""
     reasons: list[str] = []
     reasons += _check_safety(generated, context)
-    reasons += _check_quality(generated, context)
+    invalid = invocation_reasons(generated, context)
+    reasons += invalid
+    # An invocation the program refuses is never run to find out what it
+    # prints: asking it would execute the very thing this refusal exists to
+    # keep from executing. Without the probe an attribution it would have
+    # settled is reported as unproven instead, which only adds to a refusal
+    # that is already certain.
+    quality_context = replace(context, contract_probe=None) if invalid else context
+    reasons += _check_quality(generated, quality_context)
     reasons += _check_provenance(generated, context)
     return reasons
+
+
+def invocation_reasons(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """Why a command this scenario runs is not valid under its program's grammar.
+
+    Approval is a prefix match, which is the right rule for "may this run" and
+    says nothing about whether the program understands what was appended, or
+    whether a human already reviewed this exact invocation as a refusal. A
+    generated scenario that runs a refused invocation and expects success fails
+    against a correct product and reaches the gate as a product defect; one that
+    runs a refusal to claim a risk the refusal never reaches claims coverage it
+    does not have. Both are refused here, before anything executes, and both are
+    harness-generation defects — see
+    :mod:`~neyma_product_driver.invocation_grammar`.
+    """
+    grammar = context.invocation_grammar
+    if grammar is None:
+        return []
+    return _dedupe(problem.reason() for problem in grammar.problems(generated))
 
 
 #: The stages that may produce a scenario. Anything else is not a stage the
@@ -1848,8 +1887,14 @@ def safety_reasons(generated: GeneratedScenario, context: ValidationContext) -> 
     it was generated — replay, principally. Grounding and duplication are
     authorship questions and are settled at generation time; safety is a
     property of the moment of execution and is re-established every time.
+
+    Invocation validity is re-established here too. Whether the program accepts
+    what a scenario passes it, and whether the scenario asserts what a human
+    reviewed that invocation as doing, are properties of the scenario files as
+    they are NOW — a plan persisted before this rule existed is exactly where an
+    impossible invocation would otherwise be replayed.
     """
-    return _check_safety(generated, context)
+    return _check_safety(generated, context) + invocation_reasons(generated, context)
 
 
 def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> list[str]:
@@ -2328,6 +2373,7 @@ __all__ = [
     "ValidationContext",
     "grounding_tokens_from",
     "identity_key",
+    "invocation_reasons",
     "permanent_signatures",
     "plan_signatures",
     "principle_tokens_from",

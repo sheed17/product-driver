@@ -112,6 +112,18 @@ REJECTED_FILTERED = "filtered"
 #: the same fact as "the generator had nothing to add".
 REJECTED_CONTRACT = "generation_contract"
 
+#: ``REJECTED_INVOCATION`` — Product Driver READ the proposal and it asks a
+#: program to do something the repository's own scenario files say it does not
+#: do: an invocation a human reviewed as a refusal, expected to succeed; a value
+#: outside an option the repository proves closed; a refusal offered as
+#: evidence for a risk it never reaches. See
+#: :mod:`~neyma_product_driver.invocation_grammar`. A harness-generation defect,
+#: and never a statement about the product — nothing was executed. Unlike a
+#: contract failure it is fully understood, so it does not make the run's
+#: coverage unknowable: the risk the candidate was for is carried in the risk
+#: register as an obligation the acceptance gate still enforces.
+REJECTED_INVOCATION = "invalid_invocation"
+
 
 #: Categories whose whole claim is about an effect having (or not having)
 #: durably happened. For these, an HTTP status is not evidence — the scenario
@@ -629,6 +641,14 @@ class GeneratedScenario(BaseModel):
     #: measurement and may not satisfy the gate, so the run must execute it
     #: again. One line per rebound field.
     rebound_on_resume: list[str] = Field(default_factory=list)
+    #: Set when Product Driver found that this scenario's invocations are not
+    #: valid under the programs' own grammar — see
+    #: :mod:`~neyma_product_driver.invocation_grammar` — and retired it as a
+    #: harness-generation defect. Non-empty means: kept in the plan as the
+    #: record of what was generated and executed, never compiled or executed
+    #: again, and never counted as coverage. The risk it was meant to verify is
+    #: carried in the risk register instead, where the gate still enforces it.
+    retired_reason: str = ""
 
     @field_validator("confidence")
     @classmethod
@@ -990,11 +1010,21 @@ class CoverageSummary(BaseModel):
     accepted: int = 0
     filtered: int = 0
     invalid: int = 0
+    #: Generated scenarios a resume retired as harness-generation defects. Not
+    #: in ``total_scenarios``: they are not coverage, and their risks are carried
+    #: in the register instead.
+    retired: int = 0
 
     def render(self) -> str:
         cats = ", ".join(sorted(self.by_risk_category)) or "none"
         lines = [
-            f"{self.total_scenarios} generated case(s)",
+            f"{self.total_scenarios} generated case(s)"
+            + (
+                f" ({self.retired} more retired as harness-generation defects and not "
+                "counted: their risks are carried as uncovered obligations)"
+                if self.retired
+                else ""
+            ),
             f"generation: {self.proposed} proposed, {self.accepted} accepted for "
             f"execution, {self.filtered} filtered or deduplicated, {self.invalid} "
             "invalid (Product Driver could not read them)",
@@ -1031,6 +1061,10 @@ class RejectedScenario(BaseModel):
     @property
     def is_contract_failure(self) -> bool:
         return self.kind == REJECTED_CONTRACT
+
+    @property
+    def is_invocation_defect(self) -> bool:
+        return self.kind == REJECTED_INVOCATION
 
 
 class WaveRecord(BaseModel):
@@ -1077,13 +1111,30 @@ class WaveRecord(BaseModel):
         """Candidates Product Driver understood and decided against. Intended."""
         return [r for r in self.rejected if not r.is_contract_failure]
 
+    @property
+    def invocation_rejections(self) -> list[RejectedScenario]:
+        """Candidates whose invocations their programs do not accept. A harness defect.
+
+        A subset of :attr:`filtered_rejections` — Product Driver understood
+        them — named separately because a reader must be able to see that the
+        generator composed something the program cannot do, rather than that
+        planning merely preferred other coverage.
+        """
+        return [r for r in self.rejected if r.is_invocation_defect]
+
     def accounting(self) -> str:
         """Proposed / accepted / filtered / invalid, in one line, always all four."""
-        return (
+        line = (
             f"{self.proposed} proposed, {self.accepted_count} accepted for execution, "
             f"{len(self.filtered_rejections)} filtered or deduplicated, "
             f"{len(self.contract_rejections)} invalid (Product Driver could not read them)"
         )
+        if self.invocation_rejections:
+            line += (
+                f"; {len(self.invocation_rejections)} of the filtered were invalid "
+                "invocations (harness-generation defect: refused before execution)"
+            )
+        return line
 
 
 class GeneratedScenarioPlan(BaseModel):
@@ -1122,23 +1173,35 @@ class GeneratedScenarioPlan(BaseModel):
     def by_id(self, scenario_id: str) -> GeneratedScenario | None:
         return next((s for s in self.scenarios if s.id == scenario_id), None)
 
+    def active_scenarios(self) -> list[GeneratedScenario]:
+        """The scenarios this plan still intends to execute.
+
+        Everything in :attr:`scenarios` except what a resume retired as a
+        harness-generation defect. A retired scenario stays in the list — it is
+        the record of what was generated and what ran — but it is not coverage,
+        planned or otherwise, and nothing that counts coverage may count it.
+        """
+        return [s for s in self.scenarios if not s.retired_reason]
+
     def signatures(self) -> set[str]:
-        return {s.signature() for s in self.scenarios}
+        return {s.signature() for s in self.active_scenarios()}
 
     def count_for(self, category: RiskCategory) -> int:
-        return sum(1 for s in self.scenarios if s.risk_category is category)
+        return sum(1 for s in self.active_scenarios() if s.risk_category is category)
 
     def recompute_coverage(self) -> None:
         by_cat: dict[str, int] = {}
         by_pri: dict[str, int] = {}
-        for scenario in self.scenarios:
+        active = self.active_scenarios()
+        for scenario in active:
             by_cat[scenario.risk_category.value] = by_cat.get(scenario.risk_category.value, 0) + 1
             by_pri[scenario.priority.value] = by_pri.get(scenario.priority.value, 0) + 1
-        covered = {s.risk_category.value for s in self.scenarios} | set(
+        covered = {s.risk_category.value for s in active} | set(
             self.permanent_coverage
         )
         self.coverage_summary = CoverageSummary(
-            total_scenarios=len(self.scenarios),
+            total_scenarios=len(active),
+            retired=len(self.scenarios) - len(active),
             by_risk_category=by_cat,
             by_priority=by_pri,
             uncovered_risks=[
@@ -1160,7 +1223,7 @@ class GeneratedScenarioPlan(BaseModel):
         wandering. What was actually verified is decided from execution records
         by :func:`~neyma_product_driver.scenario_gate.risk_coverage`.
         """
-        covered = {s.risk_category.value for s in self.scenarios} | set(
+        covered = {s.risk_category.value for s in self.active_scenarios()} | set(
             self.permanent_coverage
         )
         return [
@@ -1188,6 +1251,11 @@ class GeneratedScenarioPlan(BaseModel):
             lines += ["", "SCENARIOS:"]
             for s in self.scenarios:
                 lines.append(f"  {s.summary()}")
+                if s.retired_reason:
+                    lines.append(
+                        "      RETIRED — harness-generation defect, never executed again and "
+                        f"not coverage: {s.retired_reason}"
+                    )
                 if s.purpose:
                     lines.append(f"      purpose: {s.purpose}")
                 lines.append(f"      grounded in: {s.requirement_reference or '(none)'}")
@@ -1203,8 +1271,7 @@ class GeneratedScenarioPlan(BaseModel):
             # decided against this" and "Product Driver could not read this" are
             # the two facts a reader of this file most needs kept apart.
             lines += [
-                f"  [{'INVALID — harness could not read it' if r.is_contract_failure else 'filtered'}] "
-                f"{r.id or '(unnamed)'}: {'; '.join(r.reasons)}"
+                f"  [{_rejection_label(r)}] {r.id or '(unnamed)'}: {'; '.join(r.reasons)}"
                 for r in rejected
             ]
         lines += [
@@ -1213,6 +1280,15 @@ class GeneratedScenarioPlan(BaseModel):
             "nobody thought of are not covered by anything above.",
         ]
         return "\n".join(lines)
+
+
+def _rejection_label(rejected: RejectedScenario) -> str:
+    """The kind of a refusal, printed rather than inferred from its prose."""
+    if rejected.is_contract_failure:
+        return "INVALID — harness could not read it"
+    if rejected.is_invocation_defect:
+        return "INVALID INVOCATION — harness-generation defect, not a product failure"
+    return "filtered"
 
 
 # --------------------------------------------------------------------------

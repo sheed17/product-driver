@@ -44,6 +44,17 @@ from .models import (
 STOP_SENTINEL = "STOP"
 STATE_FILE = "state.json"
 
+#: How many consecutive numbers :meth:`EvidenceStore.allocate_iteration` will
+#: try before refusing. It only ever walks past directories that already exist,
+#: so reaching the end means something is wrong with the run directory itself —
+#: and failing closed there is correct, because the alternative is writing over
+#: an iteration that already happened.
+_ALLOCATION_ATTEMPTS = 1000
+
+
+class IterationAllocationError(RuntimeError):
+    """No unused iteration number could be claimed. Never overwrite; refuse."""
+
 # Cap on any single stored text blob. Prevents a runaway log from filling disk
 # and keeps evidence readable.
 MAX_BLOB_CHARS = 400_000
@@ -88,9 +99,109 @@ class EvidenceStore:
         return self.run_dir / STOP_SENTINEL
 
     def iteration_dir(self, iteration: int) -> Path:
+        """The directory for ONE iteration number, created if absent.
+
+        Addressing, never allocation: it says where iteration *n* lives and is
+        how everything that writes into the CURRENT iteration — and everything
+        that reads a past one — finds it. Which number a NEW iteration may take
+        is :meth:`allocate_iteration`, and nothing else may decide it.
+        """
         d = self.run_dir / f"iteration-{iteration:02d}"
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    def existing_iterations(self) -> list[int]:
+        """Every iteration number this run already has a directory for, ascending.
+
+        Read off the filesystem, because the filesystem is what a resume
+        actually has: a new process holds no memory of the last one, and the
+        state file it loads is a claim that can be stale, truncated or older
+        than the directories beside it.
+
+        Padding is not assumed. The store writes ``iteration-01``, but a
+        directory written by another version, or by a hand-run command, still
+        occupies its number and must still be counted — the point is to find
+        what is TAKEN, and a number this cannot see is a number this would
+        hand out twice.
+        """
+        found: set[int] = set()
+        for child in self.run_dir.glob("iteration-*"):
+            if not child.is_dir():
+                continue
+            suffix = child.name.split("-", 1)[-1]
+            try:
+                number = int(suffix)
+            except ValueError:
+                continue
+            if number > 0:
+                found.add(number)
+        return sorted(found)
+
+    def next_iteration(self, state: "RunState | None" = None) -> int:
+        """The lowest number no iteration has ever used here. One calculation.
+
+        ### WHY THIS EXISTS AT ALL. The control loop numbered its iterations
+        ``range(1, max_iterations + 1)`` — from ONE, every time, including on a
+        resume. So the second process wrote ``iteration-01/`` over the first
+        process's ``iteration-01/``: its record, its decision, its suite
+        result, its evaluator prompt and its per-scenario evidence, replaced in
+        place by a different iteration's. Run 20260903-065810 is what that
+        cost — its ``iteration-01/record.json`` holds the resumed iteration,
+        and the original survives only inside ``state.json``'s own copy.
+        Historical evidence is the one thing a verification harness may never
+        rewrite: everything it later reports rests on it.
+
+        **The maximum of every source, never the minimum.** Directories on
+        disk, the highest iteration in the state's own records, and the
+        state's current pointer are three claims about the same fact, and they
+        disagree exactly when something went wrong — a crash between writing
+        evidence and saving state, a truncated state file, an evidence
+        directory restored from a copy. Taking the maximum and adding one is
+        the conservative reading of ANY disagreement: at worst it skips a
+        number, which costs nothing, and it cannot be talked into a number that
+        is already taken. Taking a minimum, or trusting one source, is how the
+        old bug destroyed evidence.
+        """
+        highest = max(self.existing_iterations(), default=0)
+        if state is not None:
+            highest = max(
+                highest,
+                int(getattr(state, "iteration", 0) or 0),
+                max(
+                    (int(getattr(r, "iteration", 0) or 0) for r in getattr(state, "iterations", [])),
+                    default=0,
+                ),
+            )
+        return highest + 1
+
+    def allocate_iteration(self, state: "RunState | None" = None) -> int:
+        """Claim the next unused iteration number, by creating its directory.
+
+        Returns the number claimed. The claim IS the directory: ``mkdir``
+        without ``exist_ok`` is atomic, so a number can be handed out only to
+        whoever created it, and an existing directory can never be handed out
+        at all. Where one is found — a stale state pointer, a gap filled by
+        something else, two processes on one run — the answer is the NEXT free
+        number, never the existing directory: reallocation, never replacement.
+
+        A crash between this and the first artifact leaves an empty iteration
+        directory. That is the same shape as a crash part-way through any
+        iteration, which already leaves an incomplete one; both are visible as
+        an iteration missing its required artifacts, and neither destroys
+        anything that was written before.
+        """
+        candidate = self.next_iteration(state)
+        for number in range(candidate, candidate + _ALLOCATION_ATTEMPTS):
+            try:
+                (self.run_dir / f"iteration-{number:02d}").mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                continue
+            return number
+        raise IterationAllocationError(
+            f"no free iteration number for run {self.run_id} in "
+            f"{candidate}..{candidate + _ALLOCATION_ATTEMPTS - 1}; refusing to reuse one "
+            "rather than write over an existing iteration's evidence"
+        )
 
     def screenshots_dir(self, iteration: int) -> Path:
         d = self.iteration_dir(iteration) / "screenshots"
@@ -286,8 +397,31 @@ class EvidenceStore:
         return data if isinstance(data, dict) else None
 
     def save_independent_review(self, iteration: int, review: dict[str, Any]) -> Path:
-        """Persist an independent reviewer's findings."""
-        rel = self.iteration_dir(iteration).relative_to(self.run_dir)
+        """Persist an independent reviewer's findings, without replacing an earlier one.
+
+        A review is a verdict about one exact tree, reached by a session whose
+        independence cannot be recovered once spent. Reviewing the same
+        iteration again — the ``review`` command run a second time, a
+        re-review after a remediation — used to write over the first verdict,
+        so what a reviewer actually said stopped existing the moment anyone
+        asked again. The current verdict keeps the name every reader already
+        looks for; the one it supersedes is moved aside first, under the next
+        free ``independent-review-NN.json``, and stays exactly as it was.
+        """
+        d = self.iteration_dir(iteration)
+        current = d / "independent-review.json"
+        if current.exists():
+            for number in range(2, _ALLOCATION_ATTEMPTS):
+                superseded = d / f"independent-review-{number:02d}.json"
+                if not superseded.exists():
+                    current.rename(superseded)
+                    break
+            else:  # pragma: no cover - a run with a thousand reviews of one tree
+                raise IterationAllocationError(
+                    f"iteration {iteration} of run {self.run_id} already holds every "
+                    "numbered independent review; refusing to write over one"
+                )
+        rel = d.relative_to(self.run_dir)
         return self.write_json(rel / "independent-review.json", review)
 
     def save_prompt_manifest(

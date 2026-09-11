@@ -103,6 +103,8 @@ class GenerationBrief:
         available_tokens: list[str] | None = None,
         uncovered_risks: list[str] | None = None,
         prior_rejections: list[str] | None = None,
+        command_notes: list[str] | None = None,
+        vocabulary_notes: list[str] | None = None,
     ) -> None:
         self.stage = stage
         self.wave = wave
@@ -133,6 +135,18 @@ class GenerationBrief:
         #: it. Shown as history, never as instruction — the refusal reasons are
         #: this harness's own words, not the generator's.
         self.prior_rejections = prior_rejections or []
+        #: One annotation per approved command, in the same order — empty for
+        #: most. Non-empty where the repository's own scenario files say what
+        #: the command is: a refusal control, reviewed to fail, which a
+        #: generated scenario may reuse only to assert that same refusal. Run
+        #: without this, a generator reads a refusal control as one more way to
+        #: drive the product, expects it to succeed, and the program's correct
+        #: refusal reaches the gate as a product failure.
+        self.command_notes = list(command_notes or []) + [""] * max(
+            0, len(available_commands) - len(command_notes or [])
+        )
+        #: Options whose values the repository proves are a closed vocabulary.
+        self.vocabulary_notes = vocabulary_notes or []
 
     def render(self) -> str:
         parts: list[str] = [
@@ -271,8 +285,15 @@ class GenerationBrief:
             "command carries regular expressions, embedded program text, nested quoting "
             "or escapes, CITE IT.",
         ]
-        shown = list(zip(self.available_commands, self.available_tokens))[:MAX_RENDERED_COMMANDS]
-        parts += [f"  [{token}] {c}" for c, token in shown] or ["  (none)"]
+        shown = list(
+            zip(self.available_commands, self.available_tokens, self.command_notes)
+        )[:MAX_RENDERED_COMMANDS]
+        for c, token, command_note in shown:
+            parts.append(f"  [{token}] {c}")
+            if command_note:
+                parts.append(f"      ^ {command_note}")
+        if not shown:
+            parts.append("  (none)")
         withheld = len(self.available_commands) - len(shown)
         if withheld:
             # SAID, not swallowed. This list is the generator's entire operating
@@ -288,6 +309,30 @@ class GenerationBrief:
                 "rather than inventing one."
             )
         parts += [
+            "",
+            "AN APPROVED COMMAND IS NOT A GRAMMAR. Approval lets you append an argument "
+            "tail; it does not make the program understand it. Where this repository's "
+            "scenario files review an exact invocation as exiting non-zero, that "
+            "invocation is a REFUSAL CONTROL (marked `^` above): the program refuses it "
+            "and never reaches the product, so reusing it proves only that refusal — "
+            "expect the reviewed exit code, and do not offer it as evidence for any risk "
+            "but the one marked. Never expect a refused invocation to succeed: no correct "
+            "product can, and the harness refuses the scenario before it runs.",
+        ]
+        if self.vocabulary_notes:
+            parts += [
+                "",
+                "CLOSED ARGUMENT VOCABULARIES (proven closed by a refusal control; a value "
+                "the program does not have is refused, and you may not invent one):",
+                *(f"  - {line}" for line in self.vocabulary_notes[:40]),
+            ]
+        parts += [
+            "",
+            "If no approved command can express the hostile case a risk needs, do NOT "
+            "compose one from an argument, case, fault or control mode the program does "
+            "not declare. Leave the risk uncovered and say so in `unresolved_questions`: "
+            "an honest gap routes to verification work, and an impossible invocation "
+            "only fails against a correct product.",
             "",
             "`setup` and `cleanup` are ALSO command lists, held to the same rule. They "
             "are executed, not read. A precondition written as prose — \"ensure the api "

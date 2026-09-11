@@ -315,10 +315,15 @@ loop retests. Coverage absence never becomes a fabricated correction.
 
 `BLOCKED` stays reachable and stays terminal for the reasons it should be: the generation
 budget is spent while a blocking risk is uncovered, the wave produces nothing runnable for
-the risk (the approved vocabulary cannot express it), generation itself failed, evidence
-cannot resolve, or a genuine product or authority decision is owed. Each closure round
-consumes one of the planner's bounded waves, so the loop is bounded by the budgets that
-already existed.
+the risk and is not evidence the approved vocabulary cannot express it (a duplicate, an
+ungrounded or unsafe proposal), generation itself failed, evidence cannot resolve, or a
+genuine product or authority decision is owed. Each closure round consumes one of the
+planner's bounded waves, so the loop is bounded by the budgets that already existed.
+
+Where the wave *is* that evidence — it proposed nothing, or everything it proposed was an
+invocation its program does not accept — and budget remains, the gap is routed to the
+builder as product-verification work instead; see the section on invocation grammar
+below.
 
 ## An asserted observation needs a command that could emit it (added 2026-08-27)
 
@@ -601,3 +606,65 @@ is the answer, and the run fails closed.
 Nothing here scores a repository criterion, writes a status file, moves a phase, or pushes
 anything. The reviewer writes nothing at all. `scenarios promote` remains the only way a
 generated case becomes permanent, and it remains a human's decision.
+
+## An approved command is not a grammar (added 2026-09-11)
+
+Written after run `20260911-081124` (P7), which could not accept on six generated scenarios
+that no correct product could pass. Each ran, **verbatim**, an invocation a human had written
+into a permanent scenario file as a *refusal control* — `probe --case X --inject <fault the
+probe does not have>`, reviewed to exit 2 and print `unknown fault` — and expected exit 0.
+The probes refused, correctly; the refusals reached the gate as product failures; and the
+only way a builder could have made those exact commands green was to widen a closed fault
+vocabulary, which it correctly refused to do.
+
+**Why approval could not see it.** `ApprovedCommands.approves` answers "may this string run"
+by exact match or prefix-plus-tail. Every one of the six was an exact match. Nothing asked
+whether the scenario expected of that invocation what a human had reviewed it as doing, or
+whether the program understands what a tail appends. A survey of every generated command
+action in the twenty runs on disk (372 actions) found the verbatim-exit-contradiction shape
+exactly six times — all six in this run — and found three older scenarios that had "covered"
+a conflicting-evidence, safety-invariant or boundary risk by *correctly* running a refusal
+control, which proves only that an argument is refused.
+
+**The rule — `invocation_grammar.py`, applied by validation, resume and replay.** Everything
+is read from the permanent scenario files; no program, option, fault or case name is written
+into Product Driver.
+
+1. *Exit contract.* An invocation a human wrote down keeps the exit code they reviewed it
+   with. Reusing it does not let a generated scenario change it.
+2. *Refusal controls.* An invocation reviewed to exit non-zero and never zero is the
+   repository proving the program refuses its arguments. Whatever extends it inherits the
+   refusal.
+3. *Closed options.* Where a refusal control gives an option a value no non-refusal
+   invocation of the same program — nor any literal those invocations are reviewed to
+   print — vouches for, that option's values are a closed vocabulary, and a generated value
+   for it must be vouched for. The survey inferred exactly `--inject` for every P6 probe
+   family, and refused none of the 182 historical tailed invocations that had run.
+4. *What a refusal establishes.* A refused invocation never reaches product behaviour, so it
+   establishes only the risk categories the repository's `verifies:` claims attribute to it.
+
+A refused-for-grammar candidate is recorded as `REJECTED_INVOCATION` — a harness-generation
+defect, never a product failure — and the risk it was generated for is carried into the risk
+register as an obligation when the register does not already hold one of that category at
+least as severe, so its absence can never read as coverage.
+
+**Deliberately not inferred:** a closed domain for an option the repository has not proven
+closed (a probe with no refusal control, like P6/M13's, is governed by approval alone), a
+numeric range, or any relevance judgement between a risk and a command that drives the
+product. A broader "the command's declared category must match" rule was measured against
+the same history and would have refused ~25 scenarios that passed legitimately.
+
+**An inexpressible risk becomes verification work.** When a coverage-gap wave aimed at an
+acceptance-blocking risk proposes nothing, or only invalid invocations, and budget remains,
+`_verification_gap_decision` turns the evaluator's ACCEPT into a FIX that says, in its first
+line, that this is not a product defect: add the smallest test, probe case or guard under
+the repository's authority, and widen or weaken nothing. The risk stays uncovered until an
+executed scenario passes against it.
+
+**Resume.** `restore_from_store` asks the grammar *before* compiling a restored scenario or
+letting a coherence check run any of its invocations. An impossible one is retired: it stays
+in the plan with `retired_reason` set, its earlier execution records are untouched history,
+it is never compiled or executed again, and it is excluded from every coverage count. Its
+risk is carried as above, and the retirement is recorded under its own kind in the resume
+wave — deliberately *not* as a generation problem, which blocks forever, because this
+obligation is one a regenerated scenario can discharge.

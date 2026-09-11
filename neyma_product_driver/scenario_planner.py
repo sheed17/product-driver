@@ -49,12 +49,16 @@ from .scenario_generator import (
     parse_scenarios,
     provenance_for,
 )
+from .invocation_grammar import InvocationGrammar
 from .scenario_plan import (
     REJECTED_CONTRACT,
+    REJECTED_FILTERED,
+    REJECTED_INVOCATION,
     CompilationError,
     GeneratedScenario,
     GeneratedScenarioPlan,
     GenerationBasis,
+    IdentifiedRisk,
     RejectedScenario,
     WaveRecord,
     compile_to_scenario,
@@ -68,6 +72,7 @@ from .scenario_validation import (
     bind_observations,
     established_observations_from,
     grounding_tokens_from,
+    invocation_reasons,
     permanent_signatures,
     principle_tokens_from,
     rebind_observations_to_approved,
@@ -290,6 +295,11 @@ class ScenarioPlanner:
         #: probe is built against the repository under test.
         self._contract_probe_cache = contract_probe
         self._established_cache: dict[str, frozenset[str]] | None = None
+        self._grammar_cache: InvocationGrammar | None = None
+        #: Added to every per-wave file index, so a wave record can never be
+        #: written over one a previous process wrote. See
+        #: :meth:`_adopt_wave_file_offset`.
+        self._wave_file_offset = 0
 
         self.plan = GeneratedScenarioPlan()
         # The base scenario alone: it is the only permanent scenario a run's
@@ -424,6 +434,14 @@ class ScenarioPlanner:
             if record.stage != STAGE_RESUME:
                 continue
             for rejected in record.rejected:
+                if rejected.is_invocation_defect:
+                    # Retired, not lost. Its invocation was never going to
+                    # verify anything, its risk is carried in the register as
+                    # an uncovered obligation the gate enforces from execution
+                    # records, and a regenerated scenario can discharge that
+                    # obligation. Counting it here as well would make this run
+                    # unacceptable forever over coverage it never had.
+                    continue
                 problems.append(
                     f"scenario {rejected.id!r} was planned and executed by this run and "
                     "could not be restored on resume, so the coverage it provided is gone. "
@@ -604,6 +622,13 @@ class ScenarioPlanner:
             # The token beside each one, so a proposal can NAME an approved
             # command instead of reproducing it. Same order, same length.
             available_tokens=list(self.approved_commands.tokens),
+            # And what the repository's scenario files say each one IS, where
+            # they say it is a refusal. Same order, same length.
+            command_notes=[
+                self._invocation_grammar.command_note(command)
+                for command in self.approved_commands.entries
+            ],
+            vocabulary_notes=self._invocation_grammar.vocabulary_lines(),
             available_services=[s.name for s in (self.base_scenario.services if self.base_scenario else [])],
             app_url=self.base_scenario.app_url if self.base_scenario else "",
             # What is actually available, not what would be convenient. Telling
@@ -611,7 +636,7 @@ class ScenarioPlanner:
             # a wave of browser scenarios that the run then skips — coverage
             # that was planned, reported, and never executed.
             browser_enabled=self.browser_enabled,
-            existing_coverage=[s.summary() for s in self.plan.scenarios]
+            existing_coverage=[s.summary() for s in self.plan.active_scenarios()]
             + [
                 f"permanent coverage claims {category}: {claim}"
                 for category, claims in sorted(self.plan.permanent_coverage.items())
@@ -698,11 +723,26 @@ class ScenarioPlanner:
             for raw, reasons in malformed
         ]
 
-        accepted, refused = validate_plan(parsed, self._validation_context())
-        record.rejected += [
-            RejectedScenario(id=s.id, title=s.title, reasons=reasons, raw={})
-            for s, reasons in refused
-        ]
+        context = self._validation_context()
+        accepted, refused = validate_plan(parsed, context)
+        # A candidate whose invocation its program does not accept is recorded
+        # as the harness-generation defect it is — the same judgement, asked
+        # again by the rule that made it, rather than read off the prose — and
+        # the risk it was for is carried below, once the wave's own risks are
+        # in the register to be compared against.
+        impossible: list[tuple[GeneratedScenario, RejectedScenario]] = []
+        for s, reasons in refused:
+            invalid = bool(invocation_reasons(s, context))
+            rejected = RejectedScenario(
+                id=s.id,
+                title=s.title,
+                reasons=reasons,
+                raw={},
+                kind=REJECTED_INVOCATION if invalid else REJECTED_FILTERED,
+            )
+            record.rejected.append(rejected)
+            if invalid:
+                impossible.append((s, rejected))
 
         # The per-wave allowance is enforced here, not merely requested of the
         # model in the brief. A model that returns more than it was asked for is
@@ -733,6 +773,21 @@ class ScenarioPlanner:
 
         # Risks are additive across waves; the plan keeps the union.
         self._merge_risks(parse_risks(payload))
+        # A refused impossible invocation verified nothing. The risk it was
+        # generated for must not leave with it.
+        for scenario, rejected in impossible:
+            carried = self._carry_obligation(
+                scenario, rejected.reasons[0] if rejected.reasons else "invalid invocation"
+            )
+            if carried is not None:
+                rejected.reasons.append(
+                    f"the risk it was generated for is carried as the uncovered obligation "
+                    f"{carried.label()} [{carried.severity.value} {carried.risk_category.value}]"
+                )
+                self.emit(
+                    f"  {scenario.id}: invalid invocation refused before execution; its risk "
+                    f"is carried as an uncovered obligation ({carried.label()})"
+                )
         assumptions, questions = parse_notes(payload)
         self.plan.assumptions += [a for a in assumptions if a not in self.plan.assumptions]
         self.plan.unresolved_questions += [
@@ -841,6 +896,66 @@ class ScenarioPlanner:
             self._established_cache = cached
         return cached
 
+    @property
+    def _invocation_grammar(self) -> InvocationGrammar:
+        """What the permanent scenario files say each approved program accepts.
+
+        Harvested from exactly the files the approved commands come from, and
+        cached per planner for the same reason :attr:`_established_observations`
+        is: generation and resume must judge a scenario against one grammar,
+        or a resume can execute what generation would have refused.
+        """
+        cached = self._grammar_cache
+        if cached is None:
+            cached = InvocationGrammar.from_scenarios(
+                [
+                    *self.permanent_scenarios,
+                    *([self.base_scenario] if self.base_scenario else []),
+                ],
+                self.approved_commands,
+                established=self._established_observations,
+            )
+            self._grammar_cache = cached
+        return cached
+
+    def _carry_obligation(self, scenario: GeneratedScenario, why: str) -> IdentifiedRisk | None:
+        """Keep the risk a refused or retired scenario was for, as an explicit obligation.
+
+        A scenario refused because its invocation is impossible verified
+        nothing, and the risk it was generated for is exactly as unverified as
+        before. If the register already names an acceptance obligation of that
+        category at least as severe, the gate already demands a passing scenario
+        for it and nothing is added. Otherwise the risk is added from the
+        scenario's own provenance — never widened, never inferred — so that the
+        gate reports it uncovered, the coverage-gap stage aims at it, and nothing
+        can read its absence as coverage.
+        """
+        category = scenario.risk_category
+        if any(
+            risk.risk_category is category and risk.severity.rank <= scenario.priority.rank
+            for risk in self.plan.risks
+        ):
+            return None
+        description = (
+            scenario.provenance.generating_risk.strip()
+            or scenario.rationale.strip()
+            or scenario.title.strip()
+        )
+        risk = IdentifiedRisk(
+            id=f"{scenario.id}:obligation",
+            description=description,
+            risk_category=category,
+            severity=scenario.priority,
+            basis=(
+                f"carried from generated scenario {scenario.id}, which could not verify it: "
+                f"{why}"
+            )[:2000],
+        )
+        if any(existing.key == risk.key for existing in self.plan.risks):
+            return None
+        self.plan.risks.append(risk)
+        return risk
+
     def _recohere(
         self,
         plan: GeneratedScenarioPlan,
@@ -936,6 +1051,9 @@ class ScenarioPlanner:
             # established map contests an attribution, at most once per
             # invocation, and only of commands already in the approved set.
             contract_probe=self._contract_probe,
+            # What each program accepts, refuses, and can establish when it
+            # refuses — read from the same files as the approved commands.
+            invocation_grammar=self._invocation_grammar,
             grounding_tokens=grounding_tokens_from(self._unit),
             principle_tokens=principle_tokens_from(self.founder),
             existing_signatures=self.plan.signatures()
@@ -1014,7 +1132,9 @@ class ScenarioPlanner:
         """
         for risk in self.plan.risks:
             risk.covered_by = [
-                s.id for s in self.plan.scenarios if s.risk_category is risk.risk_category
+                s.id
+                for s in self.plan.active_scenarios()
+                if s.risk_category is risk.risk_category
             ] + list(self.plan.permanent_coverage.get(risk.risk_category.value, []))
         self.plan.recompute_coverage()
 
@@ -1118,6 +1238,44 @@ class ScenarioPlanner:
                     continue
         return highest
 
+    def _wave_files_on_disk(self) -> int:
+        """The highest per-wave FILE index this run has written.
+
+        A different question from :meth:`_waves_recorded_on_disk`, which reads
+        the wave NUMBER recorded inside each file. This reads the name, because
+        the name is what the next write would land on.
+        """
+        if self.store is None:
+            return 0
+        waves_dir = self.store.run_dir / WAVES_DIRNAME
+        if not waves_dir.exists():
+            return 0
+        highest = 0
+        for path in waves_dir.glob("wave-*.json"):
+            try:
+                highest = max(highest, int(path.stem.split("-", 1)[-1]))
+            except ValueError:
+                continue
+        return highest
+
+    def _adopt_wave_file_offset(self) -> None:
+        """Never write a wave record over one this run already wrote.
+
+        The per-wave files are numbered by position in the plan's own wave
+        list, which is exact while the plan is the one those files came from.
+        It stops being exact the moment a resume starts from a plan that is
+        NOT that one — an unreadable plan is preserved and replaced by an empty
+        one, and the wave budget is then reconstructed from these very files —
+        because the next wave would be position 1 again and would land on
+        ``wave-01.json``, destroying the only surviving record of what the
+        corrupt plan had generated.
+
+        So the offset is the gap between what is on disk and what this plan can
+        account for: zero in the ordinary case, and exactly the surviving files
+        when the plan came back empty.
+        """
+        self._wave_file_offset = max(0, self._wave_files_on_disk() - len(self.plan.waves))
+
     def restore_from_store(self) -> PlanRestore:
         """Continue a run's plan instead of starting a new one.
 
@@ -1143,8 +1301,9 @@ class ScenarioPlanner:
         if not path.exists():
             # No plan, but possibly waves already spent — a plan file that a
             # previous resume preserved as corrupt, say. The allowance still
-            # binds.
+            # binds, and so do the names of the records that prove it.
             self._wave = self._waves_recorded_on_disk()
+            self._adopt_wave_file_offset()
             return PlanRestore(state="absent")
 
         try:
@@ -1153,6 +1312,7 @@ class ScenarioPlanner:
             return self._plan_is_unreadable(path, exc)
 
         self.plan = plan
+        self._adopt_wave_file_offset()
         # Recomputed, never restored. Permanent coverage is a fact about the
         # scenario files as they are *now*, not about the plan as it was
         # written: a claim added since (or removed since) must be reflected, and
@@ -1201,7 +1361,80 @@ class ScenarioPlanner:
             )
             self.compiled.pop(scenario.id, None)
 
+        retired: list[RejectedScenario] = []
+        retired_notes: list[str] = []
+        already_retired = 0
+
+        def retire_if_impossible(
+            scenario: GeneratedScenario, persisted: GeneratedScenario | None = None
+        ) -> bool:
+            """Retire a scenario whose invocations its programs do not accept.
+
+            Asked BEFORE anything else touches the scenario — before it is
+            compiled, and before a coherence check could ask one of its
+            invocations what it prints — because each of those would execute or
+            ready for execution the very invocation being refused.
+
+            What is retired is the executable, never the record and never the
+            obligation. The scenario stays in the plan exactly as it was
+            persisted (``persisted`` restores it where a rebinding has already
+            been applied), marked retired so no later resume executes it either.
+            Its earlier execution records are untouched history. The risk it was
+            generated for is carried in the register, so the gate still refuses
+            to accept until something that CAN verify it passes, and the
+            coverage-gap stage aims at it. It is deliberately not a generation
+            problem: that channel blocks forever, and this obligation is one a
+            regenerated scenario can discharge.
+            """
+            problems = self._invocation_grammar.problems(scenario)
+            if not problems:
+                return False
+            if persisted is not None:
+                scenario.__dict__.update(persisted.__dict__)
+                # A re-materialization this resume already announced is moot:
+                # the scenario will not be executed again at all.
+                rebound_notes[:] = [
+                    n for n in rebound_notes if not n.startswith(f"{scenario.id} ")
+                ]
+            reasons = _unique_text(problem.reason() for problem in problems)
+            scenario.retired_reason = "; ".join(reasons)
+            self.compiled.pop(scenario.id, None)
+            carried = self._carry_obligation(scenario, reasons[0])
+            note = (
+                f"{scenario.id} was retired as a harness-generation defect: its invocation "
+                "is not valid under the program's own grammar as this repository's scenario "
+                "files state it, so it will not be executed again and its earlier results "
+                "are kept only as history. Its risk "
+                + (
+                    f"is carried as the uncovered obligation {carried.label()} "
+                    f"[{carried.severity.value} {carried.risk_category.value}]."
+                    if carried is not None
+                    else (
+                        f"[{scenario.priority.value} {scenario.risk_category.value}] is already "
+                        "an obligation the risk register holds."
+                    )
+                )
+            )
+            retired.append(
+                RejectedScenario(
+                    id=scenario.id,
+                    title=scenario.title,
+                    reasons=[*reasons, note],
+                    kind=REJECTED_INVOCATION,
+                )
+            )
+            retired_notes.append(note)
+            self.emit(f"  {note}")
+            return True
+
         for scenario in list(plan.scenarios):
+            if scenario.retired_reason:
+                # Retired by an earlier resume. It stays the record it is.
+                already_retired += 1
+                self.compiled.pop(scenario.id, None)
+                continue
+            if retire_if_impossible(scenario):
+                continue
             try:
                 self.compiled[scenario.id] = compile_to_scenario(
                     scenario,
@@ -1219,9 +1452,13 @@ class ScenarioPlanner:
                 # repaired oracle no longer prints, one measuring an oracle that
                 # was never the one its literals belong to.
                 restored += 1
+                before_recohere = scenario.model_copy(deep=True)
                 problem = self._recohere(plan, scenario, {}, rebound_notes)
                 if problem:
                     incoherent(scenario, problem)
+                elif retire_if_impossible(scenario, before_recohere):
+                    # Re-bound onto an invocation its program refuses.
+                    restored -= 1
                 continue
 
             # Re-materialize against the CURRENT approved vocabulary, then
@@ -1231,6 +1468,8 @@ class ScenarioPlanner:
             snapshot = scenario.model_copy(deep=True)
             rebindings, unreconstructable = rebind_to_approved(scenario, self.approved_commands)
             if rebindings and not unreconstructable:
+                if retire_if_impossible(scenario, snapshot):
+                    continue
                 try:
                     self.compiled[scenario.id] = compile_to_scenario(
                         scenario,
@@ -1269,6 +1508,8 @@ class ScenarioPlanner:
                     )
                     if problem:
                         incoherent(scenario, problem)
+                    elif retire_if_impossible(scenario, snapshot):
+                        restored -= 1
                     continue
 
             # Could not be re-materialized. The scenario STAYS in the plan —
@@ -1296,21 +1537,23 @@ class ScenarioPlanner:
                     ],
                 )
             )
-        if dropped or rebound_notes:
+        if dropped or rebound_notes or retired:
             # Recorded in the plan, not only on the terminal. A scenario the run
             # had committed to and can no longer execute is lost coverage, and
             # coverage that vanishes between two processes with nothing but a
             # print to show for it is exactly the state the gate exists to
             # refuse. `generation_problems()` reads this back, which is the
-            # channel `evaluate_gate` already consumes.
+            # channel `evaluate_gate` already consumes. A retirement is recorded
+            # here too, under its own kind, so the record of what was retired
+            # and why survives beside the scenario it marks.
             plan.waves.append(
                 WaveRecord(
                     wave=self._wave,
                     stage=STAGE_RESUME,
                     basis=plan.generation_basis,
-                    proposed=len(rejected) + len(rebound_notes),
-                    rejected=rejected,
-                    budget_notes=rebound_notes,
+                    proposed=len(rejected) + len(rebound_notes) + len(retired),
+                    rejected=rejected + retired,
+                    budget_notes=rebound_notes + retired_notes,
                 )
             )
         if dropped:
@@ -1335,11 +1578,18 @@ class ScenarioPlanner:
         self._unbuildable = {
             r.id: (r.reasons[0] if r.reasons else "no reason recorded") for r in rejected
         }
-        plan.recompute_coverage()
+        # Planned coverage is re-derived without anything retired, so a carried
+        # obligation reads as the gap it is to every stage that aims a wave.
+        self._link_risks()
 
         note = (
             f"resumed scenario plan: {restored} scenario(s), {self._wave} wave(s) already used"
         )
+        if retired or already_retired:
+            note += (
+                f"; {len(retired) + already_retired} generated scenario(s) retired as "
+                "harness-generation defects and not executed"
+            )
         previous_head = plan.generation_basis.repository_head
         current_head = head_commit(self.repo)
         if previous_head and current_head and previous_head != current_head:
@@ -1348,7 +1598,7 @@ class ScenarioPlanner:
                 "the plan was made, so its coverage was chosen against different code"
             )
         self.emit(f"  {note}")
-        if dropped or rebound_notes:
+        if dropped or rebound_notes or retired:
             self.persist()
         return PlanRestore(state="restored", note=note)
 
@@ -1374,6 +1624,8 @@ class ScenarioPlanner:
             preserved = path
 
         self._wave = self._waves_recorded_on_disk()
+        # The plan that named these files is gone; their names still bind.
+        self._adopt_wave_file_offset()
         self._restore_failure = (
             f"the scenario plan for this run exists and could not be read ({detail}); "
             f"it was preserved at {preserved.name} and this run cannot re-establish what "
@@ -1462,9 +1714,18 @@ class ScenarioPlanner:
         # for an ordinary run position and wave number coincide.
         for index, record in enumerate(self.plan.waves, start=1):
             self.store.write_json(
-                f"{WAVES_DIRNAME}/wave-{index:02d}.json",
+                f"{WAVES_DIRNAME}/wave-{index + self._wave_file_offset:02d}.json",
                 record.model_dump(mode="json"),
             )
+
+
+def _unique_text(items: Any) -> list[str]:
+    """``items`` in order, each once."""
+    out: list[str] = []
+    for item in items:
+        if item not in out:
+            out.append(item)
+    return out
 
 
 # --------------------------------------------------------------------------

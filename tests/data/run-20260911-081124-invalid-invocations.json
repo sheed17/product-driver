@@ -1,0 +1,1655 @@
+{
+ "run_id": "20260911-081124",
+ "task": "Build and verify the complete Neyma P7 implementation according to the repository's current authoritative P7 scope and P7-AC-1 through P7-AC-17. This is a whole-phase IMPLEMENTATION task, not a request for the builder to formally accept or score P7. Inspect and reuse all P7 work already present on the current Neyma tree; do not rebuild satisfied functionality merely because this is a new run. Determine what implementation or verification is genuinely still missing from repository authority, build only those gaps, dynamically generate hostile scenarios from the actual implementation and risk surfaces, exercise relevant repository-wide guards, diagnose and repair grounded product defects, and preserve every P6 guarantee. P7 ships dark: no P8 policy/autonomy, no P9 freight projections, no live external effects, and no GateRegistry broadening. When the complete implementation is verified, hand off to the existing phase-closure mechanism. Do not self-award acceptance criteria, do not declare P7 accepted, do not unblock P8, and do not invent additional acceptance requirements. Stop only for a genuine founder/authority decision, external push/CI boundary, unresolved material blocker, or verified P7 implementation ready for phase closure.",
+ "active_unit_id": "P7",
+ "generation_basis": {
+  "task": "Build and verify the complete Neyma P7 implementation according to the repository's current authoritative P7 scope and P7-AC-1 through P7-AC-17. This is a whole-phase IMPLEMENTATION task, not a request for the builder to formally accept or score P7. Inspect and reuse all P7 work already present on the current Neyma tree; do not rebuild satisfied functionality merely because this is a new run. Determine what implementation or verification is genuinely still missing from repository authority, build only those gaps, dynamically generate hostile scenarios from the actual implementation and risk surfaces, exercise relevant repository-wide guards, diagnose and repair grounded product defects, and preserve every P6 guarantee. P7 ships dark: no P8 policy/autonomy, no P9 freight projections, no live external effects, and no GateRegistry broadening. When the complete implementation is verified, hand off to the existing phase-closure mechanism. Do not self-award acceptance criteria, do not declare P7 accepted, do not unblock P8, and do not invent additional acceptance requirements. Stop only for a genuine founder/authority decision, external push/CI boundary, unresolved material blocker, or verified P7 implementation ready for phase closure.",
+  "task_hash": "466670692808fc99",
+  "active_unit_id": "P7",
+  "repository_head": "596965e",
+  "acceptance_criteria": []
+ },
+ "risks": [
+  {
+   "id": "R1",
+   "description": "A consequential gate (e.g. the rule/predicate compiler) reads a MODEL_INFERRED field as if it were fact, letting an inference silently drive a money-touching decision. Confidence 1.0 must not launder inference into trusted input.",
+   "risk_category": "safety_invariant",
+   "severity": "P0",
+   "basis": "AC model_inferred_cannot_be_read_by_a_consequential_gate; command 464ef7d3 attempts MODEL_INFERRED compile and confidence-1.0 compile.",
+   "covered_by": [
+    "P7-S02-model-inferred-not-gated",
+    "P7-S03-no-provenance-laundering",
+    "P7-S01-six-provenance-classes",
+    "P7-S07-conflict-first-class-blocking",
+    "p6_m13_brake: ### THE SENTENCE THIS MACHINE EXISTS FOR. A brake is admission control, not process termination: it refuses to mint and refuses to claim, and it NEVER kills a worker. An effect at position 3, 4 or 5 — claimed, executing, or verifying — RUNS TO A VERIFIED CONCLUSION, because killing it would convert a knowable outcome into an unknown one and manufacture the exact hazard the operator engaged the brake to avoid. This is exercised at every one of the five boundary positions, not asserted once in the middle of the table."
+   ]
+  },
+  {
+   "id": "R2",
+   "description": "Provenance is laundered upward: a MODEL_EXTRACTED/LINKER_INFERRED observation or claim has its provenance_class or the underlying raw_value/content_digest mutated to a stronger class after the fact, so an inferred fact masquerades as owner-asserted or system-imported.",
+   "risk_category": "safety_invariant",
+   "severity": "P0",
+   "basis": "AC no_provenance_laundering_r_p2; triggers on observations (e4a5398d) and claims (cefd9a95).",
+   "covered_by": [
+    "P7-S02-model-inferred-not-gated",
+    "P7-S03-no-provenance-laundering",
+    "P7-S01-six-provenance-classes",
+    "P7-S07-conflict-first-class-blocking",
+    "p6_m13_brake: ### THE SENTENCE THIS MACHINE EXISTS FOR. A brake is admission control, not process termination: it refuses to mint and refuses to claim, and it NEVER kills a worker. An effect at position 3, 4 or 5 — claimed, executing, or verifying — RUNS TO A VERIFIED CONCLUSION, because killing it would convert a knowable outcome into an unknown one and manufacture the exact hazard the operator engaged the brake to avoid. This is exercised at every one of the five boundary positions, not asserted once in the middle of the table."
+   ]
+  },
+  {
+   "id": "R3",
+   "description": "A machine (linker/reconciler) overwrites or recomputes an OWNER_ASSERTED value instead of raising a first-class conflict, erasing the human's assertion.",
+   "risk_category": "conflicting_evidence",
+   "severity": "P0",
+   "basis": "AC owner_asserted_is_never_machine_recomputed_r_p3; inferrer-vs-owner probe ea5af909 with --inject auto-resolve-conflict; conflict two-way-close CHECK 834c7b0e.",
+   "covered_by": [
+    "P7-S04-owner-asserted-not-recomputed"
+   ]
+  },
+  {
+   "id": "R4",
+   "description": "An open conflict fails to block a consequential action, or closes by a third path (auto-resolve, expiry, silent party-retraction) rather than only RESOLVED_BY_RULE (with rule_id) or RESOLVED_BY_HUMAN (with decision_ref).",
+   "risk_category": "unexpected_state_transition",
+   "severity": "P1",
+   "basis": "AC conflict_is_first_class_blocking_and_closes_two_ways_only; probes d4dd7a67, ce8dd8eb, 2cd71880; CHECK 834c7b0e; no-expiry scan eaacfe63.",
+   "covered_by": [
+    "P7-S09-correction-supersession-retained",
+    "P7-S08-conflict-never-expires",
+    "p6_m13_brake: Two states and no third, as a database constraint on BOTH brake tables rather than as a convention. The three tempting inventions are refused BY NAME against a live database: `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony; `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`, which arrives with any author who thinks in TTLs. \"Engaged by a human vs by a detector\" is a FIELD, \"partially released\" is a SCOPE CHANGE, and the five BR rows are declared as a table with BR-5 classified NON-PRODUCING rather than merely absent.",
+    "p6_m13_brake: Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted` rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing."
+   ]
+  },
+  {
+   "id": "R5",
+   "description": "A duplicate observation of the same content produces a second evidence row instead of converging on one content-addressed record, or content_digest/raw_value are editable, breaking immutable evidence and lineage.",
+   "risk_category": "idempotency",
+   "severity": "P2",
+   "basis": "AC content_addressed_immutable_evidence; duplicate probe cbc85863; natural-key index e149bc96; immutability triggers e4a5398d.",
+   "covered_by": [
+    "P7-S05-content-addressed-immutable-evidence",
+    "p6_m13_brake: A flapping detector is one ACTIVE brake and a rising signal count, and it opens no window. Asserted by ROW COUNT against a live database across many repeats rather than by return value, because a store that returns the existing brake while writing a second row looks identical from the caller's side and is a momentary release window during an incident. The signal count is the canonical answer to \"how many times did this fire?\", which is a question asked during the incident and unanswerable afterwards if nothing recorded it."
+   ]
+  },
+  {
+   "id": "R6",
+   "description": "A superseded claim or conflict row is deleted/expired rather than retained, so historical decisions can no longer be explained; or cross-tenant leakage via a non-tenant-first key.",
+   "risk_category": "cross_tenant",
+   "severity": "P2",
+   "basis": "AC correction_supersession_and_retained_history, tenant_safety_and_knowledge_base_closure; expiry scans 8de34200/eaacfe63; FK closure b613f625.",
+   "covered_by": [
+    "P7-S10-tenant-safety-kb-closure",
+    "p6_m13_brake: Two composed admission dimensions, and GLOBAL is not a fake tenant. The platform brake is EXACTLY ONE tenant-exempt row with `id = 1` and no tenant column — structurally, so a second row is not insertable — and it denies every tenant without an N-row fan-out that would need a multi-row atomic write during the incident it exists for. Tenant brakes stay tenant-first, one tenant's brake is never another's, and a cross-tenant read or release cannot be spelled."
+   ]
+  },
+  {
+   "id": "R-C01",
+   "description": "An inferrer-vs-owner disagreement could be machine-recomputed / auto-resolved, silently overwriting the human's OWNER_ASSERTED value instead of raising a first-class conflict that only a human decision_ref closes (R-P3).",
+   "risk_category": "conflicting_evidence",
+   "severity": "P0",
+   "basis": "C01 generated:P7-S04-owner-asserted-not-recomputed failed at exit 2 — the product was never exercised because 'auto-resolve-conflict' is not in the probe's closed fault vocabulary.",
+   "covered_by": [
+    "P7-S04-owner-asserted-not-recomputed"
+   ]
+  },
+  {
+   "id": "R-C03",
+   "description": "A consequential action could proceed while a conflict on the field is still open, rather than being blocked until the conflict closes one of the two permitted ways.",
+   "risk_category": "safety_invariant",
+   "severity": "P1",
+   "basis": "C03 open-conflict-blocks-consequential-action failed at exit 2 (injected 'not-a-real-fault'); the blocking control never ran.",
+   "covered_by": [
+    "P7-S02-model-inferred-not-gated",
+    "P7-S03-no-provenance-laundering",
+    "P7-S01-six-provenance-classes",
+    "P7-S07-conflict-first-class-blocking",
+    "p6_m13_brake: ### THE SENTENCE THIS MACHINE EXISTS FOR. A brake is admission control, not process termination: it refuses to mint and refuses to claim, and it NEVER kills a worker. An effect at position 3, 4 or 5 — claimed, executing, or verifying — RUNS TO A VERIFIED CONCLUSION, because killing it would convert a knowable outcome into an unknown one and manufacture the exact hazard the operator engaged the brake to avoid. This is exercised at every one of the five boundary positions, not asserted once in the middle of the table."
+   ]
+  },
+  {
+   "id": "R-C06",
+   "description": "An age threshold or timer could expire / resolve an open conflict, unblocking a consequential action with neither a rule_id nor a human decision_ref.",
+   "risk_category": "unexpected_state_transition",
+   "severity": "P1",
+   "basis": "C06 a-conflict-never-expires failed at exit 2 (injected 'expire-conflict'); 'age-threshold'/'timer-resolve' are the in-vocabulary faults that actually exercise the no-expiry invariant.",
+   "covered_by": [
+    "P7-S09-correction-supersession-retained",
+    "P7-S08-conflict-never-expires",
+    "p6_m13_brake: Two states and no third, as a database constraint on BOTH brake tables rather than as a convention. The three tempting inventions are refused BY NAME against a live database: `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony; `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`, which arrives with any author who thinks in TTLs. \"Engaged by a human vs by a detector\" is a FIELD, \"partially released\" is a SCOPE CHANGE, and the five BR rows are declared as a table with BR-5 classified NON-PRODUCING rather than merely absent.",
+    "p6_m13_brake: Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted` rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing."
+   ]
+  },
+  {
+   "id": "R-C07",
+   "description": "A corrected/superseded claim could be expired or deleted, so the historical binding can no longer be reconstructed from retained history.",
+   "risk_category": "unexpected_state_transition",
+   "severity": "P2",
+   "basis": "C07 superseded-claim-is-retained failed at exit 2 (injected 'expire-claim').",
+   "covered_by": [
+    "P7-S09-correction-supersession-retained",
+    "P7-S08-conflict-never-expires",
+    "p6_m13_brake: Two states and no third, as a database constraint on BOTH brake tables rather than as a convention. The three tempting inventions are refused BY NAME against a live database: `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony; `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`, which arrives with any author who thinks in TTLs. \"Engaged by a human vs by a detector\" is a FIELD, \"partially released\" is a SCOPE CHANGE, and the five BR rows are declared as a table with BR-5 classified NON-PRODUCING rather than merely absent.",
+    "p6_m13_brake: Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted` rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing."
+   ]
+  },
+  {
+   "id": "R-C04",
+   "description": "The linker could bind nondeterministically or admit a second confirmed binding for one subject under a competing confirmation.",
+   "risk_category": "unexpected_state_transition",
+   "severity": "P1",
+   "basis": "C04 exact-trusted-id-confirms control failed at exit 2 (injected 'not-a-real-fault').",
+   "covered_by": [
+    "P7-S09-correction-supersession-retained",
+    "P7-S08-conflict-never-expires",
+    "p6_m13_brake: Two states and no third, as a database constraint on BOTH brake tables rather than as a convention. The three tempting inventions are refused BY NAME against a live database: `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony; `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`, which arrives with any author who thinks in TTLs. \"Engaged by a human vs by a detector\" is a FIELD, \"partially released\" is a SCOPE CHANGE, and the five BR rows are declared as a table with BR-5 classified NON-PRODUCING rather than merely absent.",
+    "p6_m13_brake: Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted` rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing."
+   ]
+  },
+  {
+   "id": "R-C05",
+   "description": "A re-ingested duplicate observation could create a second evidence row or rewrite its content_digest instead of converging on one content-addressed, immutable row.",
+   "risk_category": "idempotency",
+   "severity": "P2",
+   "basis": "C05 duplicate-is-one-row control failed at exit 2 (injected 'not-a-real-fault').",
+   "covered_by": [
+    "P7-S05-content-addressed-immutable-evidence",
+    "p6_m13_brake: A flapping detector is one ACTIVE brake and a rising signal count, and it opens no window. Asserted by ROW COUNT against a live database across many repeats rather than by return value, because a store that returns the existing brake while writing a second row looks identical from the caller's side and is a momentary release window during an incident. The signal count is the canonical answer to \"how many times did this fire?\", which is a question asked during the incident and unanswerable afterwards if nothing recorded it."
+   ]
+  }
+ ],
+ "scenarios": [
+  {
+   "id": "P7-S02-model-inferred-not-gated",
+   "proposed_id": "",
+   "title": "A MODEL_INFERRED field is refused by the consequential compiler even at confidence 1.0",
+   "purpose": "Drive the rule/predicate compiler with each provenance class and confirm a MODEL_INFERRED input can never be compiled into a consequential gate, while SYSTEM_IMPORTED and OWNER_ASSERTED are accepted, and confidence is not even a readable field.",
+   "risk_category": "safety_invariant",
+   "priority": "P0",
+   "rationale": "This is the load-bearing anti-inference invariant for P7 — a money-touching gate reading an inference as fact is the exact failure the phase exists to prevent.",
+   "requirement_reference": "model_inferred_cannot_be_read_by_a_consequential_gate",
+   "product_principle_reference": "inference_presented_as_fact",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive compiler across provenance classes",
+     "command": ".venv/bin/python -c \"import sys,ast,pathlib,dataclasses; sys.path.insert(0,'src'); import freight_recon.rule as m12; import freight_recon.conflict as m7; print('the canonical provenance classes:', sorted(m7.PROVENANCE_CLASSES)); print('provenance class count:', len(m7.PROVENANCE_CLASSES)); print('M12 reuses the landed provenance vocabulary:', sorted(getattr(m12, 'PROVENANCE_CLASSES', m7.PROVENANCE_CLASSES)) == sorted(m7.PROVENANCE_CLASSES)); inp=m12.CompilerInput; fields=sorted(f.name for f in dataclasses.fields(inp)) if dataclasses.is_dataclass(inp) else sorted(getattr(inp, '__annotations__', {})); print('the compiler input fields:', fields); print('the compiler input field population is non-empty:', bool(fields)); print('confidence is a field on the compiler input:', 'confidence' in fields); print('provenance_class is a field on the compiler input:', 'provenance_class' in fields); ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8'); t=ast.parse(ru); reads=sorted(set(n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute) and n.attr == 'confidence')); print('attribute reads of confidence anywhere in M12:', reads); print('MODEL_INFERRED is named in executable code:', 'MODEL_INFERRED' in ru); env={'m12':m12}; exec(chr(10).join(['def attempt(label, fn):',' try:','  out = fn()',\\\"  print(label + ': ACCEPTED')\\\",' except Exception as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; mk=lambda pc: m12.CompilerInput(field='carrier_cost', provenance_class=pc, modelled=True); attempt('positive control, a SYSTEM_IMPORTED field compiles', lambda: m12.compile_predicate_field(mk('SYSTEM_IMPORTED'))); attempt('positive control, an OWNER_ASSERTED field compiles', lambda: m12.compile_predicate_field(mk('OWNER_ASSERTED'))); attempt('a MODEL_INFERRED field compiles', lambda: m12.compile_predicate_field(mk('MODEL_INFERRED'))); attempt('an unmodelled field compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='commodity', provenance_class='SYSTEM_IMPORTED', modelled=False))); attempt('a MODEL_INFERRED field with confidence 1.0 compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='carrier_cost', provenance_class='MODEL_INFERRED', modelled=True, confidence=1.0))); attempt('an invented provenance class compiles', lambda: m12.compile_predicate_field(mk('PROBABLY_FINE')))\"",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "provenance class count: 6",
+      "positive control, a SYSTEM_IMPORTED field compiles: ACCEPTED",
+      "positive control, an OWNER_ASSERTED field compiles: ACCEPTED",
+      "a MODEL_INFERRED field compiles: refused by",
+      "a MODEL_INFERRED field with confidence 1.0 compiles: refused by",
+      "attribute reads of confidence anywhere in M12: []"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "a MODEL_INFERRED field compiles: refused by",
+    "a MODEL_INFERRED field with confidence 1.0 compiles: refused by",
+    "attribute reads of confidence anywhere in M12: []",
+    "positive control, a SYSTEM_IMPORTED field compiles: ACCEPTED"
+   ],
+   "forbidden_observations": [
+    "a MODEL_INFERRED field compiles: ACCEPTED",
+    "a MODEL_INFERRED field with confidence 1.0 compiles: ACCEPTED"
+   ],
+   "cleanup": [],
+   "isolation_note": "Command builds an ephemeral in-memory model and reads package source; no persistent state is touched.",
+   "isolation_key": "rule-compiler-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "The compiler reads a model-inferred value as trusted input, or treats confidence 1.0 as a laundering escape hatch.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "464ef7d3",
+     "source_name": "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "actions[0].expect_contains",
+     "command_field": "actions[0].command",
+     "source_name": "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input",
+     "literals": [
+      "provenance class count: 6",
+      "positive control, a SYSTEM_IMPORTED field compiles: ACCEPTED",
+      "positive control, an OWNER_ASSERTED field compiles: ACCEPTED",
+      "a MODEL_INFERRED field compiles: refused by",
+      "a MODEL_INFERRED field with confidence 1.0 compiles: refused by",
+      "attribute reads of confidence anywhere in M12: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S03-no-provenance-laundering",
+   "proposed_id": "",
+   "title": "Observation raw_value/content_digest and claim provenance_class/match_method cannot be strengthened after the fact",
+   "purpose": "Drive the observation machine, then confirm database triggers forbid mutating the recorded raw_value, content_digest, provenance_class, or match_method — the mutations by which an inferred fact would be laundered into a trusted one.",
+   "risk_category": "safety_invariant",
+   "priority": "P0",
+   "rationale": "Provenance laundering (R-P2) is the highest-weighted P7 rule; the enforcement is trigger-level immutability that a diff could silently drop.",
+   "requirement_reference": "no_provenance_laundering_r_p2",
+   "product_principle_reference": "known_vs_inferred",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive observation machine",
+     "command": ".venv/bin/python scripts/probe_phase6_observation.py",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "claim provenance and match_method are trigger-protected",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='identity_binding_claims'\\\")]; body=' '.join(trig); print('provenance_class protected by a trigger:', bool(re.search(r'provenance_class', body))); print('match_method protected by a trigger:', bool(re.search(r'match_method', body))); print('claim triggers:', len(trig))\"",
+     "contains": [
+      "provenance_class protected by a trigger: True",
+      "match_method protected by a trigger: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "observation evidence bytes are trigger-protected",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='observations'\\\")]; body=' '.join(trig); print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'))); print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body))); print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body))); print('observation triggers:', len(trig))\"",
+     "contains": [
+      "raw_value protected by a trigger: True",
+      "content_digest protected by a trigger: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "provenance_class protected by a trigger: True",
+    "match_method protected by a trigger: True",
+    "raw_value protected by a trigger: True",
+    "content_digest protected by a trigger: True"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe and DDL checks use fresh temp databases; nothing durable is mutated.",
+   "isolation_key": "observation-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A later UPDATE rewrites provenance_class to a stronger class or edits the evidence bytes, so an inference is presented as owner-asserted or system truth.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "f4165e71",
+     "source_name": "M5 still behaves as specified with M6's tables in the schema",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "cefd9a95",
+     "source_name": "provenance_class and match_method are immutable in the database, not merely in the Python",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "e4a5398d",
+     "source_name": "the fact is immutable in the database, not merely in the Python",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "provenance_class and match_method are immutable in the database, not merely in the Python",
+     "literals": [
+      "provenance_class protected by a trigger: True",
+      "match_method protected by a trigger: True"
+     ]
+    },
+    {
+     "field": "persisted_state_checks[1].contains",
+     "command_field": "persisted_state_checks[1].command",
+     "source_name": "the fact is immutable in the database, not merely in the Python",
+     "literals": [
+      "raw_value protected by a trigger: True",
+      "content_digest protected by a trigger: True"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S04-owner-asserted-not-recomputed",
+   "proposed_id": "",
+   "title": "Inferrer versus owner raises a first-class conflict, never a machine-chosen winner",
+   "purpose": "Drive the identity-binding machine into an inferrer-vs-owner disagreement with an injected auto-resolve attempt, and confirm the machine refuses to silently pick a winner; corroborate that a conflict can only close by a human with a decision_ref.",
+   "risk_category": "conflicting_evidence",
+   "priority": "P0",
+   "rationale": "An owner assertion overwritten by a machine recomputation is the R-P3 violation; the guarantee is that disagreement escalates rather than being auto-decided.",
+   "requirement_reference": "owner_asserted_is_never_machine_recomputed_r_p3",
+   "product_principle_reference": "known_vs_inferred",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive inferrer-vs-owner with an auto-resolve fault injected",
+     "command": ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case inferrer-vs-owner-raises-conflict-not-a-winner --inject auto-resolve-conflict",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "a conflict closes only via a human decision_ref (never machine-recomputed)",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+     "contains": [
+      "RESOLVED_BY_HUMAN requires decision_ref: True",
+      "owner_id NOT NULL: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "every provenance/match_method pairing is closed, so a human class cannot be relabelled",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+     "contains": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "RESOLVED_BY_HUMAN requires decision_ref: True",
+    "unmapped match methods: []"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe runs against an ephemeral temp database; the DDL check reads a freshly built schema.",
+   "isolation_key": "identity-binding-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "The linker auto-resolves an inferrer-vs-owner disagreement, machine-recomputing over the human's asserted value.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "ea5af909",
+     "source_name": "an auto-resolve-conflict fault does not exist, because a clock is not a decision",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "834c7b0e",
+     "source_name": "the resolution basis and the owner are CHECK constraints, not conventions",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "c53f05ac",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "the resolution basis and the owner are CHECK constraints, not conventions",
+     "literals": [
+      "RESOLVED_BY_HUMAN requires decision_ref: True",
+      "owner_id NOT NULL: True"
+     ]
+    },
+    {
+     "field": "persisted_state_checks[1].contains",
+     "command_field": "persisted_state_checks[1].command",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "literals": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S01-six-provenance-classes",
+   "proposed_id": "",
+   "title": "Exactly six provenance classes exist and each is bound to its match_method at runtime",
+   "purpose": "Drive the identity-binding machine, then confirm the canonical provenance vocabulary is exactly six classes and that every match_method is paired to a provenance_class by a database CHECK, so runtime assignment cannot mislabel.",
+   "risk_category": "safety_invariant",
+   "priority": "P1",
+   "rationale": "The six-class taxonomy is the substrate every other provenance rule depends on; a missing class or an unpaired match_method silently weakens all downstream guards.",
+   "requirement_reference": "six_provenance_classes_and_runtime_assignment",
+   "product_principle_reference": "known_vs_inferred",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive identity-binding machine",
+     "command": ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "the canonical taxonomy is exactly six classes",
+     "command": ".venv/bin/python -c \"import sys,ast,pathlib,dataclasses; sys.path.insert(0,'src'); import freight_recon.rule as m12; import freight_recon.conflict as m7; print('the canonical provenance classes:', sorted(m7.PROVENANCE_CLASSES)); print('provenance class count:', len(m7.PROVENANCE_CLASSES)); print('M12 reuses the landed provenance vocabulary:', sorted(getattr(m12, 'PROVENANCE_CLASSES', m7.PROVENANCE_CLASSES)) == sorted(m7.PROVENANCE_CLASSES)); inp=m12.CompilerInput; fields=sorted(f.name for f in dataclasses.fields(inp)) if dataclasses.is_dataclass(inp) else sorted(getattr(inp, '__annotations__', {})); print('the compiler input fields:', fields); print('the compiler input field population is non-empty:', bool(fields)); print('confidence is a field on the compiler input:', 'confidence' in fields); print('provenance_class is a field on the compiler input:', 'provenance_class' in fields); ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8'); t=ast.parse(ru); reads=sorted(set(n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute) and n.attr == 'confidence')); print('attribute reads of confidence anywhere in M12:', reads); print('MODEL_INFERRED is named in executable code:', 'MODEL_INFERRED' in ru); env={'m12':m12}; exec(chr(10).join(['def attempt(label, fn):',' try:','  out = fn()',\\\"  print(label + ': ACCEPTED')\\\",' except Exception as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; mk=lambda pc: m12.CompilerInput(field='carrier_cost', provenance_class=pc, modelled=True); attempt('positive control, a SYSTEM_IMPORTED field compiles', lambda: m12.compile_predicate_field(mk('SYSTEM_IMPORTED'))); attempt('positive control, an OWNER_ASSERTED field compiles', lambda: m12.compile_predicate_field(mk('OWNER_ASSERTED'))); attempt('a MODEL_INFERRED field compiles', lambda: m12.compile_predicate_field(mk('MODEL_INFERRED'))); attempt('an unmodelled field compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='commodity', provenance_class='SYSTEM_IMPORTED', modelled=False))); attempt('a MODEL_INFERRED field with confidence 1.0 compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='carrier_cost', provenance_class='MODEL_INFERRED', modelled=True, confidence=1.0))); attempt('an invented provenance class compiles', lambda: m12.compile_predicate_field(mk('PROBABLY_FINE')))\"",
+     "contains": [
+      "provenance class count: 6"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "match_method is paired to provenance_class with none unmapped",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+     "contains": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "provenance class count: 6",
+    "provenance CHECK pairs match_method to provenance_class: True",
+    "unmapped match methods: []"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe uses an ephemeral temp database; DDL/AST checks read freshly built schema and package source.",
+   "isolation_key": "identity-binding-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A seventh class appears, or a match_method is left unmapped, letting a claim be assigned a provenance it did not earn.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "ba16a747",
+     "source_name": "M6 still behaves as specified with M7's tables in the schema",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "464ef7d3",
+     "source_name": "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "c53f05ac",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "the compiler refuses MODEL_INFERRED by type, and confidence is structurally not an input",
+     "literals": [
+      "provenance class count: 6"
+     ]
+    },
+    {
+     "field": "persisted_state_checks[1].contains",
+     "command_field": "persisted_state_checks[1].command",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "literals": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S07-conflict-first-class-blocking",
+   "proposed_id": "",
+   "title": "An open conflict blocks a consequential action and closes only two ways",
+   "purpose": "Drive the conflict machine so an open conflict blocks a consequential action, then confirm the schema permits closure only as RESOLVED_BY_RULE (with rule_id) or RESOLVED_BY_HUMAN (with decision_ref).",
+   "risk_category": "safety_invariant",
+   "priority": "P1",
+   "rationale": "A conflict that does not block, or that admits a third closing path, defeats the whole point of surfacing disagreement before acting.",
+   "requirement_reference": "conflict_is_first_class_blocking_and_closes_two_ways_only",
+   "product_principle_reference": "obligation_visibility",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive open-conflict-blocks-consequential-action (control, no fault)",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case open-conflict-blocks-consequential-action --inject not-a-real-fault",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "conflict closes only two ways, each with its required evidence",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+     "contains": [
+      "RESOLVED_BY_RULE requires rule_id: True",
+      "RESOLVED_BY_HUMAN requires decision_ref: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "no expiry or cancellation escape path exists",
+     "command": ".venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)')); print('conflict column population:', len(cols)); print('invented expiry/cancellation surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+     "contains": [
+      "invented expiry/cancellation surfaces: []",
+      "expiry columns on conflicts: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "RESOLVED_BY_RULE requires rule_id: True",
+    "RESOLVED_BY_HUMAN requires decision_ref: True",
+    "invented expiry/cancellation surfaces: []"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe runs on an ephemeral temp database; the DDL check reads a freshly built schema.",
+   "isolation_key": "conflict-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A consequential action proceeds while a conflict is open, or a conflict closes without a rule_id or decision_ref.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "d4dd7a67",
+     "source_name": "",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "834c7b0e",
+     "source_name": "the resolution basis and the owner are CHECK constraints, not conventions",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "eaacfe63",
+     "source_name": "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "the resolution basis and the owner are CHECK constraints, not conventions",
+     "literals": [
+      "RESOLVED_BY_RULE requires rule_id: True",
+      "RESOLVED_BY_HUMAN requires decision_ref: True"
+     ]
+    },
+    {
+     "field": "persisted_state_checks[1].contains",
+     "command_field": "persisted_state_checks[1].command",
+     "source_name": "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented",
+     "literals": [
+      "invented expiry/cancellation surfaces: []",
+      "expiry columns on conflicts: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S05-content-addressed-immutable-evidence",
+   "proposed_id": "",
+   "title": "A duplicate observation converges on one content-addressed row and cannot be edited",
+   "purpose": "Drive the observation machine's duplicate path and confirm a repeat of the same content yields one row (not a second), backed by a natural-key uniqueness index over content_digest and a trigger that forbids editing the digest.",
+   "risk_category": "idempotency",
+   "priority": "P2",
+   "rationale": "Content addressing only holds if identical evidence is deduplicated and immutable; a second row or an editable digest silently forks the truth.",
+   "requirement_reference": "content_addressed_immutable_evidence",
+   "product_principle_reference": "evidence_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive duplicate-is-one-row-one-confirmation-zero-work (control)",
+     "command": ".venv/bin/python scripts/probe_phase6_observation.py --case duplicate-is-one-row-one-confirmation-zero-work --inject not-a-real-fault",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "content_digest is immutable via trigger",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='observations'\\\")]; body=' '.join(trig); print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'))); print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body))); print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body))); print('observation triggers:', len(trig))\"",
+     "contains": [
+      "content_digest protected by a trigger: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "a content-addressed natural-key uniqueness index exists",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='observations' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'source_system' in s and 'external_id' in s and 'content_digest' in s and 'tenant' in s]; print('natural-key uniqueness index:', key[0] if key else 'MISSING')\"",
+     "contains": [
+      "natural-key uniqueness index:"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "content_digest protected by a trigger: True"
+   ],
+   "forbidden_observations": [
+    "natural-key uniqueness index: MISSING"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe uses an ephemeral temp database; DDL checks read a freshly built schema.",
+   "isolation_key": "observation-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A re-ingested observation creates a duplicate evidence row, or its content_digest can be rewritten.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "cbc85863",
+     "source_name": "",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "e4a5398d",
+     "source_name": "the fact is immutable in the database, not merely in the Python",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "e149bc96",
+     "source_name": "the natural key is a UNIQUE index over all four of its parts",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "the fact is immutable in the database, not merely in the Python",
+     "literals": [
+      "content_digest protected by a trigger: True"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S09-correction-supersession-retained",
+   "proposed_id": "",
+   "title": "A superseded claim is retained and cannot be expired away",
+   "purpose": "Drive the claim machine's supersession path with an injected expire-claim fault and confirm the earlier version is retained (not deleted/expired), with no expiry or auto-resolve surface in code or schema.",
+   "risk_category": "unexpected_state_transition",
+   "priority": "P2",
+   "rationale": "Correction with retained history is what lets past decisions be explained; an expiry or delete path erases the audit trail.",
+   "requirement_reference": "correction_supersession_and_retained_history",
+   "product_principle_reference": "evidence_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive superseded-claim-is-retained with an expire-claim fault injected",
+     "command": ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case superseded-claim-is-retained --inject expire-claim",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "no expiry or auto-resolve surface exists for claims",
+     "command": ".venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ClaimExpired|ClaimDeleted|ClaimArchived|ClaimAutoResolved|claim_expiry|expire_claim|expire_claims|sweep_claims|purge_claims|auto_resolve_conflict|autoresolve'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|IB-9|IB-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(identity_binding_claims)')); print('invented expiry/auto-resolve surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on identity_binding_claims:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+     "contains": [
+      "invented expiry/auto-resolve surfaces: []",
+      "expiry columns on identity_binding_claims: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "a one-confirmed-binding index exists (supersession, not overwrite)",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+     "contains": [
+      "one-confirmed-binding index:"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "invented expiry/auto-resolve surfaces: []",
+    "expiry columns on identity_binding_claims: []"
+   ],
+   "forbidden_observations": [
+    "one-confirmed-binding index: MISSING"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe runs on an ephemeral temp database; scans read package/source and a freshly built schema.",
+   "isolation_key": "identity-binding-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A corrected/superseded claim row is expired or deleted, so the historical binding can no longer be reconstructed.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "671073ee",
+     "source_name": "a claim-expiry fault does not exist, because a claim never expires",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "8de34200",
+     "source_name": "no claim expiry, sweep, deletion, auto-resolution or extra transition was invented",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "604ced5b",
+     "source_name": "one CONFIRMED binding per subject is a PARTIAL UNIQUE index, tenant-first",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "no claim expiry, sweep, deletion, auto-resolution or extra transition was invented",
+     "literals": [
+      "invented expiry/auto-resolve surfaces: []",
+      "expiry columns on identity_binding_claims: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S10-tenant-safety-kb-closure",
+   "proposed_id": "",
+   "title": "Conflict/claim/observation tables are tenant-first and reference only real tables",
+   "purpose": "Drive the conflict machine, then confirm the conflict and party tables are FK-closed into tenant_humans and their parent conflict, carry a NOT NULL tenant on parties, and reference no table nobody built.",
+   "risk_category": "cross_tenant",
+   "priority": "P2",
+   "rationale": "The P7 knowledge base must be tenant-isolated and referentially closed, or one tenant's provenance can leak or dangle.",
+   "requirement_reference": "tenant_safety_and_knowledge_base_closure",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive conflict machine",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "conflict FKs are closed and owner-backed",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); tables={r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")}; conf=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflicts)')}); party=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflict_parties)')}); print('conflicts foreign keys ->', conf); print('conflict_parties foreign keys ->', party); print('owner is FK-backed into tenant_humans:', 'tenant_humans' in conf); print('a party points at its parent conflict:', 'conflicts' in party); print('foreign keys into a table nobody built:', sorted(set(conf+party) - tables))\"",
+     "contains": [
+      "owner is FK-backed into tenant_humans: True",
+      "foreign keys into a table nobody built: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "conflict parties carry a NOT NULL tenant",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflict_parties'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); m=re.search(r'provenance_class TEXT NOT NULL CHECK \\\\(provenance_class IN \\\\(([^)]*)\\\\)', sql); cols={r[1]: r for r in c.execute('PRAGMA table_info(conflict_parties)')}; print('party columns:', sorted(cols)); print('party provenance vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(',')) if m else 'MISSING: conflict_parties declares no CHECK on provenance_class'); print('party tenant NOT NULL:', bool(cols.get('tenant') and cols['tenant'][3]))\"",
+     "contains": [
+      "party tenant NOT NULL: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "owner is FK-backed into tenant_humans: True",
+    "foreign keys into a table nobody built: []",
+    "party tenant NOT NULL: True"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe and DDL checks use ephemeral temp databases / freshly built schema.",
+   "isolation_key": "conflict-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A conflict/party row points at a non-existent table or lacks a tenant, permitting cross-tenant reads or orphaned evidence.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "74f9d836",
+     "source_name": "M7 still behaves as specified with M8's tables in the schema",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "b613f625",
+     "source_name": "the conflict owner is a FOREIGN KEY into tenant_humans, not a convention",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "fbd65718",
+     "source_name": "every conflict party carries its own canonical provenance_class, tenant-first",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "the conflict owner is a FOREIGN KEY into tenant_humans, not a convention",
+     "literals": [
+      "owner is FK-backed into tenant_humans: True",
+      "foreign keys into a table nobody built: []"
+     ]
+    },
+    {
+     "field": "persisted_state_checks[1].contains",
+     "command_field": "persisted_state_checks[1].command",
+     "source_name": "every conflict party carries its own canonical provenance_class, tenant-first",
+     "literals": [
+      "party tenant NOT NULL: True"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S08-conflict-never-expires",
+   "proposed_id": "",
+   "title": "A conflict cannot be timed out or silently cancelled",
+   "purpose": "Drive the conflict machine's never-expires path with an injected expire-conflict fault and confirm no expiry/cancellation surface exists in code, spec, or schema.",
+   "risk_category": "unexpected_state_transition",
+   "priority": "P2",
+   "rationale": "A conflict that quietly expires re-opens the door to acting on unresolved disagreement, defeating first-class blocking.",
+   "requirement_reference": "conflict_is_first_class_blocking_and_closes_two_ways_only",
+   "product_principle_reference": "unowned_obligation",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive a-conflict-never-expires with an expire-conflict fault injected",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case a-conflict-never-expires --inject expire-conflict",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "no expiry/cancellation surface for conflicts",
+     "command": ".venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)')); print('conflict column population:', len(cols)); print('invented expiry/cancellation surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+     "contains": [
+      "invented expiry/cancellation surfaces: []",
+      "invented expiry/extra transition rows: []",
+      "expiry columns on conflicts: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "invented expiry/cancellation surfaces: []",
+    "expiry columns on conflicts: []"
+   ],
+   "forbidden_observations": [],
+   "cleanup": [],
+   "isolation_note": "Probe runs on an ephemeral temp database; scans read source/spec and a freshly built schema.",
+   "isolation_key": "conflict-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A timer or sweep expires an open conflict, unblocking a consequential action without a human or rule resolution.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "ce8dd8eb",
+     "source_name": "a conflict-expiry fault does not exist, because a conflict never expires",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "eaacfe63",
+     "source_name": "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "no conflict expiry, sweep, deletion, cancellation transition or synonym event was invented",
+     "literals": [
+      "invented expiry/cancellation surfaces: []",
+      "invented expiry/extra transition rows: []",
+      "expiry columns on conflicts: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P7-S11-deterministic-linker-binding",
+   "proposed_id": "",
+   "title": "An exact trusted-id binds deterministically and confirms a single binding",
+   "purpose": "Drive the linker's exact-trusted-id path and confirm it confirms a binding deterministically, with the provenance-to-match_method mapping fully closed and a one-confirmed-binding uniqueness index present.",
+   "risk_category": "happy_path",
+   "priority": "P1",
+   "rationale": "Deterministic binding order is a weight-7 guarantee: the same evidence must always bind the same way, or reconciliation becomes nondeterministic.",
+   "requirement_reference": "deterministic_linker_binding_order",
+   "product_principle_reference": "operational_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "drive exact-trusted-id-confirms (control)",
+     "command": ".venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case exact-trusted-id-confirms --inject not-a-real-fault",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "provenance/match_method mapping is total (deterministic assignment)",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+     "contains": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    },
+    {
+     "name": "one-confirmed-binding index exists",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+     "contains": [
+      "one-confirmed-binding index:"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "provenance CHECK pairs match_method to provenance_class: True",
+    "unmapped match methods: []"
+   ],
+   "forbidden_observations": [
+    "one-confirmed-binding index: MISSING"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe and DDL checks operate on ephemeral temp databases.",
+   "isolation_key": "identity-binding-probe-readonly",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-11T08:17:03+00:00",
+    "task_hash": "466670692808fc99",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "596965e",
+    "active_unit_id": "P7",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "The linker binds nondeterministically or admits two confirmed bindings for one subject.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "eca2744e-165c-4721-8df6-4dc8031377c6",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "85d74cab",
+     "source_name": "",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "c53f05ac",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[1].command",
+     "command_digest": "604ced5b",
+     "source_name": "one CONFIRMED binding per subject is a PARTIAL UNIQUE index, tenant-first",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [
+    {
+     "field": "persisted_state_checks[0].contains",
+     "command_field": "persisted_state_checks[0].command",
+     "source_name": "provenance_class is a CHECKED function of match_method, not two free fields",
+     "literals": [
+      "provenance CHECK pairs match_method to provenance_class: True",
+      "unmapped match methods: []"
+     ]
+    }
+   ],
+   "rebound_on_resume": []
+  }
+ ],
+ "coverage_summary": {
+  "total_scenarios": 10,
+  "by_risk_category": {
+   "safety_invariant": 4,
+   "conflicting_evidence": 1,
+   "idempotency": 1,
+   "unexpected_state_transition": 2,
+   "cross_tenant": 1,
+   "happy_path": 1
+  },
+  "by_priority": {
+   "P0": 3,
+   "P1": 3,
+   "P2": 4
+  },
+  "uncovered_risks": [],
+  "proposed": 20,
+  "accepted": 10,
+  "filtered": 10,
+  "invalid": 0
+ },
+ "assumptions": [
+  "The probes validate --inject against a closed vocabulary in their own code (the custom 'unknown fault ... is REFUSED' message, not an argparse usage error, confirms this), so appending an --inject tail overrides the cited command's value and the last value is what is validated.",
+  "'none' is the control/happy-path fault present in every probe's vocabulary; 'relink-owner-asserted', 'competing-confirmation', 'correct-confirmed' are in the identity-binding vocabulary; 'age-threshold' is in the conflict vocabulary; 'duplicate-ingest' is in the observation vocabulary — each read directly from the wave-1 refusal listings.",
+  "A correct product, given an in-vocabulary hostile fault, refuses/blocks it and the probe exits 0 (invariant held); the wave-1 exit 2 was the probe rejecting an out-of-vocabulary fault, not the product failing.",
+  "The cited schema-probe commands read the canonical schema in their own temp database and so serve as persisted-structure oracles for the no-expiry, one-confirmed-binding, and immutability invariants required by the idempotency/unexpected_state_transition categories."
+ ],
+ "unresolved_questions": [
+  "C02 (six-provenance-classes) and C08 (tenant-safety-kb-closure) failed because the BARE probes (probe_phase6_identity_binding_claim.py / probe_phase6_conflict.py with no --case) exited 1. No approved command supplies a --case/--inject-selected passing invocation for the full six-classes or tenant-closure drive, so those two could not be reconciled here; confirm whether the bare probe is expected to exit non-zero without a --case selector (in which case the covered schema probes [c53f05ac]/[31cb2e01] and the tenant FK probe [b613f625] are the correct oracles) or whether a case-selected invocation should be approved.",
+  "The evaluator also asked to 're-run the full generated P7 battery' after reconciliation; that is a suite re-run rather than a single product-driving situation, so it is intentionally not expressed as a scenario here — it belongs to the harness's battery re-execution step.",
+  "Confirm the case/fault pairings for the hostile variants (relink-owner-asserted with the inferrer-vs-owner case; competing-confirmation with the exact-trusted-id case) exercise the intended transition; the fault is in-vocabulary regardless of case, but whether the probe's case setup makes that fault semantically reachable should be verified from the probe source."
+ ],
+ "waves": [
+  {
+   "wave": 1,
+   "stage": "initial",
+   "requested_at": "2026-09-11T08:11:27+00:00",
+   "basis": {
+    "task_hash": "466670692808fc99",
+    "active_unit_id": "P7",
+    "repository_head": "596965e"
+   },
+   "proposed": 12,
+   "accepted_ids": [
+    "P7-S02-model-inferred-not-gated",
+    "P7-S03-no-provenance-laundering",
+    "P7-S04-owner-asserted-not-recomputed",
+    "P7-S01-six-provenance-classes",
+    "P7-S07-conflict-first-class-blocking",
+    "P7-S05-content-addressed-immutable-evidence",
+    "P7-S09-correction-supersession-retained",
+    "P7-S10-tenant-safety-kb-closure",
+    "P7-S08-conflict-never-expires",
+    "P7-S11-deterministic-linker-binding"
+   ],
+   "rejected": [
+    {
+     "id": "P7-S06-evidence-claim-lineage",
+     "title": "A model-extracted claim without its evidence span is refused, keeping lineage traversable",
+     "reasons": [
+      "'claim classes require their lineage evidence' runs '.venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,\\'src\\'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),\\'probe.sqlite3\\'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\\\"select sql from sqlite_master where name=\\'identity_binding_claims\\'\\\\\").fetchone(); sql=\\' \\'.join((row[0] if row else \\'\\').split()); pairs=[(\\'EXACT_ID\\',\\'LINKER_INFERRED\\'),(\\'RULE\\',\\'LINKER_INFERRED\\'), (\\'RECONCILIATION\\',\\'RECONCILED\\'),(\\'MODEL_EXTRACT\\',\\'MODEL_EXTRACTED\\'",
+      "'claim classes require their lineage evidence' runs '.venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,\\'src\\'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),\\'probe.sqlite3\\'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\\\"select sql from sqlite_master where name=\\'identity_binding_claims\\'\\\\\").fetchone(); sql=\\' \\'.join((row[0] if row else \\'\\').split()); pairs=[(\\'EXACT_ID\\',\\'LINKER_INFERRED\\'),(\\'RULE\\',\\'LINKER_INFERRED\\'), (\\'RECONCILIATION\\',\\'RECONCILED\\'),(\\'MODEL_EXTRACT\\',\\'MODEL_EXTRACTED\\'",
+      "expected_observations requires 'MODEL_EXTRACTED requires evidence_id + span: True', and no operation this scenario performs has a basis for emitting it: no action's expect_contains, no state check's contains and no browser step's expect_text names it, and the scenario runs no approved command a human already bound it to. This is a generation contract error, not a statement about the product: the assertion is matched against everything the run produced, so it cannot be attributed to any command, and it would fail against a correct product. Name the operation that prints it, in that operation's ",
+      "expected_observations requires 'LINKER_INFERRED/RECONCILED requires rule_id: True', and no operation this scenario performs has a basis for emitting it: no action's expect_contains, no state check's contains and no browser step's expect_text names it, and the scenario runs no approved command a human already bound it to. This is a generation contract error, not a statement about the product: the assertion is matched against everything the run produced, so it cannot be attributed to any command, and it would fail against a correct product. Name the operation that prints it, in that operation's "
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S12-mutation-anti-vacuity",
+     "title": "Planted defects in the P7 evidence machines turn their batteries red",
+     "reasons": [
+      "a regression scenario must name the diff or prior evidence that puts the behaviour it guards inside this task's scope"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    }
+   ],
+   "budget_notes": [],
+   "reasoner_error": "",
+   "resolved_citations": [
+    "P7-S02-model-inferred-not-gated: @464ef7d3 -> .venv/bin/python -c \"import sys,ast,pathlib,dataclasses; sys.path.insert(0,'src'); import freight_recon.rule as m12; import freight_recon.conflict as m7; print('the canonical provenance classes:', sorted(m7.PROVENANCE_CLASSES)); print('provenance class count:', len(m7.PROVENANCE_CLASSES)); print('M12 reuses the landed provenance vocabulary:', sorted(getattr(m12, 'PROVENANCE_CLASSES', m7.PROVENANCE_CLASSES)) == sorted(m7.PROVENANCE_CLASSES)); inp=m12.CompilerInput; fields=sorted(f.name for f in dataclasses.fields(inp)) if dataclasses.is_dataclass(inp) else sorted(getattr(inp, '__annotations__', {})); print('the compiler input fields:', fields); print('the compiler input field population is non-empty:', bool(fields)); print('confidence is a field on the compiler input:', 'confidence' in fields); print('provenance_class is a field on the compiler input:', 'provenance_class' in fields); ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8'); t=ast.parse(ru); reads=sorted(set(n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute) and n.attr == 'confidence')); print('attribute reads of confidence anywhere in M12:', reads); print('MODEL_INFERRED is named in executable code:', 'MODEL_INFERRED' in ru); env={'m12':m12}; exec(chr(10).join(['def attempt(label, fn):',' try:','  out = fn()',\\\"  print(label + ': ACCEPTED')\\\",' except Exception as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; mk=lambda pc: m12.CompilerInput(field='carrier_cost', provenance_class=pc, modelled=True); attempt('positive control, a SYSTEM_IMPORTED field compiles', lambda: m12.compile_predicate_field(mk('SYSTEM_IMPORTED'))); attempt('positive control, an OWNER_ASSERTED field compiles', lambda: m12.compile_predicate_field(mk('OWNER_ASSERTED'))); attempt('a MODEL_INFERRED field compiles', lambda: m12.compile_predicate_field(mk('MODEL_INFERRED'))); attempt('an unmodelled field compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='commodity', provenance_class='SYSTEM_IMPORTED', modelled=False))); attempt('a MODEL_INFERRED field with confidence 1.0 compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='carrier_cost', provenance_class='MODEL_INFERRED', modelled=True, confidence=1.0))); attempt('an invented provenance class compiles', lambda: m12.compile_predicate_field(mk('PROBABLY_FINE')))\"",
+    "P7-S03-no-provenance-laundering: @f4165e71 -> .venv/bin/python scripts/probe_phase6_observation.py",
+    "P7-S03-no-provenance-laundering: @cefd9a95 -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='identity_binding_claims'\\\")]; body=' '.join(trig); print('provenance_class protected by a trigger:', bool(re.search(r'provenance_class', body))); print('match_method protected by a trigger:', bool(re.search(r'match_method', body))); print('claim triggers:', len(trig))\"",
+    "P7-S03-no-provenance-laundering: @e4a5398d -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='observations'\\\")]; body=' '.join(trig); print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'))); print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body))); print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body))); print('observation triggers:', len(trig))\"",
+    "P7-S04-owner-asserted-not-recomputed: @ea5af909 -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case inferrer-vs-owner-raises-conflict-not-a-winner --inject auto-resolve-conflict",
+    "P7-S04-owner-asserted-not-recomputed: @834c7b0e -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+    "P7-S04-owner-asserted-not-recomputed: @c53f05ac -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+    "P7-S01-six-provenance-classes: @ba16a747 -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py",
+    "P7-S01-six-provenance-classes: @464ef7d3 -> .venv/bin/python -c \"import sys,ast,pathlib,dataclasses; sys.path.insert(0,'src'); import freight_recon.rule as m12; import freight_recon.conflict as m7; print('the canonical provenance classes:', sorted(m7.PROVENANCE_CLASSES)); print('provenance class count:', len(m7.PROVENANCE_CLASSES)); print('M12 reuses the landed provenance vocabulary:', sorted(getattr(m12, 'PROVENANCE_CLASSES', m7.PROVENANCE_CLASSES)) == sorted(m7.PROVENANCE_CLASSES)); inp=m12.CompilerInput; fields=sorted(f.name for f in dataclasses.fields(inp)) if dataclasses.is_dataclass(inp) else sorted(getattr(inp, '__annotations__', {})); print('the compiler input fields:', fields); print('the compiler input field population is non-empty:', bool(fields)); print('confidence is a field on the compiler input:', 'confidence' in fields); print('provenance_class is a field on the compiler input:', 'provenance_class' in fields); ru=pathlib.Path('src/freight_recon/rule.py').read_text(encoding='utf-8'); t=ast.parse(ru); reads=sorted(set(n.attr for n in ast.walk(t) if isinstance(n, ast.Attribute) and n.attr == 'confidence')); print('attribute reads of confidence anywhere in M12:', reads); print('MODEL_INFERRED is named in executable code:', 'MODEL_INFERRED' in ru); env={'m12':m12}; exec(chr(10).join(['def attempt(label, fn):',' try:','  out = fn()',\\\"  print(label + ': ACCEPTED')\\\",' except Exception as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__ + ': ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; mk=lambda pc: m12.CompilerInput(field='carrier_cost', provenance_class=pc, modelled=True); attempt('positive control, a SYSTEM_IMPORTED field compiles', lambda: m12.compile_predicate_field(mk('SYSTEM_IMPORTED'))); attempt('positive control, an OWNER_ASSERTED field compiles', lambda: m12.compile_predicate_field(mk('OWNER_ASSERTED'))); attempt('a MODEL_INFERRED field compiles', lambda: m12.compile_predicate_field(mk('MODEL_INFERRED'))); attempt('an unmodelled field compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='commodity', provenance_class='SYSTEM_IMPORTED', modelled=False))); attempt('a MODEL_INFERRED field with confidence 1.0 compiles', lambda: m12.compile_predicate_field(m12.CompilerInput(field='carrier_cost', provenance_class='MODEL_INFERRED', modelled=True, confidence=1.0))); attempt('an invented provenance class compiles', lambda: m12.compile_predicate_field(mk('PROBABLY_FINE')))\"",
+    "P7-S01-six-provenance-classes: @c53f05ac -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+    "P7-S07-conflict-first-class-blocking: @d4dd7a67 -> .venv/bin/python scripts/probe_phase6_conflict.py --case open-conflict-blocks-consequential-action --inject not-a-real-fault",
+    "P7-S07-conflict-first-class-blocking: @834c7b0e -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+    "P7-S07-conflict-first-class-blocking: @eaacfe63 -> .venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)')); print('conflict column population:', len(cols)); print('invented expiry/cancellation surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+    "P7-S06-evidence-claim-lineage: @ba16a747 -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py",
+    "P7-S06-evidence-claim-lineage: @c53f05ac -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+    "P7-S05-content-addressed-immutable-evidence: @cbc85863 -> .venv/bin/python scripts/probe_phase6_observation.py --case duplicate-is-one-row-one-confirmation-zero-work --inject not-a-real-fault",
+    "P7-S05-content-addressed-immutable-evidence: @e4a5398d -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='observations'\\\")]; body=' '.join(trig); print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'))); print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body))); print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body))); print('observation triggers:', len(trig))\"",
+    "P7-S05-content-addressed-immutable-evidence: @e149bc96 -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='observations' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'source_system' in s and 'external_id' in s and 'content_digest' in s and 'tenant' in s]; print('natural-key uniqueness index:', key[0] if key else 'MISSING')\"",
+    "P7-S09-correction-supersession-retained: @671073ee -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case superseded-claim-is-retained --inject expire-claim",
+    "P7-S09-correction-supersession-retained: @8de34200 -> .venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ClaimExpired|ClaimDeleted|ClaimArchived|ClaimAutoResolved|claim_expiry|expire_claim|expire_claims|sweep_claims|purge_claims|auto_resolve_conflict|autoresolve'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|IB-9|IB-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(identity_binding_claims)')); print('invented expiry/auto-resolve surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on identity_binding_claims:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+    "P7-S09-correction-supersession-retained: @604ced5b -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+    "P7-S10-tenant-safety-kb-closure: @74f9d836 -> .venv/bin/python scripts/probe_phase6_conflict.py",
+    "P7-S10-tenant-safety-kb-closure: @b613f625 -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); tables={r[0] for r in c.execute(\\\"select name from sqlite_master where type='table'\\\")}; conf=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflicts)')}); party=sorted({r[2] for r in c.execute('PRAGMA foreign_key_list(conflict_parties)')}); print('conflicts foreign keys ->', conf); print('conflict_parties foreign keys ->', party); print('owner is FK-backed into tenant_humans:', 'tenant_humans' in conf); print('a party points at its parent conflict:', 'conflicts' in party); print('foreign keys into a table nobody built:', sorted(set(conf+party) - tables))\"",
+    "P7-S10-tenant-safety-kb-closure: @fbd65718 -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflict_parties'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); m=re.search(r'provenance_class TEXT NOT NULL CHECK \\\\(provenance_class IN \\\\(([^)]*)\\\\)', sql); cols={r[1]: r for r in c.execute('PRAGMA table_info(conflict_parties)')}; print('party columns:', sorted(cols)); print('party provenance vocabulary:', sorted(t.strip().strip(chr(39)) for t in m.group(1).split(',')) if m else 'MISSING: conflict_parties declares no CHECK on provenance_class'); print('party tenant NOT NULL:', bool(cols.get('tenant') and cols['tenant'][3]))\"",
+    "P7-S08-conflict-never-expires: @ce8dd8eb -> .venv/bin/python scripts/probe_phase6_conflict.py --case a-conflict-never-expires --inject expire-conflict",
+    "P7-S08-conflict-never-expires: @eaacfe63 -> .venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)')); print('conflict column population:', len(cols)); print('invented expiry/cancellation surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+    "P7-S11-deterministic-linker-binding: @85d74cab -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case exact-trusted-id-confirms --inject not-a-real-fault",
+    "P7-S11-deterministic-linker-binding: @c53f05ac -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='identity_binding_claims'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); pairs=[('EXACT_ID','LINKER_INFERRED'),('RULE','LINKER_INFERRED'), ('RECONCILIATION','RECONCILED'),('MODEL_EXTRACT','MODEL_EXTRACTED'), ('MODEL_INFER','MODEL_INFERRED'),('HUMAN','OWNER_ASSERTED')]; checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); prov=[k for k in checks if 'provenance_class' in k and 'match_method' in k]; body=' '.join(prov); print('provenance CHECK pairs match_method to provenance_class:', bool(prov)); print('unmapped match methods:', [m for m,pc in pairs if not (m in body and pc in body)])\"",
+    "P7-S11-deterministic-linker-binding: @604ced5b -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+    "P7-S12-mutation-anti-vacuity: @82a13d2a -> .venv/bin/python scripts/mutate_phase6_conflict.py",
+    "P7-S12-mutation-anti-vacuity: @eddf3490 -> .venv/bin/python scripts/mutate_phase6_observation.py",
+    "P7-S12-mutation-anti-vacuity: @2ae22959 -> .venv/bin/python scripts/mutate_phase6_identity_binding_claim.py"
+   ]
+  },
+  {
+   "wave": 2,
+   "stage": "adaptive",
+   "requested_at": "2026-09-11T08:37:43+00:00",
+   "basis": {
+    "task_hash": "466670692808fc99",
+    "active_unit_id": "P7",
+    "repository_head": "596965e"
+   },
+   "proposed": 8,
+   "accepted_ids": [],
+   "rejected": [
+    {
+     "id": "P7-S04R-owner-asserted-inferrer-vs-owner-control",
+     "title": "Inferrer-vs-owner disagreement raises a conflict, never a machine-chosen winner (R-P3 control)",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S04-owner-asserted-not-recomputed"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S04R-relink-owner-asserted-refused",
+     "title": "A relink attempt cannot machine-recompute an OWNER_ASSERTED binding (R-P3 hostile)",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S04-owner-asserted-not-recomputed"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S07R-open-conflict-blocks-control",
+     "title": "An open conflict blocks a consequential action (control)",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S07-conflict-first-class-blocking"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S08R-age-threshold-cannot-expire-conflict",
+     "title": "An age threshold cannot expire an open conflict",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S08-conflict-never-expires"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S09R-correct-confirmed-retains-superseded",
+     "title": "Correcting a confirmed binding supersedes without expiring retained history",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S09-correction-supersession-retained"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S11R-exact-trusted-id-confirms-control",
+     "title": "An exact trusted id confirms a single deterministic binding (control)",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S11-deterministic-linker-binding"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S11R-competing-confirmation-refused",
+     "title": "A competing confirmation cannot create a second confirmed binding",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S11-deterministic-linker-binding"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    },
+    {
+     "id": "P7-S05R-duplicate-observation-one-row-control",
+     "title": "A duplicate observation converges on one immutable content-addressed row (control)",
+     "reasons": [
+      "adaptive scenario cites failure/cluster id(s) that this run never observed: generated:P7-S05-content-addressed-immutable-evidence"
+     ],
+     "raw": {},
+     "kind": "filtered"
+    }
+   ],
+   "budget_notes": [],
+   "reasoner_error": "",
+   "resolved_citations": [
+    "P7-S04R-owner-asserted-inferrer-vs-owner-control: @ea5af909 -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case inferrer-vs-owner-raises-conflict-not-a-winner --inject auto-resolve-conflict --inject none",
+    "P7-S04R-owner-asserted-inferrer-vs-owner-control: @834c7b0e -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+    "P7-S04R-relink-owner-asserted-refused: @ea5af909 -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case inferrer-vs-owner-raises-conflict-not-a-winner --inject auto-resolve-conflict --inject relink-owner-asserted",
+    "P7-S04R-relink-owner-asserted-refused: @834c7b0e -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+    "P7-S07R-open-conflict-blocks-control: @d4dd7a67 -> .venv/bin/python scripts/probe_phase6_conflict.py --case open-conflict-blocks-consequential-action --inject not-a-real-fault --inject none",
+    "P7-S07R-open-conflict-blocks-control: @834c7b0e -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+    "P7-S08R-age-threshold-cannot-expire-conflict: @ce8dd8eb -> .venv/bin/python scripts/probe_phase6_conflict.py --case a-conflict-never-expires --inject expire-conflict --inject age-threshold",
+    "P7-S08R-age-threshold-cannot-expire-conflict: @eaacfe63 -> .venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ConflictExpired|ConflictCancelled|ConflictRetracted|ConflictDismissed|ConflictAutoResolved|ConflictWinnerChosen|ConflictClosed|conflict_expiry|expire_conflicts|sweep_conflicts|purge_conflicts|reap_conflicts'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|CF-8|CF-9|CF-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(conflicts)')); print('conflict column population:', len(cols)); print('invented expiry/cancellation surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on conflicts:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+    "P7-S09R-correct-confirmed-retains-superseded: @671073ee -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case superseded-claim-is-retained --inject expire-claim --inject correct-confirmed",
+    "P7-S09R-correct-confirmed-retains-superseded: @8de34200 -> .venv/bin/python -c \"import pathlib,re,sqlite3,tempfile,os,sys; names=r'ClaimExpired|ClaimDeleted|ClaimArchived|ClaimAutoResolved|claim_expiry|expire_claim|expire_claims|sweep_claims|purge_claims|auto_resolve_conflict|autoresolve'; code=re.compile(names); code_hits=sorted({str(f) for r in ('src/freight_recon','scripts') if pathlib.Path(r).exists() for f in pathlib.Path(r).rglob('*.py') if code.search(f.read_text(encoding='utf-8', errors='replace'))}); row=re.compile(r'^\\\\|\\\\s*[*\\\\x60 ]*(?:' + names + r'|IB-9|IB-1[0-9])\\\\b', re.M); spec=pathlib.Path('docs/specifications'); spec_hits=sorted({str(f) for f in spec.rglob('*.md') if row.search(f.read_text(encoding='utf-8', errors='replace'))}) if spec.exists() else []; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); cols=sorted(r[1] for r in c.execute('PRAGMA table_info(identity_binding_claims)')); print('invented expiry/auto-resolve surfaces:', code_hits); print('invented expiry/extra transition rows:', spec_hits); print('expiry columns on identity_binding_claims:', [x for x in cols if 'expir' in x or 'ttl' in x or 'purge' in x])\"",
+    "P7-S11R-exact-trusted-id-confirms-control: @85d74cab -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case exact-trusted-id-confirms --inject not-a-real-fault --inject none",
+    "P7-S11R-exact-trusted-id-confirms-control: @604ced5b -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+    "P7-S11R-competing-confirmation-refused: @85d74cab -> .venv/bin/python scripts/probe_phase6_identity_binding_claim.py --case exact-trusted-id-confirms --inject not-a-real-fault --inject competing-confirmation",
+    "P7-S11R-competing-confirmation-refused: @604ced5b -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='identity_binding_claims' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'subject_ref' in s and 'tenant' in s and 'WHERE' in s.upper() and 'CONFIRMED' in s]; print('one-confirmed-binding index:', key[0] if key else 'MISSING')\"",
+    "P7-S05R-duplicate-observation-one-row-control: @cbc85863 -> .venv/bin/python scripts/probe_phase6_observation.py --case duplicate-is-one-row-one-confirmation-zero-work --inject not-a-real-fault --inject none",
+    "P7-S05R-duplicate-observation-one-row-control: @e149bc96 -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='observations' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'source_system' in s and 'external_id' in s and 'content_digest' in s and 'tenant' in s]; print('natural-key uniqueness index:', key[0] if key else 'MISSING')\"",
+    "P7-S05R-duplicate-observation-one-row-control: @e4a5398d -> .venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); trig=[r[0] or '' for r in c.execute( \\\"select sql from sqlite_master where type='trigger' and tbl_name='observations'\\\")]; body=' '.join(trig); print('observations columns:', sorted(r[1] for r in c.execute('PRAGMA table_info(observations)'))); print('raw_value protected by a trigger:', bool(re.search(r'raw_value', body))); print('content_digest protected by a trigger:', bool(re.search(r'content_digest', body))); print('observation triggers:', len(trig))\""
+   ]
+  }
+ ],
+ "observed_failure_ids": [
+  "P7-S01-six-provenance-classes",
+  "P7-S04-owner-asserted-not-recomputed",
+  "P7-S05-content-addressed-immutable-evidence",
+  "P7-S07-conflict-first-class-blocking",
+  "P7-S08-conflict-never-expires",
+  "P7-S09-correction-supersession-retained",
+  "P7-S10-tenant-safety-kb-closure",
+  "P7-S11-deterministic-linker-binding"
+ ],
+ "observed_cluster_ids": [
+  "C01",
+  "C02",
+  "C03",
+  "C04",
+  "C05",
+  "C06",
+  "C07",
+  "C08"
+ ],
+ "executed_scenario_ids": [
+  "p6_m13_brake",
+  "P7-S02-model-inferred-not-gated",
+  "P7-S03-no-provenance-laundering",
+  "P7-S04-owner-asserted-not-recomputed",
+  "P7-S01-six-provenance-classes",
+  "P7-S07-conflict-first-class-blocking",
+  "P7-S11-deterministic-linker-binding",
+  "P7-S05-content-addressed-immutable-evidence",
+  "P7-S08-conflict-never-expires",
+  "P7-S09-correction-supersession-retained",
+  "P7-S10-tenant-safety-kb-closure"
+ ],
+ "permanent_coverage": {
+  "happy_path": [
+   "p6_m13_brake: The brake works when everything else does not. An authenticated human engages instantly, with the policy engine and the TMS down, in one atomic row write and with no approval and no ceremony — and from that instant no new grant is minted and no existing grant is claimed. Every refusal in this file is only meaningful because this succeeds: an oracle battery proving that nothing can ever engage a brake would pass a product with no brake at all, and a battery proving nothing can ever be released would pass a product that can never be restarted."
+  ],
+  "safety_invariant": [
+   "p6_m13_brake: ### THE SENTENCE THIS MACHINE EXISTS FOR. A brake is admission control, not process termination: it refuses to mint and refuses to claim, and it NEVER kills a worker. An effect at position 3, 4 or 5 — claimed, executing, or verifying — RUNS TO A VERIFIED CONCLUSION, because killing it would convert a knowable outcome into an unknown one and manufacture the exact hazard the operator engaged the brake to avoid. This is exercised at every one of the five boundary positions, not asserted once in the middle of the table."
+  ],
+  "authorization": [
+   "[REDACTED]"
+  ],
+  "unexpected_state_transition": [
+   "p6_m13_brake: Two states and no third, as a database constraint on BOTH brake tables rather than as a convention. The three tempting inventions are refused BY NAME against a live database: `PENDING_RELEASE`, which reads like prudence and IS the forbidden release-approval ceremony; `ENGAGING`, which arrives with any author who thinks of engagement as a process; and `EXPIRED`, which arrives with any author who thinks in TTLs. \"Engaged by a human vs by a detector\" is a FIELD, \"partially released\" is a SCOPE CHANGE, and the five BR rows are declared as a table with BR-5 classified NON-PRODUCING rather than merely absent.",
+   "p6_m13_brake: Exactly four F13 contracts and no fifth. `BrakeExpired`, `BrakeAutoReleased` and `BrakePendingRelease` are each the event a wrong state set would need, so their absence from the registry is the state set restated as a contract. F13 is STRICT per aggregate on a monotonic `brake_version`, `BrakeReleased` and `BrakeNarrowed` are human-only per ER-11/ER-12, and the unauthorized-release path reaches F14's ALREADY-REGISTERED `UnauthorizedBrakeReleaseAttempted` rather than a synonym M13 minted for itself. The total stays 118 because M13 registers nothing."
+  ],
+  "timeout_before_effect": [
+   "p6_m13_brake: A brake never expires, and no clock may ever make one less restrictive. There is no TTL column, no expiry state, no auto-release path and no expiry identifier in executable code — measured on the live schema and on the AST separately, because a brake that expires releases itself while nobody is looking and a clock cannot know whether the fire is out. BR-5 is an enumerated illegal refusal rather than an unwritten path, so adding a scheduler later cannot quietly find a door."
+  ],
+  "concurrency": [
+   "p6_m13_brake: The race that matters, closed by the database rather than by a check. Witnesses and grants bind a COMPOSITE token carrying both the platform and the tenant brake version, and the claim CAS revalidates both inside its own WHERE clause — so a brake engaged between MINT and CLAIM makes the update match ZERO ROWS and the adapter does nothing. Never both, never neither. Both asymmetric failures are exercised: a tenant-only check would let a GLOBAL brake through, and a global-only check would let a TENANT brake through, and each is a payment."
+  ],
+  "dependency_failure": [
+   "p6_m13_brake: \"Cannot read the brake\" NEVER means \"the brake is off\". That inversion is how a safety control becomes decorative, and it is deniable in every direction: an absent platform row, an unreadable store, an unparseable scope. Each refuses the mint and refuses the claim, and there is no allow-on-error default anywhere on the path. The scope grammar is CLOSED and its landed and deferred dimensions partition the canonical five, so a dimension this unit did not build is unspellable rather than silently scoped to nothing."
+  ],
+  "cross_tenant": [
+   "p6_m13_brake: Two composed admission dimensions, and GLOBAL is not a fake tenant. The platform brake is EXACTLY ONE tenant-exempt row with `id = 1` and no tenant column — structurally, so a second row is not insertable — and it denies every tenant without an N-row fan-out that would need a multi-row atomic write during the incident it exists for. Tenant brakes stay tenant-first, one tenant's brake is never another's, and a cross-tenant read or release cannot be spelled."
+  ],
+  "boundary": [
+   "p6_m13_brake: ### THE DEFECT THIS UNIT IS MOST LIKELY TO SHIP. M13 is the one P6 machine whose substrate already exists, so the cheapest wrong build is a NEW module that re-implements engage / widen / narrow / release beside `brake.py` — leaving two answers to \"is Neyma stopped?\", which is the same defect as none. Measured by AST across the whole package: ONE class owns the brake lifecycle, ONE module writes brake state, and any M13-facing module DELEGATES to it. The same guard proves `checkpoint.py` is still the only thing that mints a gate decision, with the kernel itself as the positive control so the scan cannot be green by finding nothing.",
+   "p6_m13_brake: M13 ships dark and is a landed increment, never a phase acceptance. No brake console, no dashboard, no admin screen, no Slack, email, SMS or voice brake command, no production detector wiring, no outbound integration, no freight workflow and no P7 or P8 runtime. Landing M13 does not mark P6 complete, does not score a P6 criterion and does not unblock P7 — and this is asserted rather than assumed, because M13 being the last machine is exactly the reason a session would drift into treating its landing as the phase's."
+  ],
+  "stale_state": [
+   "p6_m13_brake: Release BUMPS the version; it never restores it. Every Checkpoint Witness and every unclaimed Effect Grant minted before the brake engaged is dead permanently, so releasing cannot fire off a stored-up volley of pre-authorised effects into a world that moved while the system was stopped. Every queued consequential action passes a NEW full checkpoint, and release itself mints no witness. The brake row is the incident record: it is never deleted, and retention is permanent."
+  ],
+  "missing_data": [
+   "p6_m13_brake: ### RELEASE IS NOT `if human and decision_ref`. That implementation passes every authorization test in this file and is still wrong. Release requires POSITIVE evidence: every in-flight effect accounted for, no unresolved Sev-0, integration health positively demonstrated by a positive control rather than \"the page loaded\", and a decision_ref. Each condition is withheld ALONE so an implementation checking only one is caught by the others. Unresolved unknown outcomes do NOT block release — blocking on them would create pressure to resolve them carelessly — but they must be acknowledged and owned, and their entities stay frozen.",
+   "p6_m13_brake: The probe can reach every canonical risk family and can vary the two axes this unit turns on. `--position` walks the five-position boundary, without which only the half of the brake that STOPS things is ever exercised and the half that must NOT stop things — where the unknown outcome is made — is never reached. `--owner` varies the two composed admission dimensions, without which a composite version check is indistinguishable from a single one."
+  ],
+  "idempotency": [
+   "p6_m13_brake: A flapping detector is one ACTIVE brake and a rising signal count, and it opens no window. Asserted by ROW COUNT against a live database across many repeats rather than by return value, because a store that returns the existing brake while writing a second row looks identical from the caller's side and is a momentary release window during an incident. The signal count is the canonical answer to \"how many times did this fire?\", which is a question asked during the incident and unanswerable afterwards if nothing recorded it."
+  ],
+  "restart_recovery": [
+   "p6_m13_brake: Replay reconstructs the incident timeline and creates nothing. It never engages a live brake, mints no witness, mints no grant and produces no external effect — because a replay that re-engaged a brake would stop a healthy system, and a replay that minted authority would be a way to manufacture a grant out of history."
+  ],
+  "approval_required": [
+   "p6_m13_brake: A brake withdraws the authority to produce consequential effects; it does not shut the process down. Pending approvals stay RECORDED and simply cannot authorize execution, reaching M4's landed `VOID_ON_BRAKE` rather than a brake-local approval mechanism. Compensation IS an effect and is BLOCKED — uncomfortable and correct, because a system misbehaving badly enough to be braked must not start writing \"corrections\" into the TMS. Observation and reconciliation CONTINUE, because blinding yourself during an incident is the opposite of what you want."
+  ],
+  "ui_backend_disagreement": [
+   "p6_m13_brake: A hidden brake is a silent degradation and violates R17: a system that has quietly stopped working is indistinguishable, to an owner, from a system with nothing to do. The canonical report states, unprompted, the scope AND what is still allowed, the reason, the actor and whether it was a human or a named detector, the time, the prevented effects, the in-flight effects and their status, the unresolved unknown outcomes with exposure, and THE EXACT REQUIREMENTS FOR RELEASE — not \"contact an administrator\". The representation is what M13 owes; a channel is P8's and is forbidden here."
+  ],
+  "regression": [
+   "p6_m13_brake: ### M13 EDITS THE MODULE IT MEASURES, WHICH NO EARLIER P6 UNIT DID. `brake.py` is P3's landed kernel brake, and completing it is the correct build — but P3's checkpoint matrix, claim CAS and step-order batteries are what turn red if it is completed carelessly, and M4, M10 and M12 all consume brake state by their own guard. Every landed machine's semantics must be unchanged, and the anchors are RUN rather than cited.",
+   "p6_m13_brake: The battery is measured rather than asserted. Every planted mutant reintroduces a defect whose prohibition is canonically established — a third state, automation releasing, a detector narrowing, a timer auto-releasing, an absent brake store read as released, a claim CAS that stops checking either version component, a brake that kills a worker, a release that leaves a witness valid, a fake-tenant global, a second brake authority — and each must turn the acceptance battery red for its own reason. An anti-vacuity control proves the count is a measurement."
+  ],
+  "partial_failure": [
+   "p6_m13_brake: M13 hardens tables P3 created, which is the migration shape most likely to drift: a fresh database gets the new DDL inline while an existing one gets it through an ALTER path, and the two diverge silently. The upgraded and fresh brake layers are asserted byte-identical, a second application is a no-op, and P3's own readiness still holds afterwards — because a migration that hardened the schema by breaking the phase beneath it is not a hardening."
+  ]
+ },
+ "_provenance": {
+  "source": "runs/20260911-081124/scenario-plan.json",
+  "note": "Trimmed copy of the persisted plan of run 20260911-081124 as it stood when that run ended BLOCKED: every generated scenario, the risk register, the executed ids and the wave records are verbatim; each wave record keeps its refusal reasons but drops the raw proposals and the per-wave basis, which a resume never reads. Each scenario's provenance drops the consulted-criteria and consulted-files lists, and each refusal reason is cut to 600 characters; neither is read by a resume."
+ }
+}

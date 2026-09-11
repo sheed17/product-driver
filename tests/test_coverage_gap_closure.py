@@ -366,11 +366,47 @@ class TestAFailingGeneratedScenarioIsADefect:
 
 
 class TestBlockedIsStillReachable:
-    async def test_an_unexpressible_risk_stays_blocked(self, loop_bits):
-        """The generator says it cannot express the risk; the run refuses."""
+    async def test_an_unexpressible_risk_is_routed_as_verification_work_not_accepted(
+        self, loop_bits
+    ):
+        """The generator says it cannot express the risk; the run never accepts it.
+
+        This used to end BLOCKED, and the founder then had to ask a builder by
+        hand for the one thing that closes the gap: a test, probe case or guard
+        the approved measurements lack. It is routed to the builder now — as
+        verification work, never as a product defect — and the risk stays
+        uncovered until an executed scenario passes against it.
+        """
         config, store, state = loop_bits
         config.max_iterations = 1
         planner = make_planner(config, store, [first_wave(), refusing_gap_wave()])
+
+        result = await drive(config, store, state, planner)
+
+        assert result.status is not RunStatus.ACCEPTED
+        assert result.final_decision is not None
+        assert result.final_decision.decision is Decision.FIX
+        assert "not a product defect" in result.final_decision.summary
+        assert "NOT a product defect" in result.final_decision.correction_prompt
+        assert CRASH_RISK in result.final_decision.correction_prompt
+        assert any(CRASH_RISK in p for p in result.final_decision.problems)
+        # Still uncovered: routing it created no evidence.
+        assert result.gate is not None and result.gate.blocks_acceptance
+        assert [r.description for r in result.gate.uncovered_risks] == [CRASH_RISK]
+        notes = result.state.iterations[0].notes
+        assert any("no runnable scenario" in n for n in notes)
+        assert any("product-verification work" in n for n in notes)
+
+    async def test_an_unexpressible_risk_with_no_budget_left_stays_blocked(self, loop_bits):
+        """Without a wave left to use what the builder would add, the refusal stands."""
+        config, store, state = loop_bits
+        config.max_iterations = 1
+        planner = make_planner(
+            config,
+            store,
+            [first_wave(), refusing_gap_wave()],
+            generation=ScenarioGenerationConfig(enabled=True, max_waves=2),
+        )
 
         result = await drive(config, store, state, planner)
 
@@ -480,7 +516,9 @@ class TestReviewStillFollowsTheGate:
             config, store, state, planner, reviewer_factory=reviewer_factory
         )
 
-        assert result.status is RunStatus.BLOCKED
+        # The gap is routed to the builder as verification work now, rather than
+        # ending BLOCKED; either way the gate refuses and no review may run.
+        assert result.status is not RunStatus.ACCEPTED
         assert launched == []
         assert result.reviews == []
 
