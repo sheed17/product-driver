@@ -330,6 +330,14 @@ class RunJournal:
     parent_phase_id: str = ""
     parent_phase_state: str = ""
     scope_is_nested: bool = False
+    #: The run's own completion record for the task it declared: the result the
+    #: completion audit reached, and what it says is still outstanding. Copied,
+    #: never recomputed, so the summary and the audit cannot drift apart —
+    #: a run once printed VERIFIED / MISSING nothing over an audit that named
+    #: required criteria as unbuilt, because the two were rendered from
+    #: different records.
+    task_result: str = ""
+    task_outstanding: list[str] = field(default_factory=list)
     scenario_name: str = ""
     scenario_phase: str = ""
     #: What the unit under verification is FOR, in plain terms, taken verbatim
@@ -662,6 +670,7 @@ class RunJournal:
             and not self.unverified
             and not self.uncovered_risks
             and not self.generation_problems
+            and not self.task_outstanding
             and review_ok
         )
 
@@ -723,6 +732,8 @@ class RunJournal:
             "outcome": {
                 "run_status": self.run_status,
                 "gate_status": self.gate_status,
+                "task_result": self.task_result,
+                "task_outstanding": list(self.task_outstanding),
                 "gate_headline": self.gate_headline,
                 "required_passed": self.required_passed,
                 "required_total": self.required_total,
@@ -902,6 +913,18 @@ class RunJournal:
             lines.append(f"- Acceptance gate: **{self.gate_status}** — "
                          f"{self.required_passed}/{self.required_total} required scenario(s) "
                          "passed with resolvable evidence.")
+        if self.task_result:
+            declared = self.task_scope_id or "the task as written"
+            lines.append(
+                f"- The task this run declared — **{declared}** — is recorded "
+                f"**{self.task_result}**"
+                + (
+                    f", with {len(self.task_outstanding)} required portion(s) still "
+                    "outstanding."
+                    if self.task_outstanding
+                    else ", with nothing outstanding against it."
+                )
+            )
         else:
             lines.append("- **No acceptance gate ran**, so no scenario evidence was measured.")
         if proven:
@@ -920,6 +943,10 @@ class RunJournal:
                 [f"unverified: {u}" for u in self.unverified[:8]]
                 + [f"uncovered risk: {r}" for r in self.uncovered_risks[:8]]
                 + [f"verification never produced: {p}" for p in self.generation_problems[:8]]
+                + [
+                    f"required by the task and not established: {o}"
+                    for o in self.task_outstanding[:8]
+                ]
             )
             if not reasons:
                 reasons = [
@@ -963,6 +990,7 @@ class RunJournal:
             + [f"not verified — {u}" for u in self.unverified]
             + [f"named as a risk and not covered — {r}" for r in self.uncovered_risks]
             + [f"verification not produced — {p}" for p in self.generation_problems]
+            + [f"required by this run's own task — {o}" for o in self.task_outstanding]
         )
         if outstanding:
             lines.extend(f"- {item}" for item in outstanding[:15])

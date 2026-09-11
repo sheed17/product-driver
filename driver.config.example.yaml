@@ -284,6 +284,29 @@ phase_closure:
   # and prints the exact change plus the command to make it. You or a builder
   # session make the commit under the repository's own rules.
 
+# THE TARGET REPOSITORY'S OWN VERIFICATION FOR WHAT THIS RUN CHANGED.
+#
+# Generated scenarios prove the thing that was built. They cannot prove that the
+# repository's standing guarantees about the SURFACE it was built on still hold —
+# and those guards are the ones that turn red in CI after you push. So when this
+# run's diff touches a surface that carries repository-wide guarantees (persisted
+# schema, migrations, storage), the driver finds the repository's OWN guards over
+# that surface and runs them on the candidate tree before stating push readiness.
+#
+# Nothing here is product-specific: no test name, no table name, no phase. What
+# runs is discovered by reading the repository, and only tests it already has.
+repository_verification:
+  # A change outside those surfaces runs nothing at all. Turning this off means
+  # a run can declare push readiness without having asked.
+  enabled: true
+
+  # A CAP, not a target. Most changes discover none; a change that discovers
+  # twenty has not earned twenty, and the run says how many it did not execute.
+  max_targets: 3
+
+  # Wall clock for ONE discovered guard.
+  timeout_s: 900
+
 # Neyma is normally dirty mid-phase, so this defaults to true.
 
 allow_dirty_tree: true

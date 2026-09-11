@@ -327,10 +327,17 @@ conversation rather than starting a new builder that has to rediscover the work:
 
 ```bash
 .venv/bin/python -m neyma_product_driver status          # find the run id
-.venv/bin/python -m neyma_product_driver run \
-  --resume-run <run-id> \
-  --task "$(cat tasks/neyma_p6_m4.md)"
+.venv/bin/python -m neyma_product_driver run --resume-run <run-id>
 ```
+
+**No `--task` is needed, and normally none should be given.** The run already
+records the task it is verifying, and a resume continues that exact job. Passing
+a `--task` that states a materially different job is **refused**, with both
+statements printed side by side: a resume that silently swapped the task would
+leave the evidence, the scenario plan, the scope and the audit all describing
+one job while the report described another. To change it deliberately, pass
+`--override-task` alongside `--task`; the change is announced and written to
+`task-override.json` in the run directory.
 
 A resumed run also restores its scenario plan. If that plan exists on disk and
 cannot be read, the run **stops** rather than starting over at wave zero: a run
@@ -683,6 +690,68 @@ Nothing about this is a relaxation, and the fail-closed directions are explicit:
   independent-review rule cannot be accepted until that review runs and finds
   nothing blocking.
 
+### A criterion id is not a build unit
+
+A phase contains two kinds of identifier and they are spelled alike: the units
+it is **built from** (`P6/M3`, `P6-CP-3`) and the criteria it is **measured by**
+(`P7-AC-1`). Only the first can be a run's scope. A task that said
+
+> Build P7 completely, according to its explicit P7-AC-1 through P7-AC-17
+> acceptance criteria
+
+resolved as a run building the nested unit `P7/AC-1`, and every later
+layer — audit, review, gate, founder summary — faithfully reported on a task
+nobody had set. Two independent causes, both fixed:
+
+- **`completely` is completion intent.** The completion vocabulary guarded
+  itself against compounds (`complete-stream behaviour`), and that guard also
+  rejected the adverb. `completely`, `fully` and `in full` now say what
+  `complete` says. Explicit phase-completion intent outranks any incidental
+  reference to the phase's criteria.
+- **The repository says which ids are criteria.** The phase's acceptance
+  authority is read before any id in the task is read as a unit, and an id the
+  repository declares as a criterion — or one belonging to the same id family,
+  so `CRIT-23` is recognised from a declared `CRIT-1..5` — can never become the
+  run's build scope. Where the repository declares nothing, the task's own words
+  still decide: an id introduced with a criterion noun, or enumerated as one of
+  a range of siblings, is a criterion. None of this knows what `AC` means, and a
+  repository that spells its criteria differently is read the same way.
+
+Both directions are pinned by regression tests on synthetic ids: a genuine
+nested-unit task stays nested even when its own text spends paragraphs saying
+what accepting the unit does *not* do to the phase, and a whole-phase task that
+enumerates its acceptance criteria stays PHASE scope.
+
+### A run may not report a task finished that its own evidence says is not
+
+The other half of the same failure. A run whose task **is** the phase reported
+`TASK RESULT: VERIFIED`, `MISSING: nothing`, while the repository recorded most
+of that phase's required criteria as unsatisfied — because every check in the
+completion auditor compared a *claim* against the repository, and a modest
+builder report makes no claim. Nobody was asking "is the declared task done?".
+
+That question now has an owner. When the task actually asked for the phase, the
+auditor reads the repository's own criteria and reports every required one that
+is not scored as missing evidence for the task. It invents nothing: a repository
+that declares no criteria produces no demand, an optional criterion is not
+required, and a scored one is not reported owed. The verdict is `UNPROVEN`, not
+`CONTRADICTED` — nobody lied — and the correction tells the builder to keep
+building rather than to roll back a status document it never touched.
+
+The narrowing matters as much as the check. `claims_phase_completion` is the
+strict *default* — a terse task is held to the phase's bar for what it may
+CLAIM — and it is deliberately **not** read as "the founder asked for the
+phase". Only `phase_completion_requested`, set when the task text actually asked,
+opens this. A terse task is not unfinishable, and a nested task is never held to
+criteria describing units it was told not to write.
+
+Scope resolution, the completion audit and the founder summary read one record.
+`shippable` in the summary is conjunctive over the gate, the review, the
+failures, the tree **and** the task's outstanding portions, `journal.task_result`
+and `journal.task_outstanding` are copied from the audit rather than recomputed,
+and `verification_established` is false while anything is outstanding — so the
+two documents cannot print different answers to the same question.
+
 `task-scope.json` and `scoped-completion.json` are written per iteration, and
 the founder summary states the parent phase's position beside the task's.
 
@@ -944,6 +1013,61 @@ requires you: stating acceptance criteria that do not exist, deciding a residual
 whose closure condition is a judgement, repairing Product Driver when a harness
 defect is found, making the acceptance commit, and every push.
 
+## The repository's own verification, before the push boundary
+
+A generated scenario proves that the thing the builder built does what the task
+said. It cannot prove the thing nobody wrote a scenario for: that the *rest of
+the repository's* standing guarantees about the surface the change touched still
+hold. Those guards already exist, the repository already runs them, and they are
+the ones that turn red after you push.
+
+That is not hypothetical. A candidate was reported ready for founder push after
+introducing two persisted tables — twelve green scenarios, a supported
+independent review that reproduced runtime evidence itself — and the target
+repository's own `test_no_new_tenantless_table_appeared`, which refuses a
+persisted table the baseline manifest does not account for, failed in CI on the
+exact tree. Nothing in the run had asked the repository what it already knew.
+
+So an accepting run now asks. From the **diff**, never the task description: if
+what changed touches a surface that carries repository-wide guarantees —
+persisted schema, migrations, storage — the driver finds the repository's own
+standing guards for that surface and runs them on the candidate tree before push
+readiness is stated.
+
+Four properties keep it honest and affordable:
+
+- **Discovered, not configured.** Nothing knows a table name, a test name, a
+  phase or a product. A candidate must speak the surface's vocabulary *and*
+  declare tests about what must or must not appear **across** that surface, and
+  it is ranked by how much of the file is that kind of test — density, not
+  count, so a 66-test feature suite with six schema assertions loses to a
+  ten-test standing guard.
+- **It invents no requirement.** Only tests the repository already has are run. A
+  repository with no standing guard for the surface has that recorded as a fact
+  about the repository, and is not told to grow one.
+- **It is not a suite run.** A change outside those surfaces runs nothing at all;
+  a change inside them runs a capped handful (`repository_verification.max_targets`,
+  default 3), each with its own timeout, and says how many candidates it did not
+  run.
+- **A failure is a product defect; an unrunnable guard is not.** A guard that
+  runs and fails overrides the product evaluator's ACCEPT and goes back to the
+  builder with the repository's own words — *fix the product or the
+  repository's classification of what changed; do not weaken, skip or delete the
+  guard.* A guard that cannot be executed at all (no runner, an import error, a
+  timeout) is an environment fact: it blocks the **claim** that the change was
+  verified, never the change itself, and it is printed as its own sentence.
+
+What is measured is everything **this run** changed — commits it made plus the
+working tree — not just the uncommitted tree. A builder that commits its work
+leaves a clean tree, so a check that read only `git status` at the push boundary
+would see an empty diff and verify nothing, silently.
+
+The record is `repository-verification.json` per iteration, one line in the
+founder summary, and a `blocks_push` that `READY TO SHIP` is conjunctive over.
+Verification never writes to the repository it is verifying: pytest's cache and
+the interpreter's bytecode are both turned off, because an untracked file left
+behind is evidence that two other checks read.
+
 ## The completion auditor
 
 A builder saying something is done is a **claim**, not a fact. Before any
@@ -1000,6 +1124,7 @@ The distinctions it enforces:
 | clean-clone PASS claimed | clean-clone gate ran |
 | a checkpoint commit | the final content commit |
 | a content commit | the status-metadata commit |
+| the builder claimed nothing | the declared task is done |
 
 It also refuses: weighted criteria still PENDING under a COMPLETE claim, a
 status document proving itself, a cited file that does not exist, a receipt

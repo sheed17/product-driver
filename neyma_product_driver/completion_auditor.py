@@ -16,6 +16,7 @@ The distinctions it enforces:
     finalizer claimed            != finalizer ran
     clean-clone PASS claimed     != clean-clone gate ran
     weighted criteria PENDING    => phase is NOT COMPLETE
+    the builder claimed nothing  != the declared task is done
     a status document            cannot prove itself
     confident prose              cannot substitute for missing evidence
     dirty-tree skip              != ordinary approved skip
@@ -1307,6 +1308,20 @@ class CompletionAuditor:
             for name in state.progress.independent_pending:
                 missing.append(f"{name} (requires a session other than the implementing one)")
 
+        # 10b. THE TASK'S OWN BAR.
+        #
+        #      Everything above audits what the builder SAID. This audits what
+        #      the run was ASKED FOR, which is a different question and the one
+        #      a founder is actually asking at the end of a run: is the declared
+        #      task done? A run whose task is the phase owes the phase's required
+        #      criteria, and a builder that claims nothing does not discharge
+        #      them — it simply has not spoken. Without this, a phase-scope run
+        #      with seventeen required criteria PENDING and a modest, honest
+        #      builder report reached VERIFIED with nothing missing, because
+        #      every check above had a claim to compare against and there was no
+        #      claim. That is the false green.
+        missing += self._task_requirements_outstanding(scope, unit)
+
         # 11. Scope overreach. A run asked for one unit inside a phase may not
         #     report the phase forward, score its criteria, open the next phase,
         #     or turn anything on. These are checked as claims about REACH,
@@ -1409,6 +1424,55 @@ class CompletionAuditor:
                 )
             )
         return found
+
+    def _task_requirements_outstanding(
+        self, scope: TaskScope, unit: ActiveUnit
+    ) -> list[str]:
+        """What the DECLARED TASK still owes, read from the repository's criteria.
+
+        Asked only of a run whose task is the phase itself — a nested task owes
+        its own unit's evidence and nothing else, which is the distinction
+        :mod:`~neyma_product_driver.task_scope` exists to hold. For a phase-scope
+        run the arithmetic is the repository's, not this driver's: every
+        criterion the repository marks required and does not mark passed is a
+        required portion of the declared task that is not yet established.
+
+        This invents no requirement. A repository that declares no criteria
+        produces nothing here, and a criterion the repository has already scored
+        produces nothing here either.
+        """
+        if not scope.phase_completion_requested:
+            # The strict default — "no unit could be derived, so the phase's bar
+            # applies" — governs what a CLAIM is measured against. It is not a
+            # statement that the founder asked for the phase, and holding a run
+            # to seventeen criteria because its task was terse is the bar
+            # nothing can clear that this whole module exists to avoid. Only a
+            # task that actually asked for the phase owes the phase.
+            return []
+
+        outstanding: list[str] = []
+        for raw in getattr(unit, "acceptance_criteria", None) or []:
+            if not isinstance(raw, dict):
+                continue
+            required = raw.get("required", raw.get("mandatory", True))
+            if required in (False, "false", "no", 0):
+                continue
+            result = str(raw.get("result") or raw.get("status") or "PENDING").strip().upper()
+            if result in PASSING_RESULTS:
+                continue
+            label = str(
+                raw.get("id") or raw.get("criterion_id") or raw.get("criterion")
+                or raw.get("name") or "criterion"
+            )
+            outstanding.append(
+                f"{label} is required for {scope.scope_id or unit.unit_id} and is "
+                f"recorded {result or 'PENDING'}"
+            )
+        if not outstanding:
+            return []
+
+        asked = f"this run's task asks for {scope.scope_id or unit.unit_id} itself"
+        return [f"{item} ({asked})" for item in outstanding]
 
     def _task_review_outstanding(
         self, scope: TaskScope, satisfying_review: Any = None
@@ -1579,6 +1643,13 @@ class CompletionAuditor:
             )
 
         if missing:
+            if scope is not None and scope.phase_completion_requested and scope.scope_id:
+                return (
+                    AuditDecision.UNPROVEN,
+                    f"{scope.scope_id} cannot be reported complete: required evidence for "
+                    "the declared task is missing.",
+                    0.7,
+                )
             return (
                 AuditDecision.UNPROVEN,
                 "Completion cannot be confirmed: required evidence is missing.",
@@ -1683,6 +1754,28 @@ class CompletionAuditor:
                 "     require a session other than the one that wrote the implementation.",
                 "     Self-adjudication is a defect with a passing status.",
                 "  3. State plainly what remains and who must do it.",
+            ]
+        elif (
+            audit.decision is AuditDecision.UNPROVEN
+            and not audit.contradictions
+            and scope is not None
+            and scope.phase_completion_requested
+        ):
+            # Nothing dishonest happened. The task IS the phase, and the phase
+            # is not finished — so "restore the status documents" would be an
+            # instruction to fix a problem that does not exist, and would read
+            # as an accusation. What is actually owed is the rest of the work.
+            lines += [
+                "",
+                "REQUIRED ACTION — this task is the phase, and the phase is not finished:",
+                f"  1. Keep building {scope.scope_id}. Every portion listed above is required",
+                "     by the task you were given and is not yet established.",
+                "  2. Do NOT close the gap by scoring a criterion, editing a status surface, or",
+                "     describing the phase as complete. It closes by building and proving the",
+                "     work, and by nothing else.",
+                "  3. Where a listed portion can only be settled by an authority other than",
+                "     this session — an independent review, an external verifier — say so",
+                "     plainly and leave it to them.",
             ]
         else:
             lines += [

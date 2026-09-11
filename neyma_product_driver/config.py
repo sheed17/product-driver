@@ -405,6 +405,44 @@ class PhaseClosureConfig(BaseModel):
         return v
 
 
+class RepositoryVerificationConfig(BaseModel):
+    """Running the TARGET repository's own standing guards for what changed.
+
+    Bounded on purpose. This is not "run the suite": it fires only when the diff
+    touches a surface that carries repository-wide guarantees, it executes the
+    few guards the repository itself declares over that surface, and it caps
+    both the number and the time. See
+    :mod:`~neyma_product_driver.repo_verification`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Whether an accepting run asks the repository's own verification about the
+    #: surfaces its diff touched, before push readiness is stated.
+    enabled: bool = True
+
+    #: How many discovered guards may run. A cap, not a target: most changes
+    #: discover none, and a change that discovers twenty has not earned twenty.
+    max_targets: int = 3
+
+    #: Wall clock for ONE discovered guard.
+    timeout_s: int = 900
+
+    @field_validator("max_targets")
+    @classmethod
+    def _bounded_targets(cls, v: int) -> int:
+        if v < 0 or v > 10:
+            raise ValueError("max_targets must be between 0 and 10")
+        return v
+
+    @field_validator("timeout_s")
+    @classmethod
+    def _bounded_timeout(cls, v: int) -> int:
+        if v < 30 or v > 7200:
+            raise ValueError("timeout_s must be between 30 and 7200 seconds")
+        return v
+
+
 class DriverConfig(BaseModel):
     """Top-level configuration for a driver run."""
 
@@ -442,6 +480,9 @@ class DriverConfig(BaseModel):
     )
     review: ReviewPolicyConfig = Field(default_factory=ReviewPolicyConfig)
     phase_closure: PhaseClosureConfig = Field(default_factory=PhaseClosureConfig)
+    repository_verification: RepositoryVerificationConfig = Field(
+        default_factory=RepositoryVerificationConfig
+    )
 
     # Safety switches. All default to the conservative choice.
     allow_dirty_tree: bool = True  # Neyma is normally mid-phase and dirty.

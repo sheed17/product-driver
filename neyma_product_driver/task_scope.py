@@ -60,14 +60,35 @@ _JOINER = r"\s*(?:/|–|—|-|·|:|\|)\s*"
 #: Words a repository uses for "a unit inside a phase".
 _NESTED_NOUN = r"(?:unit|checkpoint|milestone|machine|module|increment|sub-?unit|step|slice|part)"
 
+#: Words a repository or a task uses for "an acceptance criterion of a phase".
+#: A criterion is something the phase is MEASURED by; a unit is something the
+#: phase is BUILT from. An id that the task itself introduces with one of these
+#: nouns is the first kind, whatever its shape.
+_CRITERION_NOUN = (
+    r"(?:acceptance\s+criteri(?:on|a)|acceptance\s+condition(?:s)?|criteri(?:on|a)|"
+    r"acceptance\s+test(?:s)?|acceptance\s+bar)"
+)
+
+#: Range and list joiners. "X through Y" and "X, Y and Z" enumerate a SET, and a
+#: set of sibling ids is never the one nested unit a run was asked to build.
+_RANGE_JOINER = r"(?:through|thru|to|until|and|,|-|–|—|\.\.\.?)"
+
 #: Asking for the phase itself to be finished. Each alternative is guarded
 #: against being the first half of a compound: "complete-stream behaviour" names
 #: a feature, and reading it as a request to complete something is how a task
 #: that says "build one unit" gets heard as "finish the phase".
+#:
+#: The adverbial forms are here for a reason that cost a whole run. "Build P7
+#: completely" is the plainest way a founder writes phase-completion intent, and
+#: `complet(?:e|ing|ion)(?![-\w])` refuses it — "complete" is followed by "ly",
+#: which is a word character — so the task read as claiming nothing about the
+#: phase at all. An adverb is not a compound noun: "completely", "fully" and "in
+#: full" say what "complete" says, and each is listed rather than inferred.
 _PHASE_COMPLETION_VERB = (
-    r"complet(?:e|ing|ion)(?![-\w])|finish(?:ing)?(?![-\w])|clos(?:e|ing)\s+out|"
+    r"complet(?:e|ing|ion|ely)(?![-\w])|finish(?:ing|ed)?(?![-\w])|clos(?:e|ing)\s+out|"
     r"conclud(?:e|ing)(?![-\w])|accept(?:ance)?(?![-\w])|adjudicat(?:e|ion)(?![-\w])|"
-    r"sign\s*-?\s*off|declare\s+done|wrap\s+up"
+    r"sign\s*-?\s*off|declare\s+done|wrap\s+up|fully(?![-\w])|entirel(?:y)(?![-\w])|"
+    r"in\s+full(?![-\w])|in\s+its\s+entirety"
 )
 
 #: A phase id that is really a phase id, and not the stem of a nested unit's:
@@ -79,7 +100,7 @@ def _phase_ref(phase_id: str) -> str:
 #: or has not happened. A task that says "do not mark P6 COMPLETE" is the
 #: opposite of a task that claims phase completion.
 _NEGATED = re.compile(
-    r"\b(?:not|never|cannot|can'?t|isn'?t|won'?t|may\s+not|must\s+not|do\s+not|does\s+not|"
+    r"\b(?:no|not|never|cannot|can'?t|isn'?t|won'?t|may\s+not|must\s+not|do\s+not|does\s+not|"
     r"without|before|until|unless|forbidden|prohibited|refuse[sd]?|premature(?:ly)?|"
     r"remains?|still|pending|awaiting|legitimately)\b",
     re.I,
@@ -281,11 +302,29 @@ def _clean(task: str) -> str:
     return re.sub(r"```.*?```", " ", task or "", flags=re.S)
 
 
+#: Where one sentence ends and the next begins. A denial belongs to its own
+#: sentence: "Finish P6. Do not push it." is a request to finish P6 followed by
+#: a separate instruction, and reading the second as cancelling the first is how
+#: an explicit request becomes invisible.
+_SENTENCE_END = re.compile(r"[.;!?\n]")
+
+
+def _sentence_around(text: str, start: int, end: int, span: int = 120) -> tuple[str, str, str]:
+    """The text either side of a span, clipped to the sentence it sits in."""
+    before = text[max(0, start - span) : start]
+    cut = list(_SENTENCE_END.finditer(before))
+    if cut:
+        before = before[cut[-1].end() :]
+    after = text[end : end + span]
+    stop = _SENTENCE_END.search(after)
+    if stop:
+        after = after[: stop.start()]
+    return before, text[start:end], after
+
+
 def _negated_near(text: str, start: int, end: int) -> bool:
     """True when the sentence around a span turns it into a denial."""
-    before = text[max(0, start - 120) : start]
-    inside = text[start:end]
-    after = text[end : end + 90].split("\n")[0]
+    before, inside, after = _sentence_around(text, start, end)
     return any(_NEGATED.search(chunk) for chunk in (inside, before, after))
 
 
@@ -315,10 +354,164 @@ def _phase_completion_requested(task: str, phase_id: str) -> tuple[bool, str]:
     return False, ""
 
 
-def _nested_unit(task: str, phase_id: str) -> tuple[str, str]:
-    """The unit inside the phase that the task names, and how it was named."""
+def _normalize_id(value: str) -> str:
+    """One spelling for an id, so `P7-AC-1`, `p7 ac 1` and `P7/AC/1` compare equal."""
+    return re.sub(r"[^A-Z0-9]+", "-", str(value or "").upper()).strip("-")
+
+
+def _id_family(value: str) -> str:
+    """An id with its trailing ordinal removed: `P7-AC-1` -> `P7-AC`.
+
+    What a family buys: a repository that declares `P7-AC-1 .. P7-AC-17` has said
+    what *shape* an acceptance criterion has in this phase, so `P7-AC-23` is
+    recognisable as one too — without the driver holding a list of criterion
+    prefixes, and without it knowing that this repository happens to write `AC`.
+    """
+    return re.sub(r"-?\d+(?:[-.]\d+)*$", "", _normalize_id(value)).strip("-")
+
+
+def criterion_vocabulary(repo: Path | None, phase_id: str) -> tuple[set[str], set[str], str]:
+    """The ids, and id families, THIS repository declares as acceptance criteria.
+
+    Read from the repository's own acceptance authority, never from a list kept
+    here. A repository that calls them ``AC-1``, ``CRIT-1`` or ``done-1`` is read
+    the same way, and a repository that declares none contributes nothing — the
+    textual signals below are then the only ones, which is the correct amount of
+    evidence to have.
+
+    Never raises: an unreadable registry means no corroboration, not a failure.
+    """
+    if repo is None or not phase_id:
+        return set(), set(), ""
+    try:
+        from .phase_authority import resolve_phase_authority
+
+        authority = resolve_phase_authority(Path(repo), phase_id)
+    except Exception:  # a registry that cannot be read corroborates nothing
+        return set(), set(), ""
+    ids: set[str] = set()
+    families: set[str] = set()
+    for criterion in authority.criteria.criteria:
+        cid = _normalize_id(getattr(criterion, "criterion_id", ""))
+        if not cid or not re.search(r"\d", cid):
+            # A criterion named only in prose ("core_implementation") cannot be
+            # confused with an id reference, so it contributes no vocabulary.
+            continue
+        ids.add(cid)
+        family = _id_family(cid)
+        if family:
+            families.add(family)
+    source = next((p for p in authority.source_paths if p), "")
+    return ids, families, source
+
+
+def _declared_criterion(
+    token: str, phase_id: str, ids: set[str], families: set[str]
+) -> str:
+    """Whether the repository declares this reference as an acceptance criterion."""
+    for candidate in (_normalize_id(f"{phase_id}-{token}"), _normalize_id(token)):
+        if not candidate:
+            continue
+        if candidate in ids:
+            return f"the repository declares {candidate} as an acceptance criterion"
+        if _id_family(candidate) and _id_family(candidate) in families:
+            return (
+                f"the repository's acceptance criteria for {phase_id} are ids of the form "
+                f"{_id_family(candidate)}-N, so {candidate} names a criterion"
+            )
+    return ""
+
+
+def _reads_as_criterion(text: str, start: int, end: int, token: str, phase_id: str) -> str:
+    """Whether the task's own words make this reference a criterion, not a unit.
+
+    Two signals, both about how the task SPEAKS of the id rather than about the
+    id itself:
+
+    * the task introduces it with a criterion noun — "its explicit P7-AC-1
+      through P7-AC-17 acceptance criteria";
+    * the task enumerates it as one of a RANGE or LIST of siblings. A run is
+      asked to build one nested unit; it is never asked to build "M3 through
+      M17" as a single nested scope. An enumeration is a description of the bar,
+      and reading its first element as the run's scope is how seventeen
+      criteria became one.
+    """
+    # Two windows, deliberately different sizes. A criterion noun has to be
+    # ATTACHED to the reference — "its P7-AC-1 through P7-AC-17 acceptance
+    # criteria" — because a sentence that merely goes on to mention criteria
+    # ("build P6/M3; do not score a criterion") says nothing about what M3 is.
+    near_before, inside, near_after = _sentence_around(text, start, end, span=36)
+    if re.search(_CRITERION_NOUN, f"{near_before}{inside}{near_after}", re.I):
+        return "the task introduces it with a criterion noun"
+
+    before, inside, after = _sentence_around(text, start, end, span=110)
+    around = f"{before}{inside}{after}"
+
+    family = _id_family(f"{phase_id}-{token}")
+    if family:
+        stem = family.split("-")[-1]
+        if stem and not stem.isdigit():
+            sibling = rf"\b{re.escape(phase_id)}?\s*[-/\u00b7]?\s*{re.escape(stem)}-?\d{{1,3}}\b"
+            siblings = re.findall(sibling, around, re.I)
+            if len(siblings) > 1 and re.search(
+                rf"\d\s*{_RANGE_JOINER}\s*(?:{re.escape(phase_id)}[-/\u00b7]\s*)?{re.escape(stem)}",
+                around,
+                re.I,
+            ):
+                return "the task enumerates it as one of a range of sibling ids"
+    return ""
+
+
+#: Asking for the phase to be BUILT, with the phase itself as the object.
+#: Distinct from asking for it to be completed, and read only when the task
+#: names no unit inside the phase: "build P7" with nothing narrower in it is a
+#: request for P7, and a run that treats it as a request for nothing in
+#: particular reports on a task nobody set.
+_PHASE_BUILD_VERB = r"build|implement|deliver|ship|construct|produce"
+
+
+def _phase_build_requested(task: str, phase_id: str) -> tuple[bool, str]:
+    """Does the task ask for the phase itself to be built?
+
+    Stricter about what counts as a reference to the phase than the completion
+    patterns are: "Build P6 / M9" is a request to build M9, and the only thing
+    separating it from "Build P6" is the joiner that follows. An explicit
+    "finish P6" survives a trailing dash; a bare "build P6" must not.
+    """
     if not phase_id:
-        return "", ""
+        return False, ""
+    ref = rf"\b{re.escape(phase_id)}\b(?!\s*[-/\u00b7:|\u2013\u2014]\s*[A-Za-z0-9])"
+    patterns = (
+        rf"\b(?:{_PHASE_BUILD_VERB})\b[^.\n]{{0,20}}?{ref}",
+        rf"{ref}\s+(?:is|must)\s+(?:to\s+be\s+)?(?:{_PHASE_BUILD_VERB})\w*",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, task, re.I):
+            if _negated_near(task, match.start(), match.end()):
+                continue
+            return True, match.group(0).strip()[:160]
+    return False, ""
+
+
+def _nested_unit(
+    task: str,
+    phase_id: str,
+    *,
+    criterion_ids: set[str] | None = None,
+    criterion_families: set[str] | None = None,
+) -> tuple[str, str, list[str]]:
+    """The unit inside the phase that the task names, how it was named, and what
+    it refused to read as a unit on the way.
+
+    A phase has two kinds of identifier inside it and they look alike: units it
+    is BUILT from, and criteria it is MEASURED by. Only the first can be a run's
+    scope. Where the two cannot be told apart, nothing is returned and the
+    caller falls back to the phase — the stricter reading.
+    """
+    if not phase_id:
+        return "", "", []
+    ids = criterion_ids or set()
+    families = criterion_families or set()
     uid = re.escape(phase_id)
     patterns = (
         # "P6 / M3", "P6/M3", "P6 — M3", "P6-CP-3"
@@ -333,14 +526,25 @@ def _nested_unit(task: str, phase_id: str) -> tuple[str, str]:
             "the task names a nested unit by its noun",
         ),
     )
+    refusals: list[str] = []
     for pattern, why in patterns:
         for match in re.finditer(pattern, task, re.I):
             token = match.group(1).upper()
             # "P6 - COMPLETE" is not a unit id, and neither is a bare year.
             if re.fullmatch(r"\d+", token):
                 continue
-            return token, why
-    return "", ""
+            declared = _declared_criterion(token, phase_id, ids, families)
+            textual = _reads_as_criterion(task, match.start(), match.end(), token, phase_id)
+            if declared or textual:
+                refusal = (
+                    f"{phase_id}-{token} is not read as a build unit: "
+                    + "; ".join(r for r in (declared, textual) if r)
+                )
+                if refusal not in refusals:
+                    refusals.append(refusal)
+                continue
+            return token, why, refusals
+    return "", "", refusals
 
 
 def _registry_unit_id(repo: Path | None, phase_id: str, nested: str) -> tuple[str, str]:
@@ -422,7 +626,40 @@ def resolve_task_scope(
             )
 
     claims_phase, phase_phrase = _phase_completion_requested(text, phase_id)
-    nested, nested_why = _nested_unit(text, phase_id)
+
+    # What the repository itself calls an acceptance criterion of this phase.
+    # Read before any id in the task is read as a build unit, because the two
+    # are spelled alike and only the repository knows which is which.
+    criterion_ids, criterion_families, criterion_source = criterion_vocabulary(repo, phase_id)
+    if criterion_ids:
+        derivation.append(
+            f"the repository declares {len(criterion_ids)} acceptance criterion id(s) for "
+            f"{phase_id}"
+            + (f" ({criterion_source})" if criterion_source else "")
+            + "; none of them can be this run's build scope"
+        )
+        if criterion_source and criterion_source not in evidence:
+            evidence.append(criterion_source)
+
+    nested, nested_why, refusals = _nested_unit(
+        text,
+        phase_id,
+        criterion_ids=criterion_ids,
+        criterion_families=criterion_families,
+    )
+    derivation.extend(refusals)
+
+    # A task that names no unit inside the phase and asks for the phase to be
+    # BUILT has asked for the phase. Read only here, after the unit search has
+    # come back empty, so "build P6/M3" is never heard as "build P6".
+    if not nested and not claims_phase:
+        built, build_phrase = _phase_build_requested(text, phase_id)
+        if built:
+            claims_phase, phase_phrase = True, build_phrase
+            derivation.append(
+                f"the task names no unit inside {phase_id} and asks for {phase_id} itself "
+                f"to be built ({build_phrase!r})"
+            )
 
     if nested and not claims_phase:
         scope_id = f"{phase_id}/{nested}"
@@ -432,6 +669,16 @@ def resolve_task_scope(
             "the task does not ask for the parent phase to be completed or accepted, "
             "so phase acceptance is not this run's bar"
         )
+        if repository_unit_id and _declared_criterion(
+            repository_unit_id, phase_id, criterion_ids, criterion_families
+        ):
+            # The corroborating line named a criterion, not a unit. Corroboration
+            # that names the wrong kind of thing is not weaker corroboration.
+            derivation.append(
+                f"the repository's mention of {repository_unit_id} is an acceptance "
+                "criterion id, so it does not corroborate a unit id"
+            )
+            repository_unit_id, repo_source = "", ""
         if repository_unit_id:
             derivation.append(
                 f"the repository names this unit {repository_unit_id} ({repo_source})"
@@ -457,6 +704,12 @@ def resolve_task_scope(
         )
     elif claims_phase:
         derivation.append(f"the task asks for {phase_id} itself ({phase_phrase!r})")
+    elif refusals:
+        derivation.append(
+            "no single build unit could be derived: every id the task names inside the "
+            "phase reads as an acceptance criterion, or as one of an enumerated set, so "
+            "the run is held to the phase's own acceptance bar"
+        )
     else:
         derivation.append(
             "no unit inside the phase could be derived from the task, so the run is held "
@@ -475,6 +728,27 @@ def resolve_task_scope(
         derivation=derivation,
         evidence_paths=evidence,
     )
+
+
+def normalize_task(task: str) -> str:
+    """One spelling of a task, for comparing two statements of the same job.
+
+    Whitespace, case and surrounding punctuation are how the same task gets
+    retyped; anything else is a different job.
+    """
+    return re.sub(r"\s+", " ", str(task or "")).strip().strip("\"'").casefold()
+
+
+def task_identity_differs(persisted: str, supplied: str) -> bool:
+    """Whether two task statements describe materially different jobs.
+
+    Deliberately literal. This is asked at exactly one place — a resume that was
+    handed a ``--task`` — and the only safe answer to "are these the same job?"
+    is one a human can check by reading both. Anything cleverer would be a
+    judgement about intent, and a wrong judgement here silently rewrites what a
+    run is being verified against.
+    """
+    return normalize_task(persisted) != normalize_task(supplied)
 
 
 def _label_for(task: str, scope_id: str) -> str:

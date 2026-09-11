@@ -31,7 +31,7 @@ from .config import (
     load_config,
 )
 from .completion_auditor import AuditDecision, CompletionAuditor
-from .task_scope import resolve_task_scope
+from .task_scope import resolve_task_scope, task_identity_differs
 from .paths import RepositoryPathError
 from .policy import (
     ChangeRisk,
@@ -60,6 +60,7 @@ from .models import (
     RunStatus,
     ScenarioResult,
     redact,
+    utcnow,
 )
 from .protocol_resolver import ProtocolResolver, ProtocolStatus, approve_option
 from .remediation_planner import ApprovalStore, remediation_builder_prompt
@@ -250,6 +251,10 @@ class LoopResult:
     #: inside the loop: it reports where phase acceptance stands and changes no
     #: terminal state. See :mod:`~neyma_product_driver.phase_closure`.
     phase_closure: Any = None
+    #: The target repository's own standing verification for the surfaces this
+    #: run's diff touched, when the diff touched any. See
+    #: :mod:`~neyma_product_driver.repo_verification`.
+    repository_verification: Any = None
 
 
 # --------------------------------------------------------------------------
@@ -339,6 +344,10 @@ async def run_control_loop(
     # Where phase acceptance stands, when this run claims the phase. Computed
     # read-only at the end of the run and carried out for the founder summary.
     phase_closure: dict[str, Any] = {"value": None}
+    # The repository's own verification for the surfaces this run's diff
+    # touched, keyed by the tree it was taken on, so an unchanged tree is never
+    # re-verified and a changed one always is.
+    repo_verification: dict[str, Any] = {"value": None, "commit": "", "files": ""}
     # Watched from before the first builder turn, so "what did this run change"
     # is answerable. An edit that removes or softens a mandatory control makes
     # the change high-consequence whatever else it did, and that is the one
@@ -347,6 +356,11 @@ async def run_control_loop(
 
     authority_watcher = AuthorityWatcher(config.neyma_repo)
     authority_watcher.snapshot()
+
+    # Where the repository stood before this run touched it. Everything the run
+    # changed is measured from here — including the work the builder commits,
+    # which a working-tree read cannot see.
+    base_head = git_snapshot(config.neyma_repo).head_commit
 
     def _terminate(status: RunStatus, decision: EvaluatorDecision, record: IterationRecord) -> LoopResult:
         """The only way out of this loop.
@@ -379,6 +393,7 @@ async def run_control_loop(
             protocol_diagnostics=list(protocol_diagnostics),
             authority_report=authority_watcher.report(),
             phase_closure=phase_closure["value"],
+            repository_verification=repo_verification["value"],
         )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
@@ -1062,6 +1077,105 @@ async def run_control_loop(
                 store.save_completion_audit(iteration, record.completion_audit)
                 emit(f"  after review: {audit.headline}")
 
+            # 6d-ii. THE REPOSITORY'S OWN VERIFICATION FOR WHAT THIS DIFF PUT AT
+            #     RISK. Generated scenarios prove the thing that was built. They
+            #     cannot prove that the repository's standing guarantees about
+            #     the SURFACE it was built on still hold — those guards already
+            #     exist, the repository already runs them, and they are the ones
+            #     that turn red after the founder pushes. A candidate was once
+            #     reported ready for push with twelve green scenarios and a
+            #     supported review, and the target repository's own "no new
+            #     persisted table outside the baseline manifest" guard failed on
+            #     the exact tree in CI.
+            #
+            #     Bounded and discovered: it fires only when the diff touches a
+            #     surface that carries repository-wide guarantees, runs only
+            #     guards the repository itself declares, and caps how many. See
+            #     :mod:`~neyma_product_driver.repo_verification`.
+            if config.repository_verification.enabled:
+                verification = _repository_verification(
+                    config=config,
+                    base_commit=base_head,
+                    head_commit=(record.git.head_commit if record.git else ""),
+                    cache=repo_verification,
+                    emit=emit,
+                )
+                if verification is not None:
+                    record.repository_verification = verification.model_dump(mode="json")
+                    store.write_json(
+                        store.iteration_dir(iteration).relative_to(store.run_dir)
+                        / "repository-verification.json",
+                        record.repository_verification,
+                    )
+                    for line in verification.summary_block().splitlines():
+                        emit(f"  {line}")
+                    if verification.blocks_acceptance:
+                        # The repository refutes the change on its own authority.
+                        # That outranks an ACCEPT from the product evaluator, and
+                        # it is a product defect rather than a ceremony finding:
+                        # the failing guard is the repository's, it ran on this
+                        # tree, and it is what CI will run next.
+                        failures = [r.brief() for r in verification.product_failures]
+                        decision = EvaluatorDecision(
+                            decision=Decision.FIX,
+                            summary=verification.headline(),
+                            problems=failures,
+                            correction_prompt=(
+                                "The repository's OWN verification for the surface this change "
+                                "touched fails on this tree. It is not a generated scenario and "
+                                "not this driver's rule: it is a guard the repository already "
+                                "states, and it is what the external verifier will run next.\n\n"
+                                + "\n".join(f"  - {f}" for f in failures)
+                                + "\n\nFix the product or the repository's own classification "
+                                "of what changed, whichever the guard is actually objecting to. "
+                                "Do not weaken, skip or delete the guard. Preserve every "
+                                "implementation change and every passing scenario, then re-run "
+                                "the named verification."
+                            ),
+                            observed_behavior=decision.observed_behavior,
+                            evidence_paths=[
+                                str(store.iteration_dir(iteration) / "repository-verification.json")
+                            ],
+                            requirement_reference=(
+                                "the target repository's own verification for "
+                                + ", ".join(verification.surfaces)
+                            ),
+                            product_principle_reference=(
+                                "repository authority outranks generated scenarios; a guard the "
+                                "repository already states is not this run's to reinterpret"
+                            ),
+                            scenario=scenario.name,
+                            observed_result="\n".join(failures)[:2000],
+                            expected_result=(
+                                "the repository's own standing verification for the surfaces "
+                                "this change touched passes on this tree"
+                            ),
+                            preserve="All implementation code, all valid evidence, and every acceptance guard.",
+                            retest=(
+                                "re-run the failing repository verification named above; it must "
+                                "pass on the candidate tree before push readiness can be stated"
+                            ),
+                            confidence=0.9,
+                        )
+                        record.decision = decision
+                        _print_decision(decision, emit)
+                        prior_problems = list(decision.problems)
+                        if iteration >= config.max_iterations:
+                            record.notes.append(
+                                "the repository's own verification failed on the final iteration"
+                            )
+                            return _terminate(RunStatus.MAX_ITERATIONS, decision, record)
+                        grounded = render_correction_for_builder(decision)
+                        sent_corrections.append(grounded)
+                        next_prompt = builder_correction_prompt(
+                            grounded, iteration, active_unit_id, feedback_store.render()
+                        )
+                        record.correction_prompt_sent = next_prompt
+                        store.save_iteration(record)
+                        state.iterations.append(record)
+                        store.save_state(state)
+                        continue
+
         # 6e. WHERE PHASE ACCEPTANCE STANDS.
         #
         #     Deterministic, read-only, and it changes no terminal state. A run
@@ -1185,6 +1299,58 @@ async def run_control_loop(
 # --------------------------------------------------------------------------
 # Scenario suites inside the loop
 # --------------------------------------------------------------------------
+
+
+def _repository_verification(
+    *,
+    config: DriverConfig,
+    base_commit: str,
+    head_commit: str,
+    cache: dict[str, Any],
+    emit: Callable[[str], None],
+) -> Any:
+    """Ask the target repository's own guards about the surfaces this diff touched.
+
+    Cached on the tree it was taken against: re-running the repository's guards
+    for an unchanged tree answers a question already answered, and NOT re-running
+    them for a changed one would carry evidence about a tree nobody is shipping.
+    Never raises — a verification that cannot be taken is recorded as exactly
+    that, which blocks the push-readiness claim without inventing a defect.
+    """
+    from .repo_verification import run_changed_files, verify_repository_surfaces
+
+    # Everything this RUN changed, not everything still uncommitted: a builder
+    # that commits its work leaves a clean tree, and asking the tree at the
+    # push boundary would then find nothing to verify.
+    diff_files = run_changed_files(config.neyma_repo, base_commit)
+    if not diff_files:
+        return None
+    fingerprint = "\n".join(sorted(str(f) for f in diff_files))
+    if (
+        cache.get("value") is not None
+        and cache.get("commit") == head_commit
+        and cache.get("files") == fingerprint
+    ):
+        return cache["value"]
+
+    emit("→ checking the repository's own verification for the surfaces this diff touched...")
+    try:
+        verification = verify_repository_surfaces(
+            config.neyma_repo,
+            diff_files,
+            max_targets=config.repository_verification.max_targets,
+            timeout_s=config.repository_verification.timeout_s,
+            commit=head_commit,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        emit(
+            f"  repository verification error: {type(exc).__name__}: {redact(str(exc))}"
+        )
+        return None
+    cache["value"] = verification
+    cache["commit"] = head_commit
+    cache["files"] = fingerprint
+    return verification
 
 
 def _identified_risks(planner: Any) -> Sequence[Any]:
@@ -2445,6 +2611,91 @@ def _preflight_api_key(config: DriverConfig) -> bool:
     return True
 
 
+def _resolve_run_task(
+    args: argparse.Namespace,
+    config: DriverConfig,
+    state: RunState | None,
+    store: EvidenceStore | None = None,
+) -> tuple[str, str]:
+    """Which task this invocation is running, and the problem if it cannot say.
+
+    A saved run already records the job it is verifying, so ``--resume-run``
+    continues THAT job by default: the founder does not retype a thousand-word
+    task to carry on, and — the part that matters more — nothing swaps the job
+    out from under the evidence already gathered against it. A resume handed a
+    ``--task`` that states a different job is refused rather than silently
+    honoured, because the alternative is a run whose scenarios, audit and
+    scope were produced for one task and reported against another.
+
+    ``--override-task`` is the deliberate way to change it. It is loud, it is
+    recorded in the run directory, and it exists because "start a new run" is
+    not always the right answer — a task whose wording was wrong is a real
+    thing to fix mid-flight.
+    """
+    supplied = str(getattr(args, "task", "") or "").strip()
+    override = bool(getattr(args, "override_task", False))
+
+    if state is None:
+        if override:
+            return "", "--override-task only means something on a resume; pass --task instead."
+        return supplied or config.task, ""
+
+    persisted = str(getattr(state, "task", "") or "").strip()
+
+    if not supplied:
+        if not persisted:
+            return config.task, ""
+        note(f"resuming this run's own task ({len(persisted)} chars) — no --task needed")
+        return persisted, ""
+
+    if not persisted:
+        return supplied, ""
+
+    if not task_identity_differs(persisted, supplied):
+        return persisted, ""
+
+    if not override:
+        return "", (
+            f"--task differs from the task run {state.run_id} is verifying, and a resume "
+            "may not silently change what a run is being held to.\n"
+            "  Resume the run's own task by omitting --task, start a new run for the new "
+            "task, or\n"
+            "  pass --override-task with --task to change this run's task deliberately.\n"
+            f"  persisted: {_one_line(persisted)}\n"
+            f"  supplied:  {_one_line(supplied)}"
+        )
+
+    warn(
+        f"--override-task: run {state.run_id} is being re-pointed at a different task.\n"
+        f"  was: {_one_line(persisted)}\n"
+        f"  now: {_one_line(supplied)}"
+    )
+    if store is not None:
+        try:
+            store.write_json(
+                "task-override.json",
+                {
+                    "at": utcnow(),
+                    "run_id": state.run_id,
+                    "previous_task": persisted,
+                    "new_task": supplied,
+                    "note": (
+                        "the founder re-pointed this run at a different task with "
+                        "--override-task; evidence recorded before this point was produced "
+                        "against the previous task"
+                    ),
+                },
+            )
+        except Exception as exc:  # never lose a run over its own audit trail
+            warn(f"could not record the task override: {type(exc).__name__}: {redact(str(exc))}")
+    return supplied, ""
+
+
+def _one_line(text: str, limit: int = 140) -> str:
+    flat = " ".join(str(text or "").split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
 async def cmd_run(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
 
@@ -2495,7 +2746,10 @@ async def cmd_run(args: argparse.Namespace) -> int:
         error(str(exc))
         return 2
 
-    task = args.task or config.task
+    task, task_problem = _resolve_run_task(args, config, state, store if state is not None else None)
+    if task_problem:
+        error(task_problem)
+        return 2
     if not task.strip():
         error("No task given. Pass --task '...' or set 'task:' in the config file.")
         return 2
@@ -3193,6 +3447,18 @@ def _journal_the_outcome(
                 detail=outcome.brief() if hasattr(outcome, "brief") else "",
             )
 
+    # The run's own completion record for its declared task, copied verbatim.
+    # The summary renders THIS rather than re-deriving a verdict, so the two can
+    # never disagree about whether the task was finished.
+    completion = getattr(result.audit, "completion", None) if result.audit is not None else None
+    if completion is not None:
+        journal.task_result = str(
+            getattr(completion.task_result, "value", completion.task_result) or ""
+        )
+        journal.task_outstanding = [redact(str(o)) for o in completion.task_outstanding if str(o).strip()]
+        if completion.task_scope and not journal.task_scope_id:
+            journal.task_scope_id = completion.task_scope
+
     # The review record, before the outcome, so a journal whose outcome copy
     # fails still carries the answer to "was this reviewed, and did the reviewer
     # measure anything itself".
@@ -3401,12 +3667,24 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         or not getattr(result.review_requirement, "required", False)
         or result.satisfying_review is not None
     )
+    # What the run's own completion audit says about the task the run declared.
+    # Read here rather than re-derived: the gate answers "did the scenarios
+    # this run wrote pass", which is a different question from "is the job the
+    # founder asked for finished", and a run that answers only the first cannot
+    # honestly print READY TO SHIP for the second.
+    task_outstanding = _task_outstanding(result)
+    repo_verified = (
+        result.repository_verification is None
+        or not result.repository_verification.blocks_push
+    )
     shippable = (
         result.status is RunStatus.ACCEPTED
         and verified
         and review_ok
         and not failures
         and not dirty
+        and not task_outstanding
+        and repo_verified
     )
 
     header("READY TO SHIP" if shippable else "NOT READY TO SHIP")
@@ -3422,6 +3700,12 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     out(f"  unresolved material findings:  {len(unresolved)}")
     for finding in unresolved[:6]:
         out(f"      - {finding}")
+    out(f"  task completion:               {_task_completion_headline(result)}")
+    for item in task_outstanding[:6]:
+        out(f"      - {item}")
+    if len(task_outstanding) > 6:
+        out(f"      - ... and {len(task_outstanding) - 6} more")
+    out(f"  repository's own verification: {_repo_verification_headline(result)}")
     out(f"  independent review:            {_review_headline(result)}")
     out(f"  phase acceptance:              {_phase_headline(result)}")
     out(f"  local commit:                  {commit or 'none created this run'}")
@@ -3537,6 +3821,14 @@ def _phase_headline(result: LoopResult) -> str:
     return f"{state} — {detail}"
 
 
+def _repo_verification_headline(result: LoopResult) -> str:
+    """One line: what the target repository's own guards said about this tree."""
+    verification = result.repository_verification
+    if verification is None:
+        return "not taken for this run"
+    return verification.headline()
+
+
 def _review_headline(result: LoopResult) -> str:
     """One line: was a review required, did it run, what did it say, did it measure.
 
@@ -3615,6 +3907,13 @@ def _unresolved_findings(result: LoopResult) -> list[str]:
     if result.gate is not None and result.gate.blocks_acceptance:
         findings += [c.brief() for c in result.gate.unverified]
         findings += [r.brief() for r in result.gate.uncovered_risks]
+    verification = getattr(result, "repository_verification", None)
+    if verification is not None:
+        findings += [r.brief() for r in verification.product_failures]
+        findings += [
+            f"the repository's own verification could not be executed: {r.brief()}"
+            for r in verification.infrastructure_problems
+        ]
     if result.reviews and result.reviews[-1].verdict != "SUPPORTED":
         findings += [f"[{f.severity}] {f.finding}" for f in result.reviews[-1].blockers]
     requirement = result.review_requirement
@@ -3696,9 +3995,45 @@ def _founder_action(result: LoopResult, shippable: bool, dirty: str) -> str:
 def _push_readiness(result: LoopResult, shippable: bool, dirty: str, commit: str) -> str:
     if shippable:
         return f"Yes — local commit {commit or '(none)'}; push and merge are yours to perform."
+    outstanding = _task_outstanding(result)
+    if outstanding:
+        return (
+            f"No — the task this run declared is not finished: "
+            f"{len(outstanding)} required portion(s) remain (see above)."
+        )
+    verification = getattr(result, "repository_verification", None)
+    if verification is not None and verification.blocks_push:
+        return f"No — {verification.headline()}"
     if result.status is RunStatus.ACCEPTED and dirty:
         return "Not yet — the accepted work is still uncommitted in the working tree."
     return "No — see the unresolved findings above."
+
+
+def _task_outstanding(result: LoopResult) -> list[str]:
+    """What this run's own completion record says its declared task still owes.
+
+    One reader of one record. The founder summary used to compute shippability
+    from the scenario gate alone, so a run could print VERIFIED and MISSING
+    nothing beside an audit that named required, unbuilt portions of the very
+    task in the heading.
+    """
+    completion = getattr(result.audit, "completion", None) if result.audit is not None else None
+    if completion is None:
+        return []
+    return [str(o) for o in completion.task_outstanding if str(o).strip()]
+
+
+def _task_completion_headline(result: LoopResult) -> str:
+    """One line: what the run's declared task achieved, in the audit's own words."""
+    completion = getattr(result.audit, "completion", None) if result.audit is not None else None
+    if completion is None:
+        return "not assessed — no completion audit ran for this run"
+    verdict = str(getattr(completion.task_result, "value", completion.task_result) or "")
+    scope = completion.task_scope or "the task as written"
+    outstanding = _task_outstanding(result)
+    if outstanding:
+        return f"{scope}: {verdict} — {len(outstanding)} required portion(s) outstanding"
+    return f"{scope}: {verdict} — nothing outstanding"
 
 
 def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
@@ -5739,6 +6074,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--browser", action="store_true", help="enable browser testing")
     run_p.add_argument("--headed", action="store_true", help="show the browser window")
     run_p.add_argument("--resume-run", help="resume a previous run id")
+    run_p.add_argument(
+        "--override-task",
+        action="store_true",
+        help=(
+            "with --resume-run and --task: deliberately re-point the run at a different "
+            "task. Recorded in the run directory. Without it, a --task that differs from "
+            "the run's own task is refused."
+        ),
+    )
     run_p.add_argument("--resume-session", help="resume a specific Claude builder session id")
     run_p.add_argument(
         "--auto-scenarios",

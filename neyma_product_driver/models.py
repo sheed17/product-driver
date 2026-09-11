@@ -347,6 +347,10 @@ class IterationRecord(BaseModel):
     #: nothing that turns one into the other.
     scoped_completion: dict[str, Any] | None = None
     protocol_resolution: dict[str, Any] | None = None
+    #: What the TARGET repository's own standing verification said about the
+    #: surfaces this iteration's diff touched, when it touched any. Kept per
+    #: iteration because the answer is about one tree, and the tree moves.
+    repository_verification: dict[str, Any] | None = None
     investigation: dict[str, Any] | None = None
     independent_review: dict[str, Any] | None = None
     #: Whether this iteration's scoped task owed an independent review, and on
