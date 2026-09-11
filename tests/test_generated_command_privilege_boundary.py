@@ -88,13 +88,16 @@ def _oracle_expectations() -> list[str]:
     raise AssertionError("the oracle has no expectations")
 
 
-def _approved() -> ApprovedCommands:
-    config = load_config(DRIVER_ROOT / "driver.config.yaml")
+def _approved(configured: list[str] | None = None) -> ApprovedCommands:
+    """The approved set the driver builds from the CHECKED-IN scenario corpus.
+
+    A machine's own ``driver.config.yaml`` is git-ignored and may add configured
+    entries to that union; whether it changes anything asked here is a question
+    about that machine, and is asked by the ``local_artifacts`` test at the end
+    of this file rather than by every run of the suite.
+    """
     scenarios = [load_scenario(p) for p in sorted((DRIVER_ROOT / "scenarios").glob("*.y*ml"))]
-    return ApprovedCommands.from_sources(
-        scenarios=scenarios,
-        configured=list(config.scenario_generation.approved_commands),
-    )
+    return ApprovedCommands.from_sources(scenarios=scenarios, configured=list(configured or []))
 
 
 # --------------------------------------------------------------------------
@@ -589,3 +592,19 @@ class TestTheGuardItselfIsUnchanged:
             text = module.read_text(encoding="utf-8")
             assert ADMIN_ORACLE not in text, module.name
             assert "su[d]o" not in text, module.name
+
+
+@pytest.mark.local_artifacts
+class TestThisMachinesConfigChangesNothing:
+    """The default suite asks the checked-in corpus. This asks whether a local
+    ``driver.config.yaml``'s configured entries change any verdict above."""
+
+    def test_the_oracle_is_citable_with_the_local_configuration_too(self):
+        path = DRIVER_ROOT / "driver.config.yaml"
+        if not path.exists():
+            pytest.fail(f"--local-artifacts was requested and {path} is not present")
+        configured = list(load_config(path).scenario_generation.approved_commands)
+        approved = _approved(configured)
+        ok, why = approved.approves(approved.by_name[ADMIN_ORACLE])
+        assert ok, why
+        assert approved.by_name[ADMIN_ORACLE] == _oracle_command().strip()

@@ -1,0 +1,732 @@
+{
+ "_provenance": [
+  "Run 20260827-223525 (P6/M7): the eight generated scenarios of its scenario-plan.json, copied verbatim. The run was never resumed, so this is the plan exactly as the run recorded it before execution. The run directory is local and git-ignored; tests/test_cross_case_oracle_attribution.py::TestTheFixtureIsTheRunsOwn compares this file with it when it is present."
+ ],
+ "run_id": "20260827-223525",
+ "scenarios": [
+  {
+   "id": "p6m7-w1-01",
+   "proposed_id": "",
+   "title": "Eight competing resolutions race one OPEN Conflict — exactly one wins",
+   "purpose": "Drive 8 concurrent resolvers at the same OPEN Conflict and confirm they serialize to a single accepted resolution basis, the rest refused, with no silently chosen winner.",
+   "risk_category": "concurrency",
+   "priority": "P0",
+   "rationale": "Resolution is the moment a disagreement is closed; two winners or two bases would be exactly the silent choice M7 exists to prevent, and only a race exercises the OCC serialization.",
+   "requirement_reference": "AC-MACH-703",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "race eight resolvers",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case competing-resolutions-serialize-at-most-one-wins --inject competing-resolution --concurrency 8 --delay-ms 25 --seed 19",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "COMPETING RESOLUTIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "COMPETING RESOLUTIONS SERIALIZE: ONE WINS, THE REST ARE REFUSED"
+   ],
+   "forbidden_observations": [
+    "### TWO RESOLUTION BASES ACCEPTED ###",
+    "### NEYMA PICKED A WINNER ###",
+    "### CONFLICT AUTO-RESOLVED ###",
+    "### MISS ###",
+    "### NOT REFUSED"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe builds and tears down its own temporary SQLite database per invocation; it mutates no shared or repository state, so no cleanup is required.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R2"
+   ],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Two competing resolutions both commit, accepting two resolution bases or picking a winner, instead of serializing to one.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-02",
+   "proposed_id": "",
+   "title": "Six concurrent detectors coalesce into one Conflict, no party lost",
+   "purpose": "Race six detectors of the same field carrying up to four disagreeing parties and confirm one open Conflict with every party attached, backed by the partial unique index.",
+   "risk_category": "concurrency",
+   "priority": "P0",
+   "rationale": "The whole point of CF-7 plus the partial unique index is that concurrent detection appends rather than duplicating; a check-then-insert race is the classic way this silently produces two open Conflicts.",
+   "requirement_reference": "AC-MACH-707",
+   "product_principle_reference": "known_vs_inferred",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "race six detectors",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case second-detection-attaches-a-party-not-a-new-conflict --inject concurrent-detection --concurrency 6 --delay-ms 40 --parties 4 --seed 17",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "partial unique index over the three open states exists",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); rows=[r[0] for r in c.execute( \\\"select sql from sqlite_master where type='index' and tbl_name='conflicts' and sql is not null\\\")]; key=[s for s in rows if 'UNIQUE' in s and 'entity_ref' in s and 'field' in s and 'tenant' in s and 'WHERE' in s.upper()]; print('one-open-conflict index:', ' '.join(key[0].split()) if key else 'MISSING')\"",
+     "contains": [
+      "one-open-conflict index:",
+      "UNIQUE",
+      "WHERE"
+     ],
+     "not_contains": [
+      "MISSING"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "A SECOND DETECTION ATTACHES A PARTY, NEVER A SECOND CONFLICT",
+    "one-open-conflict index:"
+   ],
+   "forbidden_observations": [
+    "### TWO OPEN CONFLICTS FOR ONE FIELD ###",
+    "### A SECOND CONFLICT WAS RAISED INSTEAD OF A PARTY ###",
+    "### PARTY LOST ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe uses an ephemeral temporary database per run; the schema oracle builds a fresh canonical schema in a temp dir. No shared state, no cleanup.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R1"
+   ],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Concurrent detectors create two open Conflicts, or one overwrites another and loses a party, instead of one Conflict with both parties.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-04",
+   "proposed_id": "",
+   "title": "Confidence 1.0 is a negative control — it resolves nothing",
+   "purpose": "Feed a maximal confidence (1.0) into the resolution path and confirm the Conflict stays unresolved; confidence must change nothing at either extreme.",
+   "risk_category": "authorization",
+   "priority": "P0",
+   "rationale": "A confidence threshold wearing a rule's name is the exact defeat ADR-007 §8 names by hand; pinning confidence at 1.0 is the strongest possible pressure on that guard.",
+   "requirement_reference": "AC-MACH-703",
+   "product_principle_reference": "low_confidence",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "confidence pinned at 1.0",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case confidence-cannot-resolve-a-conflict --inject confidence-resolve --confidence 1.0 --seed 13",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "CONFIDENCE NEVER RESOLVES A CONFLICT"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "CONFIDENCE NEVER RESOLVES A CONFLICT"
+   ],
+   "forbidden_observations": [
+    "### CONFIDENCE RESOLVED A CONFLICT ###",
+    "### CONFLICT AUTO-RESOLVED ###",
+    "### NEYMA PICKED A WINNER ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Ephemeral per-run temporary database; no shared state, no cleanup.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R4"
+   ],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A high confidence value is treated as a resolution basis, silently closing the Conflict.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-06",
+   "proposed_id": "",
+   "title": "A crossed age threshold escalates and never resolves",
+   "purpose": "Advance the durable timer to a full 60s and confirm the Conflict moves OPEN to ESCALATED and stays blocking, never reaching a resolved terminal by the clock.",
+   "risk_category": "boundary",
+   "priority": "P0",
+   "rationale": "CF-5 rides the P5 durable timer substrate; pushing age to the maximum is the boundary where a naive implementation lets a timer close rather than escalate.",
+   "requirement_reference": "AC-MACH-705",
+   "product_principle_reference": "obligation_visibility",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "advance the timer to 60s",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case age-threshold-escalates-the-conflict --inject age-threshold --age-ms 60000 --seed 7",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "A CONFLICT AGES AND ESCALATES"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "A CONFLICT AGES AND ESCALATES"
+   ],
+   "forbidden_observations": [
+    "### TIMER RESOLVED A CONFLICT ###",
+    "### CONFLICT AUTO-RESOLVED ###",
+    "### CONFLICT EXPIRED ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Ephemeral per-run temporary database; no shared state, no cleanup.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R6"
+   ],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "An age crossing resolves the Conflict instead of escalating it, letting a clock resolve freight.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-07",
+   "proposed_id": "",
+   "title": "An escalated Conflict resolves by target state, never by position",
+   "purpose": "Resolve an ESCALATED Conflict and confirm the resolution is attributed by its target state (rule vs human) rather than positionally, with the CHECK requiring the matching basis.",
+   "risk_category": "unexpected_state_transition",
+   "priority": "P1",
+   "rationale": "CF-6 DELEGATES_TO by target state; a positional shortcut would mislabel a rule resolution as human or vice versa and defeat auditability.",
+   "requirement_reference": "AC-MACH-706",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "escalated resolves by target state",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case escalated-resolution-is-by-target-state-never-by-position",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "AN ESCALATED CONFLICT RESOLVES BY TARGET STATE, NEVER BY POSITION"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "resolved states carry the matching basis CHECK",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys,re; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); row=c.execute(\\\"select sql from sqlite_master where name='conflicts'\\\").fetchone(); sql=' '.join((row[0] if row else '').split()); checks=re.findall(r'CHECK\\\\s*\\\\((?:[^()]|\\\\([^()]*\\\\))*\\\\)', sql); rule=[k for k in checks if 'RESOLVED_BY_RULE' in k and 'rule_id' in k]; human=[k for k in checks if 'RESOLVED_BY_HUMAN' in k and 'decision_ref' in k]; cols={r[1]: r for r in c.execute('PRAGMA table_info(conflicts)')}; print('conflict columns:', sorted(cols)); print('RESOLVED_BY_RULE requires rule_id:', bool(rule)); print('RESOLVED_BY_HUMAN requires decision_ref:', bool(human)); print('owner_id NOT NULL:', bool(cols.get('owner_id') and cols['owner_id'][3])); print('entity_ref NOT NULL:', bool(cols.get('entity_ref') and cols['entity_ref'][3])); print('field NOT NULL:', bool(cols.get('field') and cols['field'][3]))\"",
+     "contains": [
+      "RESOLVED_BY_RULE requires rule_id: True",
+      "RESOLVED_BY_HUMAN requires decision_ref: True",
+      "owner_id NOT NULL: True"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "AN ESCALATED CONFLICT RESOLVES BY TARGET STATE, NEVER BY POSITION",
+    "RESOLVED_BY_RULE requires rule_id: True",
+    "RESOLVED_BY_HUMAN requires decision_ref: True"
+   ],
+   "forbidden_observations": [
+    "### ESCALATION RESOLVED BY POSITION ###",
+    "### RESOLVED WITHOUT A RULE OR A DECISION ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe runs are ephemeral; the schema oracle builds a fresh temp canonical schema. No shared state.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R10"
+   ],
+   "confidence": 0.65,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "An escalated resolution is attributed by ordinal position instead of by its RESOLVED_BY_* target state.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-09",
+   "proposed_id": "",
+   "title": "An injected competing claim yields a frozen entity and a human, never control",
+   "purpose": "Inject an attacker-competing claim and confirm the entity freezes and surfaces to a human owner rather than the injected claim gaining control of the field.",
+   "risk_category": "safety_invariant",
+   "priority": "P0",
+   "rationale": "A Conflict is a security control: an injected competing claim must self-surface as a frozen entity plus a human's attention, never as an accepted overwrite or a proceeding action.",
+   "requirement_reference": "AC-SAFE-017",
+   "product_principle_reference": "success_without_verification",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "injected competing claim freezes, not controls",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case injected-competing-claim-freezes-the-entity-not-control",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "AN INJECTED COMPETING CLAIM YIELDS A FROZEN ENTITY AND A HUMAN, NEVER CONTROL"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "AN INJECTED COMPETING CLAIM YIELDS A FROZEN ENTITY AND A HUMAN, NEVER CONTROL"
+   ],
+   "forbidden_observations": [
+    "### CONSEQUENTIAL ACTION PROCEEDED ON AN OPEN CONFLICT ###",
+    "### EFFECT GRANT MINTED ON A CONFLICTED FIELD ###",
+    "### PARTY PROVENANCE STRENGTHENED ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Ephemeral per-run temporary database; no shared state, no cleanup.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R5"
+   ],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "An injected competing claim is silently accepted or lets a consequential action proceed, granting the attacker control instead of freezing the entity.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-10",
+   "proposed_id": "",
+   "title": "Checkpoint step 4 refuses the conflicted field and M7 mints no gate",
+   "purpose": "Confirm an open Conflict projected into the checkpoint native-state types is refused by the existing step 4, and that no module joining the conflict machine mints a gate decision.",
+   "risk_category": "authorization",
+   "priority": "P0",
+   "rationale": "M7 supplies native state and must not become a second gate; the AST oracle proves conflict.py mints no GateRegistry/GateEntry while the probe proves step 4 still refuses.",
+   "requirement_reference": "AC-SAFE-017",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "checkpoint step 4 refuses",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case open-conflict-fails-checkpoint-native-state-validity",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "CHECKPOINT STEP 4 REFUSES A MATERIAL FIELD WITH AN OPEN CONFLICT"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    },
+    {
+     "kind": "command",
+     "name": "m7 mints no gate decision",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case m7-mints-no-gate-decision",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "M7 MINTS NO GATE DECISION"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "conflict.py mints no gate decision",
+     "command": ".venv/bin/python -c \"import ast,pathlib; root=pathlib.Path('src/freight_recon'); mints=[f.name for f in root.rglob('*.py') if any( isinstance(n,ast.Call) and getattr(n.func,'id',getattr(n.func,'attr',None)) in ('GateRegistry','GateEntry') for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))))]; print('modules that MINT a gate decision:', sorted(mints))\"",
+     "contains": [
+      "modules that MINT a gate decision:"
+     ],
+     "not_contains": [
+      "'conflict.py'"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "CHECKPOINT STEP 4 REFUSES A MATERIAL FIELD WITH AN OPEN CONFLICT",
+    "M7 MINTS NO GATE DECISION",
+    "modules that MINT a gate decision:"
+   ],
+   "forbidden_observations": [
+    "### CONSEQUENTIAL ACTION PROCEEDED ON AN OPEN CONFLICT ###",
+    "### EFFECT GRANT MINTED ON A CONFLICTED FIELD ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe runs are ephemeral; the AST oracle only parses source files. No shared mutable state.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R5"
+   ],
+   "confidence": 0.68,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "M7 becomes a second gate authority, or an open Conflict stops failing checkpoint step 4, admitting a consequential action.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  },
+  {
+   "id": "p6m7-w1-11",
+   "proposed_id": "",
+   "title": "Replay rebuilds the complete party set, duplicates nothing, mints no authority",
+   "purpose": "Replay a five-party Conflict twice and confirm the rebuild reconstructs the full party set with zero resolutions, zero duplicate conflicts, zero lost parties, zero new authority, and zero external effects — backed by ConflictPartyAttached being a registered contract.",
+   "risk_category": "retry_safety",
+   "priority": "P0",
+   "rationale": "Without ConflictPartyAttached a full-history rebuild reproduces a stale party set — an AC-EVT-008 digest divergence that AC-EVT-015 escalates to an auto-brake; replaying twice with five parties stresses the union fold and idempotent append.",
+   "requirement_reference": "AC-EVT-008",
+   "product_principle_reference": "failure_recovery",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "replay a five-party conflict twice",
+     "command": ".venv/bin/python scripts/probe_phase6_conflict.py --case replay-rebuilds-the-complete-party-set --inject replay --parties 5 --repeat 2 --seed 29",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "A REBUILD RECONSTRUCTS THE COMPLETE PARTY SET",
+      "replay: 0 resolutions, 0 duplicate conflicts, 0 lost parties, 0 new authority, 0 external effects"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "ConflictPartyAttached is a registered F7 contract and no synonyms exist",
+     "command": ".venv/bin/python -c \"import json,pathlib,re; data=json.loads(pathlib.Path('src/freight_recon/event_contracts_data.json').read_text(encoding='utf-8')); rows=data.get('contracts') or []; byname={r['name']: r for r in rows} if isinstance(rows,list) else {}; print('registered F7 contracts:', sorted(n for n,r in byname.items() if r.get('family')=='F7')); print('ConflictRaised producers:', sorted(byname.get('ConflictRaised',{}).get('producers') or [])); print('ConflictResolved producers:', sorted(byname.get('ConflictResolved',{}).get('producers') or [])); print('ConflictResolved requires exactly one of:', [(sorted(g['members']), g['required']) for g in (byname.get('ConflictResolved',{}).get('one_of') or [])]); print('ConflictOpened declared payload:', [f['name'] for f in (byname.get('ConflictOpened',{}).get('fields') or [])]); print('ConflictEscalated declared payload:', [f['name'] for f in (byname.get('ConflictEscalated',{}).get('fields') or [])]); print('synonym events registered:', sorted(n for n in ('ConflictExpired','ConflictCancelled','ConflictAutoResolved','ConflictWinnerChosen','ConflictDismissed','ConflictDetected') if n in byname)); src=pathlib.Path('src/freight_recon/conflict.py'); print('machine source:', 'present' if src.exists() else 'MISSING conflict.py'); text=src.read_text(encoding='utf-8') if src.exists() else ''; used=sorted(set(re.findall(r'\\\\b(?:Conflict|Compensation|Expectation)[A-Z][A-Za-z]*\\\\b', text))); print('Conflict*/Compensation*/Expectation* names in the machine:', used); print('unregistered names in the machine:', [u for u in used if u not in byname and u != 'ConflictDetected'])\"",
+     "contains": [
+      "ConflictPartyAttached",
+      "synonym events registered: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "A REBUILD RECONSTRUCTS THE COMPLETE PARTY SET",
+    "replay: 0 resolutions, 0 duplicate conflicts, 0 lost parties, 0 new authority, 0 external effects",
+    "ConflictPartyAttached"
+   ],
+   "forbidden_observations": [
+    "### REPLAY REBUILT A STALE PARTY SET ###",
+    "### REPLAY DUPLICATED A CONFLICT ###",
+    "### REPLAY RESOLVED A CONFLICT ###",
+    "### DOWNSTREAM EFFECT DURING REPLAY ###",
+    "### PARTY LOST ###",
+    "### MISS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe runs are ephemeral; the contract oracle only reads event_contracts_data.json and conflict.py. No shared mutable state.",
+   "isolation_key": "probe_phase6_conflict",
+   "generated_from": [
+    "R7"
+   ],
+   "confidence": 0.62,
+   "provenance": {
+    "generated_at": "2026-08-27T22:42:50+00:00",
+    "task_hash": "ae70f38d17384b9d",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "e97e89d",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Replay rebuilds a stale party set, duplicates the Conflict, resolves it, or mints new authority/effect.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "c9368a77-13a5-40b0-816d-309800624641",
+    "kind": "ephemeral"
+   }
+  }
+ ]
+}

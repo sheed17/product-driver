@@ -57,6 +57,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from .context import ActiveUnit, RepositoryContextLoader
+from .criterion_kinds import is_independent_review_criterion
 from .models import redact, utcnow
 from .task_scope import ScopedCompletion, TaskResult, TaskScope, scoped_completion
 
@@ -74,8 +75,9 @@ APPROVED_SKIPS_REL = "docs/implementation/APPROVED-SKIPS.yaml"
 # Narrative surfaces that must not claim completion ahead of the registry.
 NARRATIVE_SURFACES = ("CURRENT.md", "CLAUDE.md", "README.md", "AGENTS.md")
 
-# Criteria that, by construction, cannot be awarded by the implementing session.
-INDEPENDENT_CRITERIA = ("independent_review", "final_adjudication")
+# Which criteria, by construction, cannot be awarded by the implementing session
+# is one vocabulary shared with the review cycle and the phase authority:
+# :func:`~neyma_product_driver.criterion_kinds.is_independent_review_criterion`.
 
 # A criterion contributes weight only when it actually passed.
 PASSING_RESULTS = ("PASS", "PASSED", "COMPLETE")
@@ -150,6 +152,9 @@ class CriterionState(BaseModel):
     criterion: str
     weight: float = 0.0
     result: str = "PENDING"
+    #: The repository's id for it, when it gives one. Read alongside the name,
+    #: because a repository may say what a criterion IS in either.
+    criterion_id: str = ""
 
     @property
     def passed(self) -> bool:
@@ -157,7 +162,7 @@ class CriterionState(BaseModel):
 
     @property
     def is_independent(self) -> bool:
-        return any(k in self.criterion.lower() for k in INDEPENDENT_CRITERIA)
+        return is_independent_review_criterion(self.criterion_id, self.criterion)
 
 
 class WeightedProgress(BaseModel):
@@ -183,6 +188,59 @@ class WeightedProgress(BaseModel):
             self.total_weight > 0
             and bool(self.independent_pending)
             and set(self.pending) == set(self.independent_pending)
+        )
+
+
+class CriterionAccounting(BaseModel):
+    """How one required criterion's IMPLEMENTATION is evidenced, for a run that
+    was asked to build the whole phase.
+
+    Not a score, and nothing here can become one. A whole-phase build owes the
+    work each criterion describes and a pointer at where that work can be
+    checked; whether the work satisfies the criterion is decided by the phase's
+    own acceptance, by a session that did not build it. This record is what the
+    building run hands that acceptance: every pointer is carried into the phase-
+    closure record as evidence nobody has observed yet.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    criterion_id: str
+    name: str = ""
+    #: The repository's own record of the criterion, verbatim. Left untouched.
+    result: str = "PENDING"
+    #: Locators that resolve in the candidate tree: a test node, a probe, a
+    #: battery, a guard.
+    locators: list[str] = Field(default_factory=list)
+    #: Locators cited for it that are not in the candidate tree.
+    unresolved: list[str] = Field(default_factory=list)
+    #: Where the resolving locators came from.
+    sources: list[str] = Field(default_factory=list)
+    #: The builder's own report says this criterion's work is not built yet.
+    reported_unbuilt: bool = False
+
+    @property
+    def evidenced(self) -> bool:
+        return bool(self.locators) and not self.reported_unbuilt
+
+    def outstanding(self, phase: str) -> str:
+        label = self.criterion_id
+        if self.name and self.name != self.criterion_id:
+            label = f"{self.criterion_id} ({self.name})"
+        if self.reported_unbuilt:
+            return (
+                f"{label} is required for {phase} and the builder reports its implementation "
+                "is not yet built"
+            )
+        if self.unresolved:
+            return (
+                f"{label} is required for {phase}; the evidence cited for it "
+                f"({', '.join(self.unresolved[:3])}) is not in the candidate tree"
+            )
+        return (
+            f"{label} is required for {phase} and no implementation evidence in the candidate "
+            "tree is cited for it — name the test, probe or battery that establishes it; its "
+            f"result stays {self.result or 'PENDING'} until phase closure scores it"
         )
 
 
@@ -247,10 +305,26 @@ class CompletionAudit(BaseModel):
     #: The two-level completion record: task result and parent-phase state, side
     #: by side, with no arithmetic between them.
     completion: ScopedCompletion | None = None
+    #: For a whole-phase build: how each builder-owed criterion's implementation
+    #: is evidenced. Handed to phase closure as unobserved evidence.
+    implementation_accounting: list[CriterionAccounting] = Field(default_factory=list)
+    #: For a whole-phase build: criteria a later gate settles — the independent
+    #: review, the external verifier, the residual ledger. Never this run's.
+    left_to_phase_closure: list[str] = Field(default_factory=list)
 
     @property
     def blocks_acceptance(self) -> bool:
         return self.decision is not AuditDecision.VERIFIED
+
+    def implementation_evidence(self) -> dict[str, list[str]]:
+        """Criterion id -> the locators that evidence its implementation, for
+        the criteria the builder has actually accounted for. What phase closure
+        is handed; see :meth:`PhaseClosureController.preflight`."""
+        return {
+            a.criterion_id: list(a.locators)
+            for a in self.implementation_accounting
+            if a.evidenced
+        }
 
     def summary_block(self) -> str:
         """The concise terminal summary."""
@@ -279,6 +353,18 @@ class CompletionAudit(BaseModel):
     def next_safe_action(self) -> str:
         st = self.observed_state
         scope = self.scope
+        if scope is not None and scope.phase_implementation_requested:
+            phase = scope.parent_phase_id or scope.scope_id
+            if self.decision is AuditDecision.VERIFIED:
+                return (
+                    f"hand the {phase} candidate to phase closure (`phase close`); {phase} is "
+                    "not accepted by this run and its criteria stay as recorded"
+                )
+            if self.decision is AuditDecision.UNPROVEN and not self.contradictions:
+                return (
+                    f"keep building {phase}: account for every required criterion with "
+                    "implementation evidence in the tree, without scoring any of them"
+                )
         if (
             self.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW
             and scope is not None
@@ -626,6 +712,7 @@ class CompletionAuditor:
                 criterion=str(c.get("criterion", "")),
                 weight=float(c.get("weight", 0) or 0),
                 result=str(c.get("result", "PENDING")),
+                criterion_id=str(c.get("id") or c.get("criterion_id") or ""),
             )
             for c in unit.acceptance_criteria
         ]
@@ -1020,6 +1107,10 @@ class CompletionAuditor:
         state = self.observe(unit)
         contradictions: list[Contradiction] = []
         missing: list[str] = []
+        # The subset of `missing` that only an independent session can supply,
+        # recorded where each is added, so the routing can tell "only the
+        # review remains" from "the review and other things remain".
+        review_items: list[str] = []
 
         # Whether the *phase* is what this run claims to have finished. Only
         # then does the phase's own acceptance evidence become this run's bar.
@@ -1115,10 +1206,12 @@ class CompletionAuditor:
                     )
                 )
             elif awaiting_review_only:
-                missing.append(
+                item = (
                     f"{unit.unit_id} cannot be recorded COMPLETE: "
                     f"{', '.join(state.progress.independent_pending)} still pending"
                 )
+                missing.append(item)
+                review_items.append(item)
 
         # 4. Full-suite claims must rest on a canonical-suite receipt — when the
         #    repository still says a canonical-suite gate exists. Where it does
@@ -1306,7 +1399,9 @@ class CompletionAuditor:
         # Missing evidence for a completion claim, independent of contradictions.
         if phase_completion_claimed and phase_scope:
             for name in state.progress.independent_pending:
-                missing.append(f"{name} (requires a session other than the implementing one)")
+                item = f"{name} (requires a session other than the implementing one)"
+                missing.append(item)
+                review_items.append(item)
 
         # 10b. THE TASK'S OWN BAR.
         #
@@ -1320,7 +1415,25 @@ class CompletionAuditor:
         #      builder report reached VERIFIED with nothing missing, because
         #      every check above had a claim to compare against and there was no
         #      claim. That is the false green.
-        missing += self._task_requirements_outstanding(scope, unit)
+        #
+        #      WHAT the phase task owes depends on which phase task it is. One
+        #      asked to ACCEPT the phase owes every required criterion satisfied.
+        #      One asked to BUILD the phase owes the implementation every
+        #      builder-owed criterion describes, evidenced in the tree — and
+        #      does not owe the scores, which only phase closure can award.
+        #      Demanding them of a build is a bar that cannot be cleared until
+        #      acceptance has already happened.
+        accounting: list[CriterionAccounting] = []
+        left_to_closure: list[str] = []
+        if scope.phase_implementation_requested:
+            accounting, left_to_closure, implementation_missing = (
+                self._implementation_outstanding(builder_report, scope)
+            )
+            missing += implementation_missing
+        else:
+            task_missing, task_review_items = self._task_requirements_outstanding(scope, unit)
+            missing += task_missing
+            review_items += task_review_items
 
         # 11. Scope overreach. A run asked for one unit inside a phase may not
         #     report the phase forward, score its criteria, open the next phase,
@@ -1342,6 +1455,7 @@ class CompletionAuditor:
             scope=scope,
             phase_completion_claimed=phase_completion_claimed,
             review_outstanding=review_outstanding,
+            review_items=review_items,
         )
 
         audit = CompletionAudit(
@@ -1355,6 +1469,8 @@ class CompletionAuditor:
             confidence=confidence,
             headline=headline,
             scope=scope,
+            implementation_accounting=accounting,
+            left_to_phase_closure=left_to_closure,
         )
         audit.completion = scoped_completion(
             scope,
@@ -1363,12 +1479,13 @@ class CompletionAuditor:
             outstanding=(
                 _dedupe([c.what for c in contradictions] + audit.missing_evidence + review_outstanding)
             ),
-            # The only route to a phase acceptance: the task claimed the phase,
-            # the registry records it COMPLETE, and the audit found nothing
-            # against it. A task-scope run cannot reach this line with True.
+            # The only route to a phase acceptance: the task asked for the
+            # phase to be ACCEPTED, the registry records it COMPLETE, and the
+            # audit found nothing against it. Neither a unit build nor a
+            # whole-phase build can reach this line with True.
             phase_accepted=(
                 decision is AuditDecision.VERIFIED
-                and scope.requires_phase_acceptance
+                and scope.may_record_phase_acceptance
                 and unit.status.upper() == "COMPLETE"
             ),
         )
@@ -1381,6 +1498,8 @@ class CompletionAuditor:
         self, claims: list[CompletionClaim], scope: TaskScope, state: ObservedState
     ) -> list[Contradiction]:
         """Claims that reach past what this run was asked to do."""
+        if scope.phase_implementation_requested:
+            return self._implementation_overreach(claims, scope, state)
         if not scope.is_nested:
             return []
         found: list[Contradiction] = []
@@ -1425,32 +1544,206 @@ class CompletionAuditor:
             )
         return found
 
+    def _implementation_overreach(
+        self, claims: list[CompletionClaim], scope: TaskScope, state: ObservedState
+    ) -> list[Contradiction]:
+        """What the run that BUILT the phase may not say about accepting it.
+
+        Building every unit of a phase is not accepting it, scoring its
+        criteria, adjudicating it or opening what comes after it — and the
+        session that built it is precisely the session that may not do any of
+        those, because the phase's acceptance is defined as a judgement from
+        outside the build lineage.
+        """
+        phase = scope.parent_phase_id or scope.scope_id
+        recorded = (state.active_unit_status or scope.parent_phase_state or "").upper()
+        already_accepted = recorded in ("COMPLETE", "ACCEPTED", "PHASE_ACCEPTANCE_COMPLETE")
+        observed = (
+            f"this run was asked to BUILD {phase}; {phase} is recorded "
+            f"{scope.phase_state_text}, and only phase closure — external verification and "
+            "an independent adjudication — accepts it"
+        )
+        found: list[Contradiction] = []
+        types = {c.claim_type for c in claims}
+        if not already_accepted and any(
+            c.claim_type is ClaimType.PHASE_COMPLETE and _same_unit(c.claimed_value, phase)
+            for c in claims
+        ):
+            found.append(
+                Contradiction(
+                    what=f"{phase} declared complete by the run that built it",
+                    claimed=f"{phase} is COMPLETE",
+                    observed=observed,
+                    authority=REGISTRY_REL,
+                )
+            )
+        for claim_type, what, claimed in (
+            (
+                ClaimType.CRITERION_PASS,
+                "a phase acceptance criterion scored by the run that built the phase",
+                "an acceptance criterion is satisfied",
+            ),
+            (
+                ClaimType.ADJUDICATION,
+                "phase adjudication claimed by the run that built the phase",
+                "adjudication is complete",
+            ),
+            (
+                ClaimType.NEXT_PHASE_UNBLOCKED,
+                "a later phase declared unblocked by the run that built this one",
+                "the next phase is unblocked",
+            ),
+            (
+                ClaimType.LIVE_ENABLEMENT,
+                "live or production enablement claimed by a build run",
+                "the capability is enabled",
+            ),
+        ):
+            if claim_type in types:
+                found.append(
+                    Contradiction(what=what, claimed=claimed, observed=observed, authority=REGISTRY_REL)
+                )
+        return found
+
+    def _implementation_outstanding(
+        self, report: str, scope: TaskScope
+    ) -> tuple[list[CriterionAccounting], list[str], list[str]]:
+        """What a WHOLE-PHASE BUILD still owes: the implementation, evidenced.
+
+        Returns the per-criterion accounting, the criteria left to phase closure,
+        and the outstanding items.
+
+        The bar, and why it is this bar:
+
+        * every REQUIRED criterion the repository has not already scored, and
+          that no later gate settles, owes implementation evidence — a locator
+          that resolves in the candidate tree (a test node, a probe, a battery,
+          a guard), either recorded by the repository against the criterion or
+          cited for it by id in the builder's report;
+        * a criterion the builder itself reports as not built is outstanding
+          whatever it cites;
+        * the checkpoints the repository expects must have landed;
+        * a criterion settled by a later gate — the independent review, the
+          external verifier, the residual ledger — owes nothing here and may be
+          claimed by nothing here. It is listed as phase closure's.
+
+        What it deliberately does not ask for is a PASS. The repository keeps its
+        criteria PENDING until the phase's own acceptance scores them, and an
+        implementing run that could only finish once they were scored would be
+        waiting on an act that happens after it — and that its own session is
+        forbidden to perform.
+
+        Resolution uses exactly the machinery the phase-closure preflight uses
+        (``_locators_in`` and ``RepoIndex``), so "evidenced" means here what it
+        means at closure: the artifact is in the tree. Whether it establishes
+        the criterion is the adjudication's question.
+
+        This invents no requirement. A repository that states no criteria for
+        the phase owes nothing here, and says so at closure as AUTHORITY_GAP.
+        """
+        from .criterion_kinds import GATE_KINDS, criterion_kind
+        from .phase_authority import resolve_phase_authority
+        from .phase_closure import RepoIndex, _locators_in
+
+        phase = scope.parent_phase_id or scope.scope_id
+        try:
+            authority = resolve_phase_authority(self.repo, phase)
+        except Exception:  # an unreadable registry owes nothing and invents nothing
+            return [], [], []
+        if not authority.declared:
+            return [], [], []
+
+        index = RepoIndex(self.repo)
+        clauses = _report_clauses(report)
+        accounting: list[CriterionAccounting] = []
+        left: list[str] = []
+        outstanding: list[str] = []
+
+        expected, landed = authority.checkpoints_expected, len(authority.checkpoints)
+        if expected and landed < expected:
+            outstanding.append(
+                f"{phase} expects {expected} landed checkpoint(s) and the repository records "
+                f"{landed}; the phase's canonical scope is not yet built"
+            )
+
+        for criterion in authority.criteria.required:
+            kind = criterion_kind(criterion.criterion_id, criterion.name, criterion.requirement)
+            if kind in GATE_KINDS:
+                left.append(criterion.criterion_id)
+                continue
+            if criterion.passed:
+                continue
+            entry = CriterionAccounting(
+                criterion_id=criterion.criterion_id,
+                name=criterion.name,
+                result=criterion.result,
+            )
+            for loc in _locators_in(criterion.recorded_evidence):
+                if index.resolve(loc) and loc not in entry.locators:
+                    entry.locators.append(loc)
+                    if "repository record" not in entry.sources:
+                        entry.sources.append("repository record")
+            mention = _criterion_mention(criterion.criterion_id, criterion.name, phase)
+            for clause in clauses:
+                if not mention.search(clause):
+                    continue
+                cited = _locators_in(clause)
+                for loc in cited:
+                    if index.resolve(loc):
+                        if loc not in entry.locators:
+                            entry.locators.append(loc)
+                        if "builder report" not in entry.sources:
+                            entry.sources.append("builder report")
+                    elif loc not in entry.unresolved and "/" in loc:
+                        entry.unresolved.append(loc)
+                if _reports_unbuilt(clause, cited):
+                    entry.reported_unbuilt = True
+            accounting.append(entry)
+            if not entry.evidenced:
+                outstanding.append(entry.outstanding(phase))
+
+        if outstanding:
+            asked = f"this run's task asks for {phase} to be built"
+            outstanding = [f"{item} ({asked})" for item in outstanding]
+        return accounting, left, outstanding
+
     def _task_requirements_outstanding(
         self, scope: TaskScope, unit: ActiveUnit
-    ) -> list[str]:
-        """What the DECLARED TASK still owes, read from the repository's criteria.
+    ) -> tuple[list[str], list[str]]:
+        """What a phase-ACCEPTANCE task still owes, read from the repository's
+        criteria. Returns (outstanding, the subset only an independent session
+        can supply).
 
-        Asked only of a run whose task is the phase itself — a nested task owes
-        its own unit's evidence and nothing else, which is the distinction
-        :mod:`~neyma_product_driver.task_scope` exists to hold. For a phase-scope
-        run the arithmetic is the repository's, not this driver's: every
-        criterion the repository marks required and does not mark passed is a
-        required portion of the declared task that is not yet established.
+        Asked only of a run whose task is to accept the phase itself — a nested
+        task owes its own unit's evidence and nothing else, and a whole-phase
+        build owes the implementation (see :meth:`_implementation_outstanding`),
+        which is the distinction :mod:`~neyma_product_driver.task_scope` exists
+        to hold. For an acceptance the arithmetic is the repository's, not this
+        driver's: every criterion the repository marks required and does not
+        mark passed is a required portion of the declared task that is not yet
+        established.
+
+        A criterion only an independent session may award is named as exactly
+        that, so a phase whose sole open obligation is its review is routed to
+        the review rather than reported as generically unproven.
 
         This invents no requirement. A repository that declares no criteria
         produces nothing here, and a criterion the repository has already scored
         produces nothing here either.
         """
-        if not scope.phase_completion_requested:
+        if not scope.phase_acceptance_requested:
             # The strict default — "no unit could be derived, so the phase's bar
             # applies" — governs what a CLAIM is measured against. It is not a
             # statement that the founder asked for the phase, and holding a run
             # to seventeen criteria because its task was terse is the bar
             # nothing can clear that this whole module exists to avoid. Only a
-            # task that actually asked for the phase owes the phase.
-            return []
+            # task that actually asked for the phase's acceptance owes it.
+            return [], []
 
+        target = scope.scope_id or unit.unit_id
+        asked = f"this run's task asks for {target} to be accepted"
         outstanding: list[str] = []
+        review_only: list[str] = []
         for raw in getattr(unit, "acceptance_criteria", None) or []:
             if not isinstance(raw, dict):
                 continue
@@ -1460,19 +1753,20 @@ class CompletionAuditor:
             result = str(raw.get("result") or raw.get("status") or "PENDING").strip().upper()
             if result in PASSING_RESULTS:
                 continue
-            label = str(
-                raw.get("id") or raw.get("criterion_id") or raw.get("criterion")
-                or raw.get("name") or "criterion"
-            )
-            outstanding.append(
-                f"{label} is required for {scope.scope_id or unit.unit_id} and is "
-                f"recorded {result or 'PENDING'}"
-            )
-        if not outstanding:
-            return []
-
-        asked = f"this run's task asks for {scope.scope_id or unit.unit_id} itself"
-        return [f"{item} ({asked})" for item in outstanding]
+            criterion_id = str(raw.get("id") or raw.get("criterion_id") or "")
+            name = str(raw.get("criterion") or raw.get("name") or "")
+            label = criterion_id or name or "criterion"
+            if is_independent_review_criterion(criterion_id, name):
+                item = (
+                    f"{label} is required for {target} and may only be awarded by an "
+                    f"independent review from a session that did not build it; it is recorded "
+                    f"{result or 'PENDING'} ({asked})"
+                )
+                review_only.append(item)
+            else:
+                item = f"{label} is required for {target} and is recorded {result or 'PENDING'} ({asked})"
+            outstanding.append(item)
+        return outstanding, review_only
 
     def _task_review_outstanding(
         self, scope: TaskScope, satisfying_review: Any = None
@@ -1594,12 +1888,34 @@ class CompletionAuditor:
         scope: TaskScope | None = None,
         phase_completion_claimed: bool = False,
         review_outstanding: list[str] | None = None,
+        review_items: list[str] | None = None,
     ) -> tuple[AuditDecision, str, float]:
         if contradictions:
             return (
                 AuditDecision.CONTRADICTED,
                 "The repository contradicts the builder's completion claims.",
                 0.9,
+            )
+
+        # A run asked to BUILD the whole phase is judged on the build. Its
+        # criteria's scores, and the review only a non-builder may give, are
+        # what phase closure establishes next — asking for them here is asking
+        # the building run to wait for the act it hands its work to.
+        if scope is not None and scope.phase_implementation_requested:
+            phase = scope.parent_phase_id or scope.scope_id
+            if missing:
+                return (
+                    AuditDecision.UNPROVEN,
+                    f"{phase} implementation is not complete: required implementation "
+                    "evidence is missing.",
+                    0.7,
+                )
+            return (
+                AuditDecision.VERIFIED,
+                f"{phase} IMPLEMENTATION VERIFIED — READY FOR PHASE CLOSURE. {phase} is not "
+                f"accepted by this run and remains {scope.phase_state_text}; its criteria stay "
+                "as the repository records them until phase closure scores them.",
+                0.85,
             )
 
         # A run asked for one unit inside a phase is judged on that unit. The
@@ -1635,7 +1951,14 @@ class CompletionAuditor:
             for c in claims
         )
 
-        if state.progress.only_independent_remains:
+        # Only the criteria a single session structurally cannot award remain,
+        # and NOTHING ELSE is missing: that is precisely a review owed by a
+        # fresh session that did not build the work, not an unproven claim. A
+        # receipt, a checkpoint or any other criterion still missing beside it
+        # is not "only the review" — spending the scarcest thing in the system
+        # on a phase that is not ready for it is the wrong route.
+        other_missing = [m for m in missing if m not in set(review_items or [])]
+        if state.progress.only_independent_remains and not other_missing:
             return (
                 AuditDecision.REQUIRES_INDEPENDENT_REVIEW,
                 "IMPLEMENTED — AWAITING INDEPENDENT REVIEW",
@@ -1643,11 +1966,11 @@ class CompletionAuditor:
             )
 
         if missing:
-            if scope is not None and scope.phase_completion_requested and scope.scope_id:
+            if scope is not None and scope.phase_acceptance_requested and scope.scope_id:
                 return (
                     AuditDecision.UNPROVEN,
-                    f"{scope.scope_id} cannot be reported complete: required evidence for "
-                    "the declared task is missing.",
+                    f"{scope.scope_id} cannot be accepted: required evidence for the declared "
+                    "task is missing.",
                     0.7,
                 )
             return (
@@ -1710,6 +2033,19 @@ class CompletionAuditor:
                 f"score a {scope.parent_phase_id} criterion, and do not edit a status surface "
                 f"to move {scope.parent_phase_id}. What follows is about {scope.scope_id}.",
             ]
+        elif scope is not None and scope.phase_implementation_requested:
+            phase = scope.parent_phase_id or scope.scope_id
+            lines += [
+                f"This run was asked to BUILD {phase} — the whole phase, as implementation.",
+                f"{phase} is recorded {scope.phase_state_text}. This run does not accept it: "
+                "its criteria stay as the repository records them until phase closure scores "
+                "them, and that is not a gap in your work.",
+            ]
+            if audit.left_to_phase_closure:
+                lines.append(
+                    "Settled by phase closure, not by you: "
+                    + ", ".join(audit.left_to_phase_closure)
+                )
         else:
             lines += [
                 f"Active unit: {unit.unit_id} (registry status: {unit.status})",
@@ -1745,21 +2081,45 @@ class CompletionAuditor:
                 "  3. State plainly what remains and who must do it.",
             ]
         elif audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
+            pending = ", ".join(st.progress.independent_pending) or "the independent-review criteria"
             lines += [
                 "",
                 "REQUIRED ACTION — honest status, then stop:",
                 "  1. Record the state as IMPLEMENTED, NOT COMPLETE. The implementation may",
                 "     stand; the acceptance does not.",
-                "  2. Do NOT mark the independent-review or final-adjudication criteria. They",
-                "     require a session other than the one that wrote the implementation.",
-                "     Self-adjudication is a defect with a passing status.",
+                f"  2. Do NOT mark {pending}. Only a fresh session that did not build the",
+                "     work may award it; the next step is that review, taken from outside",
+                "     the build lineage. Self-adjudication is a defect with a passing status.",
                 "  3. State plainly what remains and who must do it.",
             ]
         elif (
             audit.decision is AuditDecision.UNPROVEN
             and not audit.contradictions
             and scope is not None
-            and scope.phase_completion_requested
+            and scope.phase_implementation_requested
+        ):
+            # Nothing dishonest happened. The task is the phase's IMPLEMENTATION
+            # and some of it is not built or not pointed at yet. The criteria's
+            # scores are not owed and must not be offered.
+            lines += [
+                "",
+                "REQUIRED ACTION — this task is the phase's implementation, and the phase is "
+                "not finished:",
+                f"  1. Keep building {scope.parent_phase_id or scope.scope_id}. Every portion "
+                "listed above is required by the task you",
+                "     were given and is not yet built, or not yet pointed at.",
+                "  2. Account for every required criterion by id in your report: name the test,",
+                "     probe or battery in the tree that establishes it, or say it is NOT",
+                "     IMPLEMENTED yet.",
+                "  3. Do NOT close the gap by scoring a criterion, editing a status surface, or",
+                "     describing the phase as complete or accepted. Phase closure scores the",
+                "     criteria; your job is the work and the pointers to it.",
+            ]
+        elif (
+            audit.decision is AuditDecision.UNPROVEN
+            and not audit.contradictions
+            and scope is not None
+            and scope.phase_acceptance_requested
         ):
             # Nothing dishonest happened. The task IS the phase, and the phase
             # is not finished — so "restore the status documents" would be an
@@ -1822,6 +2182,70 @@ def _sentence_window(text: str, start: int, end: int) -> tuple[str, str]:
     match = _SENTENCE_BREAK.search(after)
     after = after[: match.start()] if match else after
     return before.replace("\n", " "), after.replace("\n", " ")
+
+
+#: Where one statement about a criterion ends. A report line that accounts for
+#: two criteria in two sentences is two statements, and a "not yet built" in the
+#: second must not be read against the first. A full stop only ends a statement
+#: when a capital follows, because locators are full of dots.
+_CLAUSE_BREAK = re.compile(r"\n|;\s+|(?<=[.!?])\s+(?=[A-Z])")
+
+#: The builder saying a criterion's work does not exist yet. Read only inside a
+#: clause that names the criterion, with every locator removed first, so a test
+#: called ``test_not_implemented_refuses`` is not a confession.
+_UNBUILT = re.compile(
+    r"\bnot\s+(?:yet\s+)?(?:implemented|built|landed|done|started|written|complete(?:d)?)\b|"
+    r"\bunimplemented\b|\bunbuilt\b|\bincomplete\b|"
+    r"\bremains?\s+(?:to\s+be\s+)?(?:built|implemented|written|done|open|outstanding|unbuilt)\b|"
+    r"\bstill\s+(?:to\s+(?:do|build|be\s+built)|missing|unbuilt|outstanding)\b|"
+    r"\b(?:TODO|WIP)\b",
+    re.I,
+)
+_UNBUILT_DENIED = re.compile(r"\b(?:no|none|nothing|nor|neither)\b[^.;\n]{0,25}$", re.I)
+
+
+def _report_clauses(report: str) -> list[str]:
+    return [c for c in _CLAUSE_BREAK.split(report or "") if c and c.strip()]
+
+
+def _criterion_mention(criterion_id: str, name: str, phase_id: str) -> re.Pattern[str]:
+    """How a report refers to one criterion: by its id — with or without the
+    phase prefix, in any separator — or by its short name.
+
+    ``P7-AC-3``, ``p7 ac 3``, ``AC-3`` and ``AC3`` all name the same criterion
+    and none of them names ``AC-31``.
+    """
+    alternatives: list[str] = []
+    parts = [p for p in re.split(r"[^A-Za-z0-9]+", criterion_id or "") if p]
+    if parts:
+        sep = r"[\s\-_/.·]*"
+        phase_parts = [p for p in re.split(r"[^A-Za-z0-9]+", phase_id or "") if p]
+        if phase_parts and [p.upper() for p in parts[: len(phase_parts)]] == [
+            p.upper() for p in phase_parts
+        ] and len(parts) > len(phase_parts):
+            prefix = sep.join(re.escape(p) for p in parts[: len(phase_parts)])
+            rest = sep.join(re.escape(p) for p in parts[len(phase_parts) :])
+            alternatives.append(rf"(?:{prefix}{sep})?{rest}")
+        else:
+            alternatives.append(sep.join(re.escape(p) for p in parts))
+    if name and len(name) >= 6 and name != criterion_id:
+        alternatives.append(re.escape(name))
+    if not alternatives:
+        return re.compile(r"(?!x)x")
+    return re.compile(
+        rf"(?<![A-Za-z0-9])(?:{'|'.join(alternatives)})(?![A-Za-z0-9])", re.I
+    )
+
+
+def _reports_unbuilt(clause: str, locators: list[str]) -> bool:
+    text = clause
+    for loc in locators:
+        text = text.replace(loc, " ")
+    for match in _UNBUILT.finditer(text):
+        if _UNBUILT_DENIED.search(text[: match.start()]):
+            continue
+        return True
+    return False
 
 
 def _same_unit(a: str, b: str) -> bool:

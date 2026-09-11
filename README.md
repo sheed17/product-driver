@@ -663,14 +663,20 @@ parent_phase_state:   IN_PROGRESS    where the repository says the phase is
 ```
 
 The scope is resolved **once, before the builder is asked for anything**, from
-the product owner's task text and the repository's own registry. It answers one
-question: *does this task claim to complete the parent phase, or not?*
+the product owner's task text and the repository's own registry. It answers
+*what the task asks to happen*, and there are three different answers:
 
-If it does not, the phase's acceptance contract is not this run's bar. A task
-asked to build one machine out of thirteen produces the evidence that machine
-owes and is judged on it — it is not measured against twelve units it was told
-not to write. If it does — "complete P6", "take P6 through phase acceptance" —
-every phase-level check applies exactly as before.
+| intent | asked as | owes | may never |
+|---|---|---|---|
+| `UNIT_IMPLEMENTATION` | "build P6 / M3" | that unit's evidence | move the phase |
+| `PHASE_IMPLEMENTATION` | "build P7 completely", "finish P7", "implement P7 in full" | the implementation every builder-owed criterion describes, pointed at in the tree | score a criterion, accept the phase, unblock what follows |
+| `PHASE_ACCEPTANCE` | "accept P7", "close P7", "adjudicate / sign off P7", "take P7 through phase acceptance" | the full phase bar: every required criterion satisfied | be satisfied by the builder's own say-so |
+
+A task asked to build one machine out of thirteen produces the evidence that
+machine owes and is judged on it — it is not measured against twelve units it
+was told not to write. A task that names no unit and asks for nothing explicit
+is held to the phase's bar for what it may *claim*, and owes nothing on the
+phase's behalf.
 
 Nothing about this is a relaxation, and the fail-closed directions are explicit:
 
@@ -720,7 +726,8 @@ nobody had set. Two independent causes, both fixed:
 Both directions are pinned by regression tests on synthetic ids: a genuine
 nested-unit task stays nested even when its own text spends paragraphs saying
 what accepting the unit does *not* do to the phase, and a whole-phase task that
-enumerates its acceptance criteria stays PHASE scope.
+enumerates its acceptance criteria stays PHASE scope — as implementation, not
+as acceptance (see [Building a phase is not accepting it](#building-a-phase-is-not-accepting-it)).
 
 ### A run may not report a task finished that its own evidence says is not
 
@@ -730,20 +737,82 @@ of that phase's required criteria as unsatisfied — because every check in the
 completion auditor compared a *claim* against the repository, and a modest
 builder report makes no claim. Nobody was asking "is the declared task done?".
 
-That question now has an owner. When the task actually asked for the phase, the
-auditor reads the repository's own criteria and reports every required one that
-is not scored as missing evidence for the task. It invents nothing: a repository
-that declares no criteria produces no demand, an optional criterion is not
-required, and a scored one is not reported owed. The verdict is `UNPROVEN`, not
+That question now has an owner, and what it asks depends on which phase task
+the run was given (next section). A task asked to **accept** the phase owes every
+required criterion satisfied: the auditor reads the repository's own criteria and
+reports every required one that is not scored. A task asked to **build** the
+phase owes the implementation: every builder-owed criterion pointed at by
+evidence in the candidate tree. Either way it invents nothing: a repository that
+declares no criteria produces no demand, an optional criterion is not required,
+and a scored one is not reported owed. The verdict is `UNPROVEN`, not
 `CONTRADICTED` — nobody lied — and the correction tells the builder to keep
 building rather than to roll back a status document it never touched.
 
 The narrowing matters as much as the check. `claims_phase_completion` is the
 strict *default* — a terse task is held to the phase's bar for what it may
 CLAIM — and it is deliberately **not** read as "the founder asked for the
-phase". Only `phase_completion_requested`, set when the task text actually asked,
-opens this. A terse task is not unfinishable, and a nested task is never held to
-criteria describing units it was told not to write.
+phase". Only an explicit request opens this. A terse task is not unfinishable,
+and a nested task is never held to criteria describing units it was told not to
+write.
+
+### Building a phase is not accepting it
+
+Reading "build P7 completely" as whole-phase work was right. Reading it as
+whole-phase **acceptance** was the next defect: the run was held to every one of
+P7's criteria already scored PASS — while the repository keeps them PENDING
+until its own phase closure awards them, through an adjudicator outside the
+build lineage. Nothing the building run could do would ever score them, so a
+complete implementation could only end at `MAX_ITERATIONS`, waiting on the act
+it exists to hand its work to.
+
+A `PHASE_IMPLEMENTATION` run is now judged on the build:
+
+- **What it owes.** Every required criterion the repository has not already
+  scored, and that no later gate settles, needs implementation evidence: a
+  locator that resolves in the candidate tree — a test node, a probe, a battery,
+  a guard — recorded against the criterion by the repository or cited for it by
+  id in the builder's report (`P7-AC-3: IMPLEMENTED — eval/tests/…::test_…`). A
+  criterion the builder reports as not built is outstanding whatever it cites,
+  and the checkpoints the repository expects must have landed. Resolution uses
+  the phase-closure preflight's own machinery, so "evidenced" means here what it
+  means at closure: the artifact is in the tree.
+- **What it does not owe, and may not claim.** A PASS on any criterion; the
+  independent-review, external-verification (CI) and residual-ledger criteria,
+  which are listed as phase closure's; the phase's acceptance; anything after
+  it. Claiming any of those — "P7 is COMPLETE", "the criteria are satisfied",
+  "P8 is unblocked", "adjudication complete" — is `CONTRADICTED`.
+- **Where it ends.** `IMPLEMENTATION VERIFIED — READY FOR PHASE CLOSURE`. The
+  run terminates `ACCEPTED` as a run; the scoped record says the task is
+  verified, `parent_phase_accepted: false`, and lists what it does not imply.
+  `parent_phase_accepted` can only ever be true for a `PHASE_ACCEPTANCE` task.
+- **The hand-off.** The locators the builder pointed each criterion at are
+  recorded in this run's own `phase-closure.json` by the existing controller, as
+  evidence **nobody outside the build lineage has observed** — the preflight's
+  `UNOBSERVED`, never `ESTABLISHED`, never a score. `phase close --run <run>`
+  continues from there: external verification on the candidate tree, then the
+  independent adjudication, which is what scores the criteria. There is one
+  acceptance architecture, and a build feeds it rather than imitating it.
+
+A build that is actually missing implementation cannot false-green on its
+targeted scenarios: an unmentioned criterion, a pointer at nothing, or an honest
+"not implemented yet" keeps it `UNPROVEN`, and the loop sends the builder back
+for the work — never for a score.
+
+### One vocabulary for "only an independent session may award this"
+
+The completion auditor, the review cycle and the phase authority each kept their
+own list of criterion names that mean "independent review". Two recognised
+`independent_review` and `final_adjudication`; the third also recognised
+`independent_phase_review` and `non_builder`. A phase whose only open obligation
+was `independent_phase_review_by_a_non_builder` was therefore reported as
+generically `UNPROVEN` instead of being routed to the fresh non-builder review it
+needs. All three now read `criterion_kinds`, which recognises a review criterion
+by the shape of its identifier — an independence qualifier attached to a review
+noun, a review attributed to a non-builder party, or a final adjudication — and
+not by a list of names, so `reviewer_ui_shows_independent_totals` stays an
+implementation criterion. When only such criteria remain *and nothing else is
+missing*, the audit routes to `REQUIRES_INDEPENDENT_REVIEW`; when anything else
+is still missing beside them, it does not spend the review.
 
 Scope resolution, the completion audit and the founder summary read one record.
 `shippable` in the summary is conjunctive over the gate, the review, the
@@ -2082,9 +2151,21 @@ the reports unreadable.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q            # everything
+.venv/bin/python -m pytest tests/ -q            # everything in the default suite
 .venv/bin/python -m pytest tests/ -q -m "not e2e"   # skip the browser smoke test
+.venv/bin/python -m pytest tests/ -q --local-artifacts   # also replay local runs / a product checkout
 ```
+
+The default suite is self-contained: it needs no run directory under `runs/`
+and no product checkout, and it writes nothing outside pytest's temporary
+directories. A test that replays a git-ignored run directory or runs the
+product's own oracles answers a question about one machine — and its answer
+changes when that run is later resumed — so it is marked `local_artifacts` and
+is a documented skip unless asked for with `--local-artifacts` (or
+`NPD_LOCAL_ARTIFACTS=1`). Asked for and missing, such a source fails rather
+than skips. Where a historical run is the regression's subject, the defect's
+state is checked in under `tests/data/` with its provenance, and the opt-in
+module checks that fixture against the run it came from.
 
 No test consumes real Claude usage — every Agent SDK call is faked. The
 end-to-end smoke test (`tests/test_smoke_e2e.py`) uses a fake builder, starts a

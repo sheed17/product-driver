@@ -84,10 +84,8 @@ class ReviewTrigger(str, Enum):
     COMPLETION_AUDIT = "COMPLETION_AUDIT"
 
 
-#: Criterion names that structurally cannot be awarded by the session that built
-#: the thing. Mirrors ``completion_auditor.INDEPENDENT_CRITERIA``; kept as a
-#: separate constant so this module does not import the auditor.
-_INDEPENDENT_CRITERIA = ("independent_review", "final_adjudication")
+# Which criteria structurally cannot be awarded by the session that built the
+# thing is one shared vocabulary: :mod:`~neyma_product_driver.criterion_kinds`.
 
 
 @dataclass
@@ -212,25 +210,28 @@ def resolve_review_requirement(
                 )
 
     # -- the phase's acceptance contract. ONLY when the task ACTUALLY asked for
-    #    the phase to be completed or accepted.
+    #    the phase to be ACCEPTED.
     #
-    #    Two narrowings, both load-bearing. A nested unit inherits none of this:
+    #    Three narrowings, all load-bearing. A nested unit inherits none of this:
     #    the criterion describes what the phase owes at phase acceptance, and a
-    #    unit inside it is not that. And a run that merely failed to name a unit
+    #    unit inside it is not that. A run that merely failed to name a unit
     #    inherits none of it either — `claims_phase_completion` is the strict
     #    default for *evidence*, not a statement that this run is at phase
-    #    acceptance, and reading it as one demands a review of twelve units that
-    #    have not been written. A run that has actually reached phase acceptance
-    #    is caught here; one that only claims it in its report is caught by the
-    #    completion auditor below.
-    if bool(getattr(scope, "phase_completion_requested", False)):
+    #    acceptance. And a run asked to BUILD the whole phase inherits none of
+    #    it: the phase's review criterion is awarded by the adjudication phase
+    #    closure takes, from a session outside the build lineage, and a focused
+    #    review taken inside the building run is not that review and cannot
+    #    discharge it. A run that has actually been asked to accept the phase is
+    #    caught here; one that only claims acceptance in its report is caught by
+    #    the completion auditor below.
+    if bool(getattr(scope, "phase_acceptance_requested", False)):
         for name in _pending_independent_criteria(unit):
             requirement.add(
                 ReviewTrigger.PHASE_ACCEPTANCE_CRITERION,
                 (
-                    f"this run claims {requirement.parent_phase_id or 'the phase'} itself, and "
-                    f"its acceptance criterion {name!r} may only be awarded by a session "
-                    "other than the implementing one"
+                    f"this run was asked to accept {requirement.parent_phase_id or 'the phase'}, "
+                    f"and its acceptance criterion {name!r} may only be awarded by a fresh "
+                    "session other than the implementing one"
                 ),
                 source="docs/implementation/IMPLEMENTATION-REGISTRY.yaml",
             )
@@ -272,16 +273,19 @@ def _independent_review_rules(repo: Path, protocol: Any = None) -> list[Any]:
 
 def _pending_independent_criteria(unit: Any) -> list[str]:
     """Acceptance criteria that are not passing and need an independent session."""
+    from .criterion_kinds import is_independent_review_criterion
+
     names: list[str] = []
     for raw in getattr(unit, "acceptance_criteria", None) or []:
         if not isinstance(raw, dict):
             continue
         criterion = str(raw.get("criterion", "") or "")
+        criterion_id = str(raw.get("id") or raw.get("criterion_id") or "")
         result = str(raw.get("result", "PENDING") or "PENDING").upper()
         if result in {"PASS", "PASSED", "COMPLETE", "DONE"}:
             continue
-        if any(key in criterion.lower() for key in _INDEPENDENT_CRITERIA):
-            names.append(criterion)
+        if is_independent_review_criterion(criterion_id, criterion):
+            names.append(criterion or criterion_id)
     return names
 
 

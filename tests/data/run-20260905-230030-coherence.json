@@ -1,0 +1,1794 @@
+{
+ "_provenance": [
+  "Run 20260905-230030 (P6/M13), as it stood when two GENERATED cases could not pass against a correct product. The run directory is local and git-ignored, and a later resume of the same run repaired and re-persisted both cases, so the defect-time state no longer exists on disk. This file reconstructs it from records that are immutable:",
+  "scenarios: the 13 scenarios of scenario-plan.json. Eleven are copied verbatim. For P6-M13-W3-07 and P6-M13-W3-03 only what the later repair changed is reverted, each reverted value read from iteration-02's execution record of that case (the expectations it actually ran against) and, for W3-03's command binding, from the generation-time citation in scenario-generation/wave-03.json.",
+  "executed: iteration-02's per-case record for the two cases — every command, its exit code and stdout, and every assertion, verbatim.",
+  "iteration_02_outcomes: iteration-02 suite-result.json, one row per case.",
+  "tests/test_generated_scenario_coherence_local_artifacts.py re-derives all of this from the run directory when it is present and asked for (--local-artifacts)."
+ ],
+ "run_id": "20260905-230030",
+ "scenarios": [
+  {
+   "id": "M13-S01",
+   "proposed_id": "",
+   "title": "Full brake behavioural battery runs green end-to-end",
+   "purpose": "Drive every probe case at once and require the narrative success line, so the machine that must WORK when everything else is wrong is exercised, not merely asserted about in the schema.",
+   "risk_category": "happy_path",
+   "priority": "P1",
+   "rationale": "Every refusal in this unit is only meaningful because engagement/admission-withdrawal succeeds; a battery proving only that things are blocked would pass a product with no brake.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "product_identity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "run full brake probe",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --all",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "behaviours as specified, 0 wrong"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "F13 registry unchanged at four contracts",
+     "command": ".venv/bin/python -c \"import json,sys; sys.path.insert(0,'src'); d=json.load(open('src/freight_recon/event_contracts_data.json')); cs=d['contracts']; print('total registered contracts:', len(cs)); f13=sorted(c['name'] for c in cs if c.get('family') == 'F13'); print('F13 contract count:', len(f13)); print('the F13 family:', f13); by=dict((c['name'], c) for c in cs); print('every F13 contract is strict-order:', all(by[n].get('strict_order') for n in f13)); print('every F13 contract has aggregate_type brake:', sorted(set(by[n].get('aggregate_type') for n in f13))); print('BrakeReleased is human_only:', by['BrakeReleased'].get('human_only')); print('BrakeNarrowed is human_only:', by['BrakeNarrowed'].get('human_only')); print('BrakeEngaged is human_only:', by['BrakeEngaged'].get('human_only')); print('BrakeWidened is human_only:', by['BrakeWidened'].get('human_only')); print('the BR producers:', sorted(str(by[n].get('producers')) for n in f13)); print('UnauthorizedBrakeReleaseAttempted family:', by['UnauthorizedBrakeReleaseAttempted']['family']); forbidden=['BrakeExpired','BrakeAutoReleased','BrakePendingRelease','BrakeDisengaged','BrakeTimedOut','BrakeSuspended']; print('forbidden brake contracts registered:', sorted(x for x in forbidden if x in by))\"",
+     "contains": [
+      "F13 contract count: 4",
+      "forbidden brake contracts registered: []"
+     ],
+     "not_contains": [],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "behaviours as specified, 0 wrong",
+    "F13 contract count: 4",
+    "forbidden brake contracts registered: []"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### NOT REFUSED",
+    "### WRONGLY REFUSED",
+    "### WRONG REFUSAL"
+   ],
+   "cleanup": [],
+   "isolation_note": "Probe is hermetic (temp sqlite dbs via mkdtemp); it mutates no shared state, so no cleanup is required.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.5,
+   "provenance": {
+    "generated_at": "2026-09-05T23:03:23+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "The brake never actually withdraws admission (or the battery silently runs no cases), so a broken product reads as green.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 1,
+    "model": "opus",
+    "session_id": "1a708186-3538-45cc-b6b3-b911105c2063",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "every M13 case runs end to end",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the F13 family is exactly four registered contracts, strictly ordered, and M13 mints no fifth",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "M13-W2-01",
+   "proposed_id": "",
+   "title": "A brake row and the platform row survive every DELETE attempt",
+   "purpose": "Close R10: prove the brake incident record is append-only — DELETE against a tenant brake row, against every brake row, and against the platform_brake row are each refused by the database, the lawful ACTIVE->RELEASED update still succeeds, and the rows survive as the permanent incident record.",
+   "risk_category": "persistence_failure",
+   "priority": "P1",
+   "rationale": "R10 is the one identified risk nothing yet exercises; delta #4 says the append-only trigger on brakes/platform_brake does not exist on the baseline and is M13's to add.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "evidence_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "delete-refused-and-rows-survive",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, HUMAN; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); trg=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name in (?,?)', ('brakes','platform_brake'))); print('the brake triggers:', trg); print('a delete-refusing trigger exists on brakes:', any('delete' in x.lower() for x in trg)); c.execute('insert into tenant_humans (tenant, human_id, display_name, authority_role, state, recorded_at, recorded_by, recorded_by_kind) values (?,?,?,?,?,?,?,?)', ('T_A','policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-05T00:00:00Z','founder','human')); c.commit(); s=BrakeStore(c); b=s.engage(tenant='T_A', action_class=None, actor='policy-owner', actor_kind=HUMAN, reason='orphan adapter invocation'); print('a brake was engaged through the one authority:', b.state); env={'c':c,'sqlite3':sqlite3}; exec(chr(10).join(['def attempt(label, sql, args):',' try:',\\\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\\\",' except sqlite3.Error as exc:',\\\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; attempt('a DELETE against a brake row', 'delete from brakes where tenant=? and brake_id=?', ('T_A', b.brake_id)); attempt('a DELETE against every brake row', 'delete from brakes', ()); attempt('a DELETE against the platform brake row', 'delete from platform_brake where id = 1', ()); r=s.release(tenant='T_A', brake_id=b.brake_id, actor='policy-owner', actor_kind=HUMAN, decision_ref='AUDIT-1'); print('positive control, a lawful release through the one authority:', r.state); print('brake rows surviving:', c.execute('select count(*) from brakes').fetchone()[0]); print('the surviving row state:', (lambda r: r[0] if r else 'NO ROW SURVIVED THE DELETE')(c.execute('select state from brakes').fetchone())); print('platform rows surviving:', c.execute('select count(*) from platform_brake').fetchone()[0])\"",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "a DELETE against a brake row: refused by",
+      "a DELETE against every brake row: refused by",
+      "a DELETE against the platform brake row: refused by"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "brake and platform rows survive the deletes",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, HUMAN; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); trg=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name in (?,?)', ('brakes','platform_brake'))); print('the brake triggers:', trg); print('a delete-refusing trigger exists on brakes:', any('delete' in x.lower() for x in trg)); c.execute('insert into tenant_humans (tenant, human_id, display_name, authority_role, state, recorded_at, recorded_by, recorded_by_kind) values (?,?,?,?,?,?,?,?)', ('T_A','policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-05T00:00:00Z','founder','human')); c.commit(); s=BrakeStore(c); b=s.engage(tenant='T_A', action_class=None, actor='policy-owner', actor_kind=HUMAN, reason='orphan adapter invocation'); print('a brake was engaged through the one authority:', b.state); env={'c':c,'sqlite3':sqlite3}; exec(chr(10).join(['def attempt(label, sql, args):',' try:',\\\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\\\",' except sqlite3.Error as exc:',\\\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; attempt('a DELETE against a brake row', 'delete from brakes where tenant=? and brake_id=?', ('T_A', b.brake_id)); attempt('a DELETE against every brake row', 'delete from brakes', ()); attempt('a DELETE against the platform brake row', 'delete from platform_brake where id = 1', ()); r=s.release(tenant='T_A', brake_id=b.brake_id, actor='policy-owner', actor_kind=HUMAN, decision_ref='AUDIT-1'); print('positive control, a lawful release through the one authority:', r.state); print('brake rows surviving:', c.execute('select count(*) from brakes').fetchone()[0]); print('the surviving row state:', (lambda r: r[0] if r else 'NO ROW SURVIVED THE DELETE')(c.execute('select state from brakes').fetchone())); print('platform rows surviving:', c.execute('select count(*) from platform_brake').fetchone()[0])\"",
+     "contains": [
+      "brake rows surviving: 1",
+      "platform rows surviving: 1"
+     ],
+     "not_contains": [
+      "NO ROW SURVIVED THE DELETE"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "a DELETE against a brake row: refused by",
+    "a DELETE against the platform brake row: refused by",
+    "brake rows surviving: 1",
+    "platform rows surviving: 1"
+   ],
+   "forbidden_observations": [
+    "a DELETE against a brake row: ACCEPTED",
+    "a DELETE against every brake row: ACCEPTED",
+    "a DELETE against the platform brake row: ACCEPTED",
+    "NO ROW SURVIVED THE DELETE"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe creates and reads its own tempfile sqlite3 database; it never touches repository state, so no cleanup is required.",
+   "isolation_key": "ephemeral-tempfile",
+   "generated_from": [
+    "risk:R10",
+    "diff:phase6_brakes.py",
+    "diff:brake.py"
+   ],
+   "confidence": 0.86,
+   "provenance": {
+    "generated_at": "2026-09-06T00:37:10+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [
+     "eval/tests/test_phase3_brake.py",
+     "eval/tests/test_phase3_checkpoint_matrix.py",
+     "eval/tests/test_phase3_claim_cas.py",
+     "eval/tests/test_phase3_schema.py",
+     "eval/tests/test_phase6_brake.py",
+     "eval/tests/test_phase6_policy.py",
+     "eval/tests/test_phase6_rule.py",
+     "scripts/probe_phase6_brake.py",
+     "src/freight_recon/brake.py",
+     "src/freight_recon/brake_lifecycle.py",
+     "src/freight_recon/migrations/phase2_tenant_first.py",
+     "src/freight_recon/migrations/phase6_brakes.py",
+     "src/freight_recon/schema.py"
+    ],
+    "prior_failures_consulted": [],
+    "generating_risk": "A DELETE against a brake or platform_brake row could destroy the permanent incident record because no append-only trigger guards those tables.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [
+     "persistence_failure:66770efac7"
+    ],
+    "stage": "diff_refinement",
+    "wave": 2,
+    "model": "opus",
+    "session_id": "eb29f8a4-9837-4cb8-9a93-65068a4a3e57",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "a brake row is never deleted, and the incident record is permanent",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "a brake row is never deleted, and the incident record is permanent",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "M13-W2-02",
+   "proposed_id": "",
+   "title": "An unreadable or absent platform brake refuses every read — never reads as off",
+   "purpose": "Verify the M13 read-path fail-closed delta: with platform_brake dropped, admission_denied, version_token AND platform_status (the operator report) each raise the canonical refusal rather than letting a raw error escape; with the table present but empty, the admission read and version derivation still refuse.",
+   "risk_category": "dependency_failure",
+   "priority": "P2",
+   "rationale": "The baseline note explicitly assigns the fail-closed half of the read path to M13 ('platform_status lets a raw sqlite3 error escape instead of BrakeStoreUnreachable'), and brake.py is the edited module.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "failure_recovery",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "fail-closed-read-path",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[]; t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet composite version:', t0); print('the token names both owners:', ('global' in t0) and ('tenant' in t0)); b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter'); t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1); print('a tenant event moved the composite version:', t1 != t0); s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach'); t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2); print('a platform event moved the composite version:', t2 != t1); other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]); print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]); print('every token was distinct:', len(set(seen)) == len(seen)); gv=[int(x.split('|')[1].split(':')[1]) for x in seen]; tv=[int(x.split('|')[2].split(':')[1]) for x in seen]; print('the platform component is monotonic:', gv == sorted(gv)); print('the tenant component is monotonic:', tv == sorted(tv)); print('the platform component never went backwards:', all(b >= a for a, b in zip(gv, gv[1:]))); print('the tenant component never went backwards:', all(b >= a for a, b in zip(tv, tv[1:]))); print('positive control, admission is readable while the row exists:', s.admission_denied(tenant='T_A', action_class='send_email') is not None); c.execute('drop table platform_brake'); c.commit(); env={'s':s,'BrakeStoreUnreachable':BrakeStoreUnreachable}; exec(chr(10).join(['def refuses(label, fn):',' try:',\\\"  fn(); print(label + ': READ AS OFF')\\\",' except BaseException as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__)\\\"]), env); refuses=env['refuses']; refuses('an unreadable brake store at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an unreadable brake store at the version derivation', lambda: s.version_token(tenant='T_A')); refuses('an unreadable brake store at the operator report', lambda: s.platform_status()); c.execute('CREATE TABLE platform_brake (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, brake_version INTEGER NOT NULL, actor TEXT, actor_kind TEXT, engaged_reason TEXT, engaged_at TEXT, released_by TEXT, release_decision_ref TEXT, released_at TEXT)'); c.commit(); print('the platform table is present but EMPTY:', c.execute('select count(*) from platform_brake').fetchone()[0]); refuses('an absent platform ROW at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an absent platform ROW at the version derivation', lambda: s.version_token(tenant='T_A'))\"",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "positive control, admission is readable while the row exists: True",
+      "an unreadable brake store at the operator report: refused by",
+      "an absent platform ROW at the admission read: refused by"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "empty platform table still refuses",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[]; t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet composite version:', t0); print('the token names both owners:', ('global' in t0) and ('tenant' in t0)); b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter'); t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1); print('a tenant event moved the composite version:', t1 != t0); s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach'); t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2); print('a platform event moved the composite version:', t2 != t1); other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]); print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]); print('every token was distinct:', len(set(seen)) == len(seen)); gv=[int(x.split('|')[1].split(':')[1]) for x in seen]; tv=[int(x.split('|')[2].split(':')[1]) for x in seen]; print('the platform component is monotonic:', gv == sorted(gv)); print('the tenant component is monotonic:', tv == sorted(tv)); print('the platform component never went backwards:', all(b >= a for a, b in zip(gv, gv[1:]))); print('the tenant component never went backwards:', all(b >= a for a, b in zip(tv, tv[1:]))); print('positive control, admission is readable while the row exists:', s.admission_denied(tenant='T_A', action_class='send_email') is not None); c.execute('drop table platform_brake'); c.commit(); env={'s':s,'BrakeStoreUnreachable':BrakeStoreUnreachable}; exec(chr(10).join(['def refuses(label, fn):',' try:',\\\"  fn(); print(label + ': READ AS OFF')\\\",' except BaseException as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__)\\\"]), env); refuses=env['refuses']; refuses('an unreadable brake store at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an unreadable brake store at the version derivation', lambda: s.version_token(tenant='T_A')); refuses('an unreadable brake store at the operator report', lambda: s.platform_status()); c.execute('CREATE TABLE platform_brake (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, brake_version INTEGER NOT NULL, actor TEXT, actor_kind TEXT, engaged_reason TEXT, engaged_at TEXT, released_by TEXT, release_decision_ref TEXT, released_at TEXT)'); c.commit(); print('the platform table is present but EMPTY:', c.execute('select count(*) from platform_brake').fetchone()[0]); refuses('an absent platform ROW at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an absent platform ROW at the version derivation', lambda: s.version_token(tenant='T_A'))\"",
+     "contains": [
+      "the platform table is present but EMPTY: 0",
+      "an absent platform ROW at the version derivation: refused by"
+     ],
+     "not_contains": [
+      "READ AS OFF"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "positive control, admission is readable while the row exists: True",
+    "an unreadable brake store at the operator report: refused by",
+    "an absent platform ROW at the admission read: refused by"
+   ],
+   "forbidden_observations": [
+    "READ AS OFF"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe builds and mutates its own tempfile sqlite3 database (dropping/recreating platform_brake) in-process; repository state is untouched.",
+   "isolation_key": "ephemeral-tempfile",
+   "generated_from": [
+    "diff:brake.py",
+    "task:3.5.3"
+   ],
+   "confidence": 0.82,
+   "provenance": {
+    "generated_at": "2026-09-06T00:37:10+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [
+     "eval/tests/test_phase3_brake.py",
+     "eval/tests/test_phase3_checkpoint_matrix.py",
+     "eval/tests/test_phase3_claim_cas.py",
+     "eval/tests/test_phase3_schema.py",
+     "eval/tests/test_phase6_brake.py",
+     "eval/tests/test_phase6_policy.py",
+     "eval/tests/test_phase6_rule.py",
+     "scripts/probe_phase6_brake.py",
+     "src/freight_recon/brake.py",
+     "src/freight_recon/brake_lifecycle.py",
+     "src/freight_recon/migrations/phase2_tenant_first.py",
+     "src/freight_recon/migrations/phase6_brakes.py",
+     "src/freight_recon/schema.py"
+    ],
+    "prior_failures_consulted": [],
+    "generating_risk": "An unreadable or absent platform brake row could be treated as 'no brake', silently admitting effects during an incident.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "diff_refinement",
+    "wave": 2,
+    "model": "opus",
+    "session_id": "eb29f8a4-9837-4cb8-9a93-65068a4a3e57",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": [
+    "actions[0].command was re-materialized from the approved command 'the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off', whose body the harness has since repaired",
+    "persisted_state_checks[0].command was re-materialized from the approved command 'the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off', whose body the harness has since repaired"
+   ]
+  },
+  {
+   "id": "M13-W2-03",
+   "proposed_id": "",
+   "title": "The tenant-exempt partition still holds after the phase2 migration edit",
+   "purpose": "Verify that after the M13 changes the only tenantless brake table is the recorded exemption: platform_brake is a recorded exemption, brakes is tenant-owned, and there are no tenantless tables outside the recorded exemptions across every migration.",
+   "risk_category": "cross_tenant",
+   "priority": "P2",
+   "rationale": "Wave 2 diff-refinement: the builder edited phase2_tenant_first.py and schema.py, the migrations that define the tenant partition and its one defended exemption.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "tenant-exempt-partition",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); tables=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)) if not r[0].startswith('sqlite_')); tenantless=sorted(t for t in tables if 'tenant' not in [r[1] for r in c.execute('pragma table_info(' + t + ')')]); print('tenantless tables:', tenantless); import importlib, pkgutil, freight_recon.migrations as M; mods=[importlib.import_module('freight_recon.migrations.' + m.name) for m in pkgutil.iter_modules(M.__path__)]; exempt=sorted(set(x for m in mods for n in dir(m) if n.endswith('EXEMPT_TABLES') for x in getattr(m, n))); print('the recorded exemptions, discovered across every migration:', exempt); print('platform_brake is a recorded exemption:', 'platform_brake' in exempt); print('tenantless tables outside the recorded exemptions and the migration ledger:', sorted(set(tenantless) - set(exempt) - {'schema_migrations'})); print('brakes is tenant-owned:', 'brakes' not in tenantless)\"",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "platform_brake is a recorded exemption: True",
+      "brakes is tenant-owned: True",
+      "tenantless tables outside the recorded exemptions and the migration ledger: []"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "platform_brake is the only recorded brake exemption",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); tables=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'table' + chr(39)) if not r[0].startswith('sqlite_')); tenantless=sorted(t for t in tables if 'tenant' not in [r[1] for r in c.execute('pragma table_info(' + t + ')')]); print('tenantless tables:', tenantless); import importlib, pkgutil, freight_recon.migrations as M; mods=[importlib.import_module('freight_recon.migrations.' + m.name) for m in pkgutil.iter_modules(M.__path__)]; exempt=sorted(set(x for m in mods for n in dir(m) if n.endswith('EXEMPT_TABLES') for x in getattr(m, n))); print('the recorded exemptions, discovered across every migration:', exempt); print('platform_brake is a recorded exemption:', 'platform_brake' in exempt); print('tenantless tables outside the recorded exemptions and the migration ledger:', sorted(set(tenantless) - set(exempt) - {'schema_migrations'})); print('brakes is tenant-owned:', 'brakes' not in tenantless)\"",
+     "contains": [
+      "platform_brake is a recorded exemption: True",
+      "brakes is tenant-owned: True"
+     ],
+     "not_contains": [
+      "brakes is tenant-owned: False"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "platform_brake is a recorded exemption: True",
+    "brakes is tenant-owned: True",
+    "tenantless tables outside the recorded exemptions and the migration ledger: []"
+   ],
+   "forbidden_observations": [
+    "brakes is tenant-owned: False",
+    "platform_brake is a recorded exemption: False"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe creates a fresh canonical schema in a tempfile and reads pragma metadata; no repository or shared state is modified.",
+   "isolation_key": "ephemeral-tempfile",
+   "generated_from": [
+    "diff:phase2_tenant_first.py",
+    "diff:schema.py"
+   ],
+   "confidence": 0.8,
+   "provenance": {
+    "generated_at": "2026-09-06T00:37:10+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [
+     "eval/tests/test_phase3_brake.py",
+     "eval/tests/test_phase3_checkpoint_matrix.py",
+     "eval/tests/test_phase3_claim_cas.py",
+     "eval/tests/test_phase3_schema.py",
+     "eval/tests/test_phase6_brake.py",
+     "eval/tests/test_phase6_policy.py",
+     "eval/tests/test_phase6_rule.py",
+     "scripts/probe_phase6_brake.py",
+     "src/freight_recon/brake.py",
+     "src/freight_recon/brake_lifecycle.py",
+     "src/freight_recon/migrations/phase2_tenant_first.py",
+     "src/freight_recon/migrations/phase6_brakes.py",
+     "src/freight_recon/schema.py"
+    ],
+    "prior_failures_consulted": [],
+    "generating_risk": "A drift in the tenant partition could give platform_brake a tenant, make brakes tenantless, or add an unrecorded tenantless table, coupling tenants' admission or spelling a fake tenant.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "diff_refinement",
+    "wave": 2,
+    "model": "opus",
+    "session_id": "eb29f8a4-9837-4cb8-9a93-65068a4a3e57",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "the brake layer joins the tenant-first partition, and platform_brake remains the one defended exemption",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the brake layer joins the tenant-first partition, and platform_brake remains the one defended exemption",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "M13-W2-04",
+   "proposed_id": "",
+   "title": "M13 mints the four F13 contracts, records F14, and leaves the M2/M4 consumers intact",
+   "purpose": "Verify that after brake.py's rewrite and the new brake_lifecycle.py, M13 references only registered brake contracts (no unregistered Brake-shaped name), records the F14 UnauthorizedBrakeReleaseAttempted contract, and both pipeline_instance.py (M2) and approval.py (M4) still consume BrakeEngaged.",
+   "risk_category": "regression",
+   "priority": "P2",
+   "rationale": "brake.py (+299) and the new brake_lifecycle.py are in the diff; the task explicitly forbids deleting the landed BrakeEngaged consumers and inventing an M13-local unauthorized-release synonym.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "operational_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "f13-mint-and-consumers",
+     "command": ".venv/bin/python -c \"import ast,json,sys,pathlib; sys.path.insert(0,'src'); by=set(c['name'] for c in json.load(open('src/freight_recon/event_contracts_data.json'))['contracts']); env={'ast':ast}; exec(chr(10).join([ 'def lits(path):', '    tree = ast.parse(path.read_text())', '    docs = set()', '    for node in ast.walk(tree):', '        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):', '            first = node.body[0] if node.body else None', '            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):', '                docs.add(id(first.value))', '    return [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs]']), env); lits=env['lits']; owned=[p for p in (pathlib.Path('src/freight_recon/brake.py'), pathlib.Path('src/freight_recon/brake_lifecycle.py')) if p.exists()]; mine=sorted(set(s for p in owned for s in lits(p) if s in by)); print('the M13 modules read:', sorted(p.name for p in owned)); print('registered event names M13 mints:', mine); print('unregistered Brake-shaped names M13 mints:', sorted(set(s for p in owned for s in lits(p) if s.startswith('Brake') and s.isidentifier() and s not in by))); print('M13 mints the four F13 contracts:', sorted(x for x in mine if x.startswith('Brake'))); print('M13 records the F14 unauthorized-release contract:', 'UnauthorizedBrakeReleaseAttempted' in mine); print('M13 mints no foreign machine domain event:', sorted(x for x in mine if not x.startswith('Brake') and x != 'UnauthorizedBrakeReleaseAttempted')); cons={p.name: lits(p) for p in (pathlib.Path('src/freight_recon/pipeline_instance.py'), pathlib.Path('src/freight_recon/approval.py'))}; print('M2 still consumes BrakeEngaged:', 'BrakeEngaged' in cons['pipeline_instance.py']); print('M4 still consumes BrakeEngaged:', 'BrakeEngaged' in cons['approval.py'])\"",
+     "expect_exit_code": 0,
+     "expect_contains": [
+      "M2 still consumes BrakeEngaged: True",
+      "M4 still consumes BrakeEngaged: True",
+      "M13 records the F14 unauthorized-release contract: True",
+      "unregistered Brake-shaped names M13 mints: []"
+     ],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [
+    "M2 still consumes BrakeEngaged: True",
+    "M4 still consumes BrakeEngaged: True",
+    "M13 records the F14 unauthorized-release contract: True",
+    "unregistered Brake-shaped names M13 mints: []"
+   ],
+   "forbidden_observations": [
+    "M2 still consumes BrakeEngaged: False",
+    "M4 still consumes BrakeEngaged: False"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe parses source files by AST and reads the registered event contract list; it performs no writes.",
+   "isolation_key": "ast-static-scan",
+   "generated_from": [
+    "diff:brake.py",
+    "diff:brake_lifecycle.py",
+    "task:3.3"
+   ],
+   "confidence": 0.79,
+   "provenance": {
+    "generated_at": "2026-09-06T00:37:10+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [
+     "eval/tests/test_phase3_brake.py",
+     "eval/tests/test_phase3_checkpoint_matrix.py",
+     "eval/tests/test_phase3_claim_cas.py",
+     "eval/tests/test_phase3_schema.py",
+     "eval/tests/test_phase6_brake.py",
+     "eval/tests/test_phase6_policy.py",
+     "eval/tests/test_phase6_rule.py",
+     "scripts/probe_phase6_brake.py",
+     "src/freight_recon/brake.py",
+     "src/freight_recon/brake_lifecycle.py",
+     "src/freight_recon/migrations/phase2_tenant_first.py",
+     "src/freight_recon/migrations/phase6_brakes.py",
+     "src/freight_recon/schema.py"
+    ],
+    "prior_failures_consulted": [],
+    "generating_risk": "The rewrite could delete the landed BrakeEngaged consumers in M2/M4 or introduce an unregistered fifth brake contract, breaking coordination while test names still read correctly.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "diff_refinement",
+    "wave": 2,
+    "model": "opus",
+    "session_id": "eb29f8a4-9837-4cb8-9a93-65068a4a3e57",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "M13 emits only registered event names, and the landed consumers of BrakeEngaged still consume it",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-01",
+   "proposed_id": "",
+   "title": "Mint/claim race decided by the database at canonical 10,000-order interleaving",
+   "purpose": "Prove that with a brake engaged between mint and claim, the claim CAS matches zero rows and the adapter does nothing — never both, never neither — under the authority-named 10,000x interleaving, and that the decision is the database, not a pre-claim check.",
+   "risk_category": "concurrency",
+   "priority": "P0",
+   "rationale": "A read-then-claim TOCTOU passes every behavioural test on an unloaded machine; only a high-order interleave exposes it, and this is the exact stress the permanent single-pass --all does not run.",
+   "requirement_reference": "AC-SAFE-006",
+   "product_principle_reference": "outcome_verification",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "race-10k-interleave",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case the-interleaved-race-battery-runs-at-canonical-order --owner both --repeat 10000",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "claim-cas-revalidates-composite-token",
+     "command": ".venv/bin/python -c \"import re,sys,pathlib; sys.path.insert(0,'src'); src=pathlib.Path('src/freight_recon/checkpoint.py').read_text(); up=[src[m.start():m.start()+900] for m in re.finditer('UPDATE +effect_grants', src)]; up=[u[:u.find(chr(34)*3) if u.find(chr(34)*3) > 0 else len(u)] for u in up]; print('UPDATE statements against the grant ledger:', len(up)); cas=[u for u in up if re.search('SET +state *= *' + chr(39) + 'CLAIMED' + chr(39), u)]; print('claim CAS statements found:', len(cas)); print('exactly one statement claims a grant:', len(cas) == 1); print('the other ledger updates, which correctly carry no brake token:', sorted(set(re.search('SET +state *= *' + chr(39) + '([A-Z_]+)' + chr(39), u).group(1) for u in up if u not in cas))); print('the CAS revalidates brake_version in its WHERE clause:', all('brake_version' in u for u in cas)); print('the CAS revalidates policy_version in its WHERE clause:', all('policy_version' in u for u in cas)); print('the CAS revalidates the grant state in its WHERE clause:', all('GRANTED' in u for u in cas)); print('the CAS revalidates expiry in its WHERE clause:', all('expires_at' in u for u in cas)); print('the claim path derives the token from the single brake authority:', 'version_token' in src); print('the claim path treats an unreadable brake store as a refusal:', 'BrakeStoreUnreachable' in src and 'BRAKE_UNREADABLE' in src); print('checkpoint step 7 reads brake admission:', 'admission_denied' in src); print('modules that CALL brake admission:', sorted(set(p.name for p in pathlib.Path('src/freight_recon').glob('*.py') if re.search('[.]admission_denied *[(]', p.read_text())))); print('modules that DEFINE brake admission:', sorted(set(p.name for p in pathlib.Path('src/freight_recon').glob('*.py') if re.search('def +admission_denied', p.read_text()))))\"",
+     "contains": [
+      "the CAS revalidates brake_version in its WHERE clause: True",
+      "exactly one statement claims a grant: True"
+     ],
+     "not_contains": [
+      "THE CLAIM CAS STOPPED CHECKING THE BRAKE VERSION"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "the CAS revalidates brake_version in its WHERE clause: True",
+    "exactly one statement claims a grant: True"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### THE RACE RESOLVED TO BOTH ###",
+    "### THE RACE RESOLVED TO NEITHER ###",
+    "### AN EXTERNAL EFFECT OCCURRED WHILE THE BRAKE WON ###",
+    "### THE RACE WAS DECIDED BY A CHECK RATHER THAN THE DATABASE ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe builds its own temporary SQLite database per invocation and the supporting AST/CAS check reads checkpoint.py read-only; neither mutates repository or shared state.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.6,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A TOCTOU window between reading the brake and claiming lets an external effect through during a brake.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "the interleaved race battery runs at the canonical order and is never both, never neither",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the claim CAS revalidates the composite brake token inside its own WHERE clause",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-02",
+   "proposed_id": "",
+   "title": "A GLOBAL brake denies every tenant with exactly one platform row and no fan-out",
+   "purpose": "Prove the platform brake denies admission for 5 distinct tenants without minting per-tenant rows, that exactly one platform row exists and is not multiplied, and that platform_brake carries no tenant column.",
+   "risk_category": "cross_tenant",
+   "priority": "P0",
+   "rationale": "Representing GLOBAL as a fake tenant or as N per-tenant rows creates a multi-row atomicity problem during the incident the brake exists for; this exercises the composed platform dimension across many tenants.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "global-denies-5-tenants",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case a-global-brake-denies-every-tenant-without-fan-out --owner platform --tenants 5",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "exactly-one-tenantless-platform-row",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); create_canonical_schema(c); print('platform rows on a fresh database:', c.execute('select count(*) from platform_brake').fetchone()[0]); cols=sorted(r[1] for r in c.execute('pragma table_info(platform_brake)')); print('the platform_brake column set:', cols); print('platform_brake has no tenant column at all:', not any('tenant' in x for x in cols)); env={'c':c,'sqlite3':sqlite3}; exec(chr(10).join(['def attempt(label, sql, args):',' try:',\\\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\\\",' except sqlite3.Error as exc:',\\\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; attempt('a second platform row at id 2', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (2,'RELEASED',0)); attempt('a second platform row at id 0', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (0,'RELEASED',0)); attempt('a duplicate platform row at id 1', 'insert into platform_brake (id, state, brake_version) values (?,?,?)', (1,'ACTIVE',1)); attempt('positive control, updating the one platform row in place', 'update platform_brake set brake_version = brake_version + 1 where id = 1', ()); print('platform rows after every attempt:', c.execute('select count(*) from platform_brake').fetchone()[0]); print('the seeded platform state:', c.execute('select state from platform_brake where id = 1').fetchone()[0]); import re; ddl=c.execute('select sql from sqlite_master where name=?', ('platform_brake',)).fetchone()[0]; print('the id CHECK is in the DDL:', bool(re.search('CHECK *[(] *id *= *1 *[)]', ddl))); import freight_recon.migrations.phase3_checkpoint as p3; print('the recorded tenant-exempt table set:', sorted(p3.P3_EXEMPT_TABLES))\"",
+     "contains": [
+      "platform rows after every attempt: 1",
+      "platform_brake has no tenant column at all: True"
+     ],
+     "not_contains": [
+      "platform rows after every attempt: 2",
+      "### MULTIPLE PLATFORM ROWS ALLOWED ###"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "platform rows after every attempt: 1",
+    "platform_brake has no tenant column at all: True"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### A GLOBAL BRAKE FAILED TO DENY A TENANT ###",
+    "### GLOBAL FANNED OUT TO N TENANT ROWS ###",
+    "### GLOBAL REPRESENTED AS A FAKE TENANT ###",
+    "### THE PLATFORM ROW ACQUIRED A TENANT ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Hermetic: probe uses a temporary database; the platform-cardinality check builds a fresh canonical schema in a temp dir. No shared state is touched.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.7,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "GLOBAL modelled as a sentinel tenant or fanned out, so it fails to deny some tenant or needs a multi-row atomic write.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "one platform row denies every tenant, with no N-row fan-out and no sentinel tenant",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "exactly one platform brake row is structurally enforced, and GLOBAL is not a fake tenant",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-03",
+   "proposed_id": "",
+   "title": "A flapping detector is one ACTIVE brake with a rising signal count and no release window",
+   "purpose": "Drive repeated detector engagement (200x via the probe; 25x in the row-count oracle) and prove exactly one ACTIVE row, no RELEASED row ever created, the version not bumped by repeats, and a signal count that rises rather than nowhere to live.",
+   "risk_category": "repeated_request",
+   "priority": "P1",
+   "rationale": "A store that returns the existing brake while writing a second row, or that self-releases on a repeat, looks identical from the caller's side but is a momentary release window during an incident — provable only by row count.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "operational_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "flapping-detector-200x",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case a-flapping-detector-creates-one-active-brake --actor detector --repeat 200",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "one-active-row-no-release-rising-count",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, HUMAN; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); trg=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name in (?,?)', ('brakes','platform_brake'))); print('the brake triggers:', trg); print('a delete-refusing trigger exists on brakes:', any('delete' in x.lower() for x in trg)); c.execute('insert into tenant_humans (tenant, human_id, display_name, authority_role, state, recorded_at, recorded_by, recorded_by_kind) values (?,?,?,?,?,?,?,?)', ('T_A','policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-05T00:00:00Z','founder','human')); c.commit(); s=BrakeStore(c); b=s.engage(tenant='T_A', action_class=None, actor='policy-owner', actor_kind=HUMAN, reason='orphan adapter invocation'); print('a brake was engaged through the one authority:', b.state); env={'c':c,'sqlite3':sqlite3}; exec(chr(10).join(['def attempt(label, sql, args):',' try:',\\\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\\\",' except sqlite3.Error as exc:',\\\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; attempt('a DELETE against a brake row', 'delete from brakes where tenant=? and brake_id=?', ('T_A', b.brake_id)); attempt('a DELETE against every brake row', 'delete from brakes', ()); attempt('a DELETE against the platform brake row', 'delete from platform_brake where id = 1', ()); r=s.release(tenant='T_A', brake_id=b.brake_id, actor='policy-owner', actor_kind=HUMAN, decision_ref='AUDIT-1'); print('positive control, a lawful release through the one authority:', r.state); print('brake rows surviving:', c.execute('select count(*) from brakes').fetchone()[0]); print('the surviving row state:', (lambda r: r[0] if r else 'NO ROW SURVIVED THE DELETE')(c.execute('select state from brakes').fetchone())); print('platform rows surviving:', c.execute('select count(*) from platform_brake').fetchone()[0])\"",
+     "contains": [
+      "ACTIVE rows for the scope: 1",
+      "no RELEASED row was ever created: 0",
+      "the brake version was not bumped by a repeat: True",
+      "the signal count after 25 signals: 25"
+     ],
+     "not_contains": [
+      "ACTIVE rows for the scope: 2",
+      "NO SIGNAL COUNT COLUMN"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "ACTIVE rows for the scope: 1",
+    "no RELEASED row was ever created: 0",
+    "the brake version was not bumped by a repeat: True",
+    "the signal count after 25 signals: 25"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### FLAPPING CREATED MULTIPLE ACTIVE BRAKES ###",
+    "### FLAPPING OPENED A RELEASE WINDOW ###",
+    "### THE SIGNAL COUNT DID NOT RISE ###",
+    "### A REPEAT ENGAGEMENT BUMPED THE VERSION ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "Both the probe and the row-count oracle allocate their own temporary SQLite database; nothing persists between scenarios.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.6,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Repeated engagement writes a second row / self-releases / drops the signal count, opening a window while a detector flaps.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "a flapping detector is one ACTIVE brake, a rising signal count, and no window",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "2ff6fbf1",
+     "source_name": "a brake row is never deleted, and the incident record is permanent",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-04",
+   "proposed_id": "",
+   "title": "The brake engages with the policy engine down",
+   "purpose": "Inject a policy-engine-down fault and prove an authenticated human can still engage the brake instantly — engagement never requires a healthy system or the policy engine, which is the exact subsystem the brake exists to overrule.",
+   "risk_category": "service_unavailable",
+   "priority": "P0",
+   "rationale": "A brake implemented so it needs a healthy policy engine depends on the very subsystem it exists to withdraw authority from; the one moment you reach for it is when that engine is wrong.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "failure_recovery",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "engage-with-policy-engine-down",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case the-brake-engages-with-the-policy-engine-down --inject policy-engine-down",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [],
+   "expected_observations": [],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### ENGAGEMENT REQUIRED THE POLICY ENGINE ###",
+    "### ENGAGEMENT REQUIRED A HEALTHY SYSTEM ###",
+    "### ENGAGEMENT REQUIRED AN APPROVAL ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe is hermetic — it constructs its own temporary database and injects the fault in-process; no repository or service state is modified (no services exist in this environment).",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.55,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Engagement silently depends on a healthy policy engine, so the brake is unavailable during the incident it is for.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "any authenticated human engages instantly, with the policy engine and the TMS down",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-05",
+   "proposed_id": "",
+   "title": "An unknown or unparseable scope refuses, never scopes to nothing",
+   "purpose": "Prove that an unknown scope dimension, an empty scope, and a deferred-but-unlanded dimension are each refused at the boundary while the landed forms parse, and that the landed and deferred dimensions partition the canonical five — an unknown scope is never silently treated as 'no brake'.",
+   "risk_category": "malformed_input",
+   "priority": "P0",
+   "rationale": "Silently accepting an unknown scope as 'no brake' is the fail-open inversion that turns a safety control into decoration; the grammar must be closed so a dimension this unit did not land is unspellable rather than empty.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "unknown-scope-refuses",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case an-unknown-scope-is-never-treated-as-no-brake",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "scope-grammar-closed-and-partitioned",
+     "command": ".venv/bin/python -c \"import sys; sys.path.insert(0,'src'); import freight_recon.brake_lifecycle as m13; from freight_recon.brake import BrakeError; print('the canonical scope dimensions:', sorted(m13.CANONICAL_SCOPE_DIMENSIONS)); print('canonical dimension count:', len(m13.CANONICAL_SCOPE_DIMENSIONS)); print('the dimensions this unit lands:', sorted(m13.LANDED_SCOPE_DIMENSIONS)); print('the dimensions this unit records as deferred:', sorted(m13.DEFERRED_SCOPE_DIMENSIONS)); print('landed and deferred partition the canonical five:', sorted(set(m13.LANDED_SCOPE_DIMENSIONS) | set(m13.DEFERRED_SCOPE_DIMENSIONS)) == sorted(m13.CANONICAL_SCOPE_DIMENSIONS)); print('landed and deferred do not overlap:', not (set(m13.LANDED_SCOPE_DIMENSIONS) & set(m13.DEFERRED_SCOPE_DIMENSIONS))); print('every deferred dimension carries a recorded reason:', sorted(x for x in m13.DEFERRED_SCOPE_DIMENSIONS if not m13.SCOPE_DEFERRAL_REASONS.get(x))); env={'m13':m13,'BrakeError':BrakeError}; exec(chr(10).join(['def check(label, scope):',' try:',\\\"  m13.parse_scope(scope); print(label + ': PARSED')\\\",' except BrakeError as exc:',\\\"  print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); check=env['check']; [check(lbl, sc) for lbl, sc in [('positive control, a tenant-wide scope', 'tenant'), ('positive control, an action-class scope', 'action:pay_carrier'), ('an unknown scope dimension', 'weather:rainy'), ('an empty scope', ''), ('a scope with no dimension', 'pay_carrier'), ('a deferred dimension that was not landed', 'counterparty:redline')]]; print('an unknown scope is never treated as no brake:', m13.unknown_scope_denies() is True)\"",
+     "contains": [
+      "an unknown scope is never treated as no brake: True",
+      "landed and deferred partition the canonical five: True",
+      "positive control, a tenant-wide scope: PARSED"
+     ],
+     "not_contains": [
+      "an unknown scope dimension: PARSED"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "an unknown scope is never treated as no brake: True",
+    "landed and deferred partition the canonical five: True",
+    "positive control, a tenant-wide scope: PARSED"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### AN UNKNOWN SCOPE READ AS NO BRAKE ###",
+    "### A SCOPE SILENTLY NARROWED ###",
+    "### AN UNPARSEABLE SCOPE SCOPED TO NOTHING ###",
+    "### ALLOW ON BRAKE ERROR ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe case and the parse_scope logic check are in-process and read-only; no database or repository state is mutated.",
+   "isolation_key": "brake_lifecycle_scope",
+   "generated_from": [],
+   "confidence": 0.65,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "A malformed scope is parsed into something narrower or into nothing, so admission is not withdrawn.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "an unknown scope is never treated as no brake",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the scope grammar is closed and declared, and an unparseable scope refuses rather than scoping to nothing",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-06",
+   "proposed_id": "",
+   "title": "The safe-direction ratchet holds over every automated path",
+   "purpose": "Run the safe-direction property over all actor classes and prove automation may only ever move authority in the safe direction: automation/detector/model/timer may never NARROW or RELEASE, and a detector may never clear its own alarm.",
+   "risk_category": "authorization",
+   "priority": "P0",
+   "rationale": "ADR-011 §5.1 records that 'narrow' is genuinely ambiguous; get it backwards and the entire ratchet inverts while every test name still reads correctly — an all-actor property run is the defence.",
+   "requirement_reference": "AC-SAFE-027",
+   "product_principle_reference": "authority_clarity",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "safe-direction-all-actors",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case the-safe-direction-rule-holds-over-every-automated-path --actor all",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "actor-classes-distinct-and-detector-cannot-self-clear",
+     "command": ".venv/bin/python -c \"import sys; sys.path.insert(0,'src'); import freight_recon.brake_lifecycle as m13; print('the actor classes:', sorted(m13.ACTOR_KINDS)); print('actor class count:', len(m13.ACTOR_KINDS)); print('system detector and model are distinct:', len({'DETECTOR','MODEL','AUTOMATION'} & set(m13.ACTOR_KINDS)) >= 2); print('what a human may do:', sorted(m13.permitted_transitions('HUMAN'))); print('what a detector may do:', sorted(m13.permitted_transitions('DETECTOR'))); print('what automation may do:', sorted(m13.permitted_transitions('AUTOMATION'))); print('what a model may do:', sorted(m13.permitted_transitions('MODEL'))); print('what a timer may do:', sorted(m13.permitted_transitions('TIMER'))); print('what a retry handler may do:', sorted(m13.permitted_transitions('RETRY'))); print('what a counterparty may do:', sorted(m13.permitted_transitions('COUNTERPARTY'))); print('a detector may never clear its own alarm:', 'BR-4' not in m13.permitted_transitions('DETECTOR')); print('every non-human actor is refused BR-3 and BR-4:', sorted(k for k in m13.ACTOR_KINDS if k != 'HUMAN' and ({'BR-3','BR-4'} & set(m13.permitted_transitions(k))))); print('the safe direction is stated once:', m13.SAFE_DIRECTION_RULE)\"",
+     "contains": [
+      "a detector may never clear its own alarm: True",
+      "system detector and model are distinct: True"
+     ],
+     "not_contains": [
+      "### A DETECTOR CLEARED ITS OWN ALARM ###"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "a detector may never clear its own alarm: True",
+    "system detector and model are distinct: True"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### AUTOMATION RELEASED A BRAKE ###",
+    "### AUTOMATION NARROWED A BRAKE ###",
+    "### A DETECTOR RELEASED A BRAKE ###",
+    "### A DETECTOR NARROWED A BRAKE ###",
+    "### THE SAFE DIRECTION WAS INVERTED ###",
+    "### SYSTEM DETECTOR AND MODEL COLLAPSED INTO ONE ACTOR CLASS ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe allocates a temporary database per run; the actor-ratchet check reads the brake_lifecycle machine surface in-process. No shared state.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.65,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "An automated actor (automation, detector, model, or timer) is permitted to narrow scope or release a brake — the inverted ratchet.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "the safe-direction ratchet holds over every automated path",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the safe-direction ratchet is a declared table over three distinct actor classes",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  },
+  {
+   "id": "P6-M13-W3-07",
+   "proposed_id": "",
+   "title": "Neither asymmetric version omission slips a brake through",
+   "purpose": "Vary both composed admission dimensions and prove the composite token binds both owners: a tenant-only check would let a GLOBAL brake through and a global-only check would let a TENANT brake through, and each is caught.",
+   "risk_category": "concurrency",
+   "priority": "P0",
+   "rationale": "Without varying --owner, a composite version check is indistinguishable from a single one; both omissions are payments, and this is precisely the axis this unit turns on.",
+   "requirement_reference": "AC-SAFE-006",
+   "product_principle_reference": "outcome_verification",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "both-dimension-version-omission",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case a-tenant-only-version-check-lets-a-global-brake-through --owner both",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "composite-token-binds-both-owners",
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[]; t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet composite version:', t0); print('the token names both owners:', ('global' in t0) and ('tenant' in t0)); b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter'); t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1); print('a tenant event moved the composite version:', t1 != t0); s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach'); t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2); print('a platform event moved the composite version:', t2 != t1); other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]); print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]); print('every token was distinct:', len(set(seen)) == len(seen)); gv=[int(x.split('|')[1].split(':')[1]) for x in seen]; tv=[int(x.split('|')[2].split(':')[1]) for x in seen]; print('the platform component is monotonic:', gv == sorted(gv)); print('the tenant component is monotonic:', tv == sorted(tv)); print('the platform component never went backwards:', all(b >= a for a, b in zip(gv, gv[1:]))); print('the tenant component never went backwards:', all(b >= a for a, b in zip(tv, tv[1:]))); print('positive control, admission is readable while the row exists:', s.admission_denied(tenant='T_A', action_class='send_email') is not None); c.execute('drop table platform_brake'); c.commit(); env={'s':s,'BrakeStoreUnreachable':BrakeStoreUnreachable}; exec(chr(10).join(['def refuses(label, fn):',' try:',\\\"  fn(); print(label + ': READ AS OFF')\\\",' except BaseException as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__)\\\"]), env); refuses=env['refuses']; refuses('an unreadable brake store at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an unreadable brake store at the version derivation', lambda: s.version_token(tenant='T_A')); refuses('an unreadable brake store at the operator report', lambda: s.platform_status()); c.execute('CREATE TABLE platform_brake (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, brake_version INTEGER NOT NULL, actor TEXT, actor_kind TEXT, engaged_reason TEXT, engaged_at TEXT, released_by TEXT, release_decision_ref TEXT, released_at TEXT)'); c.commit(); print('the platform table is present but EMPTY:', c.execute('select count(*) from platform_brake').fetchone()[0]); refuses('an absent platform ROW at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an absent platform ROW at the version derivation', lambda: s.version_token(tenant='T_A'))\"",
+     "contains": [
+      "a tenant event moved the token: [REDACTED]",
+      "a platform event moved the token: [REDACTED]",
+      "another tenant sees the same platform component: True"
+     ],
+     "not_contains": [
+      "READ AS OFF"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "a tenant event moved the token: [REDACTED]",
+    "a platform event moved the token: [REDACTED]",
+    "another tenant sees the same platform component: True"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### ONLY THE TENANT VERSION WAS CHECKED ###",
+    "### ONLY THE GLOBAL VERSION WAS CHECKED ###",
+    "### THE CLAIM CAS STOPPED CHECKING THE BRAKE VERSION ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe and the version-token check both build their own temporary databases in-process; nothing persists across scenarios.",
+   "isolation_key": "probe_phase6_brake",
+   "generated_from": [],
+   "confidence": 0.6,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "The witness/grant binding or the claim CAS checks only one of the two brake-version components, letting the other dimension's brake through.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "a version check that omits either component lets a real brake through",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": [
+    "persisted_state_checks[0].command was re-materialized from the approved command 'the brake version token binds both owners and is monotonic, and an unreadable store refuses rather than reading as off', whose body the harness has since repaired"
+   ]
+  },
+  {
+   "id": "P6-M13-W3-08",
+   "proposed_id": "",
+   "title": "Release requires positive evidence, not a human and a decision_ref alone",
+   "purpose": "Prove release is not satisfiable by `human + decision_ref` alone: a loaded page is refused as health proof, in-flight accounting and no-unresolved-Sev-0 are each required, and each condition withheld alone is caught by the others.",
+   "risk_category": "missing_data",
+   "priority": "P0",
+   "rationale": "The `if human and decision_ref` implementation passes every authorization test in the file and is still wrong; the four evidence conditions must each be independently load-bearing.",
+   "requirement_reference": "P6",
+   "product_principle_reference": "success_without_verification",
+   "mode": "backend",
+   "setup": [],
+   "service_refs": [],
+   "actions": [
+    {
+     "kind": "command",
+     "name": "release-not-human-and-decision-ref-alone",
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case release-is-not-a-human-and-a-decision-ref-alone",
+     "expect_exit_code": 0,
+     "expect_contains": [],
+     "timeout_s": null,
+     "request": null,
+     "requests": [],
+     "browser_steps": [],
+     "state_check": null,
+     "fixture_name": "",
+     "fixture_content": "",
+     "service": "",
+     "wait_ms": null
+    }
+   ],
+   "persisted_state_checks": [
+    {
+     "name": "release-evidence-is-positive-not-a-decision-ref-alone",
+     "command": ".venv/bin/python -c \"import sys; sys.path.insert(0,'src'); import freight_recon.brake_lifecycle as m13; req=sorted(m13.RELEASE_EVIDENCE); print('the declared release evidence conditions:', req); print('release evidence condition count:', len(req)); print('in-flight accounting is required:', any('in_flight' in x for x in req)); print('an unresolved Sev-0 is disqualifying:', any('sev0' in x.lower() or 'sev_0' in x.lower() for x in req)); print('positive integration health is required:', any('health' in x for x in req)); print('a decision_ref is required:', any('decision_ref' in x for x in req)); print('an authenticated human is required:', any('human' in x for x in req)); print('release evidence is not satisfiable by a decision_ref alone:', not m13.release_evidence_satisfied(dict(decision_ref='AUDIT-1'))); print('a page that loaded is not a positive health proof:', not m13.is_positive_health_proof(dict(kind='page_loaded'))); print('a positive control IS a positive health proof:', m13.is_positive_health_proof(dict(kind='positive_control', observed=True))); print('an unresolved unknown outcome does not block release:', m13.unknown_outcomes_block_release() is False); print('an unresolved unknown outcome must be acknowledged and owned:', sorted(m13.UNKNOWN_OUTCOME_RELEASE_OBLIGATIONS)); print('release builds no second approval workflow:', not any(x in dir(m13) for x in ('request_release_approval','ReleaseApproval','RELEASE_APPROVAL_STATES','approve_release')))\"",
+     "contains": [
+      "release evidence is not satisfiable by a decision_ref alone: True",
+      "a page that loaded is not a positive health proof: True"
+     ],
+     "not_contains": [
+      "release builds no second approval workflow: False"
+     ],
+     "timeout_s": null
+    }
+   ],
+   "expected_observations": [
+    "release evidence is not satisfiable by a decision_ref alone: True",
+    "a page that loaded is not a positive health proof: True"
+   ],
+   "forbidden_observations": [
+    "### MISS ###",
+    "### RELEASE REDUCED TO A HUMAN AND A DECISION REF ###",
+    "### A LOADED PAGE ACCEPTED AS A HEALTH PROOF ###",
+    "### RELEASED WITHOUT POSITIVE INTEGRATION HEALTH ###",
+    "### RELEASED WITH AN UNRESOLVED SEV-0 ###",
+    "### A RELEASE APPROVAL WORKFLOW BUILT ###"
+   ],
+   "cleanup": [],
+   "isolation_note": "The probe case and the release-evidence contract check are in-process and read-only; no persisted or repository state is modified.",
+   "isolation_key": "brake_lifecycle_release",
+   "generated_from": [],
+   "confidence": 0.6,
+   "provenance": {
+    "generated_at": "2026-09-06T02:56:28+00:00",
+    "task_hash": "5e0e86ea1258908e",
+    "founder_context_version": "0cb51e5158467505",
+    "repository_head": "ded6a84",
+    "active_unit_id": "P6",
+    "acceptance_criteria_consulted": [],
+    "files_consulted": [
+     "backend_generic",
+     "browser_generic",
+     "p6_m10_compensation",
+     "p6_m11_policy",
+     "p6_m12_rule",
+     "p6_m13_brake",
+     "p6_m3_external_effect",
+     "p6_m4_approval",
+     "p6_m5_observation",
+     "p6_m6_identity_binding_claim",
+     "p6_m7_conflict",
+     "p6_m8_expectation",
+     "p6_m9_exception",
+     "p6_pipeline_instance",
+     "p6_work_item_ownership"
+    ],
+    "diff_files_consulted": [],
+    "prior_failures_consulted": [],
+    "generating_risk": "Release is reduced to a human plus a decision_ref, accepting a loaded page as health and skipping in-flight/Sev-0 accounting.",
+    "source_failures": [],
+    "source_clusters": [],
+    "source_risks": [],
+    "stage": "initial",
+    "wave": 3,
+    "model": "opus",
+    "session_id": "e48352e8-53ac-47c8-9c08-b88143b04667",
+    "kind": "ephemeral"
+   },
+   "command_bindings": [
+    {
+     "field": "actions[0].command",
+     "command_digest": "",
+     "source_name": "release is not a human and a decision_ref alone",
+     "tail": ""
+    },
+    {
+     "field": "persisted_state_checks[0].command",
+     "command_digest": "",
+     "source_name": "release refuses on each missing evidence condition alone, and succeeds when all of them hold",
+     "tail": ""
+    }
+   ],
+   "observation_bindings": [],
+   "rebound_on_resume": []
+  }
+ ],
+ "executed": {
+  "P6-M13-W3-07": {
+   "source": "iteration-02/scenarios/P6-M13-W3-07-559230f9c167/result.json",
+   "commands": [
+    {
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case a-tenant-only-version-check-lets-a-global-brake-through --owner both",
+     "exit_code": 0,
+     "stdout": "a-tenant-only-version-check-lets-a-global-brake-through: global component moved\nTHE CLAIM CAS REVALIDATES BOTH BRAKE VERSIONS\nbehaviours as specified, 0 wrong\n"
+    },
+    {
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, BrakeStoreUnreachable, HUMAN, DETECTOR; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); s=BrakeStore(c); seen=[]; t0=s.version_token(tenant='T_A'); seen.append(t0); print('the quiet token:', t0); print('the token names both owners:', ('global' in t0) and ('tenant' in t0)); b=s.engage(tenant='T_A', action_class='pay_carrier', actor='ops', actor_kind=HUMAN, reason='orphan adapter'); t1=s.version_token(tenant='T_A'); seen.append(t1); print('after a TENANT event:', t1); print('a tenant event moved the token:', t1 != t0); s.engage_platform(actor='isolation-detector', actor_kind=DETECTOR, reason='tenant isolation breach'); t2=s.version_token(tenant='T_A'); seen.append(t2); print('after a PLATFORM event:', t2); print('a platform event moved the token:', t2 != t1); other=s.version_token(tenant='T_B'); print('another tenant sees the same platform component:', other.split('|')[1] == t2.split('|')[1]); print('another tenant has its own tenant component:', other.split('|')[2] != t2.split('|')[2]); print('every token was distinct:', len(set(seen)) == len(seen)); gv=[int(x.split('|')[1].split(':')[1]) for x in seen]; tv=[int(x.split('|')[2].split(':')[1]) for x in seen]; print('the platform component is monotonic:', gv == sorted(gv)); print('the tenant component is monotonic:', tv == sorted(tv)); print('the platform component never went backwards:', all(b >= a for a, b in zip(gv, gv[1:]))); print('the tenant component never went backwards:', all(b >= a for a, b in zip(tv, tv[1:]))); print('positive control, admission is readable while the row exists:', s.admission_denied(tenant='T_A', action_class='send_email') is not None); c.execute('drop table platform_brake'); c.commit(); env={'s':s,'BrakeStoreUnreachable':BrakeStoreUnreachable}; exec(chr(10).join(['def refuses(label, fn):',' try:',\\\"  fn(); print(label + ': READ AS OFF')\\\",' except BaseException as exc:',\\\"  print(label + ': refused by ' + type(exc).__name__)\\\"]), env); refuses=env['refuses']; refuses('an unreadable brake store at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an unreadable brake store at the version derivation', lambda: s.version_token(tenant='T_A')); refuses('an unreadable brake store at the operator report', lambda: s.platform_status()); c.execute('CREATE TABLE platform_brake (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, brake_version INTEGER NOT NULL, actor TEXT, actor_kind TEXT, engaged_reason TEXT, engaged_at TEXT, released_by TEXT, release_decision_ref TEXT, released_at TEXT)'); c.commit(); print('the platform table is present but EMPTY:', c.execute('select count(*) from platform_brake').fetchone()[0]); refuses('an absent platform ROW at the admission read', lambda: s.admission_denied(tenant='T_A', action_class='pay_carrier')); refuses('an absent platform ROW at the version derivation', lambda: s.version_token(tenant='T_A'))\"",
+     "exit_code": 0,
+     "stdout": "the quiet token: [REDACTED]\nthe token names both owners: True\nafter a TENANT event: bv1|global:0|tenant:1\na tenant event moved the token: [REDACTED]\nafter a PLATFORM event: bv1|global:1|tenant:1\na platform event moved the token: [REDACTED]\nanother tenant sees the same platform component: True\nanother tenant has its own tenant component: True\nevery token was distinct: True\nthe platform component is monotonic: True\nthe tenant component is monotonic: True\nthe platform component never went backwards: True\nthe tenant component never went backwards: True\npositive control, admission is readable while the row exists: True\nan unreadable brake store at the admission read: refused by BrakeStoreUnreachable\nan unreadable brake store at the version derivation: refused by BrakeStoreUnreachable\nan unreadable brake store at the operator report: refused by BrakeStoreUnreachable\nthe platform table is present but EMPTY: 0\nan absent platform ROW at the admission read: refused by BrakeStoreUnreachable\nan absent platform ROW at the version derivation: refused by BrakeStoreUnreachable\n"
+    }
+   ],
+   "assertions": [
+    {
+     "kind": "expect_state",
+     "target": "both-dimension-version-omission: exit == 0",
+     "passed": true,
+     "detail": "got exit=0"
+    },
+    {
+     "kind": "expect_state",
+     "target": "composite-token-binds-both-owners: contains 'a tenant event moved the token: [REDACTED]'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "composite-token-binds-both-owners: contains 'a platform event moved the token: [REDACTED]'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "composite-token-binds-both-owners: contains 'another tenant sees the same platform component: True'",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "expect_state",
+     "target": "composite-token-binds-both-owners: must not contain 'READ AS OFF'",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "expect_visible",
+     "target": "a tenant event moved the token: [REDACTED]",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "expect_visible",
+     "target": "a platform event moved the token: [REDACTED]",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "expect_visible",
+     "target": "another tenant sees the same platform component: True",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### MISS ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### ONLY THE TENANT VERSION WAS CHECKED ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### ONLY THE GLOBAL VERSION WAS CHECKED ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### THE CLAIM CAS STOPPED CHECKING THE BRAKE VERSION ###",
+     "passed": true,
+     "detail": ""
+    }
+   ]
+  },
+  "P6-M13-W3-03": {
+   "source": "iteration-02/scenarios/P6-M13-W3-03-29546f6fc043/result.json",
+   "commands": [
+    {
+     "command": ".venv/bin/python scripts/probe_phase6_brake.py --case a-flapping-detector-creates-one-active-brake --actor detector --repeat 200",
+     "exit_code": 0,
+     "stdout": "a-flapping-detector-creates-one-active-brake: exactly one\nA FLAPPING DETECTOR IS ONE ACTIVE BRAKE AND NO WINDOW\nbehaviours as specified, 0 wrong\n"
+    },
+    {
+     "command": ".venv/bin/python -c \"import sqlite3,tempfile,os,sys; sys.path.insert(0,'src'); from freight_recon.schema import create_canonical_schema, enable_and_verify_foreign_keys; from freight_recon.brake import BrakeStore, HUMAN; p=os.path.join(tempfile.mkdtemp(),'probe.sqlite3'); c=sqlite3.connect(p); c.row_factory=sqlite3.Row; create_canonical_schema(c); enable_and_verify_foreign_keys(c); trg=sorted(r[0] for r in c.execute('select name from sqlite_master where type=' + chr(39) + 'trigger' + chr(39) + ' and tbl_name in (?,?)', ('brakes','platform_brake'))); print('the brake triggers:', trg); print('a delete-refusing trigger exists on brakes:', any('delete' in x.lower() for x in trg)); c.execute('insert into tenant_humans (tenant, human_id, display_name, authority_role, state, recorded_at, recorded_by, recorded_by_kind) values (?,?,?,?,?,?,?,?)', ('T_A','policy-owner','Policy Owner','POLICY_OWNER','ACTIVE','2026-09-05T00:00:00Z','founder','human')); c.commit(); s=BrakeStore(c); b=s.engage(tenant='T_A', action_class=None, actor='policy-owner', actor_kind=HUMAN, reason='orphan adapter invocation'); print('a brake was engaged through the one authority:', b.state); env={'c':c,'sqlite3':sqlite3}; exec(chr(10).join(['def attempt(label, sql, args):',' try:',\\\"  c.execute('savepoint s'); c.execute(sql, args); c.execute('release s'); print(label + ': ACCEPTED')\\\",' except sqlite3.Error as exc:',\\\"  c.execute('rollback to s'); c.execute('release s'); print(label + ': refused by ' + str(exc).split(chr(10))[0])\\\"]), env); attempt=env['attempt']; attempt('a DELETE against a brake row', 'delete from brakes where tenant=? and brake_id=?', ('T_A', b.brake_id)); attempt('a DELETE against every brake row', 'delete from brakes', ()); attempt('a DELETE against the platform brake row', 'delete from platform_brake where id = 1', ()); r=s.release(tenant='T_A', brake_id=b.brake_id, actor='policy-owner', actor_kind=HUMAN, decision_ref='AUDIT-1'); print('positive control, a lawful release through the one authority:', r.state); print('brake rows surviving:', c.execute('select count(*) from brakes').fetchone()[0]); print('the surviving row state:', (lambda r: r[0] if r else 'NO ROW SURVIVED THE DELETE')(c.execute('select state from brakes').fetchone())); print('platform rows surviving:', c.execute('select count(*) from platform_brake').fetchone()[0])\"",
+     "exit_code": 0,
+     "stdout": "the brake triggers: ['trg_brakes_no_delete', 'trg_platform_brake_no_delete']\na delete-refusing trigger exists on brakes: True\na brake was engaged through the one authority: ACTIVE\na DELETE against a brake row: refused by a brake row is never deleted [16-brake.md point 28, C-9]: the engage/widen/narrow/release history IS the incident timeline and its retention is permanent\na DELETE against every brake row: refused by a brake row is never deleted [16-brake.md point 28, C-9]: the engage/widen/narrow/release history IS the incident timeline and its retention is permanent\na DELETE against the platform brake row: refused by the platform brake row is never deleted [SD-12, C-9]: an absent platform row reads as unreadable and REFUSES admission, which is not the same fact as a released brake\npositive control, a lawful release through the one authority: RELEASED\nbrake rows surviving: 1\nthe surviving row state: RELEASED\nplatform rows surviving: 1\n"
+    }
+   ],
+   "assertions": [
+    {
+     "kind": "expect_state",
+     "target": "flapping-detector-200x: exit == 0",
+     "passed": true,
+     "detail": "got exit=0"
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: contains 'ACTIVE rows for the scope: 1'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: contains 'no RELEASED row was ever created: 0'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: contains 'the brake version was not bumped by a repeat: True'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: contains 'the signal count after 25 signals: 25'",
+     "passed": false,
+     "detail": "not found in command output"
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: must not contain 'ACTIVE rows for the scope: 2'",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "expect_state",
+     "target": "one-active-row-no-release-rising-count: must not contain 'NO SIGNAL COUNT COLUMN'",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "expect_visible",
+     "target": "ACTIVE rows for the scope: 1",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "expect_visible",
+     "target": "no RELEASED row was ever created: 0",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "expect_visible",
+     "target": "the brake version was not bumped by a repeat: True",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "expect_visible",
+     "target": "the signal count after 25 signals: 25",
+     "passed": false,
+     "detail": "not present in any observed output"
+    },
+    {
+     "kind": "forbidden",
+     "target": "### MISS ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### FLAPPING CREATED MULTIPLE ACTIVE BRAKES ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### FLAPPING OPENED A RELEASE WINDOW ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### THE SIGNAL COUNT DID NOT RISE ###",
+     "passed": true,
+     "detail": ""
+    },
+    {
+     "kind": "forbidden",
+     "target": "### A REPEAT ENGAGEMENT BUMPED THE VERSION ###",
+     "passed": true,
+     "detail": ""
+    }
+   ]
+  }
+ },
+ "iteration_02_outcomes": [
+  {
+   "scenario_id": "p6_m13_brake",
+   "outcome": "FAILED",
+   "required": true
+  },
+  {
+   "scenario_id": "P6-M13-W3-01",
+   "outcome": "PASSED",
+   "required": true
+  },
+  {
+   "scenario_id": "P6-M13-W3-02",
+   "outcome": "PASSED",
+   "required": true
+  },
+  {
+   "scenario_id": "P6-M13-W3-06",
+   "outcome": "PASSED",
+   "required": true
+  },
+  {
+   "scenario_id": "P6-M13-W3-07",
+   "outcome": "FAILED",
+   "required": true
+  },
+  {
+   "scenario_id": "P6-M13-W3-03",
+   "outcome": "FAILED",
+   "required": true
+  },
+  {
+   "scenario_id": "M13-W2-03",
+   "outcome": "PASSED",
+   "required": false
+  }
+ ]
+}

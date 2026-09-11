@@ -95,8 +95,19 @@ def m9_approved() -> ApprovedCommands:
     return ApprovedCommands.from_sources(scenarios=scenarios)
 
 
+#: The run's refusals, checked in: the run directory is git-ignored, and the
+#: near-miss diagnosis below must be measured against the same commands on
+#: every machine. `TestTheRunReproduces` re-derives them from the run itself.
+REFUSED_FIXTURE = DRIVER_ROOT / "tests" / "data" / "run-20260901-015631-refused-commands.json"
+
+
 def _refused_commands() -> list[str]:
     """Every command run 20260901-015631 proposed and had refused as unapproved."""
+    return list(json.loads(REFUSED_FIXTURE.read_text(encoding="utf-8"))["refused_commands"])
+
+
+def _refused_commands_from_run() -> list[str]:
+    """The same list, read out of the run directory's own wave records."""
     out: list[str] = []
     for wave in sorted((RUN_DIR / "scenario-generation").glob("wave-*.json")):
         record = json.loads(wave.read_text())
@@ -118,6 +129,9 @@ def _refused_commands() -> list[str]:
 @pytest.mark.skipif(not RUN_DIR.exists(), reason="the run's artifacts are not present")
 class TestTheRunReproduces:
     """The recorded outcome follows from the recorded inputs, deterministically."""
+
+    def test_the_checked_in_refusals_are_the_runs_own(self):
+        assert _refused_commands() == _refused_commands_from_run()
 
     def test_the_gate_still_reports_the_same_uncovered_risks(self):
         """`risk_coverage` on the run's own plan and suite result reproduces the block.

@@ -49,7 +49,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from neyma_product_driver.config import ScenarioGenerationConfig, ScenarioRunConfig
 from neyma_product_driver.scenario_generator import GenerationBasis, GenerationBrief
@@ -219,12 +218,12 @@ def readback_payload() -> dict[str, Any]:
 
 
 def context(**overrides: Any) -> ValidationContext:
-    config = yaml.safe_load((DRIVER_ROOT / "driver.config.yaml").read_text(encoding="utf-8"))
+    # The vocabulary is the CHECKED-IN M7 scenario's. A machine's git-ignored
+    # driver.config.yaml may add configured entries, but nothing asked here may
+    # depend on which machine the suite runs on.
     m7 = load_scenario(M7_PATH)
     defaults: dict[str, Any] = {
-        "approved_commands": ApprovedCommands.from_sources(
-            scenarios=[m7], configured=config["scenario_generation"]["approved_commands"]
-        ),
+        "approved_commands": ApprovedCommands.from_sources(scenarios=[m7]),
         "established_observations": established_observations_from([m7]),
         "grounding_tokens": grounding_tokens_from(FakeUnit("P6")),
         "principle_tokens": {"effect-truth"},

@@ -33,6 +33,11 @@ from typing import Any, Sequence
 
 import yaml
 
+from .criterion_kinds import (
+    is_external_verification_criterion,
+    is_independent_review_criterion,
+    is_residual_criterion,
+)
 from .phase_acceptance import (
     AcceptanceCriterion,
     CheckpointRecord,
@@ -106,21 +111,9 @@ _CHECKPOINT_REVIEW_KEYS = ("independent_review_report", "review_report", "review
 #: nothing left to do but say so.
 ACCEPTED_UNIT_STATES = ("COMPLETE", "ACCEPTED", "PHASE_ACCEPTANCE_COMPLETE")
 
-#: Criterion names that name a *criterion only an independent session may award*.
-#: Mirrors ``completion_auditor.INDEPENDENT_CRITERIA``.
-INDEPENDENT_CRITERION_MARKERS = ("independent_review", "independent review", "final_adjudication",
-                                 "final adjudication", "independent_phase_review",
-                                 "non_builder", "non-builder")
-
-#: Criterion names that are settled by the RESIDUAL LEDGER rather than by any
-#: test — "the carried residuals are recorded and none of them blocks".
-RESIDUAL_CRITERION_MARKERS = ("residual", "carried_debt", "carried debt", "open_risks",
-                              "debt_recorded")
-
-#: Criterion names that name an EXTERNAL verification gate — CI or equivalent.
-EXTERNAL_CRITERION_MARKERS = ("ci_green", "ci green", "ci_", "continuous_integration",
-                              "external_verification", "workflow_green", "pipeline_green",
-                              "build_green")
+# Which criteria a later gate settles — an independent review, an external
+# verifier, the residual ledger — is one vocabulary shared with the completion
+# auditor and the review cycle. See :mod:`~neyma_product_driver.criterion_kinds`.
 
 
 def _first(mapping: Any, keys: Sequence[str], default: Any = None) -> Any:
@@ -236,18 +229,17 @@ class PhaseAuthority:
         return [
             c
             for c in self.criteria.criteria
-            if any(m in f"{c.criterion_id} {c.name}".lower() for m in INDEPENDENT_CRITERION_MARKERS)
+            if is_independent_review_criterion(c.criterion_id, c.name)
         ]
 
     @property
     def external_criteria(self) -> list[AcceptanceCriterion]:
         """Criteria that can only be settled by an external verifier."""
-        out: list[AcceptanceCriterion] = []
-        for c in self.criteria.criteria:
-            blob = f"{c.criterion_id} {c.name} {c.requirement}".lower()
-            if any(m in blob for m in EXTERNAL_CRITERION_MARKERS):
-                out.append(c)
-        return out
+        return [
+            c
+            for c in self.criteria.criteria
+            if is_external_verification_criterion(c.criterion_id, c.name, c.requirement)
+        ]
 
     @property
     def residual_criteria(self) -> list[AcceptanceCriterion]:
@@ -259,9 +251,7 @@ class PhaseAuthority:
         unevidenced makes a well-run phase look unverified.
         """
         return [
-            c
-            for c in self.criteria.criteria
-            if any(m in f"{c.criterion_id} {c.name}".lower() for m in RESIDUAL_CRITERION_MARKERS)
+            c for c in self.criteria.criteria if is_residual_criterion(c.criterion_id, c.name)
         ]
 
     def summary_block(self) -> str:

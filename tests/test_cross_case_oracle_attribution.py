@@ -64,12 +64,19 @@ from neyma_product_driver.scenario_validation import (
 )
 from neyma_product_driver.scenarios import ScenarioExecutor, load_scenario
 
-import yaml
-
 DRIVER_ROOT = Path(__file__).resolve().parents[1]
 M7_PATH = DRIVER_ROOT / "scenarios" / "p6_m7_conflict.yaml"
 RUN = DRIVER_ROOT / "runs" / "20260827-223525"
 PLAN = RUN / "scenario-plan.json"
+#: The run's generated scenarios, checked in verbatim. The run directory is
+#: git-ignored; the default suite reads this, and `TestTheFixtureIsTheRunsOwn`
+#: compares it with the run itself when the run is on this machine.
+FIXTURE = DRIVER_ROOT / "tests" / "data" / "run-20260827-223525-scenarios.json"
+
+
+def recorded_scenarios() -> list[dict[str, Any]]:
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))["scenarios"]
+
 
 PROBE = ".venv/bin/python scripts/probe_phase6_conflict.py"
 
@@ -127,19 +134,17 @@ def recorded_probe(recording: dict[str, str] | None = None) -> Any:
     return probe
 
 
-def configured_commands() -> list[str]:
-    """The per-`--case` entries `driver.config.yaml` approves, as the run had them."""
-    config = yaml.safe_load((DRIVER_ROOT / "driver.config.yaml").read_text(encoding="utf-8"))
-    return list(config["scenario_generation"]["approved_commands"])
-
-
 def m7_context(**overrides: Any) -> ValidationContext:
-    """Validation as the run had it, plus a probe that can answer."""
+    """Validation over the checked-in M7 vocabulary, plus a probe that can answer.
+
+    The approved set is the permanent M7 scenario's, which declares every
+    per-`--case` invocation this file uses. A machine's git-ignored
+    driver.config.yaml may add configured entries; nothing here may depend on
+    which machine the suite runs on.
+    """
     m7 = load_scenario(M7_PATH)
     defaults: dict[str, Any] = {
-        "approved_commands": ApprovedCommands.from_sources(
-            scenarios=[m7], configured=configured_commands()
-        ),
+        "approved_commands": ApprovedCommands.from_sources(scenarios=[m7]),
         "established_observations": established_observations_from([m7]),
         "contract_probe": recorded_probe(),
         "grounding_tokens": {"p6/m7", "p6", "m7", "ac-evt-008"},
@@ -151,8 +156,7 @@ def m7_context(**overrides: Any) -> ValidationContext:
 
 def w11_payload(**overrides: Any) -> dict[str, Any]:
     """``p6m7-w1-11`` exactly as run 20260827-223525 recorded it, before execution."""
-    plan = json.loads(PLAN.read_text(encoding="utf-8"))
-    raw = next(s for s in plan["scenarios"] if s["id"] == "p6m7-w1-11")
+    raw = next(s for s in recorded_scenarios() if s["id"] == "p6m7-w1-11")
     payload = copy.deepcopy(raw)
     payload.update(overrides)
     return payload
@@ -163,6 +167,20 @@ def w11(**overrides: Any) -> GeneratedScenario:
 
 
 # ==========================================================================
+# 0 — the checked-in artifact is the run's own (asked only on request)
+# ==========================================================================
+
+
+@pytest.mark.local_artifacts
+class TestTheFixtureIsTheRunsOwn:
+    def test_the_checked_in_scenarios_are_the_runs_verbatim(self) -> None:
+        if not PLAN.exists():
+            pytest.fail(f"--local-artifacts was requested and {PLAN} is not present")
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        assert recorded_scenarios() == plan["scenarios"]
+
+
+# ==========================================================================
 # 1 — the exact artifact, refused before anything runs
 # ==========================================================================
 
@@ -170,7 +188,7 @@ def w11(**overrides: Any) -> GeneratedScenario:
 class TestTheExactArtifact:
     def test_the_run_really_did_record_this_scenario(self) -> None:
         """The fixture is the artifact, not a reconstruction of it."""
-        assert PLAN.exists(), "the run this defect came from is preserved"
+        assert FIXTURE.exists(), "the run this defect came from is preserved, checked in"
         scenario = w11()
         assert scenario.actions[0].command == W11_COMMAND
         assert REPLAY_SUMMARY in scenario.actions[0].expect_contains
@@ -317,11 +335,10 @@ class TestACorrectOracleIsUnaffected:
 
     def test_the_eight_scenarios_the_run_accepted_are_still_accepted(self) -> None:
         """The fix refuses one of the nine, and it is the one that failed."""
-        plan = json.loads(PLAN.read_text(encoding="utf-8"))
         context = m7_context(contract_probe=recorded_probe())
         refused = {
             s["id"]
-            for s in plan["scenarios"]
+            for s in recorded_scenarios()
             if cross_contract_observations(GeneratedScenario.model_validate(s), context)
         }
         assert refused == {"p6m7-w1-11"}

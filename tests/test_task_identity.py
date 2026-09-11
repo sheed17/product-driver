@@ -592,7 +592,12 @@ class TestTheSummaryAgreesWithTheAudit:
         from neyma_product_driver.evidence import EvidenceStore
 
         audit = repo.audit(report, task)
-        config = DriverConfig(neyma_repo=repo.root, task=task)
+        # A driver root beside the synthetic repository, so the run store this
+        # writes lands in the test's own temporary directory and never in the
+        # real `runs/` of whatever checkout the suite runs from.
+        config = DriverConfig(
+            neyma_repo=repo.root, driver_root=repo.root.parent / "driver", task=task
+        )
         assert config.runs_dir is not None
         store = EvidenceStore(config.runs_dir, "summary-run")
         _report_founder_summary(_loop_result(repo, audit), store, config)
@@ -604,7 +609,10 @@ class TestTheSummaryAgreesWithTheAudit:
         repo.write_registry(criteria=repo.criteria(passing=2))
         repo.commit_all("two of five scored")
         out = self.summary(repo, HONEST_SUBSET_REPORT, WHOLE_PHASE_TASK, capsys)
-        assert "NOT READY TO SHIP" in out
+        # A whole-phase BUILD is headed by where it stands against phase
+        # closure, not by shipping — and an unfinished one is not ready for it.
+        assert "NOT READY FOR PHASE CLOSURE" in out
+        assert "IMPLEMENTATION VERIFIED — READY" not in out
         assert "task completion:" in out
         assert CRITERIA[4] in out
         assert "the task this run declared is not finished" in out.lower()

@@ -14,13 +14,18 @@ The run cannot pass no matter how good the work is, and every iteration spends
 its budget trying to close a gap that is not a defect.
 
 So the scope is resolved once, from the run's own task text and the repository's
-registry, and it answers one question:
+registry, and it answers what the task asks to happen (:class:`ScopeIntent`):
 
-    does this task claim to complete the parent phase, or not?
+    build one unit inside the phase     UNIT_IMPLEMENTATION
+    build the whole phase               PHASE_IMPLEMENTATION
+    accept / close / adjudicate it      PHASE_ACCEPTANCE
 
-If it does not, phase-level acceptance is not this run's bar. The task's own
-authoritative requirements are, and the phase stays exactly where the repository
-says it is.
+For a unit, phase-level acceptance is not this run's bar; the task's own
+authoritative requirements are, and the phase stays exactly where the
+repository says it is. For a whole-phase build, the phase's criteria are the bar
+the work is built TO — and scoring them is phase closure's act, not the
+builder's, so a verified build is the candidate phase closure is handed, never
+an accepted phase. Only a task that asks for acceptance is held to acceptance.
 
 Three things this module deliberately does not do:
 
@@ -73,22 +78,38 @@ _CRITERION_NOUN = (
 #: set of sibling ids is never the one nested unit a run was asked to build.
 _RANGE_JOINER = r"(?:through|thru|to|until|and|,|-|–|—|\.\.\.?)"
 
-#: Asking for the phase itself to be finished. Each alternative is guarded
-#: against being the first half of a compound: "complete-stream behaviour" names
-#: a feature, and reading it as a request to complete something is how a task
-#: that says "build one unit" gets heard as "finish the phase".
+#: Asking for the phase itself to be finished — as WORK. Each alternative is
+#: guarded against being the first half of a compound: "complete-stream
+#: behaviour" names a feature, and reading it as a request to complete something
+#: is how a task that says "build one unit" gets heard as "finish the phase".
 #:
 #: The adverbial forms are here for a reason that cost a whole run. "Build P7
-#: completely" is the plainest way a founder writes phase-completion intent, and
+#: completely" is the plainest way a founder writes whole-phase intent, and
 #: `complet(?:e|ing|ion)(?![-\w])` refuses it — "complete" is followed by "ly",
 #: which is a word character — so the task read as claiming nothing about the
 #: phase at all. An adverb is not a compound noun: "completely", "fully" and "in
 #: full" say what "complete" says, and each is listed rather than inferred.
-_PHASE_COMPLETION_VERB = (
-    r"complet(?:e|ing|ion|ely)(?![-\w])|finish(?:ing|ed)?(?![-\w])|clos(?:e|ing)\s+out|"
-    r"conclud(?:e|ing)(?![-\w])|accept(?:ance)?(?![-\w])|adjudicat(?:e|ion)(?![-\w])|"
-    r"sign\s*-?\s*off|declare\s+done|wrap\s+up|fully(?![-\w])|entirel(?:y)(?![-\w])|"
+#:
+#: None of these is a request for ACCEPTANCE. "Finish P7" asks for P7's work to
+#: be done; whether that work is accepted is a separate act, performed by the
+#: repository's phase-closure process and an adjudicator who did not build it.
+#: Reading "complete" as "accept" is what made a whole-phase build unable to
+#: finish until acceptance had already happened.
+_PHASE_IMPLEMENTATION_VERB = (
+    r"complet(?:e|ing|ion|ely)(?![-\w])|finish(?:ing|ed)?(?![-\w])|"
+    r"conclud(?:e|ing)(?![-\w])|wrap\s+up|fully(?![-\w])|entirel(?:y)(?![-\w])|"
     r"in\s+full(?![-\w])|in\s+its\s+entirety"
+)
+
+#: Asking for the phase to be formally ACCEPTED — closed, adjudicated, signed
+#: off. Never inferred from a mention of the acceptance criteria: "build P7
+#: according to its acceptance criteria" names the bar the work is built to,
+#: which is the opposite of asking this run to award it. That exclusion is the
+#: negative lookahead on "acceptance".
+_PHASE_ACCEPTANCE_VERB = (
+    r"accept(?:ed|ing)?(?![-\w])|acceptance(?![-\w])(?!\s+(?:criteri|condition|test|bar|contract))|"
+    r"adjudicat(?:e|es|ed|ing|ion)(?![-\w])|sign(?:s|ed|ing)?\s*-?\s*off|"
+    r"clos(?:e|es|ed|ing|ure)(?![-\w])(?:\s+out)?|declare\s+(?:it\s+)?(?:done|accepted|complete)"
 )
 
 #: A phase id that is really a phase id, and not the stem of a nested unit's:
@@ -112,8 +133,35 @@ class ScopeLevel(str, Enum):
 
     #: A nested build unit inside a phase. Its acceptance is its own.
     TASK = "TASK"
-    #: The phase itself. Phase acceptance is the bar.
+    #: The phase itself. Whether as work or as acceptance is :class:`ScopeIntent`.
     PHASE = "PHASE"
+
+
+class ScopeIntent(str, Enum):
+    """What the task asks to happen to its scope. Three different jobs.
+
+    Building a phase and accepting a phase are not two strengths of one
+    request. The first is the builder's, and is finished when the work the
+    phase's criteria describe exists and can be pointed at. The second belongs
+    to the repository's phase-closure process — external verification on the
+    candidate tree, then an adjudicator outside the build lineage — and it is
+    what scores the criteria. A run that treats "build the phase" as "accept
+    the phase" cannot finish until acceptance has already happened, which is a
+    loop with no exit; a run that treats "accept the phase" as "build it" lets
+    a builder award its own phase.
+    """
+
+    #: Build one nested unit inside a phase.
+    UNIT_IMPLEMENTATION = "UNIT_IMPLEMENTATION"
+    #: Build the whole phase. Its criteria are the bar the work is built TO;
+    #: they stay as the repository records them until phase closure scores them.
+    PHASE_IMPLEMENTATION = "PHASE_IMPLEMENTATION"
+    #: Formally accept, close, adjudicate or sign off the phase. The full phase
+    #: bar: every required criterion satisfied, by its own authority.
+    PHASE_ACCEPTANCE = "PHASE_ACCEPTANCE"
+    #: No unit and no explicit phase request could be read. The strict default
+    #: governs what a CLAIM is measured against; nothing is owed on its behalf.
+    UNSPECIFIED = "UNSPECIFIED"
 
 
 class TaskScope(BaseModel):
@@ -138,18 +186,22 @@ class TaskScope(BaseModel):
     #: accepted. Only then is phase-level acceptance evidence this run's bar.
     claims_phase_completion: bool = True
 
-    #: True only when the task text ACTUALLY asked for the phase to be completed
-    #: or accepted — never when the phase bar was applied because no unit could
-    #: be derived.
+    #: True only when the task text ACTUALLY asked for the phase itself — to be
+    #: built or to be accepted — never when the phase bar was applied because
+    #: no unit could be derived. WHICH of the two it asked for is ``intent``,
+    #: and nothing that decides what a run owes may read this flag alone: it is
+    #: the umbrella that "build P7 completely" and "accept P7" share, and
+    #: reading it as acceptance is the conflation ``intent`` exists to prevent.
     #:
-    #: The distinction matters because ``claims_phase_completion`` is
-    #: deliberately the strict *default*: a task naming no unit gets held to the
-    #: phase, which is right for evidence and wrong for anything that reads the
-    #: flag as a statement about intent. A run that says "do it" is not at phase
-    #: acceptance, and demanding the phase's independent review of it — a review
-    #: of thirteen units, twelve of which do not exist — is a bar nothing can
-    #: clear. This field is what phase-level review asks instead.
+    #: The distinction from ``claims_phase_completion`` matters because that
+    #: flag is deliberately the strict *default*: a task naming no unit gets
+    #: held to the phase, which is right for evidence and wrong for anything
+    #: that reads the flag as a statement about intent.
     phase_completion_requested: bool = False
+
+    #: What the task asks to happen: build a unit, build the phase, or accept
+    #: the phase. See :class:`ScopeIntent`.
+    intent: ScopeIntent = ScopeIntent.UNSPECIFIED
 
     #: The id the repository gives this unit, when it names one (a checkpoint
     #: id, say). Corroboration, never a requirement: a repository is entitled to
@@ -177,8 +229,31 @@ class TaskScope(BaseModel):
 
     @property
     def requires_phase_acceptance(self) -> bool:
-        """Whether this run has to clear the whole phase's acceptance bar."""
+        """Whether a CLAIM this run makes about the phase is held to the phase's
+        own acceptance evidence. The strict default, about claims — not a
+        statement that this run is the one that accepts the phase. For that,
+        ask :attr:`phase_acceptance_requested`."""
         return self.claims_phase_completion
+
+    @property
+    def phase_implementation_requested(self) -> bool:
+        """The task asked for the whole phase to be BUILT, and not accepted."""
+        return self.intent is ScopeIntent.PHASE_IMPLEMENTATION
+
+    @property
+    def phase_acceptance_requested(self) -> bool:
+        """The task asked for the phase to be formally accepted or closed."""
+        return self.intent is ScopeIntent.PHASE_ACCEPTANCE
+
+    @property
+    def may_record_phase_acceptance(self) -> bool:
+        """Whether this run's record may ever say the parent phase is accepted.
+
+        Only a run that was asked to accept the phase. A unit build cannot, and
+        neither can a whole-phase build: completing the implementation is the
+        thing phase closure is handed, not the thing it concludes.
+        """
+        return self.claims_phase_completion and self.phase_acceptance_requested
 
     def describe(self) -> str:
         if self.is_nested:
@@ -186,6 +261,13 @@ class TaskScope(BaseModel):
                 f"{self.scope_id} (a unit inside {self.parent_phase_id}; "
                 f"{self.parent_phase_id} stays {self.phase_state_text})"
             )
+        if self.phase_implementation_requested:
+            return (
+                f"{self.scope_id or self.parent_phase_id} (whole-phase implementation; "
+                "acceptance belongs to phase closure)"
+            )
+        if self.phase_acceptance_requested:
+            return f"{self.scope_id or self.parent_phase_id} (formal phase acceptance)"
         return f"{self.scope_id or self.parent_phase_id} (phase scope)"
 
     def summary_block(self) -> str:
@@ -198,13 +280,48 @@ class TaskScope(BaseModel):
                 if self.parent_phase_execution_state
                 else ""
             ),
-            "CLAIMS PHASE COMPLETION: "
-            + ("yes — phase acceptance is this run's bar" if self.claims_phase_completion else "no"),
+            f"TASK INTENT: {self.intent.value}",
         ]
+        if self.phase_implementation_requested:
+            lines.append(
+                "CLAIMS PHASE COMPLETION: no — this run builds the phase; its acceptance "
+                "belongs to phase closure"
+            )
+        else:
+            lines.append(
+                "CLAIMS PHASE COMPLETION: "
+                + (
+                    "yes — phase acceptance is this run's bar"
+                    if self.claims_phase_completion
+                    else "no"
+                )
+            )
         return "\n".join(lines)
 
     def render(self) -> str:
         """The block handed to the builder and the reviewer."""
+        phase = self.parent_phase_id or self.scope_id or "the phase"
+        if self.phase_implementation_requested:
+            return (
+                f"SCOPE OF THIS RUN: {phase} — the WHOLE phase, as IMPLEMENTATION.\n"
+                f"PARENT PHASE: {phase} — recorded as {self.phase_state_text}, and this run "
+                "does not accept it.\n"
+                f"Build everything {phase}'s required acceptance criteria describe. Those "
+                "criteria are the bar the work is built TO; they are not yours to score. Leave "
+                "every criterion's result exactly as the repository records it — they stay "
+                "PENDING until phase closure scores them.\n"
+                "This run is finished when the implementation exists and can be pointed at: in "
+                "your report, account for EVERY required criterion by its id, naming the "
+                "test, probe or battery in the tree that establishes it "
+                "(`<criterion id>: IMPLEMENTED — <path/to/test.py::test_name>`), or saying "
+                "plainly that it is NOT IMPLEMENTED yet. Criteria settled by an independent "
+                "review or by external verification (CI) are phase closure's; do not claim them.\n"
+                f"Completing this implementation does NOT accept {phase}, does NOT score a "
+                "criterion, does NOT unblock the next phase, and enables nothing in "
+                f"production. Do not describe {phase} as accepted or COMPLETE, and do not "
+                "edit a status surface to say so. The completed candidate is handed to phase "
+                "closure, which is where acceptance happens."
+            )
         if not self.is_nested:
             return (
                 f"SCOPE OF THIS RUN: {self.scope_id or self.parent_phase_id or 'the task as written'}\n"
@@ -255,27 +372,55 @@ class ScopedCompletion(BaseModel):
     parent_phase: str = ""
     parent_phase_state: str = ""
     parent_phase_execution_state: str = ""
-    #: Always false unless the task itself claimed the phase AND the phase's own
-    #: acceptance evidence held. Nothing else may set it.
+    #: Always false unless the task itself asked for the phase to be ACCEPTED
+    #: and the phase's own acceptance evidence held. Nothing else may set it —
+    #: in particular, not a whole-phase build, however complete.
     parent_phase_accepted: bool = False
     #: What accepting this task explicitly does not do. Written out because the
     #: failure this module exists to prevent was a reader inferring the opposite.
     does_not_imply: list[str] = Field(default_factory=list)
+    #: What the task asked for — see :class:`ScopeIntent`.
+    intent: ScopeIntent = ScopeIntent.UNSPECIFIED
+    #: Where a verified task goes next, when that is somewhere other than the
+    #: founder's push: a verified whole-phase implementation is handed to phase
+    #: closure. Empty for every other outcome.
+    handoff: str = ""
+
+    @property
+    def implementation_verified(self) -> bool:
+        """A whole-phase build whose implementation is complete and evidenced —
+        IMPLEMENTATION VERIFIED / READY FOR PHASE CLOSURE, and nothing more."""
+        return (
+            self.intent is ScopeIntent.PHASE_IMPLEMENTATION
+            and self.task_result is TaskResult.VERIFIED
+            and not self.task_outstanding
+        )
 
     def summary_block(self) -> str:
-        return "\n".join(
-            [
-                f"TASK SCOPE: {self.task_scope or '(none derived)'}",
-                f"TASK RESULT: {self.task_result.value}",
-                f"PARENT PHASE: {self.parent_phase or '(none declared)'}",
-                f"PARENT PHASE STATE: {self.parent_phase_state or 'unknown'}"
-                + (
-                    f" / {self.parent_phase_execution_state}"
-                    if self.parent_phase_execution_state
-                    else ""
-                ),
-            ]
-        )
+        lines = [
+            f"TASK SCOPE: {self.task_scope or '(none derived)'}",
+            f"TASK RESULT: {self.task_result.value}"
+            + (
+                " — IMPLEMENTATION VERIFIED / READY FOR PHASE CLOSURE"
+                if self.implementation_verified
+                else ""
+            ),
+            f"PARENT PHASE: {self.parent_phase or '(none declared)'}",
+            f"PARENT PHASE STATE: {self.parent_phase_state or 'unknown'}"
+            + (
+                f" / {self.parent_phase_execution_state}"
+                if self.parent_phase_execution_state
+                else ""
+            ),
+        ]
+        if self.intent is ScopeIntent.PHASE_IMPLEMENTATION:
+            lines.append(
+                f"PARENT PHASE ACCEPTED: no — {self.parent_phase or 'the phase'} is accepted "
+                "only by phase closure"
+            )
+        if self.handoff:
+            lines.append(f"HANDOFF: {self.handoff}")
+        return "\n".join(lines)
 
 
 #: What a scoped task acceptance never means. Stated once, carried everywhere,
@@ -290,6 +435,32 @@ def standard_exclusions(phase_id: str) -> list[str]:
         "phase acceptance has occurred",
         "anything is enabled in production or on live traffic",
     ]
+
+
+#: What a verified whole-phase IMPLEMENTATION never means. The implementation is
+#: the candidate phase closure is handed; everything on this list is what phase
+#: closure, and only phase closure, can establish.
+def implementation_exclusions(phase_id: str) -> list[str]:
+    phase = phase_id or "the phase"
+    return [
+        f"{phase} is accepted or COMPLETE",
+        f"any {phase} acceptance criterion is scored",
+        f"{phase}'s independent-review or external-verification criteria are satisfied",
+        "phase acceptance has occurred",
+        "the next phase is unblocked",
+        "anything is enabled in production or on live traffic",
+    ]
+
+
+#: Where a verified whole-phase implementation goes next. One sentence, so the
+#: audit, the founder summary and the journal say the same thing.
+def phase_closure_handoff(phase_id: str) -> str:
+    phase = phase_id or "the phase"
+    return (
+        f"hand the {phase} candidate to phase closure (`phase close`): external "
+        "verification on the candidate tree, then an independent adjudication, which "
+        f"is what scores {phase}'s criteria"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -328,8 +499,39 @@ def _negated_near(text: str, start: int, end: int) -> bool:
     return any(_NEGATED.search(chunk) for chunk in (inside, before, after))
 
 
-def _phase_completion_requested(task: str, phase_id: str) -> tuple[bool, str]:
-    """Does the task ask for the *phase* to be completed or accepted?"""
+def _first_unnegated(task: str, patterns: tuple[str, ...]) -> str:
+    for pattern in patterns:
+        for match in re.finditer(pattern, task, re.I):
+            if _negated_near(task, match.start(), match.end()):
+                continue
+            return match.group(0).strip()[:160]
+    return ""
+
+
+def _phase_acceptance_requested(task: str, phase_id: str) -> tuple[bool, str]:
+    """Does the task ask for the phase to be formally accepted, closed,
+    adjudicated or signed off?"""
+    if not phase_id:
+        return False, ""
+    ref = _phase_ref(phase_id)
+    phrase = _first_unnegated(
+        task,
+        (
+            rf"\b(?:{_PHASE_ACCEPTANCE_VERB})[^.\n]{{0,14}}?{ref}",
+            rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_ACCEPTANCE_VERB})",
+            rf"{ref}\s+phase\s+acceptance",
+            rf"\bphase\s+(?:acceptance|closure|adjudication)\s+(?:of|for)\s+{ref}",
+            # "Complete P6 and take it through phase acceptance."
+            rf"{ref}[^.\n]{{0,60}}?\b(?:to|through|into)\s+(?:formal\s+)?(?:phase\s+)?"
+            r"(?:acceptance|closure|adjudication|sign\s*-?\s*off)\b"
+            r"(?!\s+(?:criteri|condition|test|bar|contract))",
+        ),
+    )
+    return bool(phrase), phrase
+
+
+def _phase_implementation_requested(task: str, phase_id: str) -> tuple[bool, str]:
+    """Does the task ask for the phase's WORK to be finished — the whole phase?"""
     if not phase_id:
         return False, ""
     ref = _phase_ref(phase_id)
@@ -337,21 +539,17 @@ def _phase_completion_requested(task: str, phase_id: str) -> tuple[bool, str]:
     # because a task document that discusses a phase for twenty pages will put
     # both words near each other by accident many times over, and every one of
     # those accidents would widen the run's bar to the whole phase.
-    patterns = (
-        rf"\b(?:{_PHASE_COMPLETION_VERB})[^.\n]{{0,14}}?{ref}",
-        rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_COMPLETION_VERB})",
-        rf"\ball\s+of\s+{ref}",
-        rf"\bwhole\s+(?:of\s+)?{ref}",
-        rf"\bentire\s+{ref}",
-        rf"{ref}\s+phase\s+acceptance",
-        rf"\bphase\s+acceptance\s+(?:of|for)\s+{ref}",
+    phrase = _first_unnegated(
+        task,
+        (
+            rf"\b(?:{_PHASE_IMPLEMENTATION_VERB})[^.\n]{{0,14}}?{ref}",
+            rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_IMPLEMENTATION_VERB})",
+            rf"\ball\s+of\s+{ref}",
+            rf"\bwhole\s+(?:of\s+)?{ref}",
+            rf"\bentire\s+{ref}",
+        ),
     )
-    for pattern in patterns:
-        for match in re.finditer(pattern, task, re.I):
-            if _negated_near(task, match.start(), match.end()):
-                continue
-            return True, match.group(0).strip()[:160]
-    return False, ""
+    return bool(phrase), phrase
 
 
 def _normalize_id(value: str) -> str:
@@ -625,7 +823,15 @@ def resolve_task_scope(
                 "from the task text"
             )
 
-    claims_phase, phase_phrase = _phase_completion_requested(text, phase_id)
+    # Two different requests about the phase, read separately. Acceptance is
+    # the wider one — it includes the work — so where both are present it
+    # governs; where only the work is asked for, acceptance is phase closure's.
+    acceptance_asked, acceptance_phrase = _phase_acceptance_requested(text, phase_id)
+    claims_phase, phase_phrase = (
+        (True, acceptance_phrase)
+        if acceptance_asked
+        else _phase_implementation_requested(text, phase_id)
+    )
 
     # What the repository itself calls an acceptance criterion of this phase.
     # Read before any id in the task is read as a build unit, because the two
@@ -692,10 +898,18 @@ def resolve_task_scope(
             parent_phase_state=phase_status,
             parent_phase_execution_state=phase_execution,
             claims_phase_completion=False,
+            intent=ScopeIntent.UNIT_IMPLEMENTATION,
             repository_unit_id=repository_unit_id,
             derivation=derivation,
             evidence_paths=evidence,
         )
+
+    if not claims_phase:
+        intent = ScopeIntent.UNSPECIFIED
+    elif acceptance_asked:
+        intent = ScopeIntent.PHASE_ACCEPTANCE
+    else:
+        intent = ScopeIntent.PHASE_IMPLEMENTATION
 
     if nested and claims_phase:
         derivation.append(
@@ -704,6 +918,17 @@ def resolve_task_scope(
         )
     elif claims_phase:
         derivation.append(f"the task asks for {phase_id} itself ({phase_phrase!r})")
+    if intent is ScopeIntent.PHASE_ACCEPTANCE:
+        derivation.append(
+            f"the task asks for {phase_id} to be formally accepted ({acceptance_phrase!r}), "
+            "so the phase's full acceptance bar applies"
+        )
+    elif intent is ScopeIntent.PHASE_IMPLEMENTATION:
+        derivation.append(
+            f"the task asks for {phase_id} to be BUILT, not accepted: its acceptance "
+            "criteria are the bar the work is built to, they stay as the repository "
+            "records them, and acceptance belongs to phase closure"
+        )
     elif refusals:
         derivation.append(
             "no single build unit could be derived: every id the task names inside the "
@@ -725,6 +950,7 @@ def resolve_task_scope(
         parent_phase_execution_state=phase_execution,
         claims_phase_completion=True,
         phase_completion_requested=claims_phase,
+        intent=intent,
         derivation=derivation,
         evidence_paths=evidence,
     )
@@ -770,10 +996,22 @@ def scoped_completion(
 ) -> ScopedCompletion:
     """Assemble the two-level completion record.
 
-    ``phase_accepted`` is refused unless the task actually claimed the phase.
-    A nested task cannot accept a phase however it is called, and the guard
-    lives here rather than at the call sites so there is one place to read.
+    ``phase_accepted`` is refused unless the task actually asked for the phase
+    to be ACCEPTED. A nested task cannot accept a phase however it is called,
+    and neither can a whole-phase build however complete it is; the guard lives
+    here rather than at the call sites so there is one place to read.
     """
+    if scope.is_nested:
+        exclusions = standard_exclusions(scope.parent_phase_id)
+    elif scope.phase_implementation_requested:
+        exclusions = implementation_exclusions(scope.parent_phase_id or scope.scope_id)
+    else:
+        exclusions = []
+    verified_implementation = (
+        scope.phase_implementation_requested
+        and task_result is TaskResult.VERIFIED
+        and not outstanding
+    )
     return ScopedCompletion(
         task_scope=scope.scope_id,
         task_result=task_result,
@@ -782,8 +1020,12 @@ def scoped_completion(
         parent_phase=scope.parent_phase_id,
         parent_phase_state=scope.parent_phase_state,
         parent_phase_execution_state=scope.parent_phase_execution_state,
-        parent_phase_accepted=bool(phase_accepted and scope.claims_phase_completion),
-        does_not_imply=(
-            standard_exclusions(scope.parent_phase_id) if scope.is_nested else []
+        parent_phase_accepted=bool(phase_accepted and scope.may_record_phase_acceptance),
+        does_not_imply=exclusions,
+        intent=scope.intent,
+        handoff=(
+            phase_closure_handoff(scope.parent_phase_id or scope.scope_id)
+            if verified_implementation
+            else ""
         ),
     )

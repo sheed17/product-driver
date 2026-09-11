@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -763,13 +763,24 @@ class PhaseClosureController:
 
     # -- 1. preflight -----------------------------------------------------
 
-    def preflight(self, *, suite_result: Any = None, gate: Any = None) -> PhaseClosureRecord:
+    def preflight(
+        self,
+        *,
+        suite_result: Any = None,
+        gate: Any = None,
+        implementation_evidence: Mapping[str, Sequence[str]] | None = None,
+    ) -> PhaseClosureRecord:
         """The deterministic pass. Answers everything a machine can settle.
 
         Nothing here launches a session, and nothing here costs anything but
         reading. That is the point: an independent adjudication is the scarcest
         thing in this system, and it must not be spent discovering that a
         checkpoint never landed.
+
+        ``implementation_evidence`` is how a run that BUILT the phase hands its
+        candidate over: criterion id -> the locators its builder pointed at. See
+        :meth:`_attach_implementation_evidence` for what they become, and what
+        they cannot become.
         """
         record = self.record
         record.builder_session_ids = list(self.builder_session_ids)
@@ -827,6 +838,8 @@ class PhaseClosureController:
 
         # (d) evidence, from the repository's own record and this run's artifacts.
         self._assemble_evidence(authority, fingerprint, suite_result=suite_result, gate=gate)
+        if implementation_evidence:
+            self._attach_implementation_evidence(implementation_evidence, fingerprint)
 
         # (e) residuals: what is carried, what could be closed, what needs a person.
         self._classify_residuals(authority)
@@ -1044,6 +1057,70 @@ class PhaseClosureController:
             record.notes.append(
                 f"this run's scenario suite: {passed} scenario(s) passed; "
                 f"acceptance gate {'VERIFIED' if verified else 'did not verify'}"
+            )
+
+    def _attach_implementation_evidence(
+        self, evidence: Mapping[str, Sequence[str]], fingerprint: TreeFingerprint
+    ) -> None:
+        """Record where the building run says each criterion's implementation is.
+
+        The hand-off from implementation to acceptance. A repository commonly
+        keeps its criteria bare until the adjudication writes what it found, so
+        a phase built to completion arrives here with nothing pointing at any
+        criterion — and the preflight, correctly, will not pay a reviewer to go
+        looking. The run that built the phase knows where each criterion's work
+        is; this is where it says so.
+
+        Every pointer is recorded as NOT OBSERVED: an artifact in the tree that
+        no session outside the build lineage has run. That is exactly the
+        preflight's UNOBSERVED — enough to be worth adjudicating, never enough
+        to be established, and no path from here reaches a score. A pointer at
+        something not in the tree is not recorded at all, and gate criteria
+        (the review, the external verifier, the residual ledger) are never
+        attached from a build: those are settled by their own authority.
+        """
+        record = self.record
+        tree = fingerprint.identity
+        gates = self._gate_criteria()
+        # A pointer a later commit retired is re-pointed on this tree rather
+        # than left standing as STALE: the builder is naming it again, now.
+        existing = {
+            (r.criterion_id, r.kind, r.locator) for r in record.evidence.refs if not r.stale
+        }
+        attached = 0
+        for criterion_id, locators in evidence.items():
+            if criterion_id not in record.criteria.ids or criterion_id in gates:
+                continue
+            for loc in locators:
+                resolved = self._index.resolve(loc)
+                if not resolved:
+                    continue
+                kind = _kind_for(loc, resolved)
+                key = (criterion_id, kind, loc)
+                if key in existing:
+                    continue
+                existing.add(key)
+                record.evidence.add(
+                    EvidenceRef(
+                        criterion_id=criterion_id,
+                        kind=kind,
+                        locator=loc,
+                        observed=False,
+                        established=False,
+                        observed_at_tree=tree,
+                        depends_on_paths=[resolved],
+                        detail=(
+                            "pointed at by the run that built the phase; not observed by any "
+                            "session outside the build lineage"
+                        ),
+                    )
+                )
+                attached += 1
+        if attached:
+            record.note(
+                f"the implementing run pointed {attached} artifact(s) at "
+                f"{len([c for c in evidence if c in record.criteria.ids])} criteria; "
+                "recorded unobserved for the adjudication"
             )
 
     def _attach_gate_evidence(

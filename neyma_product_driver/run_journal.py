@@ -330,6 +330,10 @@ class RunJournal:
     parent_phase_id: str = ""
     parent_phase_state: str = ""
     scope_is_nested: bool = False
+    #: What the task asked to happen — build a unit, build the phase, accept
+    #: the phase. A verified whole-phase BUILD is written up as the candidate
+    #: phase closure takes next, never as the phase accepted.
+    task_intent: str = ""
     #: The run's own completion record for the task it declared: the result the
     #: completion audit reached, and what it says is still outstanding. Copied,
     #: never recomputed, so the summary and the audit cannot drift apart —
@@ -733,6 +737,7 @@ class RunJournal:
                 "run_status": self.run_status,
                 "gate_status": self.gate_status,
                 "task_result": self.task_result,
+                "task_intent": self.task_intent,
                 "task_outstanding": list(self.task_outstanding),
                 "gate_headline": self.gate_headline,
                 "required_passed": self.required_passed,
@@ -1027,6 +1032,20 @@ class RunJournal:
                 f"Accepting {self.task_scope_id} does not complete "
                 f"{self.parent_phase_id}, does not score one of its acceptance criteria, "
                 "does not unblock the phase after it, and enables nothing in production."
+            )
+        elif self.task_intent == "PHASE_IMPLEMENTATION" and self.parent_phase_id:
+            lines.append(
+                f"    - this run was asked to **build {self.parent_phase_id}** — the whole "
+                "phase, as implementation"
+            )
+            lines.append(
+                f"    - **{self.parent_phase_id} is "
+                f"{self.parent_phase_state or 'IN_PROGRESS'} and this run did not accept it.** "
+                "Completing its implementation does not score any of its acceptance criteria, "
+                "does not satisfy its independent-review or external-verification criteria, "
+                "does not unblock the phase after it, and enables nothing in production. A "
+                "verified candidate goes to phase closure next, which is where acceptance "
+                "happens."
             )
         if self.scenario_name:
             lines.append(f"    - verified against scenario `{self.scenario_name}`"

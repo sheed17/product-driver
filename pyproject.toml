@@ -32,4 +32,5 @@ asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
     "e2e: end-to-end smoke test using a real local HTTP app and a real browser",
+    "local_artifacts: replays git-ignored run directories or a product checkout; skipped unless --local-artifacts",
 ]

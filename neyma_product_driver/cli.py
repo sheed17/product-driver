@@ -1189,6 +1189,13 @@ async def run_control_loop(
         #     What is NOT here: adjudicating the phase, scoring a criterion,
         #     writing a status file, or preparing a commit. Those live behind
         #     `phase close`, which is an explicit act.
+        #
+        #     A run asked to BUILD the phase hands its candidate over here: the
+        #     artifacts its builder pointed each criterion at are recorded in
+        #     THIS run's phase-closure attempt as unobserved evidence, so
+        #     `phase close --run <this run>` continues from the implementation
+        #     rather than rediscovering it. Nothing recorded here can score
+        #     anything; see `PhaseClosureController._attach_implementation_evidence`.
         if task_scope.requires_phase_acceptance and config.phase_closure.enabled:
             try:
                 controller = _phase_controller(
@@ -1197,7 +1204,15 @@ async def run_control_loop(
                     phase_id=task_scope.parent_phase_id or task_scope.scope_id,
                     builder_session_ids=_builder_lineage(state),
                 )
-                controller.preflight(suite_result=suite_result, gate=last_gate["value"])
+                controller.preflight(
+                    suite_result=suite_result,
+                    gate=last_gate["value"],
+                    implementation_evidence=(
+                        audit.implementation_evidence()
+                        if audit is not None and task_scope.phase_implementation_requested
+                        else None
+                    ),
+                )
                 phase_closure["value"] = controller
                 record.notes.append(
                     f"phase closure: {controller.record.state.value}"
@@ -3425,6 +3440,7 @@ def _journal_the_outcome(
         journal.scope_is_nested = (
             scope.get("level") == "TASK" and not scope.get("claims_phase_completion", True)
         )
+        journal.task_intent = str(scope.get("intent") or "")
 
     if result is None:
         journal.record_outcome(
@@ -3511,6 +3527,11 @@ def _next_safe_action(result: LoopResult) -> str:
                 "review, the run normally takes one itself, and this one could not. "
                 "`review --run <id>` inspects it by hand if you would rather.")
     if result.status is RunStatus.ACCEPTED and result.gate is not None and not result.gate.blocks_acceptance:
+        if _builds_whole_phase(result) and not _task_outstanding(result):
+            phase = _scope_field(result, "parent_phase_id") or _scope_field(result, "scope_id")
+            return (f"Hand the {phase} implementation candidate to phase closure: "
+                    f"`phase close --run {result.state.run_id}`. {phase} is not accepted "
+                    "until that passes; this run did not accept it.")
         return ("Read the diff yourself, then decide whether to commit and push it — the "
                 "driver stops before every remote action, by design.")
     return ""
@@ -3686,8 +3707,18 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         and not task_outstanding
         and repo_verified
     )
-
-    header("READY TO SHIP" if shippable else "NOT READY TO SHIP")
+    # A whole-phase BUILD is not shipped by its own run: a verified one is the
+    # candidate the repository's phase closure takes next, and that is what the
+    # heading says. Every condition above still has to hold for it.
+    building_phase = _builds_whole_phase(result)
+    if building_phase:
+        header(
+            "IMPLEMENTATION VERIFIED — READY FOR PHASE CLOSURE"
+            if shippable
+            else "IMPLEMENTATION NOT VERIFIED — NOT READY FOR PHASE CLOSURE"
+        )
+    else:
+        header("READY TO SHIP" if shippable else "NOT READY TO SHIP")
     out(
         f"  behaviour verified:            "
         f"{'yes — ' + gate.headline() if gate is not None else 'no acceptance gate ran'}"
@@ -3708,10 +3739,16 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     out(f"  repository's own verification: {_repo_verification_headline(result)}")
     out(f"  independent review:            {_review_headline(result)}")
     out(f"  phase acceptance:              {_phase_headline(result)}")
+    if building_phase:
+        phase = _scope_field(result, "parent_phase_id") or _scope_field(result, "scope_id")
+        out(
+            f"  {phase} accepted by this run:      no — only phase closure accepts {phase}; "
+            "no criterion was scored and nothing after it is unblocked"
+        )
     out(f"  local commit:                  {commit or 'none created this run'}")
     if dirty:
         out(f"  uncommitted tracked changes:   {len(dirty.splitlines())} file(s)")
-    out(f"  founder action required:       {_founder_action(result, shippable, dirty)}")
+    out(f"  founder action required:       {_founder_action(result, shippable, dirty, store)}")
 
     header("FOR THE FOUNDER")
     out("1. What can Neyma do now that it could not before?")
@@ -3773,6 +3810,11 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         note(
             "\nThis is a report. Nothing here scored a criterion, adjudicated the phase or\n"
             "wrote a status file. Run `phase close` to take the phase's own adjudication."
+            + (
+                f"\n  python -m neyma_product_driver phase close --run {store.run_id}"
+                if building_phase
+                else ""
+            )
         )
 
     out("\n10. What should we build next?")
@@ -3818,6 +3860,13 @@ def _phase_headline(result: LoopResult) -> str:
         f"{ledger.criteria_pass}/{ledger.criteria_required} required criteria pass, "
         f"{ledger.blocking_residuals} blocking residual(s)"
     )
+    if _builds_whole_phase(result):
+        # The criteria are scored BY phase closure, so a building run reports
+        # where closure stands rather than a pass count it was never asked for.
+        return (
+            f"{state} — phase closure has not run; {detail} as recorded (scoring them is "
+            "phase closure's act, not this run's)"
+        )
     return f"{state} — {detail}"
 
 
@@ -3978,13 +4027,24 @@ def _next_steps(result: LoopResult) -> list[str]:
     return steps
 
 
-def _founder_action(result: LoopResult, shippable: bool, dirty: str) -> str:
+def _founder_action(
+    result: LoopResult, shippable: bool, dirty: str, store: Any = None
+) -> str:
     if result.status is RunStatus.REQUIRES_APPROVAL:
         return "approve or refuse a repository repair that needs your authority"
     if result.status is RunStatus.NEEDS_USER:
         return "answer the product or authority question below"
     if result.status is RunStatus.NEEDS_INDEPENDENT_REVIEW:
         return "this task requires an independent review and none could be taken"
+    if shippable and _builds_whole_phase(result):
+        phase = _scope_field(result, "parent_phase_id") or _scope_field(result, "scope_id")
+        run = f" --run {store.run_id}" if store is not None else ""
+        return (
+            f"hand the {phase} candidate to phase closure: "
+            f"`python -m neyma_product_driver phase close{run}` (external verification on "
+            "the candidate tree, then an independent adjudication). "
+            f"{phase} stays unaccepted, and what follows it stays blocked, until that passes."
+        )
     if shippable:
         return "push / merge"
     if dirty:
@@ -3993,6 +4053,14 @@ def _founder_action(result: LoopResult, shippable: bool, dirty: str) -> str:
 
 
 def _push_readiness(result: LoopResult, shippable: bool, dirty: str, commit: str) -> str:
+    if shippable and _builds_whole_phase(result):
+        phase = _scope_field(result, "parent_phase_id") or _scope_field(result, "scope_id")
+        return (
+            f"Not as an accepted {phase} — this run built {phase} and did not accept it. "
+            f"Local commit {commit or '(none)'} is the implementation candidate for phase "
+            "closure; pushing it so the external verifier can run on that exact tree is "
+            "part of that step, and is yours to perform."
+        )
     if shippable:
         return f"Yes — local commit {commit or '(none)'}; push and merge are yours to perform."
     outstanding = _task_outstanding(result)
@@ -4033,7 +4101,31 @@ def _task_completion_headline(result: LoopResult) -> str:
     outstanding = _task_outstanding(result)
     if outstanding:
         return f"{scope}: {verdict} — {len(outstanding)} required portion(s) outstanding"
+    if getattr(completion, "implementation_verified", False):
+        return (
+            f"{scope}: IMPLEMENTATION VERIFIED — nothing outstanding; "
+            f"{completion.parent_phase or scope} is NOT accepted (acceptance belongs to "
+            "phase closure)"
+        )
     return f"{scope}: {verdict} — nothing outstanding"
+
+
+def _scope_field(result: LoopResult, name: str) -> str:
+    """One field of the scope this run resolved, from the audit or the state."""
+    scope = getattr(result.audit, "scope", None) if result.audit is not None else None
+    if scope is not None:
+        value = getattr(scope, name, "")
+    else:
+        persisted = getattr(result.state, "task_scope", None) or {}
+        value = persisted.get(name, "") if isinstance(persisted, dict) else ""
+    return str(getattr(value, "value", value) or "")
+
+
+def _builds_whole_phase(result: LoopResult) -> bool:
+    """Whether this run was asked to BUILD the whole phase — not accept it."""
+    from .task_scope import ScopeIntent
+
+    return _scope_field(result, "intent") == ScopeIntent.PHASE_IMPLEMENTATION.value
 
 
 def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
@@ -4108,7 +4200,15 @@ def _report_outcome(result: LoopResult, store: EvidenceStore) -> None:
         return
 
     if result.status is RunStatus.ACCEPTED:
-        good("ACCEPTED — the observed product behaviour was judged good enough.")
+        if _builds_whole_phase(result) and not _task_outstanding(result):
+            phase = _scope_field(result, "parent_phase_id") or _scope_field(result, "scope_id")
+            good(
+                f"IMPLEMENTATION VERIFIED — READY FOR PHASE CLOSURE. {phase} is NOT accepted "
+                "by this run; no criterion was scored."
+            )
+            out(f"next: python -m neyma_product_driver phase close --run {store.run_id}")
+        else:
+            good("ACCEPTED — the observed product behaviour was judged good enough.")
         if d:
             out(d.summary)
         out(f"\naccepted evidence: {store.run_dir / 'accepted'}")

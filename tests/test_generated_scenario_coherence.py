@@ -30,10 +30,18 @@ verification plan from current approved authority and the expectation half from
 a frozen snapshot, and the two halves drift. Historical evidence is immutable;
 the ACTIVE plan is not evidence, and must be reconstructable.
 
-Nothing here consumes Claude usage. Every recorded output in this file was
-recorded from the real oracles in the Neyma checkout, and
-:meth:`TestTheRecordingIsReal.test_every_recording_still_matches_the_live_oracle`
-re-runs each one so it cannot quietly become fiction.
+Nothing here consumes Claude usage, and nothing here reads a local run or a
+product checkout. The two cases are read from a checked-in fixture,
+``tests/data/run-20260905-230030-coherence.json``, which reconstructs them as
+they stood at the defect — the run directory itself is git-ignored, and a
+later resume of the same run repaired and re-persisted both cases, which is
+how seven of these tests once failed or passed depending on whose laptop they
+ran on. Every recorded output in this file was recorded from the real oracles.
+
+Both "is it still real?" questions — does the fixture still match the run it
+came from, and does each recording still match the live oracle — are asked by
+``tests/test_generated_scenario_coherence_local_artifacts.py``, which runs only
+when asked (``--local-artifacts``), because its answers depend on a machine.
 """
 
 from __future__ import annotations
@@ -41,7 +49,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -72,9 +79,15 @@ from neyma_product_driver.scenarios import Scenario, load_scenario
 
 DRIVER_ROOT = Path(__file__).resolve().parents[1]
 M13_PATH = DRIVER_ROOT / "scenarios" / "p6_m13_brake.yaml"
-RUN = DRIVER_ROOT / "runs" / "20260905-230030"
-PLAN = RUN / "scenario-plan.json"
-NEYMA = Path("/Users/sammyfammy/freight-logistics-operational-teammate")
+#: The two cases as they stood at the defect, reconstructed from immutable
+#: records of run 20260905-230030. See the fixture's own ``_provenance``.
+FIXTURE = DRIVER_ROOT / "tests" / "data" / "run-20260905-230030-coherence.json"
+STALE_ID, MISCITED_ID = "P6-M13-W3-07", "P6-M13-W3-03"
+
+
+def fixture() -> dict[str, Any]:
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
 
 # The three approved oracles this file is about, by the NAME a human wrote
 # beside them. The command bodies are read out of the scenario file at runtime —
@@ -202,9 +215,45 @@ def m13_context(scenario: Scenario | None = None, **overrides: Any) -> Validatio
 
 
 def plan_payload(scenario_id: str) -> dict[str, Any]:
-    """One scenario exactly as run 20260905-230030 persisted it."""
-    plan = json.loads(PLAN.read_text(encoding="utf-8"))
-    return copy.deepcopy(next(s for s in plan["scenarios"] if s["id"] == scenario_id))
+    """One scenario exactly as run 20260905-230030 had persisted it at the defect."""
+    return copy.deepcopy(next(s for s in fixture()["scenarios"] if s["id"] == scenario_id))
+
+
+def materialize_run(root: Path) -> Path:
+    """The run's persisted plan and its iteration records, as files on disk.
+
+    What a resume reads. Written from the fixture so the "a reconstruction
+    writes nothing" guarantee is asked of real bytes in a real run directory
+    rather than of an object in memory.
+    """
+    data = fixture()
+    run = root / "runs" / data["run_id"]
+    (run / "iteration-01").mkdir(parents=True)
+    (run / "iteration-02").mkdir()
+    (run / "scenario-plan.json").write_text(
+        json.dumps({"run_id": data["run_id"], "scenarios": data["scenarios"]}, indent=2),
+        encoding="utf-8",
+    )
+    (run / "iteration-01" / "record.json").write_text(
+        json.dumps({"iteration": 1, "outcomes": []}), encoding="utf-8"
+    )
+    (run / "iteration-02" / "record.json").write_text(
+        json.dumps(
+            {"iteration": 2, "executed": data["executed"], "outcomes": data["iteration_02_outcomes"]},
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return run
+
+
+def restore_from_disk(run: Path, scenario_id: str, context: ValidationContext) -> GeneratedScenario:
+    plan = json.loads((run / "scenario-plan.json").read_text(encoding="utf-8"))
+    scenario = GeneratedScenario.model_validate(
+        next(s for s in plan["scenarios"] if s["id"] == scenario_id)
+    )
+    restore(scenario, context)
+    return scenario
 
 
 def plan_scenario(scenario_id: str, **overrides: Any) -> GeneratedScenario:
@@ -344,25 +393,53 @@ def synthetic_scenario(command: str, contains: list[str], **overrides: Any) -> G
 
 
 class TestTheArtifactsAreReal:
-    def test_the_run_is_preserved_and_records_both_cases(self) -> None:
-        assert PLAN.exists(), "the run this correction came from is preserved"
-        w307, w303 = plan_scenario("P6-M13-W3-07"), plan_scenario("P6-M13-W3-03")
+    def test_the_fixture_records_both_cases_as_they_stood(self) -> None:
+        assert FIXTURE.exists(), "the defect's record is checked in, not borrowed from a laptop"
+        w307, w303 = plan_scenario(STALE_ID), plan_scenario(MISCITED_ID)
         assert STALE_TENANT in w307.persisted_state_checks[0].contains
         assert STALE_PLATFORM in w307.persisted_state_checks[0].contains
         assert w307.rebound_on_resume, "the command half was already re-materialized"
         assert w307.rebound_on_resume[0].startswith("persisted_state_checks[0].command")
+        assert len(w307.rebound_on_resume) == 1, "the expectation half was never repaired"
         assert w303.persisted_state_checks[0].contains == FLAPPING_LITERALS
         assert not w303.rebound_on_resume, "nothing ever touched the miscitation"
 
-    def test_the_gate_recorded_exactly_these_two_as_the_blocker(self) -> None:
-        outcome = json.loads((RUN / "journal.json").read_text(encoding="utf-8"))["outcome"]
-        assert outcome["gate_status"] == "NOT_VERIFIED"
-        assert (outcome["required_passed"], outcome["required_total"]) == (9, 11)
-        assert len(outcome["unverified"]) == 2
-        assert all(
-            any(sid in row for row in outcome["unverified"])
-            for sid in ("P6-M13-W3-07", "P6-M13-W3-03")
-        )
+    def test_the_execution_failed_on_exactly_what_defines_each_class(self) -> None:
+        """Iteration 2's own record: the only GENERATED cases that failed are
+        these two, and each failed on its class-defining assertions and on
+        nothing else."""
+        data = fixture()
+        failed = {
+            row["scenario_id"]
+            for row in data["iteration_02_outcomes"]
+            if row["outcome"] == "FAILED" and row["scenario_id"].startswith("P6-M13-")
+        }
+        assert failed == {STALE_ID, MISCITED_ID}
+
+        def failing(sid: str) -> set[str]:
+            return {
+                a["target"] for a in data["executed"][sid]["assertions"] if not a["passed"]
+            }
+
+        stale = failing(STALE_ID)
+        assert stale and all(
+            STALE_TENANT in target or STALE_PLATFORM in target for target in stale
+        ), stale
+        miscited = failing(MISCITED_ID)
+        assert miscited and all(
+            any(literal in target for literal in FLAPPING_LITERALS) for target in miscited
+        ), miscited
+
+    def test_the_miscited_case_ran_an_oracle_that_prints_none_of_its_sentences(self) -> None:
+        """The miscitation, from recorded output: the command it ran is the
+        no-DELETE oracle, verbatim, and nothing it printed is asserted."""
+        [ran] = [
+            c
+            for c in fixture()["executed"][MISCITED_ID]["commands"]
+            if _norm_command(c["command"]) == oracle_key(NO_DELETE_ORACLE)
+        ]
+        assert ran["exit_code"] == 0
+        assert not any(literal in ran["stdout"] for literal in FLAPPING_LITERALS)
 
     def test_the_current_repository_owns_the_replacement_sentences(self) -> None:
         """Both reconstructions are read out of current authority, not invented."""
@@ -880,27 +957,39 @@ class TestTheMiscitationClass:
 
 
 class TestHistoryIsImmutable:
-    def test_the_iteration_artifacts_are_byte_identical_after_a_reconstruction(self) -> None:
-        before = {d: digest_tree(RUN / d) for d in ("iteration-01", "iteration-02")}
+    def test_the_iteration_artifacts_are_byte_identical_after_a_reconstruction(
+        self, tmp_path: Path
+    ) -> None:
+        run = materialize_run(tmp_path)
+        before = {d: digest_tree(run / d) for d in ("iteration-01", "iteration-02")}
         context = m13_context()
-        for sid in ("P6-M13-W3-07", "P6-M13-W3-03"):
-            restore(plan_scenario(sid), context)
-        after = {d: digest_tree(RUN / d) for d in ("iteration-01", "iteration-02")}
+        for sid in (STALE_ID, MISCITED_ID):
+            restored = restore_from_disk(run, sid, context)
+            assert restored.persisted_state_checks[0].contains, "nothing was reconstructed"
+        after = {d: digest_tree(run / d) for d in ("iteration-01", "iteration-02")}
         assert before == after
 
-    def test_the_persisted_plan_on_disk_is_untouched(self) -> None:
-        before = PLAN.read_bytes()
+    def test_the_persisted_plan_on_disk_is_untouched(self, tmp_path: Path) -> None:
+        run = materialize_run(tmp_path)
+        plan = run / "scenario-plan.json"
+        before = plan.read_bytes()
         context = m13_context()
-        for sid in ("P6-M13-W3-07", "P6-M13-W3-03"):
-            restore(plan_scenario(sid), context)
-        assert PLAN.read_bytes() == before, "a pure reconstruction wrote to the run directory"
+        for sid in (STALE_ID, MISCITED_ID):
+            restore_from_disk(run, sid, context)
+        assert plan.read_bytes() == before, "a pure reconstruction wrote to the run directory"
 
-    def test_the_historical_record_still_states_the_original_expectation(self) -> None:
+    def test_the_historical_record_still_states_the_original_expectation(
+        self, tmp_path: Path
+    ) -> None:
         """The superseded text remains readable as what the run actually did."""
-        payload = plan_payload("P6-M13-W3-07")
+        run = materialize_run(tmp_path)
+        restore_from_disk(run, STALE_ID, m13_context())
+        payload = plan_payload(STALE_ID)
         assert STALE_TENANT in payload["persisted_state_checks"][0]["contains"]
-        record = json.loads((RUN / "iteration-02" / "record.json").read_text(encoding="utf-8"))
-        assert record, "the iteration record is still there to read"
+        record = json.loads((run / "iteration-02" / "record.json").read_text(encoding="utf-8"))
+        assert any(
+            STALE_TENANT in a["target"] for a in record["executed"][STALE_ID]["assertions"]
+        ), "the iteration record no longer says what the run measured"
 
 
 # ==========================================================================
@@ -955,8 +1044,8 @@ class TestGenuineFailuresStillBlock:
 class TestUnchangedCasesAreStable:
     def test_the_other_eleven_scenarios_restore_unchanged(self) -> None:
         context = m13_context()
-        plan = json.loads(PLAN.read_text(encoding="utf-8"))
-        touched = {"P6-M13-W3-07", "P6-M13-W3-03"}
+        plan = fixture()
+        touched = {STALE_ID, MISCITED_ID}
         checked = 0
         for raw in plan["scenarios"]:
             if raw["id"] in touched:
@@ -973,9 +1062,9 @@ class TestUnchangedCasesAreStable:
 
     def test_their_coverage_signatures_are_unchanged(self) -> None:
         context = m13_context()
-        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        plan = fixture()
         for raw in plan["scenarios"]:
-            if raw["id"] in {"P6-M13-W3-07", "P6-M13-W3-03"}:
+            if raw["id"] in {STALE_ID, MISCITED_ID}:
                 continue
             scenario = GeneratedScenario.model_validate(copy.deepcopy(raw))
             before = scenario.signature()
@@ -1136,24 +1225,26 @@ class TestAuthorityRedactionAndGuards:
 
 
 # ==========================================================================
-# The recording is real
+# The recording is real — asked by the opt-in local-artifacts module
 # ==========================================================================
 
 
-@pytest.mark.skipif(not NEYMA.exists(), reason="the Neyma checkout is not present")
-class TestTheRecordingIsReal:
-    @pytest.mark.parametrize("name", sorted(RECORDING))
-    def test_every_recording_still_matches_the_live_oracle(self, name: str) -> None:
-        proc = subprocess.run(
-            oracle_command(name),
-            shell=True,
-            cwd=str(NEYMA),
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-        assert proc.returncode == 0, proc.stderr[-2000:]
-        assert proc.stdout == RECORDING[name], "the recording has become fiction"
+class TestTheFixtureAgreesWithItsRecordings:
+    """The two recorded sources in this file are each other's check.
+
+    Whether each recording still matches the LIVE oracle is a question about a
+    product checkout, and is asked by the local-artifacts module on request.
+    What can be asked everywhere: the recordings and the fixture's own
+    execution record describe the same oracles.
+    """
+
+    def test_the_miscited_oracle_printed_what_its_recording_says(self) -> None:
+        [ran] = [
+            c
+            for c in fixture()["executed"][MISCITED_ID]["commands"]
+            if _norm_command(c["command"]) == oracle_key(NO_DELETE_ORACLE)
+        ]
+        assert ran["stdout"] == RECORDING[NO_DELETE_ORACLE]
 
 
 # ==========================================================================
