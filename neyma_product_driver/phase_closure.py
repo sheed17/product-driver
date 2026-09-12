@@ -70,6 +70,7 @@ from .external_verification import (
 )
 from .models import utcnow
 from .phase_acceptance import (
+    AdjudicationScores,
     AntiVacuity,
     ClosureState,
     CriterionEvidenceStatus,
@@ -92,6 +93,20 @@ from .review_cycle import TreeFingerprint, capture_fingerprint
 #: The persisted artifact. One file, at the run root, like the protocol
 #: resolution — not a second store.
 CLOSURE_FILE = "phase-closure.json"
+
+#: Which version of the deterministic closure rule produced a record's stored
+#: decisions. A finding's ``blocks_phase_acceptance`` is persisted precisely so
+#: a resume restores the decision rather than re-deriving it from prose — but
+#: that is only sound while the rule is the same rule. A record written under an
+#: earlier rule carries a decision nobody would take today, and restoring it
+#: would make a fixed harness keep reporting the defect it was fixed for. So the
+#: version is stamped, a mismatch re-derives every finding once, and the
+#: re-derivation is recorded in the record's own history rather than done
+#: quietly. Bump this whenever a change here can alter a finding's disposition.
+#:
+#: 2: a finding may not contradict the adjudication that carried it — see rule 4
+#:    in :mod:`~neyma_product_driver.phase_acceptance`.
+CLOSURE_RULE_VERSION = "2"
 
 
 # --------------------------------------------------------------------------
@@ -294,6 +309,11 @@ class RoutingPlan(BaseModel):
     stop_product_run: bool = False
     #: True when something is the founder's to decide.
     founder_decision_required: bool = False
+    #: True when a finding contradicts the adjudication that carried it. No
+    #: other layer may be given work until the adjudicator resolves it: a
+    #: product repair launched from a self-contradictory adjudication repairs
+    #: whatever the contradiction happened to point at.
+    adjudication_must_resolve: bool = False
 
     def for_layer(self, layer: RepairLayer) -> RoutedWork | None:
         for route in self.routes:
@@ -310,6 +330,12 @@ class RoutingPlan(BaseModel):
             lines.append(
                 "  the product run STOPS: a Product Driver defect cannot be repaired by "
                 "changing the product it measured."
+            )
+        if self.adjudication_must_resolve:
+            lines.append(
+                "  the ADJUDICATOR answers first: it scored a criterion PASS and attached a "
+                "finding demonstrating the same criterion false. Until it says which it "
+                "meant, no product repair may be launched from either."
             )
         return "\n".join(lines)
 
@@ -331,6 +357,10 @@ _LAYER_INSTRUCTION: dict[RepairLayer, str] = {
         "a CI-only correction: the verifier is broken, not the thing it verified"
     ),
     RepairLayer.FOUNDER_DECISION: "a founder or architect states the missing authority",
+    RepairLayer.INDEPENDENT_ADJUDICATION: (
+        "back to the adjudicator: it scored the criterion PASS and attached a finding "
+        "demonstrating it false; it states which it meant and the phase is re-adjudicated"
+    ),
     RepairLayer.RECORD_ONLY: "record and move on; nothing is owed for this phase acceptance",
     RepairLayer.EXTERNAL: "someone outside this machine acts; Product Driver waits",
 }
@@ -358,6 +388,8 @@ def route_findings(findings: Sequence[PhaseFinding]) -> RoutingPlan:
             plan.stop_product_run = True
         if layer is RepairLayer.FOUNDER_DECISION:
             plan.founder_decision_required = True
+        if layer is RepairLayer.INDEPENDENT_ADJUDICATION:
+            plan.adjudication_must_resolve = True
     return plan
 
 
@@ -650,6 +682,10 @@ class PhaseClosureRecord(BaseModel):
     #: One line per thing that happened, in order.
     history: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    #: The closure rule under which this record's stored dispositions were
+    #: taken. Empty means "written before the rule was versioned", which is a
+    #: mismatch like any other.
+    decision_rule_version: str = ""
 
     def fingerprint(self) -> TreeFingerprint:
         return TreeFingerprint.from_dict(self.candidate)
@@ -669,19 +705,52 @@ class PhaseClosureRecord(BaseModel):
         return [f for f in self.findings if f.blocks_phase_acceptance]
 
     @property
+    def inconsistent_findings(self) -> list[PhaseFinding]:
+        """Findings that contradict the adjudication that carried them."""
+        return [f for f in self.findings if f.contradicts_adjudication]
+
+    @property
     def nonblocking_findings(self) -> list[PhaseFinding]:
-        """Findings that are neither blocking nor an authority gap.
+        """Findings that are neither blocking, an authority gap, nor a contradiction.
 
         A gap is excluded because it is not debt: it stops the attempt, and
         listing it under "record and move on" says the opposite of what it
-        means.
+        means. A contradiction is excluded for the same reason and one more —
+        printing it as debt would tell the founder to carry on past the fact
+        that the adjudication does not agree with itself.
         """
         return [
             f
             for f in self.findings
             if not f.blocks_phase_acceptance
+            and not f.contradicts_adjudication
             and f.classification is not FindingClass.AUTHORITY_GAP
         ]
+
+    def adjudication_scores(self) -> AdjudicationScores | None:
+        """What the INDEPENDENT adjudication scored, or nothing.
+
+        ``None`` when there is no adjudication or it is not independent, and
+        that is not the same as an adjudication that scored nothing: a
+        contradiction needs a score to contradict, and a score that does not
+        count cannot be contradicted. Criteria the reviewer scored outside the
+        frozen authority are dropped here, because they were never part of the
+        bar this attempt is measured against.
+        """
+        adjudication = self.adjudication
+        if adjudication is None or not adjudication.independent:
+            return None
+        passed = [
+            r.criterion_id
+            for r in adjudication.criterion_results
+            if r.passed and not r.outside_authority
+        ]
+        failed = [
+            r.criterion_id
+            for r in adjudication.criterion_results
+            if r.failed and not r.outside_authority
+        ]
+        return AdjudicationScores(passed=passed, failed=failed)
 
     @property
     def authority_gaps(self) -> list[PhaseFinding]:
@@ -736,6 +805,7 @@ class PhaseClosureController:
 
     def save(self) -> None:
         self.record.updated_at = utcnow()
+        self.record.decision_rule_version = CLOSURE_RULE_VERSION
         if self.store is not None:
             self.store.write_json(CLOSURE_FILE, self.record.model_dump(mode="json"))
 
@@ -759,7 +829,64 @@ class PhaseClosureController:
         self.phase_id = self.record.phase_id or self.phase_id
         if self.record.builder_session_ids and not self.builder_session_ids:
             self.builder_session_ids = list(self.record.builder_session_ids)
+        self._migrate_dispositions()
         return self.record
+
+    def _migrate_dispositions(self) -> None:
+        """Re-take every stored decision when the rule that took them has moved.
+
+        Nothing else about the record is touched: the criteria stay frozen, the
+        evidence stays pointed at the tree it was observed against, and the
+        findings keep every fact they recorded. What is re-derived is only what
+        this module derives — whether each finding blocks, whether it contradicts
+        its adjudication, and who repairs it — from the structured fields the
+        finding already carries.
+
+        Deliberately without the no-downgrade guard that
+        :meth:`_reclassify_findings` applies. That guard stops a LATER STEP of
+        one attempt from quietly softening an earlier refusal, which is a real
+        failure. This is a different thing: the earlier refusal was taken under
+        a rule this codebase has since decided was wrong, and keeping it would
+        mean a repaired harness goes on reporting the defect it was repaired
+        for. The change is written into the record's history, so a reader can
+        see the refusal was re-taken rather than lost.
+        """
+        record = self.record
+        if record.decision_rule_version == CLOSURE_RULE_VERSION:
+            return
+        previous = record.decision_rule_version or "(unversioned)"
+        changed = self._rederive_findings()
+        record.decision_rule_version = CLOSURE_RULE_VERSION
+        record.note(
+            f"closure rule {previous} -> {CLOSURE_RULE_VERSION}: "
+            f"{len(changed)} of {len(record.findings)} findings re-derived"
+        )
+        for line in changed:
+            record.note(f"  re-derived: {line}")
+        if record.state is not ClosureState.NOT_STARTED:
+            self.decide()
+
+    def _rederive_findings(self) -> list[str]:
+        """Re-run the whole rule over every stored finding. Returns what moved."""
+        record = self.record
+        scores = record.adjudication_scores()
+        changed: list[str] = []
+        for finding in record.findings:
+            before = (finding.blocks_phase_acceptance, finding.adjudication_inconsistency)
+            if not finding.not_falsified_criterion_ids:
+                finding.not_falsified_criterion_ids = _criteria_disclaimed_in(
+                    " ".join([finding.summary, *finding.evidence]), finding.criterion_ids
+                )
+            classify_and_route(
+                finding,
+                record.criteria,
+                scores=scores,
+                stale_verification_blocks=self.stale_verification_blocks,
+            )
+            after = (finding.blocks_phase_acceptance, finding.adjudication_inconsistency)
+            if before != after:
+                changed.append(finding.brief())
+        return changed
 
     # -- 1. preflight -----------------------------------------------------
 
@@ -1553,6 +1680,9 @@ class PhaseClosureController:
             )
 
         self._ingest_review_findings(review, adjudication)
+        # Everything recorded before this adjudication was scored against no
+        # score. Now there is one, and a finding that contradicts it must say so.
+        self._reclassify_findings()
         if self.authority is not None:
             self._attach_gate_evidence(self.authority, fingerprint)
         record.note(f"phase adjudication ingested: {adjudication.brief()}")
@@ -1571,6 +1701,11 @@ class PhaseClosureController:
             reasoning = str(getattr(raw, "reasoning", "") or "")
             named = _criteria_named_in(f"{text} {reasoning}", record.criteria)
             classification = classify_review_finding(f"{text} {reasoning}")
+            # Read from the FULL prose, not the truncated summary: the sentence
+            # in which a reviewer exempts a criterion is as often in the
+            # reasoning as in the finding, and it is the reviewer's own
+            # statement about its own finding.
+            disclaimed = _criteria_disclaimed_in(f"{text} {reasoning}", named)
             # "Mechanically demonstrated" is not a word count. It requires a
             # named criterion, a concrete evidence path, and language that says
             # something was observed rather than argued.
@@ -1587,6 +1722,7 @@ class PhaseClosureController:
                     phase_id=record.phase_id,
                     summary=text[:500],
                     criterion_ids=named,
+                    not_falsified_criterion_ids=disclaimed,
                     evidence=[evidence_path] if evidence_path else [],
                     mechanically_demonstrated=demonstrated,
                     observed_at_tree=tree,
@@ -1643,7 +1779,11 @@ class PhaseClosureController:
         record = self.record
         if record.state is ClosureState.AUTHORITY_GAP:
             return record.state
-        if self._already_accepted() and not record.blocking_findings:
+        if (
+            self._already_accepted()
+            and not record.blocking_findings
+            and not record.inconsistent_findings
+        ):
             record.state = ClosureState.ALREADY_ACCEPTED
             self._rebuild_ledger()
             return record.state
@@ -1656,6 +1796,14 @@ class PhaseClosureController:
         # A demonstrated defect, or a residual the repository says blocks.
         if record.blocking_findings or record.residuals.blocking:
             return settle(ClosureState.BLOCKED)
+
+        # An adjudication that says two incompatible things about one criterion.
+        # Checked after the blocking test, because a demonstrated failure that
+        # nothing contradicts is the more concrete fact and names the layer that
+        # owns it; checked before everything else, because a contradiction means
+        # the adjudication this attempt rests on cannot be read.
+        if record.inconsistent_findings:
+            return settle(ClosureState.ADJUDICATION_INCONSISTENT)
 
         # 1. the canonical scope is built.
         if self._checkpoints_short():
@@ -1785,10 +1933,16 @@ class PhaseClosureController:
         self, authority: PhaseAuthority, fingerprint: TreeFingerprint
     ) -> ClosureState:
         record = self.record
-        if authority.already_accepted and not record.blocking_findings:
+        if (
+            authority.already_accepted
+            and not record.blocking_findings
+            and not record.inconsistent_findings
+        ):
             return ClosureState.ALREADY_ACCEPTED
         if record.blocking_findings or record.residuals.blocking:
             return ClosureState.BLOCKED
+        if record.inconsistent_findings:
+            return ClosureState.ADJUDICATION_INCONSISTENT
         if self._checkpoints_short():
             return ClosureState.PREFLIGHT_BLOCKED
         non_instantiable = record.criteria.non_instantiable()
@@ -1894,6 +2048,16 @@ class PhaseClosureController:
         if any(cid in f.criterion_ids for f in record.blocking_findings):
             return False, "a blocking finding demonstrates it is false"
 
+        if any(cid in f.criterion_ids for f in record.inconsistent_findings):
+            # Neither side of a contradiction may be read as the answer. The
+            # criterion is not shown false and it is not shown to hold; what is
+            # known is that the adjudication said both, and that is not a state
+            # in which a phase may be accepted.
+            return False, (
+                "the adjudication scored it PASS and also attached a finding demonstrating "
+                "it false; the contradiction is unresolved"
+            )
+
         adjudication = record.adjudication
         result = (
             adjudication.result_for(cid)
@@ -1941,9 +2105,17 @@ class PhaseClosureController:
     def _add_finding(self, finding: PhaseFinding) -> PhaseFinding:
         record = self.record
         finding.criteria_fingerprint = finding.criteria_fingerprint or record.criteria_fingerprint
+        if not finding.not_falsified_criterion_ids:
+            # A finding that arrived without the structured exemption still says
+            # what it says. Read from its own words, once, here, so every
+            # producer of a finding gets the same reading.
+            finding.not_falsified_criterion_ids = _criteria_disclaimed_in(
+                " ".join([finding.summary, *finding.evidence]), finding.criterion_ids
+            )
         classify_and_route(
             finding,
             record.criteria,
+            scores=record.adjudication_scores(),
             stale_verification_blocks=self.stale_verification_blocks,
         )
         existing = record.finding(finding.finding_id)
@@ -1953,9 +2125,36 @@ class PhaseClosureController:
             existing.blocks_phase_acceptance = (
                 existing.blocks_phase_acceptance or finding.blocks_phase_acceptance
             )
+            existing.adjudication_inconsistency = (
+                existing.adjudication_inconsistency or finding.adjudication_inconsistency
+            )
             return existing
         record.findings.append(finding)
         return finding
+
+    def _reclassify_findings(self) -> None:
+        """Re-derive every finding's disposition once an adjudication lands.
+
+        A finding recorded before the adjudication was scored against no score
+        at all, so a contradiction between the two could not be seen when it was
+        written down. Re-deriving is safe in exactly one direction: a finding
+        may gain a contradiction, and it may not lose a block. The second half
+        is enforced here rather than trusted, because "a later step quietly
+        downgraded an earlier refusal" is the failure this controller exists to
+        make impossible.
+        """
+        record = self.record
+        scores = record.adjudication_scores()
+        for finding in record.findings:
+            was_blocking = finding.blocks_phase_acceptance
+            classify_and_route(
+                finding,
+                record.criteria,
+                scores=scores,
+                stale_verification_blocks=self.stale_verification_blocks,
+            )
+            if was_blocking and not finding.contradicts_adjudication:
+                finding.blocks_phase_acceptance = True
 
     def _rebuild_ledger(self) -> PhaseLedger:
         """The compact record, recomputed from the state. Never hand-maintained."""
@@ -1988,6 +2187,14 @@ class PhaseClosureController:
                     or any(c.criterion_id in f.criterion_ids for f in record.blocking_findings)
                 )]
             ),
+            criteria_contradicted=sorted(
+                {
+                    cid
+                    for f in record.inconsistent_findings
+                    for cid in f.criterion_ids
+                    if cid in record.criteria.required_ids
+                }
+            ),
             criteria_unevidenced=self._unevidenced_required(),
             criteria_non_instantiable=[c.criterion_id for c in record.criteria.non_instantiable()],
             blocking_residuals=len(record.residuals.blocking),
@@ -2012,6 +2219,7 @@ class PhaseClosureController:
             ),
             blocking_findings=[f.brief() for f in record.blocking_findings],
             nonblocking_findings=[f.brief() for f in record.nonblocking_findings],
+            inconsistent_findings=[f.brief() for f in record.inconsistent_findings],
             authority_gaps=[f.brief() for f in record.authority_gaps],
             production_enabled=production,
             ready_for_acceptance_commit=(
@@ -2172,6 +2380,13 @@ def phase_adjudication_prompt(
         "observed break. An argument that it might be false is CANNOT_DETERMINE, and "
         "CANNOT_DETERMINE is an honest answer. Do not round either way.",
         "",
+        "Your scoring and your findings are read as ONE answer, and they must agree. If "
+        "you attach a finding to a criterion you scored PASS, say in the finding itself "
+        "that it does not fail that criterion — a finding that names a criterion and "
+        "reads as a refutation of it, against your own PASS, is a contradiction, and the "
+        "closure will stop and come back to you rather than guess which half you meant. "
+        "If the finding really does show the criterion is false, score it FAIL.",
+        "",
     ]
     if authority is not None:
         lines += [
@@ -2246,6 +2461,39 @@ _DEMONSTRATION = re.compile(
     r"returns?\b|returned|raises?\b|raised|asserts?\s+fail|red\b|traceback|"
     r"stack\s?trace|output\s+was|actual(?:ly)?\b|mismatch|not\s+equal|differs?\b)\b"
 )
+
+#: Language in which a reporter says a finding does NOT make a criterion false.
+#: Two shapes, both seen in real adjudications: a negated falsification verb
+#: ("they do not fail AC-12", "this does not violate the criterion"), and a
+#: contrast that names what it is instead ("carried debt rather than an AC-12
+#: violation"). Nothing looser: "unrelated to", "distinct from" and "out of
+#: scope" are things a reporter says about the SITES it looked at as often as
+#: about the criterion, and reading either as an exemption would let a real
+#: refutation be talked out of blocking.
+#: Words that end a clause. They may not sit between the negation and the verb
+#: it negates: "the guard is not run AND the invariant fails" negates the run,
+#: not the failure, and a window that stepped over the conjunction would read
+#: that sentence — a refutation — as an exemption.
+_CLAUSE_BREAK = r"(?:and|but|or|nor|because|while|which|that|since|so|though|although|yet)"
+
+#: At most three words between the two halves, none of them a clause break.
+_NEAR = rf"(?:(?!\b{_CLAUSE_BREAK}\b)[\w-]+[\s,]+){{0,3}}?"
+
+_NOT_FALSIFYING = re.compile(
+    r"(?i)(?:"
+    r"\b(?:do(?:es)?\s+not|did\s+not|don'?t|doesn'?t|is\s+not|are\s+not|was\s+not|"
+    r"were\s+not|cannot|can\s?not|can'?t|never|not)\s+" + _NEAR +
+    r"(?:fail|fails|failed|failing|falsif\w+|violat\w+|breach\w*|invalidat\w+|"
+    r"refut\w+|contradict\w*|break|breaks|broken)\b"
+    r"|\b(?:rather|other)\s+than\s+" + _NEAR +
+    r"(?:failure|failing|violation|breach|refutation|falsification)\b"
+    r")"
+)
+
+#: A sentence boundary, for scoping a disclaimer to the criterion it is about.
+#: A reporter who exempts AC-12 in one sentence has not thereby exempted AC-9
+#: because AC-9 appears in the next one.
+_SENTENCE = re.compile(r"(?<=[.;!?])\s+|\n+")
 
 #: Ordered because the first match wins and the earlier patterns name the
 #: narrower thing. A sentence about Product Driver's own measurement must not be
@@ -2417,6 +2665,54 @@ def _criteria_named_in(text: str, criteria: CriterionSet) -> list[str]:
         if cid and re.search(rf"\b{re.escape(cid)}\b", blob, re.I):
             found.append(cid)
     return found
+
+
+def _criterion_aliases(criterion_id: str) -> list[str]:
+    """How a reporter may spell one criterion id in a sentence.
+
+    The id itself, and the id with a leading phase segment dropped — a reviewer
+    given ``PH4-AC-12`` writes "does not fail AC-12" in the very next clause,
+    and a rule that only matched the full form would read that sentence as being
+    about nothing. The suffix is accepted only when it still looks like an id
+    (a letter and a digit), so ``AC-1`` never aliases to the bare ``1``.
+    """
+    cid = str(criterion_id or "").strip()
+    if not cid:
+        return []
+    aliases = [cid]
+    _, sep, rest = cid.partition("-")
+    if sep and re.search(r"[A-Za-z]", rest) and re.search(r"\d", rest) and len(rest) >= 3:
+        aliases.append(rest)
+    return aliases
+
+
+def _criteria_disclaimed_in(text: str, criterion_ids: Sequence[str]) -> list[str]:
+    """Criteria the prose itself says this finding does not falsify.
+
+    Scoped to the sentence: an exemption counts for the criterion it is written
+    beside, not for every criterion the finding happens to mention. This is the
+    deterministic reading of rule 4 in
+    :mod:`~neyma_product_driver.phase_acceptance` — a reviewer who attaches
+    context to a criterion and says in the same breath that it does not fail
+    that criterion has attached context, not refused the phase.
+    """
+    blob = str(text or "")
+    if not blob.strip():
+        return []
+    sentences = [part for part in _SENTENCE.split(blob) if part.strip()]
+    disclaimed: list[str] = []
+    for cid in criterion_ids:
+        aliases = _criterion_aliases(cid)
+        if not aliases:
+            continue
+        pattern = re.compile(
+            r"\b(?:" + "|".join(re.escape(a) for a in aliases) + r")\b", re.I
+        )
+        for sentence in sentences:
+            if pattern.search(sentence) and _NOT_FALSIFYING.search(sentence):
+                disclaimed.append(cid)
+                break
+    return disclaimed
 
 
 def _changed_between(repo: Path, previous: TreeFingerprint, current: TreeFingerprint) -> list[str]:

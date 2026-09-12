@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 
@@ -188,10 +188,27 @@ class FakeReview:
         self.reproduced_runtime_evidence = reproduced_runtime_evidence
 
 
-def supporting_review(criteria_ids: list[str], **kwargs: Any) -> FakeReview:
+def supporting_review(
+    criteria_ids: list[str], failing: Sequence[str] = (), **kwargs: Any
+) -> FakeReview:
+    """An adjudication that scored every criterion, PASS unless named in ``failing``.
+
+    ``failing`` exists so a test can build an adjudication that is INTERNALLY
+    CONSISTENT: a reviewer whose finding demonstrates a criterion false and who
+    scores that same criterion PASS has contradicted itself, and the controller
+    now says so rather than picking a side. A test about what a demonstrated
+    product defect does must therefore score the criterion the way its own
+    finding reads.
+    """
+    failed = {str(cid) for cid in failing}
     return FakeReview(
         criteria_assessment=[
-            FakeAssessment(cid, "PASS", "re-derived on this tree") for cid in criteria_ids
+            FakeAssessment(
+                cid,
+                "FAIL" if cid in failed else "PASS",
+                "re-derived on this tree",
+            )
+            for cid in criteria_ids
         ],
         **kwargs,
     )

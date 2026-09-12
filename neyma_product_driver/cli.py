@@ -5837,6 +5837,18 @@ def _report_phase_closure(controller: Any) -> None:
     header("PHASE LEDGER")
     out(record.ledger.render())
 
+    if record.state.value == "ADJUDICATION_INCONSISTENT":
+        header("ADJUDICATION INCONSISTENT — STOPPED")
+        for finding in record.inconsistent_findings:
+            out(f"  {finding.finding_id}: {finding.adjudication_inconsistency}")
+            out(f"  resolves when: {finding.closure_condition}")
+        out(
+            "\nThe adjudication scored a criterion PASS and attached a finding that\n"
+            "demonstrates the same criterion false. Product Driver does not choose which\n"
+            "half it meant: nothing here is accepted, and no product repair is launched\n"
+            "from a contradiction. Re-adjudicate once the reviewer has said which it meant."
+        )
+
     routing = controller.routing()
     if routing.routes:
         out("")
@@ -6199,6 +6211,7 @@ def _phase_exit_code(state: Any) -> int:
         "PREFLIGHT_BLOCKED": 12,
         "BLOCKED": 13,
         "AUTHORITY_GAP": 14,
+        "ADJUDICATION_INCONSISTENT": 15,
     }.get(value, 1)
 
 

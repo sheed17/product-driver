@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Sequence
 
 import pytest
 
@@ -271,7 +272,7 @@ class TestNonblockingFindingsDoNotReopenThePhase:
 
 
 class TestRoutingSendsWorkToTheRightLayer:
-    def _route(self, tmp_path: Path, finding: FakeFinding):
+    def _route(self, tmp_path: Path, finding: FakeFinding, failing: Sequence[str] = ()):
         repo = phase_repo(tmp_path)
         control = controller(repo)
         control.preflight()
@@ -279,6 +280,7 @@ class TestRoutingSendsWorkToTheRightLayer:
         control.ingest_review(
             supporting_review(
                 ALL_CRITERIA,
+                failing=failing,
                 reviewed_fingerprint=capture_fingerprint(repo).to_dict(),
                 findings=[finding],
             )
@@ -287,6 +289,10 @@ class TestRoutingSendsWorkToTheRightLayer:
         return control, control.routing()
 
     def test_a_product_defect_routes_to_the_builder(self, tmp_path: Path) -> None:
+        # The adjudication scores AC-1 FAIL, which is what its own finding says.
+        # An adjudication that scored AC-1 PASS while attaching this finding
+        # would be contradicting itself, and that is a different answer — see
+        # TestAnAdjudicationMayNotContradictItself.
         _control, plan = self._route(
             tmp_path,
             FakeFinding(
@@ -294,6 +300,7 @@ class TestRoutingSendsWorkToTheRightLayer:
                 evidence_path="src/product.py",
                 reasoning="I ran the probe and it returned CLAIMED where FAILED was expected",
             ),
+            failing=["AC-1"],
         )
         assert plan.for_layer(RepairLayer.PRODUCT_BUILDER) is not None
         assert not plan.stop_product_run

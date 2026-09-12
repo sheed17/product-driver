@@ -5,7 +5,7 @@ repository and no ability to launch anything; it is the set of records the
 phase-closure controller reasons over, plus the handful of deterministic rules
 that must never be re-derived at a call site.
 
-Four of those rules are load-bearing, and each exists because closing a phase by
+Five of those rules are load-bearing, and each exists because closing a phase by
 hand went wrong in exactly that way.
 
 **1. The criterion set is frozen by DEFINITION, not by outcome.**
@@ -31,7 +31,19 @@ often a good idea — but as a finding outside the current authority, which can
 never carry ``blocks_phase_acceptance``. Widening the bar mid-acceptance is an
 authority change, and authority changes are the founder's.
 
-**4. Evidence must be able to be wrong, and something must have looked.**
+**4. A finding may not contradict the adjudication that scored the criterion.**
+An adjudication is one structured artifact: a per-criterion score and a set of
+findings. When it scores a criterion PASS and also attaches a finding to that
+criterion, the two must agree, and :func:`finding_disposition` is where that is
+settled. A finding that says in its own words that it does not falsify the
+criterion it names is debt, whatever its class or severity — it failed the
+"actually demonstrates the criterion false" half of rule 2. A finding that DOES
+demonstrate the criterion false against a PASS score is a contradiction, and the
+one thing this module may not do with a contradiction is pick a side: it reports
+``ADJUDICATION_INCONSISTENT``, which fails closed and sends the phase back to the
+adjudicator rather than to the product builder.
+
+**5. Evidence must be able to be wrong, and something must have looked.**
 :class:`EvidenceRef` carries both. ``falsifiable`` separates a measurement from
 a pointer: a citation that a document says something is a fact about the
 document, so a criterion whose entire evidence is citations is not established
@@ -565,6 +577,10 @@ class RepairLayer(str, Enum):
     CI_INFRASTRUCTURE = "CI_INFRASTRUCTURE"
     #: The founder or architect. Authority, and nothing else, lives here.
     FOUNDER_DECISION = "FOUNDER_DECISION"
+    #: The independent adjudicator. Reached only by a finding that contradicts
+    #: the score its own adjudication gave the criterion: until the adjudicator
+    #: says which of the two it meant, no other layer can be told it owns work.
+    INDEPENDENT_ADJUDICATION = "INDEPENDENT_ADJUDICATION"
     #: Recorded and carried. No repair is owed now.
     RECORD_ONLY = "RECORD_ONLY"
     #: Someone outside this machine.
@@ -620,6 +636,12 @@ class PhaseFinding(BaseModel):
     #: because a reviewer noticing a real gap is worth having; never blocking,
     #: because widening the bar mid-acceptance is an authority change.
     unrecognised_criterion_ids: list[str] = Field(default_factory=list)
+    #: Criteria this finding NAMES and, in its own words, says it does not
+    #: falsify — "distinct from the sites AC-12 scopes", "carried debt rather
+    #: than an AC-12 violation". A reporter is allowed to attach context to a
+    #: criterion without claiming the criterion is false, and reading the
+    #: attachment as the claim is how a phase that met its bar was refused.
+    not_falsified_criterion_ids: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     #: Whether the finding SHOWS the criterion false — a failing command, a
     #: red probe, an exact-identity mismatch — rather than arguing it.
@@ -627,6 +649,12 @@ class PhaseFinding(BaseModel):
     #: Computed by :func:`classify_and_route`; persisted so a resume restores
     #: the decision rather than re-deriving it from prose.
     blocks_phase_acceptance: bool = False
+    #: Set when this finding and the adjudication that carried it say opposite
+    #: things about the same criterion: the adjudication scored it PASS and this
+    #: finding demonstrates it false. Never blank-and-blocking at once — a
+    #: contradiction is not a criterion failure, it is a reason nobody yet knows
+    #: whether the criterion holds, and it stops the attempt in its own state.
+    adjudication_inconsistency: str = ""
     repair_layer: RepairLayer = RepairLayer.RECORD_ONLY
     closure_condition: str = ""
     #: ``None`` means genuinely unknown, which is different from ``False``.
@@ -638,19 +666,76 @@ class PhaseFinding(BaseModel):
     #: Who or what reported it.
     source: str = ""
 
+    @property
+    def contradicts_adjudication(self) -> bool:
+        return bool(self.adjudication_inconsistency)
+
+    def disclaims(self, criterion_id: str) -> bool:
+        """Whether this finding says in its own words it does not falsify one."""
+        return criterion_id in self.not_falsified_criterion_ids
+
     def brief(self) -> str:
-        mark = "BLOCKING" if self.blocks_phase_acceptance else "nonblocking"
+        if self.adjudication_inconsistency:
+            mark = "ADJUDICATION INCONSISTENT"
+        elif self.blocks_phase_acceptance:
+            mark = "BLOCKING"
+        else:
+            mark = "nonblocking"
         crit = f" [{', '.join(self.criterion_ids)}]" if self.criterion_ids else ""
         return f"{self.finding_id} {self.classification.value}{crit} — {mark}: {self.summary}"
 
 
-def blocks_acceptance(
+class AdjudicationScores(BaseModel):
+    """What an independent adjudication scored, reduced to what blocking needs.
+
+    Deliberately just two sets of criterion ids rather than the adjudication
+    record itself. This module must be able to state the consistency rule
+    without importing the controller that carries the adjudication, and a
+    caller that has no adjudication passes nothing — which is not the same as
+    passing an adjudication that scored nothing, and the difference is whether
+    a contradiction is even possible.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    passed: list[str] = Field(default_factory=list)
+    failed: list[str] = Field(default_factory=list)
+
+    def scored_pass(self, criterion_id: str) -> bool:
+        return criterion_id in self.passed and criterion_id not in self.failed
+
+    def scored_fail(self, criterion_id: str) -> bool:
+        return criterion_id in self.failed
+
+
+class FindingDisposition(str, Enum):
+    """What one finding does to a phase acceptance attempt.
+
+    Three outcomes, not two. The third exists because an adjudication that
+    scores a criterion PASS and attaches a finding demonstrating it false has
+    said two incompatible things, and both of the two-valued answers are wrong:
+    blocking believes the finding and silently discards the score, nonblocking
+    believes the score and silently discards the finding. Neither is a decision
+    anybody made.
+    """
+
+    #: It mechanically demonstrates a required criterion false. The phase stops.
+    BLOCKING = "BLOCKING"
+    #: Real, recorded, and not a reason this phase has not met its stated bar.
+    NONBLOCKING = "NONBLOCKING"
+    #: It contradicts the adjudication that carried it. Fails closed, and the
+    #: contradiction is the adjudicator's to resolve.
+    ADJUDICATION_INCONSISTENT = "ADJUDICATION_INCONSISTENT"
+
+
+def finding_disposition(
     finding: PhaseFinding,
     criteria: CriterionSet,
     *,
+    scores: AdjudicationScores | None = None,
     stale_verification_blocks: bool = False,
-) -> tuple[bool, str]:
-    """Whether one finding may stop a phase from being accepted, and why.
+) -> tuple[FindingDisposition, str]:
+    """What one finding does to the attempt, and why. The whole rule, once.
 
     The rule, stated once:
 
@@ -658,74 +743,167 @@ def blocks_acceptance(
         is in the frozen REQUIRED set, mechanically demonstrates that criterion
         is false, and is of a class that can falsify a criterion at all.
 
-    Severity is not consulted. A ``blocker``-severity note that another guard
-    would be useful names no criterion and demonstrates nothing; it is a good
-    idea and it is debt. A ``minor``-severity finding that shows a required
-    invariant failing under a probe blocks, because it did the one thing that
-    makes a finding decisive.
+    Severity is not consulted. Neither is the fact of being attached to a
+    criterion, nor the finding's class on its own: a ``blocker``-severity note
+    that another guard would be useful names no criterion and demonstrates
+    nothing; it is a good idea and it is debt. A ``minor``-severity finding that
+    shows a required invariant failing under a probe blocks, because it did the
+    one thing that makes a finding decisive.
+
+    Two things sharpen "actually demonstrates that criterion false":
+
+    * a finding that says, in its own words, that it does NOT falsify the
+      criterion it names has not demonstrated it false however it is classified.
+      That is rule 4, and it is the difference between a reviewer attaching
+      useful context to a criterion and a reviewer refusing the criterion;
+    * where ``scores`` carries the adjudication that scored the same criterion
+      PASS, a finding that would otherwise block is a contradiction rather than
+      a refutation, and is reported as such.
 
     ``stale_verification_blocks`` exists because whether a stale-but-harmless
     probe blocks is genuinely the acceptance authority's call, not this
     module's. Default false: a probe that cannot false-green is debt.
     """
+    nonblocking = FindingDisposition.NONBLOCKING
+
     if finding.classification is FindingClass.AUTHORITY_GAP:
         # Not a criterion falsification — a statement that nobody knows what the
         # bar is. It stops the attempt through the controller's own state, which
         # is a different and louder thing than a blocking finding.
-        return False, "an authority gap stops the attempt rather than failing a criterion"
+        return nonblocking, "an authority gap stops the attempt rather than failing a criterion"
 
     if finding.classification is FindingClass.STALE_VERIFICATION:
         if not stale_verification_blocks:
-            return False, "stale verification that cannot false-green is verification debt"
+            return nonblocking, "stale verification that cannot false-green is verification debt"
         # Fall through to the ordinary test: even when the authority says stale
         # probes block, one that names no required criterion still blocks nothing.
 
     named = [cid for cid in finding.criterion_ids if cid in criteria.required_ids]
     if not named:
         if finding.criterion_ids:
-            return False, (
+            return nonblocking, (
                 "the criteria it names are not in the frozen required set for this "
                 "acceptance attempt"
             )
-        return False, "it names no criterion in the current acceptance authority"
+        return nonblocking, "it names no criterion in the current acceptance authority"
+
+    # Rule 4, first half. A criterion the finding itself exempts is not a
+    # criterion the finding claims is false — unless the adjudication scored
+    # that criterion FAIL, in which case the phase fails on the score and the
+    # exemption is the reporter disagreeing with its own adjudication, which
+    # must not be able to rescue a criterion.
+    def exempt(cid: str) -> bool:
+        if not finding.disclaims(cid):
+            return False
+        return not (scores is not None and scores.scored_fail(cid))
+
+    claimed = [cid for cid in named if not exempt(cid)]
+    if not claimed:
+        return nonblocking, (
+            f"the finding states it does not falsify {', '.join(named)}; it is attached to "
+            "the criterion as context and recorded as debt"
+        )
 
     if not finding.mechanically_demonstrated:
-        return False, (
-            f"it asserts {', '.join(named)} is false without demonstrating it; "
+        return nonblocking, (
+            f"it asserts {', '.join(claimed)} is false without demonstrating it; "
             "an argument is not a refutation"
         )
 
     if finding.classification is FindingClass.STALE_VERIFICATION:
-        return True, (
-            f"this acceptance authority treats stale verification of {', '.join(named)} "
+        reason = (
+            f"this acceptance authority treats stale verification of {', '.join(claimed)} "
             "as blocking"
         )
+        return _against_scores(claimed, scores, reason)
 
     if finding.classification not in FALSIFYING_CLASSES:
-        return False, (
-            f"a {finding.classification.value} cannot make {', '.join(named)} false; it "
+        return nonblocking, (
+            f"a {finding.classification.value} cannot make {', '.join(claimed)} false; it "
             f"is repaired at {repair_layer_for(finding.classification).value}"
         )
 
-    return True, f"it mechanically demonstrates required criterion {', '.join(named)} is false"
+    reason = f"it mechanically demonstrates required criterion {', '.join(claimed)} is false"
+    return _against_scores(claimed, scores, reason)
+
+
+def _against_scores(
+    claimed: Sequence[str],
+    scores: AdjudicationScores | None,
+    reason: str,
+) -> tuple[FindingDisposition, str]:
+    """The last gate: a demonstrated failure against what the adjudicator scored.
+
+    Only PASS is a contradiction. A criterion the adjudication scored FAIL, or
+    could not determine, or never scored, is one the finding is free to refute —
+    that is a finding doing its job.
+    """
+    if scores is None:
+        return FindingDisposition.BLOCKING, reason
+    contradicted = [cid for cid in claimed if scores.scored_pass(cid)]
+    if not contradicted:
+        return FindingDisposition.BLOCKING, reason
+    return FindingDisposition.ADJUDICATION_INCONSISTENT, (
+        f"the adjudication scored {', '.join(contradicted)} PASS and this finding "
+        "demonstrates the same criterion false; the adjudication contradicts itself and "
+        "no side of it may be chosen here"
+    )
+
+
+def blocks_acceptance(
+    finding: PhaseFinding,
+    criteria: CriterionSet,
+    *,
+    scores: AdjudicationScores | None = None,
+    stale_verification_blocks: bool = False,
+) -> tuple[bool, str]:
+    """Whether one finding may stop a phase from being accepted, and why.
+
+    The two-valued view of :func:`finding_disposition`, kept because most
+    callers only ask "does this block". A contradiction answers ``False`` here
+    and is NOT thereby harmless: it is carried on the finding as
+    ``adjudication_inconsistency`` and stops the attempt in its own closure
+    state. Anything that needs to tell the two apart calls
+    :func:`finding_disposition`.
+    """
+    disposition, reason = finding_disposition(
+        finding,
+        criteria,
+        scores=scores,
+        stale_verification_blocks=stale_verification_blocks,
+    )
+    return disposition is FindingDisposition.BLOCKING, reason
 
 
 def classify_and_route(
     finding: PhaseFinding,
     criteria: CriterionSet,
     *,
+    scores: AdjudicationScores | None = None,
     stale_verification_blocks: bool = False,
 ) -> PhaseFinding:
     """Fill in the derived fields of a finding, in place, and return it.
 
-    Split out from :func:`blocks_acceptance` so the *reason* can be surfaced
+    Split out from :func:`finding_disposition` so the *reason* can be surfaced
     without mutating anything, and so the mutation happens exactly once.
     """
     finding.repair_layer = repair_layer_for(finding.classification)
-    blocking, reason = blocks_acceptance(
-        finding, criteria, stale_verification_blocks=stale_verification_blocks
+    disposition, reason = finding_disposition(
+        finding,
+        criteria,
+        scores=scores,
+        stale_verification_blocks=stale_verification_blocks,
     )
-    finding.blocks_phase_acceptance = blocking
+    finding.blocks_phase_acceptance = disposition is FindingDisposition.BLOCKING
+    if disposition is FindingDisposition.ADJUDICATION_INCONSISTENT:
+        finding.adjudication_inconsistency = reason
+        # Until the contradiction is resolved nobody knows whether this is a
+        # product defect or a mis-scored criterion, so it may not be routed to
+        # the product builder as though the question were settled. The class's
+        # own repair layer is restored the moment the contradiction is.
+        finding.repair_layer = RepairLayer.INDEPENDENT_ADJUDICATION
+    else:
+        finding.adjudication_inconsistency = ""
     if not finding.closure_condition:
         finding.closure_condition = _default_closure_condition(finding, reason)
     # Anything the reporter named that the authority does not contain moves to
@@ -741,6 +919,12 @@ def classify_and_route(
 
 def _default_closure_condition(finding: PhaseFinding, reason: str) -> str:
     layer = finding.repair_layer
+    if finding.adjudication_inconsistency:
+        return (
+            "the adjudicator states which it meant — the criterion it scored PASS, or the "
+            f"finding it attached to {', '.join(finding.criterion_ids) or 'that criterion'} — "
+            "and the phase is re-adjudicated on that answer"
+        )
     if finding.blocks_phase_acceptance:
         return (
             f"the named criterion is re-established on the accepted tree "
@@ -893,6 +1077,10 @@ class ClosureState(str, Enum):
     WAITING_FOR_EXTERNAL_VERIFICATION = "WAITING_FOR_EXTERNAL_VERIFICATION"
     #: A required criterion is mechanically false, or a blocking residual stands.
     BLOCKED = "BLOCKED"
+    #: The adjudication says two incompatible things about the same criterion.
+    #: Neither accepted nor refused: the phase waits on the adjudicator, and no
+    #: product repair may be launched off a self-contradictory adjudication.
+    ADJUDICATION_INCONSISTENT = "ADJUDICATION_INCONSISTENT"
     #: All required criteria pass and the acceptance record may be prepared.
     READY_FOR_ACCEPTANCE_COMMIT = "READY_FOR_ACCEPTANCE_COMMIT"
     #: The local acceptance commit exists. The remaining step is the founder's.
@@ -908,6 +1096,7 @@ TERMINAL_STATES = frozenset(
         ClosureState.PREFLIGHT_BLOCKED,
         ClosureState.WAITING_FOR_EXTERNAL_VERIFICATION,
         ClosureState.BLOCKED,
+        ClosureState.ADJUDICATION_INCONSISTENT,
         ClosureState.READY_FOR_ACCEPTANCE_COMMIT,
         ClosureState.READY_FOR_FOUNDER_PUSH,
         ClosureState.ALREADY_ACCEPTED,
@@ -953,6 +1142,10 @@ class PhaseLedger(BaseModel):
     criteria_fail: int = 0
     criteria_unevidenced: list[str] = Field(default_factory=list)
     criteria_non_instantiable: list[str] = Field(default_factory=list)
+    #: Required criteria the adjudication scored PASS while also attaching a
+    #: finding that demonstrates them false. Counted as neither pass nor fail,
+    #: because both counts would be a claim nobody is entitled to make yet.
+    criteria_contradicted: list[str] = Field(default_factory=list)
 
     blocking_residuals: int = 0
     nonblocking_residuals: int = 0
@@ -969,6 +1162,10 @@ class PhaseLedger(BaseModel):
 
     blocking_findings: list[str] = Field(default_factory=list)
     nonblocking_findings: list[str] = Field(default_factory=list)
+    #: Findings that contradict the adjudication that carried them. Kept out of
+    #: both lists above: they are not debt to record and move past, and they are
+    #: not demonstrated criterion failures either.
+    inconsistent_findings: list[str] = Field(default_factory=list)
     #: Authority gaps, kept out of both lists above. A gap does not block by
     #: falsifying a criterion — it stops the attempt outright — and printing it
     #: under "record and move" told the founder to carry on past the one thing
@@ -1001,6 +1198,11 @@ class PhaseLedger(BaseModel):
             lines.append(f"  without evidence: {', '.join(self.criteria_unevidenced[:8])}")
         if self.criteria_non_instantiable:
             lines.append(f"  non-instantiable: {', '.join(self.criteria_non_instantiable[:8])}")
+        if self.criteria_contradicted:
+            lines.append(
+                "  contradicted (scored PASS and refuted by the same adjudication): "
+                + ", ".join(self.criteria_contradicted[:8])
+            )
         lines += [
             f"blocking_residuals: {self.blocking_residuals}",
             f"nonblocking_residuals: {self.nonblocking_residuals}",
@@ -1020,6 +1222,12 @@ class PhaseLedger(BaseModel):
         if self.authority_gaps:
             lines.append("authority_gaps (only a founder or architect can close these):")
             lines += [f"  - {f}" for f in self.authority_gaps[:10]]
+        if self.inconsistent_findings:
+            lines.append(
+                "adjudication_inconsistencies (the adjudicator resolves these; no product "
+                "repair may be launched from them):"
+            )
+            lines += [f"  - {f}" for f in self.inconsistent_findings[:10]]
         if self.blocking_findings:
             lines.append("blocking_findings:")
             lines += [f"  - {f}" for f in self.blocking_findings[:10]]
