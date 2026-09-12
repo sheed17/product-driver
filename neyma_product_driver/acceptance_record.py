@@ -46,8 +46,10 @@ Nothing here commits, and nothing here pushes.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -56,6 +58,7 @@ import yaml
 
 from .acceptance_commit import Surface, _dirty_paths, classify_surface
 from .models import redact
+from .phase_acceptance import normalize_repo_path
 from .phase_authority import (
     ACCEPTED_UNIT_STATES,
     DEFAULT_REGISTRY_PATHS,
@@ -123,6 +126,14 @@ class AcceptanceRecordPlan:
     derivation: list[str] = field(default_factory=list)
     #: The unit the successor moved to, when one did.
     next_phase_advanced: str = ""
+    #: What the machine record now says, and what it said before.
+    facts: list[StatusFact] = field(default_factory=list)
+    #: Every document the repository declares as live status.
+    declared_surfaces: list[str] = field(default_factory=list)
+    #: Live restatements that cannot be reconciled without composing prose.
+    stale_restatements: list[StaleRestatement] = field(default_factory=list)
+    #: What the repository's own guards over the changed record answered.
+    verification: Any = None
     #: Acceptance-record paths the working tree ALREADY carries. Set when this
     #: module wrote nothing: a record somebody else wrote is still a record, and
     #: the commit preparation is still entitled to validate it.
@@ -130,11 +141,25 @@ class AcceptanceRecordPlan:
     #: Rendered file text, per repo-relative path. Produced at plan time and
     #: verified before it is ever written.
     rendered: dict[str, str] = field(default_factory=dict)
+    #: The bytes each of those files had on the candidate tree, so a record the
+    #: repository's own guards refuse can be rolled back exactly.
+    original: dict[str, str] = field(default_factory=dict)
     written: bool = False
 
     @property
     def permitted(self) -> bool:
         return not self.refusal and not self.authority_gap
+
+    @property
+    def complete(self) -> bool:
+        """Whether this record leaves the repository's status authorities agreeing.
+
+        Separate from :attr:`permitted` on purpose. A record may be perfectly
+        permitted to write and still leave a declared restatement stale, and the
+        write happens anyway — so the repository's own guards can be asked about
+        it — before both problems are reported together and it is rolled back.
+        """
+        return self.permitted and not self.stale_restatements
 
     @property
     def already_recorded(self) -> bool:
@@ -149,6 +174,10 @@ class AcceptanceRecordPlan:
         lines = [f"ACCEPTANCE RECORD: {self.phase_id or '(no phase)'}"]
         if self.authority_gap:
             lines.append(f"  AUTHORITY GAP: {self.authority_gap}")
+            for entry in self.stale_restatements[:12]:
+                lines.append(f"    {entry.brief()}")
+            if len(self.stale_restatements) > 12:
+                lines.append(f"    ... and {len(self.stale_restatements) - 12} more")
             for path in self.existing_record:
                 lines.append(f"  the working tree already carries a record at {path}")
             return "\n".join(lines)
@@ -165,6 +194,10 @@ class AcceptanceRecordPlan:
             lines.append(f"  next unit advanced: {self.next_phase_advanced}")
         for note in self.notes:
             lines.append(f"  note: {note}")
+        for entry in self.stale_restatements[:12]:
+            lines.append(f"  STALE {entry.brief()}")
+        if len(self.stale_restatements) > 12:
+            lines.append(f"  STALE ... and {len(self.stale_restatements) - 12} more")
         if self.written:
             lines.append("  written to the working tree. Nothing staged, nothing committed.")
         return "\n".join(lines)
@@ -407,6 +440,451 @@ def derive_convention(units: Sequence[dict], target: dict) -> RecordConvention:
             "will be advanced"
         )
     return conv
+
+
+# --------------------------------------------------------------------------
+# The documents that RESTATE the machine record
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StatusFact:
+    """One thing the machine record now says, and what it said before.
+
+    The unit of reconciliation. A restatement surface is stale exactly when it
+    still says ``before`` about ``unit_id`` where the registry now says
+    ``after``, and there is nothing else a restatement is entitled to say.
+    """
+
+    unit_id: str
+    field_path: str
+    before: str
+    after: str
+
+    def brief(self) -> str:
+        return f"{self.unit_id}.{self.field_path}: {self.before} -> {self.after}"
+
+
+@dataclass
+class StaleRestatement:
+    """A live claim a restatement surface makes that the record now contradicts."""
+
+    path: str
+    line: int
+    unit_id: str
+    stale_value: str
+    current_value: str
+    text: str
+    why: str
+
+    def brief(self) -> str:
+        return (
+            f"{self.path}:{self.line} still states {self.stale_value} for {self.unit_id} "
+            f"(the record now says {self.current_value}) — {self.why}"
+        )
+
+
+#: A line that marks itself as a record of what WAS true is not a live claim,
+#: and rewriting it would destroy the history it exists to keep. Deliberately
+#: generous: a false positive here leaves a line alone, and a line left alone
+#: that IS live is then reported as an unreconciled restatement rather than
+#: silently rewritten. There is no path on which this marker edits something it
+#: should not have — it only ever withholds an edit.
+_HISTORICAL = re.compile(
+    r"(?i)\b(?:until this|until the|previously|formerly|historical|superseded|retired|"
+    r"replaced rather than|kept verbatim|no longer|used to|was true|were true|"
+    r"true when written|is false now|stale now|earlier read|as of the|"
+    r"this (?:cell|row|line|paragraph|document|record) read)\b|\bREPLACED\b"
+)
+
+#: A unit identifier as repositories write them. Used to count how many units a
+#: table row is ABOUT: a row whose subject is a RANGE (``P8-P14``) states one
+#: fact about several units, and moving it would move units this acceptance
+#: says nothing about.
+_UNIT_TOKEN = re.compile(r"(?<![A-Za-z0-9_])[A-Z]{1,4}-?[0-9]{1,3}(?:\.[0-9]{1,3})?(?![A-Za-z0-9_])")
+
+#: What a human status restatement is written in. A restatement is prose or a
+#: table; a binary is not one, whatever it is classified as.
+_RESTATEMENT_SUFFIXES = (".md", ".markdown", ".rst", ".txt", ".yaml", ".yml", ".json")
+
+
+def _token(value: str) -> "re.Pattern[str]":
+    """A status value matched as a whole token, never inside a longer word.
+
+    Hyphen-tight: ``STARTED`` must not match inside ``NOT_STARTED``.
+    """
+    return re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(value) + r"(?![A-Za-z0-9_-])")
+
+
+def _unit_token(unit_id: str) -> "re.Pattern[str]":
+    """A unit id matched as a whole token, hyphen INCLUDED as a boundary.
+
+    The opposite tightness from :func:`_token`, and deliberately so: a row whose
+    subject is the range ``P10-P14`` is about P10, and not seeing it there is
+    how one edit silently moves four units this acceptance says nothing about.
+    """
+    return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(unit_id) + r"(?![A-Za-z0-9_])")
+
+
+def _row_cells(line: str) -> list[str] | None:
+    stripped = line.strip()
+    if not stripped.startswith("|"):
+        return None
+    return [c.strip() for c in stripped.strip("|").split("|")]
+
+
+def _tracked_files(repo: Path) -> list[str]:
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+
+
+def _read_text(path: Path, limit: int = 4_000_000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:limit]
+    except OSError:
+        return ""
+
+
+#: Spans in which a document keeps the wording it replaced. Repositories that
+#: preserve superseded claims IN PLACE — rather than deleting them — mark them,
+#: and these are the two marks in general use: an italic parenthetical aside,
+#: and a blockquote. Text inside one is a record of what WAS said. It is never
+#: read as a live claim and never edited.
+_ASIDE = re.compile(r"\*\([^)]*\)\*", re.S)
+_QUOTED = re.compile(r"\"[^\"\n]{0,400}\"")
+
+
+def _mask_history(text: str) -> str:
+    """The document with its preserved-history spans blanked, positions intact.
+
+    Length-preserving, so an offset in the masked text is the same offset in the
+    original. What remains is what the document says in its own voice, now.
+    """
+    masked = list(text)
+
+    def blank(match: "re.Match[str]") -> None:
+        for position in range(match.start(), match.end()):
+            if masked[position] != "\n":
+                masked[position] = " "
+
+    for pattern in (_ASIDE, _QUOTED):
+        for match in pattern.finditer(text):
+            blank(match)
+    offset = 0
+    for line in text.split("\n"):
+        if line.lstrip().startswith(">"):
+            for position in range(offset, offset + len(line)):
+                masked[position] = " "
+        offset += len(line) + 1
+    return "".join(masked)
+
+
+#: A cell that carries a STATUS VALUE rather than a sentence about one. Status
+#: values are shouted tokens, counts and separators; the moment a cell contains
+#: ordinary prose it is a sentence, and replacing a token inside a sentence
+#: leaves the sentence saying something nobody wrote.
+_PROSE_WORD = re.compile(r"(?<![A-Za-z0-9_])[a-z][a-z']{2,}(?![A-Za-z0-9_])")
+
+
+def _is_status_cell(cell: str) -> bool:
+    stripped = re.sub(r"`|\*|\[|\]\([^)]*\)", "", cell)
+    return not _PROSE_WORD.search(stripped)
+
+
+def _states_fact(text: str, fact: "StatusFact") -> bool:
+    """Whether this document makes a LIVE statement of one fact's old value."""
+    unit = _unit_token(fact.unit_id)
+    before = _token(fact.before)
+    for line in _mask_history(text).splitlines():
+        if _HISTORICAL.search(line):
+            continue
+        if unit.search(line) and before.search(line):
+            return True
+    return False
+
+
+def reconcile_restatement(
+    text: str, facts: "Sequence[StatusFact]"
+) -> tuple[str, list[tuple[int, str, str]], list["StaleRestatement"]]:
+    """Bring one restatement surface back in line. Returns (text, moved, stuck).
+
+    Exactly one shape is rewritten, and it is the one a machine can rewrite
+    without composing a sentence: a table row whose SUBJECT names one unit and
+    one unit only, keeping no preserved history, whose stale token sits in a
+    cell that carries STATUS VALUES rather than prose. That is a restatement in
+    the strict sense — the registry's own value, copied into a document for a
+    human to read — and moving it states nothing the machine record does not
+    already state.
+
+    Everything else is reported as STUCK rather than guessed at:
+
+    * a narrative sentence, because rewriting one means composing prose, and how
+      a repository replaces a superseded claim is its own convention rather than
+      something Product Driver may instantiate;
+    * a cell that explains the status as well as stating it, because swapping
+      the token there leaves the explanation beside it saying the opposite —
+      ``COMPLETE — the sole selected unit`` is a sentence nobody wrote and
+      nothing established;
+    * a row about a RANGE or a list of units, because one edit there would move
+      units this acceptance says nothing about;
+    * a row that also keeps the wording it replaced, because the stale token
+      there IS the history.
+
+    A stuck restatement is an AUTHORITY_GAP for the caller. It is never left
+    quietly stale, and it is never rewritten by guess.
+    """
+    lines = text.split("\n")
+    masked = _mask_history(text).split("\n")
+    moved: list[tuple[int, str, str]] = []
+    stuck: list["StaleRestatement"] = []
+    for index, line in enumerate(lines):
+        live = masked[index]
+        cells = _row_cells(line)
+        is_row = cells is not None
+        if not is_row and _HISTORICAL.search(live):
+            continue
+        subject_units = set(_UNIT_TOKEN.findall(cells[0])) if cells else set()
+        updated = line
+        for fact in facts:
+            unit_here = _unit_token(fact.unit_id).search(live)
+            stale_here = _token(fact.before).search(live)
+            if not unit_here or not stale_here:
+                continue
+
+            def note(why: str) -> None:
+                stuck.append(
+                    StaleRestatement(
+                        path="",
+                        line=index + 1,
+                        unit_id=fact.unit_id,
+                        stale_value=fact.before,
+                        current_value=fact.after,
+                        text=line.strip()[:240],
+                        why=why,
+                    )
+                )
+
+            if not is_row:
+                note("it is a narrative sentence, not a status restatement")
+                continue
+            if _HISTORICAL.search(line):
+                note("the row also keeps the wording it replaced, so the stale token is history")
+                continue
+            if subject_units != {fact.unit_id}:
+                named = ", ".join(sorted(subject_units)) if subject_units else "no single unit"
+                note(f"the row is about {named} rather than this unit alone")
+                continue
+            carrying = [
+                cell
+                for cell in (cells or [])[1:]
+                if _token(fact.before).search(cell)
+            ]
+            if not carrying:
+                note("the stale value is in the row's subject rather than in a status cell")
+                continue
+            if any(not _is_status_cell(cell) for cell in carrying):
+                note("the cell explains the status as well as stating it, so it is prose")
+                continue
+            replaced = _token(fact.before).sub(fact.after, updated)
+            if replaced != updated:
+                moved.append((index + 1, updated, replaced))
+                updated = replaced
+        if updated != line:
+            lines[index] = updated
+    return "\n".join(lines), moved, stuck
+
+
+# --------------------------------------------------------------------------
+# Which documents the repository declares as its live status
+# --------------------------------------------------------------------------
+
+#: A classification token, as an authority map writes one: SHOUTED, and its own
+#: word rather than a sentence. ``CURRENT_STATUS``, ``HISTORICAL``, ``EVIDENCE``.
+_CLASS_TOKEN = re.compile(r"(?<![A-Za-z0-9_])([A-Z][A-Z_]{3,31})(?![A-Za-z0-9_])")
+
+#: A class that says "this document states what is true NOW". The one word that
+#: separates a live restatement from a record of one is STATUS.
+_LIVE_CLASS = re.compile(r"(?i)status")
+
+#: Classes that say the opposite, and outrank the above on the same row: a
+#: document classified HISTORICAL is a record of what was true, and a phase
+#: acceptance may not rewrite it.
+_RECORD_CLASS = re.compile(
+    r"(?i)historical|superseded|evidence|archive|deprecat|quarantin|legacy|retired|obsolete"
+)
+
+#: A file named in an authority map's row, as a `backtick` or a [link](target).
+_MAP_FILE = re.compile(
+    r"`([A-Za-z0-9_./-]+\.(?:md|markdown|rst|txt|ya?ml|json))`"
+    r"|\]\(([A-Za-z0-9_./-]+\.(?:md|markdown|rst|txt|ya?ml|json))\)"
+)
+
+#: How many classified rows a document needs before it is believable as the
+#: repository's authority map rather than a table that mentions a file.
+_MIN_AUTHORITY_ROWS = 5
+
+
+def _named_files(cell: str) -> list[str]:
+    return [a or b for a, b in _MAP_FILE.findall(cell)]
+
+
+def _resolve_named(name: str, tracked: "set[str]") -> str:
+    """One name from an authority map, as the repository actually tracks it."""
+    candidate = name.lstrip("./")
+    for guess in (candidate, f"docs/{candidate}"):
+        if guess in tracked:
+            return guess
+    base = candidate.rsplit("/", 1)[-1]
+    hits = [t for t in tracked if t == base or t.endswith("/" + base)]
+    return hits[0] if len(hits) == 1 else ""
+
+
+def declared_status_surfaces(repo: Path) -> tuple[list[str], str, list[str]]:
+    """Documents the repository's own authority map classifies as live status.
+
+    Returns ``(paths, map_path, notes)``.
+
+    A repository that keeps more than one status surface usually says so, in a
+    document that classifies its own documents — which file states what, and
+    which files are records of what WAS true rather than statements about now.
+    That map is the authority for this population, and reading it is the
+    difference between reconciling a status document and rewriting a completed
+    review's findings.
+
+    The map is discovered structurally rather than by name: the tracked document
+    with the most table rows that both NAME another tracked file and carry a
+    classification token. A repository with no such document has not declared a
+    status population, and gets none — configuration is then the only way it
+    names one, which is the honest answer rather than a guess.
+    """
+    repo = Path(repo)
+    notes: list[str] = []
+    tracked = set(_tracked_files(repo))
+    best: tuple[int, str] = (0, "")
+    rows_by_map: dict[str, list[tuple[str, str]]] = {}
+    for rel in sorted(tracked):
+        if not rel.lower().endswith((".md", ".markdown", ".rst")):
+            continue
+        text = _read_text(repo / rel, limit=1_000_000)
+        if "|" not in text:
+            continue
+        rows: list[tuple[str, str]] = []
+        for line in text.splitlines():
+            cells = _row_cells(line)
+            if not cells or len(cells) < 2:
+                continue
+            named = _named_files(cells[0])
+            if not named:
+                continue
+            classes = _CLASS_TOKEN.findall(line.replace(cells[0], "", 1))
+            if not classes:
+                continue
+            rows.append((line, cells[0]))
+        if len(rows) >= _MIN_AUTHORITY_ROWS:
+            rows_by_map[rel] = rows
+            if (len(rows), -len(rel)) > (best[0], -len(best[1]) if best[1] else -10**6):
+                best = (len(rows), rel)
+
+    map_path = best[1]
+    if not map_path:
+        return [], "", notes
+
+    surfaces: list[str] = []
+    for line, subject in rows_by_map[map_path]:
+        remainder = line.replace(subject, "", 1)
+        classes = _CLASS_TOKEN.findall(remainder)
+        if not any(_LIVE_CLASS.search(c) for c in classes):
+            continue
+        if any(_RECORD_CLASS.search(c) for c in classes):
+            continue
+        for name in _named_files(subject):
+            resolved = _resolve_named(name, tracked)
+            if resolved and resolved not in surfaces:
+                surfaces.append(resolved)
+    notes.append(
+        f"{map_path} classifies {len(surfaces)} document(s) as this repository's live status"
+    )
+    return surfaces, map_path, notes
+
+
+def restatement_surfaces(
+    repo: Path,
+    facts: "Sequence[StatusFact]",
+    *,
+    exclude: "Sequence[str]" = (),
+    acceptance_globs: "Sequence[str]" = (),
+    declared_globs: "Sequence[str]" = (),
+) -> tuple[list[str], list[str], list[str]]:
+    """This repository's live status documents that have gone stale.
+
+    Returns ``(stale, declared, notes)`` — the ones carrying a fact this
+    acceptance moves, the whole declared population, and how it was arrived at.
+
+    The population is the repository's own, never this module's: the paths named
+    in configuration if the repository names any, otherwise the ones its own
+    authority map classifies as live status. Discovering it by looking for
+    documents that MENTION a phase would sweep in every completed review report
+    in the repository — those say what was true when they were written, and a
+    phase acceptance may not edit them.
+
+    It is then narrowed twice, and both narrowings only ever remove: a declared
+    surface the classifier does not call ``ACCEPTANCE_RECORD`` is not writable
+    here whatever it is classified as upstream, and a surface that states none
+    of the moving facts is already consistent and is left alone.
+    """
+    repo = Path(repo)
+    notes: list[str] = []
+    skip = {normalize_repo_path(p) for p in exclude}
+    tracked = [r for r in _tracked_files(repo) if r not in skip]
+
+    declared: list[str] = []
+    if declared_globs:
+        declared = [
+            rel for rel in tracked if any(fnmatch.fnmatch(rel, g) for g in declared_globs)
+        ]
+        notes.append(
+            f"the repository names {len(declared)} status surface(s) in configuration"
+        )
+    else:
+        found, map_path, map_notes = declared_status_surfaces(repo)
+        declared = [rel for rel in found if rel not in skip]
+        notes.extend(map_notes)
+        if not map_path:
+            notes.append(
+                "this repository declares no authority map and names no status surface in "
+                "configuration, so the machine record is the only surface reconciled"
+            )
+
+    writable: list[str] = []
+    for rel in declared:
+        surface = classify_surface(rel, acceptance_globs=acceptance_globs)
+        if surface is not Surface.ACCEPTANCE_RECORD:
+            notes.append(
+                f"{rel} is declared live status but classifies as {surface.value}; an "
+                "acceptance record may not write it"
+            )
+            continue
+        if not rel.lower().endswith(_RESTATEMENT_SUFFIXES):
+            notes.append(f"{rel} is declared live status but is not a document this can read")
+            continue
+        writable.append(rel)
+
+    stale = [
+        rel
+        for rel in writable
+        if any(_states_fact(_read_text(repo / rel), fact) for fact in facts)
+    ]
+    return stale, declared, notes
 
 
 # --------------------------------------------------------------------------
@@ -671,6 +1149,7 @@ def plan_acceptance_record(
     candidate: Any = None,
     registry_paths: Sequence[str] = (),
     acceptance_globs: Sequence[str] = (),
+    declared_globs: Sequence[str] = (),
 ) -> AcceptanceRecordPlan:
     """Work out the status-only change that records this phase's acceptance.
 
@@ -931,6 +1410,16 @@ def plan_acceptance_record(
         plan.edits = []
         return plan
     plan.rendered[source] = rendered
+    plan.original[source] = text
+    plan.facts = _facts_from_edits(plan, _unit_id(target), conv)
+    _plan_restatements(
+        repo,
+        plan,
+        plan.facts,
+        source=source,
+        acceptance_globs=acceptance_globs,
+        declared_globs=declared_globs,
+    )
     return plan
 
 
@@ -1026,6 +1515,223 @@ def _plan_successor(
             )
         )
         plan.next_phase_advanced = sid
+
+
+def _facts_from_edits(
+    plan: "AcceptanceRecordPlan", target_id: str, conv: "RecordConvention"
+) -> list[StatusFact]:
+    """What the machine record now says, as facts a restatement can be checked against.
+
+    Derived from the edits actually planned rather than from what was intended:
+    a field the registry already recorded correctly moved nothing, states
+    nothing new, and cannot make a restatement stale.
+    """
+    facts: list[StatusFact] = []
+    seen: set[tuple[str, str, str]] = set()
+    for edit in plan.edits:
+        if edit.unit_id == target_id and edit.field_path in conv.state_values:
+            key = (target_id, edit.before, edit.after)
+            field = edit.field_path
+        elif edit.field_path == conv.result_key:
+            # Seventeen criteria moving PENDING -> PASS is ONE fact about the
+            # unit as far as a human restatement is concerned: no status
+            # document names them one by one.
+            key = (target_id, edit.before, edit.after)
+            field = f"{conv.result_key} (every criterion)"
+        elif edit.field_path == conv.selection_key and edit.unit_id != target_id:
+            key = (edit.unit_id, edit.before, edit.after)
+            field = edit.field_path
+        else:
+            continue
+        if key in seen or not edit.before or edit.before == edit.after:
+            continue
+        seen.add(key)
+        facts.append(StatusFact(key[0], field, edit.before, edit.after))
+    return facts
+
+
+def _plan_restatements(
+    repo: Path,
+    plan: "AcceptanceRecordPlan",
+    facts: "Sequence[StatusFact]",
+    *,
+    source: str,
+    acceptance_globs: "Sequence[str]",
+    declared_globs: "Sequence[str]",
+) -> None:
+    """Bring every declared status surface back in line with the machine record.
+
+    The machine record is the authority and the restatements follow it; nothing
+    here reads a status document to decide what is true. A surface that cannot
+    be brought into line is an AUTHORITY_GAP, because the alternative is an
+    acceptance commit that contradicts itself — the registry saying the phase is
+    accepted and the document beside it saying the phase has not started.
+    """
+    stale, declared, notes = restatement_surfaces(
+        repo,
+        facts,
+        exclude=[source],
+        acceptance_globs=acceptance_globs,
+        declared_globs=declared_globs,
+    )
+    plan.declared_surfaces = list(declared)
+    plan.notes.extend(notes)
+    for rel in stale:
+        text = _read_text(repo / rel)
+        updated, moved, stuck = reconcile_restatement(text, facts)
+        for entry in stuck:
+            entry.path = rel
+            plan.stale_restatements.append(entry)
+        if stuck or not moved:
+            continue
+        plan.rendered[rel] = updated
+        plan.original[rel] = text
+        for line_no, before, after in moved:
+            plan.edits.append(
+                RecordEdit(
+                    path=rel,
+                    unit_id=f"line {line_no}",
+                    field_path="restatement",
+                    before=before.strip()[:80],
+                    after=after.strip()[:80],
+                    why="this document restates the machine record and must not drift from it",
+                )
+            )
+
+
+def stale_restatement_gap(plan: "AcceptanceRecordPlan") -> str:
+    """Why an otherwise-complete record still leaves the repository contradicting itself."""
+    if not plan.stale_restatements:
+        return ""
+    listed = "; ".join(s.brief() for s in plan.stale_restatements[:6])
+    return (
+        f"{len(plan.stale_restatements)} live restatement(s) of this phase's status cannot be "
+        "reconciled mechanically, and an acceptance record that leaves them stale is a commit "
+        "that contradicts itself — the machine record saying the phase is accepted and the "
+        "repository's own status document beside it saying it has not started: "
+        + listed
+        + (" ..." if len(plan.stale_restatements) > 6 else "")
+        + ". Product Driver does not compose status prose; a founder or architect brings these "
+        "into line, and the closure then records the acceptance."
+    )
+
+
+def verify_acceptance_record(
+    repo: Path,
+    plan: "AcceptanceRecordPlan",
+    *,
+    max_targets: int = 6,
+    timeout_s: int = 900,
+) -> "AcceptanceRecordPlan":
+    """Ask the repository's own guards what they think of the record just written.
+
+    The step this path was missing. A status-only diff that contains nothing but
+    the acceptance record can still turn the repository red — a criterion's own
+    oracle may assert the PRE-acceptance state out of the very file the record
+    moves, and the acceptance commit would then be the commit that broke the
+    suite it was claiming was green.
+
+    Only the repository's own tests run, only the ones that actually READ a file
+    this diff changed, and a guard that was ALREADY failing is not attributed to
+    the record: each failure is re-run against the original bytes before it is
+    believed. A guard that goes from green to red because of this diff refuses
+    the record, and the write is rolled back so nothing is left half-recorded.
+    """
+    from .repo_verification import discover_record_guards, run_verification
+
+    if not plan.written or not plan.rendered:
+        return plan
+    repo = Path(repo)
+    targets, notes = discover_record_guards(
+        repo, plan.changed_paths, max_targets=max_targets
+    )
+    verification = run_verification(
+        repo,
+        targets,
+        timeout_s=timeout_s,
+        notes=notes,
+        surfaces=["the acceptance record this closure wrote"],
+        surface_evidence=[f"changed {', '.join(plan.changed_paths)}"],
+    )
+    plan.verification = verification
+
+    attributable = []
+    for result in verification.product_failures:
+        if _fails_without_the_record(repo, plan, result, timeout_s=timeout_s):
+            plan.notes.append(
+                f"{result.target.path} already fails on the candidate tree; the acceptance "
+                "record is not what made it red"
+            )
+            continue
+        attributable.append(result)
+
+    if attributable:
+        restore_candidate_tree(repo, plan)
+        plan.written = False
+        listed = "; ".join(
+            f"{r.target.path} ({salient_failure(r.detail)})" for r in attributable[:4]
+        )
+        plan.refusal = (
+            f"the acceptance record turns {len(attributable)} of this repository's own guard(s) "
+            f"red, so it is not ready to be committed: {listed}"
+            + (" ..." if len(attributable) > 4 else "")
+            + ". The record was rolled back. A status diff that breaks the repository is not a "
+            "status diff the repository accepts, and which of the two is wrong — the record or "
+            "the guard — is a founder or architect decision."
+        )
+    return plan
+
+
+def salient_failure(detail: str) -> str:
+    """The line of a test runner's output a person would actually read.
+
+    A runner ends with its warnings summary far more often than with its
+    failure, and quoting the last line at a founder reports a deprecation notice
+    as the reason their phase did not close.
+    """
+    lines = [line.strip() for line in (detail or "").splitlines() if line.strip()]
+    for marker in ("FAILED", "assert", "Error"):
+        hit = next((line for line in lines if marker in line), "")
+        if hit:
+            return hit[:160]
+    return (lines[-1][:160] if lines else "failed")
+
+
+def _fails_without_the_record(
+    repo: Path, plan: "AcceptanceRecordPlan", result: Any, *, timeout_s: int
+) -> bool:
+    """Whether this guard was red before the record was written.
+
+    Re-run against the original bytes, then the record is put back. Paid only
+    for guards that actually failed, so the ordinary green path runs everything
+    once.
+    """
+    from .repo_verification import run_verification
+
+    restore_candidate_tree(repo, plan)
+    try:
+        baseline = run_verification(repo, [result.target], timeout_s=timeout_s)
+    finally:
+        for rel, text in plan.rendered.items():
+            try:
+                (repo / rel).write_text(text, encoding="utf-8")
+            except OSError:
+                pass
+    return bool(baseline.results and not baseline.results[0].passed)
+
+
+def restore_candidate_tree(repo: Path, plan: "AcceptanceRecordPlan") -> None:
+    """Put every written file back to the bytes the candidate tree had.
+
+    A record that is not going to be committed must not be left lying in the
+    working tree: the next thing to read that tree is a fingerprint, a guard or
+    a founder, and each of them would read a half-recorded acceptance as a fact.
+    """
+    for rel, text in plan.original.items():
+        try:
+            (Path(repo) / rel).write_text(text, encoding="utf-8")
+        except OSError:
+            pass
 
 
 def write_acceptance_record(repo: Path, plan: AcceptanceRecordPlan) -> AcceptanceRecordPlan:

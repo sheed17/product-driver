@@ -517,6 +517,100 @@ def discover_verification(
     return chosen, notes
 
 
+def discover_record_guards(
+    repo: Path,
+    changed_paths: Sequence[str],
+    *,
+    max_targets: int = 6,
+    runner: str = "",
+) -> tuple[list[VerificationTarget], list[str]]:
+    """The repository's own tests that READ the files a status diff changed.
+
+    A different question from :func:`discover_verification`, and a sharper one.
+    That function asks "what does this repository already guard about the KIND
+    of thing that changed", which is a judgement about surfaces. This one asks
+    "which of this repository's tests actually read THIS file", which is not a
+    judgement at all: a test whose source names the path is a test that reads
+    it, and a status record is precisely the kind of file a repository keeps
+    guards over — one that says a phase has not started, another that says its
+    documents may not drift from it.
+
+    Why it exists: an acceptance record moved a unit's state and a criterion's
+    own oracle asserted the OLD state out of the same file. The diff was
+    status-only, contained nothing but the acceptance record, and turned the
+    repository red — and nothing in the closure asked the repository what it
+    already knew about the file being written.
+    """
+    repo = Path(repo)
+    notes: list[str] = []
+    wanted = [p for p in dict.fromkeys(str(c).strip() for c in changed_paths) if p]
+    if not wanted:
+        return [], notes
+    runner = runner or detect_test_runner(repo)
+    if not runner:
+        notes.append(
+            "the repository declares no Python test runner this driver could identify, so "
+            "its own guards over the changed status record could not be executed"
+        )
+        return [], notes
+
+    # A path is recognised by its full repo-relative spelling and by its
+    # basename. Repositories routinely build the path from a root constant —
+    # ``IMPL / "CURRENT.md"`` names the file without ever writing the full path.
+    keys: dict[str, list[str]] = {}
+    for path in wanted:
+        base = path.rsplit("/", 1)[-1]
+        spellings = {path, base}
+        stem = base.rsplit(".", 1)[0]
+        if len(stem) >= 6:
+            spellings.add(stem)
+        keys[path] = sorted(spellings, key=len, reverse=True)
+
+    candidates: list[VerificationTarget] = []
+    for rel in _tracked_test_files(repo):
+        if rel in wanted:
+            continue
+        text = _read(repo / rel)
+        if not text or not _test_names(text):
+            continue
+        named: list[str] = []
+        mentions = 0
+        for path, spellings in keys.items():
+            hit = next((s for s in spellings if s in text), "")
+            if hit:
+                named.append(path)
+                mentions += sum(text.count(s) for s in spellings)
+        if not named:
+            continue
+        candidates.append(
+            VerificationTarget(
+                path=rel,
+                # `-rf` so the failing test and its message land in the tail of
+                # the output, where the result's detail is read from. Without it
+                # a refusal quotes pytest's warnings summary at the founder.
+                command=f"{runner} {rel} -q -rf -p no:cacheprovider",
+                surface="the acceptance record this closure wrote",
+                why=[f"reads {', '.join(sorted(named))}"],
+                score=mentions,
+            )
+        )
+
+    candidates.sort(key=lambda c: (-c.score, len(c.path), c.path))
+    chosen = candidates[:max_targets]
+    if not chosen:
+        notes.append(
+            "this repository keeps no test that reads "
+            + ", ".join(wanted)
+            + ", so it states no guard over its own status record"
+        )
+    elif len(candidates) > len(chosen):
+        notes.append(
+            f"{len(candidates)} of this repository's tests read the changed status record; "
+            f"the {len(chosen)} that read it most were executed"
+        )
+    return chosen, notes
+
+
 def detect_test_runner(repo: Path) -> str:
     """How this repository runs a test file. Read from the repository."""
     repo = Path(repo)

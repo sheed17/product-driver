@@ -1003,6 +1003,64 @@ before, every dependency the successor declares is satisfied by this acceptance,
 and it declares no outstanding blocker. Where any of that is missing, the
 successor is left alone and the reason is printed.
 
+### More than one status authority
+
+A repository usually keeps two: a machine-readable record of unit state, and a
+short-form document that restates it for humans and **may not drift from it**.
+Moving only the first produces a commit that says the phase is accepted in one
+file and has not started in the file beside it — a worse defect than the one the
+writer fixed, because it records a contradiction as the evidence that the phase
+was verified.
+
+So the driver reconciles **every declared status surface together**. The
+population is the repository's own: the paths it names in
+`status_restatement_globs`, or — when it names none — the documents its own
+authority map classifies as live status. A map is found structurally, as the
+tracked document with the most table rows that both name another tracked file
+and carry a classification token; a class whose name says STATUS is live, and
+one that says HISTORICAL, SUPERSEDED, EVIDENCE, ARCHIVE or DEPRECATED is a record
+of what *was* true and is never edited. Discovering the population by looking for
+documents that merely mention a phase would sweep in every completed review in
+the repository, which is exactly the population an acceptance must not touch.
+
+What may be rewritten inside one is only what a machine can rewrite **without
+composing a sentence**: a status value, in a status cell, of a table row whose
+subject names one unit and one unit only, on a line that keeps no history.
+Everything else is reported and refuses the acceptance:
+
+```
+=== ACCEPTANCE RECORD ===
+  AUTHORITY GAP: 31 live restatement(s) of this phase's status cannot be
+  reconciled mechanically, and an acceptance record that leaves them stale is a
+  commit that contradicts itself
+    docs/implementation/CURRENT.md:38 still states NOT_STARTED for P7 (the
+      record now says COMPLETE) — it is a narrative sentence, not a status
+      restatement
+    docs/implementation/CURRENT.md:65 still states READY for P7 — the row also
+      keeps the wording it replaced, so the stale token is history
+    docs/implementation/CURRENT.md:66 still states BLOCKED for P8 — the row is
+      about P14, P8 rather than this unit alone
+```
+
+A narrative claim is a sentence, and replacing a token inside one leaves the rest
+of the sentence saying the opposite — `COMPLETE — the sole selected unit` is a
+claim nobody wrote and nothing established. A row about a range would move units
+this acceptance says nothing about. A row that also keeps the wording it replaced
+is keeping that stale token *as* the history. In each case the answer is a
+founder or architect edit, and the closure records the acceptance afterwards.
+
+### The repository's own guards over what was written
+
+A status-only diff can still turn a repository red: a criterion's own oracle may
+assert the **pre-acceptance** state out of the very file the record moves. So
+after writing, the driver runs the repository's own tests that READ a changed
+path — discovered by the source naming it, which is not a judgement — and a
+guard that goes from green to red because of this diff refuses the record. Each
+failure is re-run against the original bytes first, so a repository that was
+already failing is never blamed for it, and a refused record is **rolled back**:
+a record that will not be committed must not be left lying in the working tree,
+where a fingerprint, a guard or a founder would read it as a fact.
+
 The registry is **edited, never regenerated**. A registry is prose as much as
 data — superseded wording kept deliberately, comments carrying the reason a field
 holds the value it holds — and re-serializing the parsed document would delete
@@ -1122,9 +1180,10 @@ with its expected commit. No acceptance decision is reconstructed from prose.
 
 You no longer relay reviewer findings between sessions by hand. What still
 requires you: stating acceptance criteria that do not exist, saying how the
-repository records an acceptance where it never has, deciding a residual whose
-closure condition is a judgement, repairing Product Driver when a harness defect
-is found, making the acceptance commit, and every push.
+repository records an acceptance where it never has, bringing a narrative status
+document into line when its own words cannot be moved mechanically, deciding a
+residual whose closure condition is a judgement, repairing Product Driver when a
+harness defect is found, making the acceptance commit, and every push.
 
 ## The repository's own verification, before the push boundary
 
@@ -2252,7 +2311,12 @@ or specification change refuses the write before it starts, that the record does
 not retire the evidence it records, that the next unit advances only on the
 repository's own authority, that a repository which has not stated how it records
 an acceptance produces `AUTHORITY_GAP` instead of an invented format, and that
-running the closure again writes nothing.
+running the closure again writes nothing. `tests/test_status_restatement.py`
+covers the second authority: that every declared status surface is reconciled in
+one diff, that a stale restatement or a guard the record turns red refuses the
+acceptance and rolls the write back, that a document classified historical is
+never edited, that the machine record is the source and a status document cannot
+override it, and that a repository with its own class vocabulary is read in it.
 
 `tests/test_phase_closure_mutation.py` is a failure-injection battery over those
 guards. Each case establishes a control, removes exactly one guard, and shows the

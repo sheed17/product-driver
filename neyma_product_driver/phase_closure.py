@@ -781,6 +781,7 @@ class PhaseClosureController:
         registry_paths: Sequence[str] | None = None,
         stale_verification_blocks: bool = False,
         acceptance_record_globs: Sequence[str] = (),
+        status_restatement_globs: Sequence[str] = (),
         external_probe_command: str = "",
         external_probe_timeout_s: int = 120,
         emit: Callable[[str], None] | None = None,
@@ -792,6 +793,7 @@ class PhaseClosureController:
         self.registry_paths = registry_paths
         self.stale_verification_blocks = bool(stale_verification_blocks)
         self.acceptance_record_globs = list(acceptance_record_globs)
+        self.status_restatement_globs = list(status_restatement_globs)
         self.external_probe_command = external_probe_command or ""
         self.external_probe_timeout_s = int(external_probe_timeout_s)
         self._emit = emit or (lambda _m: None)
@@ -1888,6 +1890,9 @@ class PhaseClosureController:
         from .acceptance_record import (
             AcceptanceRecordPlan,
             plan_acceptance_record,
+            restore_candidate_tree,
+            stale_restatement_gap,
+            verify_acceptance_record,
             write_acceptance_record,
         )
 
@@ -1911,6 +1916,7 @@ class PhaseClosureController:
             candidate=previous,
             registry_paths=self.registry_paths or (),
             acceptance_globs=self.acceptance_record_globs,
+            declared_globs=self.status_restatement_globs,
         )
 
         if plan.authority_gap and plan.existing_record:
@@ -1968,6 +1974,49 @@ class PhaseClosureController:
         write_acceptance_record(self.repo, plan)
         if plan.refusal:
             record.note(f"the acceptance record was refused: {plan.refusal}")
+            self.save()
+            return plan
+
+        # The repository's own guards over what was just written. A status diff
+        # that turns them red is not a status diff the repository accepts.
+        verify_acceptance_record(self.repo, plan)
+        if plan.verification is not None:
+            record.note(
+                "the repository's own guards over the acceptance record: "
+                + plan.verification.headline()
+            )
+
+        # Both problems reach the founder together. A record that leaves a
+        # declared restatement stale and a record that turns a guard red are
+        # each a reason this acceptance cannot be committed, and reporting one
+        # at a time costs a round trip through a human for no reason.
+        stale = stale_restatement_gap(plan)
+        if stale or plan.refusal:
+            restore_candidate_tree(self.repo, plan)
+            plan.written = False
+            gap = "; and ".join(part for part in (plan.refusal, stale) if part)
+            plan.refusal = ""
+            plan.authority_gap = gap
+            self._add_finding(
+                PhaseFinding(
+                    finding_id=f"{record.phase_id or 'phase'}-RECORD-NOT-SELF-CONSISTENT",
+                    classification=FindingClass.AUTHORITY_GAP,
+                    severity="blocker",
+                    phase_id=record.phase_id,
+                    summary=gap,
+                    closure_condition=(
+                        "a founder or architect brings the repository's declared status "
+                        "authorities into line with its machine record, and settles any guard "
+                        "that asserts the state before the acceptance"
+                    ),
+                    observed_at_tree=previous.identity,
+                    criteria_fingerprint=record.criteria_fingerprint,
+                    source="phase-closure acceptance record",
+                )
+            )
+            record.state = ClosureState.AUTHORITY_GAP
+            record.note(f"the acceptance record was rolled back: {gap[:400]}")
+            self._rebuild_ledger()
             self.save()
             return plan
 

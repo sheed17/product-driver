@@ -5798,6 +5798,7 @@ def _phase_controller(
         registry_paths=closure.registry_paths or None,
         stale_verification_blocks=closure.stale_verification_blocks,
         acceptance_record_globs=closure.acceptance_record_globs,
+        status_restatement_globs=closure.status_restatement_globs,
         external_probe_command=closure.external_probe_command,
         external_probe_timeout_s=closure.external_probe_timeout_s,
         emit=lambda m: out(_indent(m)),
@@ -6184,6 +6185,16 @@ def _prepare_phase_acceptance_commit(
     out(written.render())
     for line in written.derivation:
         out(f"  read from the repository: {line}")
+    if written.verification is not None:
+        from .acceptance_record import salient_failure
+
+        out("  the repository's own guards over what this record changed:")
+        for result in written.verification.results:
+            verdict = "PASS" if result.passed else "FAIL"
+            detail = "" if result.passed else f" — {salient_failure(result.detail)}"
+            out(f"    {verdict}  {result.target.path}{detail}")
+        for note in written.verification.notes:
+            out(f"    note: {note}")
     if not written.permitted and not written.existing_record:
         return
     out("")

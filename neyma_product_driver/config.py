@@ -362,6 +362,15 @@ class PhaseClosureConfig(BaseModel):
     #: refuses to let a glob reclassify runtime, test, migration, CI or spec.
     acceptance_record_globs: list[str] = Field(default_factory=list)
 
+    #: The documents THIS repository keeps as restatements of its machine
+    #: record — the human-readable status authorities that must not drift from
+    #: the registry. Empty means "read it from the repository": the authority
+    #: map it keeps, if it keeps one. Configuring it is how a repository whose
+    #: map this driver cannot read names them itself; it never widens what may
+    #: be written, because a named path that does not classify as
+    #: ACCEPTANCE_RECORD is still refused.
+    status_restatement_globs: list[str] = Field(default_factory=list)
+
     #: One read-only command that reports the external verifier's result for a
     #: commit. ``{sha}`` is substituted. Human-authored, like the scenario
     #: approved-command list — never inferred and never generated. Empty means
