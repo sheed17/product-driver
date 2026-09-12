@@ -6165,14 +6165,29 @@ def _prepare_phase_acceptance_commit(
     authority requires them, and so may the founder — both act under the
     repository's rules, and neither is this process.
 
-    So what happens here is the part that is genuinely worth automating: every
-    dirty path is classified by surface, anything outside the acceptance record
-    refuses the whole preparation with the file and its surface named, and the
-    exact change plus the command to make it is printed.
+    So what happens here is the part that is genuinely worth automating: the
+    repository's own acceptance record is written from its own authority and
+    this attempt's adjudication, every dirty path is then classified by surface,
+    anything outside the acceptance record refuses the whole preparation with
+    the file and its surface named, and the exact change plus the command to
+    make it is printed.
     """
     from .acceptance_commit import plan_acceptance_commit, prepare_acceptance_commit
 
     record = controller.record
+
+    # The record itself, first. Without this the classifier below is handed a
+    # clean tree and refuses for the one reason that is never the founder's to
+    # fix: "the acceptance is already recorded, or the record was never written".
+    written = controller.materialize_acceptance_record()
+    header("ACCEPTANCE RECORD")
+    out(written.render())
+    for line in written.derivation:
+        out(f"  read from the repository: {line}")
+    if not written.permitted and not written.existing_record:
+        return
+    out("")
+
     plan = plan_acceptance_commit(
         config.neyma_repo,
         phase_id=record.phase_id,
@@ -6183,7 +6198,7 @@ def _prepare_phase_acceptance_commit(
     # caller that may use it is not this one.
     plan = prepare_acceptance_commit(config.neyma_repo, plan, allow_commit=False)
 
-    header("ACCEPTANCE RECORD")
+    header("ACCEPTANCE COMMIT")
     out(plan.render())
     if not plan.permitted:
         return

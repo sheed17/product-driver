@@ -20,7 +20,13 @@ from neyma_product_driver.cli import build_parser, main
 from neyma_product_driver.evidence import EvidenceStore
 from neyma_product_driver.phase_closure import CLOSURE_FILE
 
-from phase_fixtures import head, phase_repo, supporting_review
+from phase_fixtures import (
+    accepted_unit,
+    head,
+    pending_unit,
+    phase_repo,
+    supporting_review,
+)
 
 
 def config_file(tmp_path: Path, repo: Path, **closure) -> Path:
@@ -461,3 +467,110 @@ class TestTheAcceptanceRecordAtTheCommandLevel:
             DriverConfig(neyma_repo=repo, task="t", allow_auto_commit=True)
         with pytest.raises(ValueError, match="never commits or pushes"):
             DriverConfig(neyma_repo=repo, task="t", allow_auto_push=True)
+
+
+class TestPhaseCloseWritesTheRecordItThenValidates:
+    """The defect this class exists for, at the surface a founder actually uses.
+
+    ``phase close`` reached READY_FOR_ACCEPTANCE_COMMIT on a clean tree and then
+    told the founder there was nothing to commit — the commit preparation can
+    only classify a diff, and nothing had made one. Now the record is written
+    from the repository's own precedent first, and the classifier validates what
+    was written.
+    """
+
+    def _repo(self, tmp_path: Path) -> Path:
+        return phase_repo(
+            tmp_path,
+            criteria=[
+                {
+                    "id": f"AC-{index}",
+                    "criterion": f"surface_{index}_holds",
+                    "weight": 1,
+                    "required": True,
+                    "result": "PENDING",
+                    "requirement": f"surface {index} holds on the accepted tree",
+                    "adjudication_evidence": "",
+                }
+                for index in range(1, 6)
+            ],
+            extra_units=[
+                accepted_unit("P8", next_units=("P9",)),
+                pending_unit("P10", dependencies=("P9",)),
+            ],
+        )
+
+    def _close(self, tmp_path: Path, repo: Path) -> tuple[int, str]:
+        config = config_file(tmp_path, repo)
+        store = EvidenceStore(tmp_path / "runs", "20260909-000001")
+        run(["phase", "preflight", "--config", str(config), "--phase", "P9", "--run", store.run_id])
+        run(
+            [
+                "phase", "external-evidence", "--config", str(config), "--run", store.run_id,
+                "--sha", head(repo), "--status", "SUCCESS",
+            ]
+        )
+        from neyma_product_driver.phase_closure import PhaseClosureController
+        from neyma_product_driver.review_cycle import capture_fingerprint
+
+        control = PhaseClosureController(repo, store=store, phase_id="P9")
+        control.load()
+        control.ingest_review(
+            supporting_review(
+                [f"AC-{i}" for i in range(1, 6)],
+                reviewed_fingerprint=capture_fingerprint(repo).to_dict(),
+            )
+        )
+        control.decide()
+        control.save()
+        code = run(
+            [
+                "phase", "close", "--config", str(config), "--phase", "P9",
+                "--run", store.run_id, "--no-adjudication",
+            ]
+        )
+        return code, str(tmp_path)
+
+    def test_it_no_longer_reports_a_clean_tree_with_nothing_to_commit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        repo = self._repo(tmp_path)
+        capsys.readouterr()
+        code, _ = self._close(tmp_path, repo)
+        captured = capsys.readouterr().out
+
+        assert "the working tree carries no acceptance-record change" not in captured
+        assert "ACCEPTANCE RECORD" in captured
+        assert "ACCEPTANCE COMMIT" in captured
+        assert code == 0
+
+    def test_it_prints_the_exact_commit_over_what_it_wrote(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        repo = self._repo(tmp_path)
+        capsys.readouterr()
+        self._close(tmp_path, repo)
+        captured = capsys.readouterr().out
+
+        assert "docs/implementation/IMPLEMENTATION-REGISTRY.yaml" in captured
+        assert "Product Driver does not commit in the product repository" in captured
+        assert "Publishing is your action" in captured
+
+    def test_it_stages_nothing_and_commits_nothing(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path)
+        before = head(repo)
+        self._close(tmp_path, repo)
+
+        assert head(repo) == before
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert staged == ""
+        changed = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        assert changed.split() == ["M", "docs/implementation/IMPLEMENTATION-REGISTRY.yaml"]

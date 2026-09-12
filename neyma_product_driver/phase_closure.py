@@ -1863,6 +1863,126 @@ class PhaseClosureController:
             )
         )
 
+    def materialize_acceptance_record(self) -> Any:
+        """Write the repository's own acceptance record, once nothing else is owed.
+
+        ``READY_FOR_ACCEPTANCE_COMMIT`` is a statement that every prerequisite is
+        already satisfied on the frozen candidate tree, so the only thing between
+        it and a commit is that the repository's status record has not caught up
+        with its own evidence. Nothing in the pipeline used to write it, and the
+        commit preparation then reported a clean tree and refused — the last step
+        was unreachable by the act of reaching it.
+
+        What is written is bounded three ways, and none of them is this method's
+        judgement: :mod:`~neyma_product_driver.acceptance_record` may only use
+        vocabulary the repository already used on a unit it already accepted, may
+        only say what this attempt's adjudication established, and may only touch
+        a file that classifies as ``ACCEPTANCE_RECORD``. A repository that has
+        never stated what an acceptance looks like produces ``AUTHORITY_GAP``
+        here, exactly as one that states no criteria does at the preflight.
+
+        The write moves the working tree, and that is the one movement that does
+        not retire the evidence: see :meth:`_tree_moved`. Nothing is staged,
+        nothing is committed and nothing is pushed.
+        """
+        from .acceptance_record import (
+            AcceptanceRecordPlan,
+            plan_acceptance_record,
+            write_acceptance_record,
+        )
+
+        record = self.record
+        if record.state is not ClosureState.READY_FOR_ACCEPTANCE_COMMIT:
+            return AcceptanceRecordPlan(
+                phase_id=record.phase_id,
+                refusal=(
+                    f"the phase is {record.state.value}, not READY_FOR_ACCEPTANCE_COMMIT. An "
+                    "acceptance record states that every prerequisite was satisfied, so it may "
+                    "not be written while one is outstanding"
+                ),
+            )
+
+        previous = record.fingerprint()
+        plan = plan_acceptance_record(
+            self.repo,
+            phase_id=record.phase_id,
+            criteria=record.criteria,
+            adjudication=record.adjudication,
+            candidate=previous,
+            registry_paths=self.registry_paths or (),
+            acceptance_globs=self.acceptance_record_globs,
+        )
+
+        if plan.authority_gap and plan.existing_record:
+            # The repository has not stated how Product Driver would write its
+            # record — and the working tree already carries one somebody else
+            # wrote. That is not a phase that must stop: it is a phase whose
+            # record exists and still has to be validated as record-only.
+            record.note(
+                "Product Driver cannot write this repository's acceptance record "
+                f"({plan.authority_gap}); the working tree already carries one at "
+                + ", ".join(plan.existing_record)
+            )
+            self.save()
+            return plan
+
+        if plan.authority_gap:
+            self._add_finding(
+                PhaseFinding(
+                    finding_id=f"{record.phase_id or 'phase'}-RECORD-AUTHORITY-GAP",
+                    classification=FindingClass.AUTHORITY_GAP,
+                    severity="blocker",
+                    phase_id=record.phase_id,
+                    summary=(
+                        "the repository does not state how it records an acceptance: "
+                        + plan.authority_gap
+                    ),
+                    closure_condition=(
+                        "a founder or architect states how this repository records an accepted "
+                        "phase — the status values, and what a passing criterion says"
+                    ),
+                    observed_at_tree=previous.identity,
+                    criteria_fingerprint=record.criteria_fingerprint,
+                    source="phase-closure acceptance record",
+                )
+            )
+            record.state = ClosureState.AUTHORITY_GAP
+            record.note(f"the acceptance record cannot be written: {plan.authority_gap}")
+            self._rebuild_ledger()
+            self.save()
+            return plan
+
+        if plan.refusal:
+            record.note(f"the acceptance record was refused: {plan.refusal}")
+            self.save()
+            return plan
+
+        if plan.already_recorded:
+            record.note(
+                "the repository already records this acceptance; nothing was written and "
+                "nothing was duplicated"
+            )
+            self.save()
+            return plan
+
+        write_acceptance_record(self.repo, plan)
+        if plan.refusal:
+            record.note(f"the acceptance record was refused: {plan.refusal}")
+            self.save()
+            return plan
+
+        record.note(
+            f"the acceptance record was written into {', '.join(plan.changed_paths)}: "
+            + "; ".join(e.brief() for e in plan.edits[:6])
+            + (" ..." if len(plan.edits) > 6 else "")
+        )
+        current = capture_fingerprint(self.repo)
+        self._tree_moved(previous, current)
+        record.candidate = current.to_dict()
+        self._rebuild_ledger()
+        self.save()
+        return plan
+
     def routing(self) -> RoutingPlan:
         return route_findings(self.record.findings)
 

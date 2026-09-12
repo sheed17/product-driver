@@ -388,6 +388,10 @@ _CORE_MODULES = (
     "phase_closure.py",
     "phase_authority.py",
     "criterion_kinds.py",
+    # The acceptance record is written at the end of this same path, and it is
+    # the step with the strongest pull towards encoding one repository's shapes.
+    "acceptance_record.py",
+    "acceptance_commit.py",
 )
 
 

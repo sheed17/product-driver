@@ -56,6 +56,66 @@ def default_criteria() -> list[dict[str, Any]]:
     ]
 
 
+def accepted_unit(
+    unit_id: str = "P8",
+    *,
+    next_units: Sequence[str] = ("P9",),
+    status: str = "COMPLETE",
+    execution_state: str = "COMPLETE",
+    checkpoint_state: str = "PHASE_ACCEPTANCE_COMPLETE",
+    result: str = "PASS",
+    evidence_key: str = "adjudication_evidence",
+    with_result: bool = True,
+) -> dict[str, Any]:
+    """A unit the repository already records as accepted.
+
+    This is the PRECEDENT an acceptance record is written from: the status
+    values, the field a criterion records its outcome in and the token that
+    field carries when the criterion passed are all read off a unit like this
+    one, never supplied by Product Driver.
+    """
+    row: dict[str, Any] = {
+        "id": f"{unit_id}-AC-1",
+        "criterion": "it_was_built_and_adjudicated",
+        "weight": 1,
+        "required": True,
+        "requirement": "the phase was built and independently adjudicated",
+    }
+    if with_result:
+        row["result"] = result
+    if evidence_key:
+        row[evidence_key] = "an independent adjudication on the accepted tree"
+    return {
+        "unit_id": unit_id,
+        "name": "a phase the repository already accepted",
+        "status": status,
+        "execution_state": execution_state,
+        "checkpoint_state": checkpoint_state,
+        "acceptance_criteria": [row],
+        "next_units_unlocked": list(next_units),
+    }
+
+
+def pending_unit(
+    unit_id: str = "P10",
+    *,
+    dependencies: Sequence[str] = ("P9",),
+    status: str = "BLOCKED",
+    blockers: Sequence[str] = (),
+) -> dict[str, Any]:
+    """A unit waiting on the phase under test."""
+    return {
+        "unit_id": unit_id,
+        "name": "the unit after the one under test",
+        "status": status,
+        "execution_state": "NOT_STARTED",
+        "checkpoint_state": "NO_CHECKPOINT",
+        "dependencies": list(dependencies),
+        "validation_blockers": list(blockers),
+        "next_units_unlocked": [],
+    }
+
+
 def write_registry(
     repo: Path,
     *,

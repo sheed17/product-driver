@@ -278,11 +278,19 @@ phase_closure:
   # process never commits or pushes on your behalf — and a second knob that
   # could never take effect would read like a capability this does not have.
   #
-  # What the driver does instead is the part worth automating: it classifies
-  # every dirty path by surface, refuses the whole preparation if anything
-  # outside the acceptance record is dirty (naming each file and its surface),
-  # and prints the exact change plus the command to make it. You or a builder
-  # session make the commit under the repository's own rules.
+  # What the driver does instead is the part worth automating. Once every
+  # prerequisite is satisfied it WRITES the repository's own acceptance record —
+  # the phase accepted, every required criterion PASS with the adjudication's own
+  # basis and the exact commit and tree it was established on, and the next unit
+  # advanced where the repository's own authority says it should be. Every value
+  # written is read off units this repository already accepted; a repository that
+  # has never recorded an acceptance stops at AUTHORITY_GAP rather than getting a
+  # format invented for it, and there is no setting here that changes that.
+  #
+  # It then classifies every dirty path by surface, refuses the whole preparation
+  # if anything outside the acceptance record is dirty (naming each file and its
+  # surface), and prints the exact change plus the command to make it. You or a
+  # builder session make the commit under the repository's own rules.
 
 # THE TARGET REPOSITORY'S OWN VERIFICATION FOR WHAT THIS RUN CHANGED.
 #

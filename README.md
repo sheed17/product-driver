@@ -856,7 +856,7 @@ CLASSIFY FINDINGS                  defect / gap / harness / CI / authority / deb
 │
 └─ every required criterion PASS
      ↓
-   prepare the minimal acceptance record LOCALLY
+   write and check the minimal acceptance record LOCALLY
      ↓
    STOP. READY_FOR_FOUNDER_PUSH.
 ```
@@ -973,13 +973,48 @@ series of product corrections.
 
 ### The acceptance record
 
-When every required criterion passes, the driver prepares the **minimum local**
-status/evidence change the repository's own authority needs. It classifies every
-dirty path by surface and refuses the whole preparation if anything outside the
-acceptance record is dirty:
+When every required criterion passes, the driver **writes** the minimum local
+status change the repository's own authority needs, and then classifies what it
+wrote.
+
+`READY_FOR_ACCEPTANCE_COMMIT` means every prerequisite is already satisfied on
+the frozen candidate tree — the scope is built, the external verifier is green on
+the exact commit, an independent session adjudicated the phase, and no blocking
+finding stands. The only thing left is that the repository's own status record
+has not caught up with its own evidence, and nothing but this step writes it.
+Without it the classifier below is handed a clean tree and refuses for the one
+reason that is never the founder's to fix: *"the acceptance is already recorded,
+or the record was never written."*
+
+Everything written is the repository's, not the driver's. The status values, the
+field a criterion records its outcome in, the token that field carries when a
+criterion passes and the name of the evidence field are all read off units the
+repository **already accepted** — preferring the accepted unit its own graph says
+this phase follows, because a long-lived repository carries older records written
+under conventions it has since moved on from. The results written are this
+attempt's adjudication and nothing else, and the evidence names the exact commit
+and tree it was established on. A repository that has never recorded an
+acceptance has not stated what one looks like, and that is an `AUTHORITY_GAP` —
+your decision — rather than an invitation to guess a format.
+
+The next unit advances only where the repository says it does: its own "what this
+unlocks" field names the successor, the repository has made that same move
+before, every dependency the successor declares is satisfied by this acceptance,
+and it declares no outstanding blocker. Where any of that is missing, the
+successor is left alone and the reason is printed.
+
+The registry is **edited, never regenerated**. A registry is prose as much as
+data — superseded wording kept deliberately, comments carrying the reason a field
+holds the value it holds — and re-serializing the parsed document would delete
+all of it. So the edit is line-local, and the result is parsed and compared
+against the original before it lands: if anything moved that the writer did not
+intend, nothing is written at all.
+
+Then every dirty path is classified by surface, and the whole preparation is
+refused if anything outside the acceptance record is dirty:
 
 ```
-=== ACCEPTANCE RECORD ===
+=== ACCEPTANCE COMMIT ===
   + ACCEPTANCE_RECORD  docs/implementation/IMPLEMENTATION-REGISTRY.yaml
   REFUSED RUNTIME      src/freight_recon/work_item.py
   REFUSED: acceptance recording may only touch the acceptance record, and this
@@ -989,7 +1024,15 @@ acceptance record is dirty:
 
 All-or-nothing on purpose: staging only the status files out of a tree that also
 carries a runtime edit produces a commit whose message says "the phase is
-accepted" over unverified product changes.
+accepted" over unverified product changes. A tree already carrying such a change
+refuses the *write* too, before it starts — a status edit is never laid on top of
+something nothing verified.
+
+Writing the record moves the working tree, and that is the one movement that does
+not retire the evidence it records. The commit and the tree are untouched by a
+status edit, every changed path classifies as the acceptance record, and so the
+CI record and the adjudication go on describing the same product. Running the
+same closure again finds everything already recorded and writes nothing.
 
 **The driver does not make the commit.** That is not a decision taken here:
 `DriverConfig` refuses `allow_auto_commit` outright — the driver control process
@@ -1073,14 +1116,15 @@ with its expected commit. No acceptance decision is reconstructed from prose.
 4. You push.
 5. It resumes against the external evidence.
 6. It adjudicates independently.
-7. It prepares the acceptance record.
+7. It writes the acceptance record and checks it contains nothing else.
 8. You push.
 9. Next phase.
 
 You no longer relay reviewer findings between sessions by hand. What still
-requires you: stating acceptance criteria that do not exist, deciding a residual
-whose closure condition is a judgement, repairing Product Driver when a harness
-defect is found, making the acceptance commit, and every push.
+requires you: stating acceptance criteria that do not exist, saying how the
+repository records an acceptance where it never has, deciding a residual whose
+closure condition is a judgement, repairing Product Driver when a harness defect
+is found, making the acceptance commit, and every push.
 
 ## The repository's own verification, before the push boundary
 
@@ -2201,7 +2245,14 @@ points and checks that nothing is reconstructed from prose.
 mutating probe command is refused when the *config* is read.
 `tests/test_acceptance_commit.py` proves the acceptance commit may contain the
 acceptance record and nothing else — and that there is no push code path in the
-module at all.
+module at all. `tests/test_acceptance_record.py` covers the step that creates
+that diff: that a finished phase reaches a real record rather than a clean tree,
+that only `ACCEPTANCE_RECORD` surfaces move, that a runtime, test, migration, CI
+or specification change refuses the write before it starts, that the record does
+not retire the evidence it records, that the next unit advances only on the
+repository's own authority, that a repository which has not stated how it records
+an acceptance produces `AUTHORITY_GAP` instead of an invented format, and that
+running the closure again writes nothing.
 
 `tests/test_phase_closure_mutation.py` is a failure-injection battery over those
 guards. Each case establishes a control, removes exactly one guard, and shows the
