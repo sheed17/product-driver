@@ -54,6 +54,7 @@ from typing import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .guard_coverage import subjects
 from .models import utcnow
 from .repo_verification import (
     _VENDOR,
@@ -180,6 +181,14 @@ class ChangedGuard(BaseModel):
     #: absence-asserting test does not change what that test asserts, and a
     #: file-level answer demanded discrimination work nobody owed.
     changed_expectation_names: list[str] = Field(default_factory=list)
+    #: The concrete repository artifacts the assertions THIS CHANGE MOVED were
+    #: read to operate on — paths, declared constants, field and type names,
+    #: taken from the source of those tests and not from any name. This is what
+    #: lets a risk-coverage ledger ask "does this guard measure that risk?"
+    #: without guessing, and it is recorded here so the answer survives a resume
+    #: rather than being re-derived from a tree that has since moved on. See
+    #: :mod:`~neyma_product_driver.guard_coverage`.
+    measured_subjects: list[str] = Field(default_factory=list)
 
     @property
     def path(self) -> str:
@@ -523,6 +532,41 @@ def changed_expectations(text: str, diff_text: str, *, whole_file: bool = False)
     return changed
 
 
+_MODULE_DOCSTRING = re.compile(r"\A(?:#[^\n]*\n|\s*\n)*(?:[rubRUB]{0,2})('''|\"\"\")(?:.|\n)*?\1")
+_DECLARATION = re.compile(r"^\s*(?:@|def\s|class\s|async\s+def\s)")
+
+
+def assertion_span(text: str, changed_names: Sequence[str]) -> str:
+    """The source THIS CHANGE's own assertions read, and nothing else in the file.
+
+    What a guard measures is a question about code, and this is the code that
+    question is entitled to be asked about:
+
+    * the bodies of the tests whose expectations this diff moved, and the
+      module-level constants and helpers every one of them reads. A guard file
+      often carries tests this change never touched, and letting those speak
+      would let a diff borrow the subject matter of assertions it did not write;
+    * **not** the module docstring. Prose about what a guard is for is an
+      author's intention, and intention is exactly the thing this path refuses
+      to accept in place of a measurement;
+    * **not** ``def``, ``class`` or decorator lines. A test's NAME is a label.
+      A rule that read names would be a rule about naming conventions, which is
+      the mistake this whole module is the correction for.
+    """
+    body = _MODULE_DOCSTRING.sub("", text or "", count=1)
+    wanted = set(changed_names or ())
+    skip: set[int] = set()
+    for name, start, end in _test_spans(body):
+        if name not in wanted:
+            skip.update(range(start, end + 1))
+    kept = [
+        line
+        for number, line in enumerate(body.splitlines(), start=1)
+        if number not in skip and not _DECLARATION.match(line)
+    ]
+    return "\n".join(kept)
+
+
 def _read(path: Path, limit: int = 400_000) -> str:
     try:
         if not path.is_file():
@@ -618,6 +662,11 @@ def analyse_guard(
         negative_names=negative,
         discrimination_names=discrimination,
         changed_expectation_names=moved,
+        # The guard's own path is barred from its side of the comparison. A
+        # driver that accepted `test_status_reconciliation.py` as evidence about
+        # "status reconciliation" would be reading a label, which is the one
+        # thing every rule here refuses.
+        measured_subjects=subjects(assertion_span(text, moved), exclude=[rel]),
     )
 
 

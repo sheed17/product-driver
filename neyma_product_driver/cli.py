@@ -994,12 +994,21 @@ async def run_control_loop(
         #     could fail, the run could stop, and nothing anywhere said so.
         gate_overrode = False
         if suite_result is not None:
+            # The changed-guard obligation goes in beside the risk register.
+            # A run whose deliverable was a reconciliation guard ran that guard,
+            # green, with its own forced-drift case, and still ended BLOCKED
+            # because the ledger recognised only scenarios and reported "no
+            # scenario exercising this risk was executed" about a risk whose
+            # direct oracle was in this run's own evidence directory with a
+            # passing exit status. The gate decides what that evidence is worth;
+            # this only stops hiding it from the gate.
             last_gate["value"] = evaluate_gate(
                 suite_result,
                 generation_problems=(
                     planner.generation_problems() if planner is not None else ()
                 ),
                 risks=_identified_risks(planner),
+                changed_verification=changed_verification["value"],
             )
             before_gate = decision
             decision = _apply_suite_precedence(
@@ -1011,6 +1020,7 @@ async def run_control_loop(
                     planner.generation_problems() if planner is not None else ()
                 ),
                 risks=_identified_risks(planner),
+                changed_verification=changed_verification["value"],
             )
             gate_overrode = decision is not before_gate
 
@@ -1042,6 +1052,7 @@ async def run_control_loop(
                     task=state.task,
                     unit=active_unit,
                     diff_files=diff_files,
+                    changed_verification=changed_verification["value"],
                     emit=emit,
                 )
                 if closure.decision is not None:
@@ -1856,6 +1867,12 @@ def _coverage_gap_only(verdict: Any, suite_result: SuiteResult) -> bool:
     """
     if verdict is None:
         return False
+    # A risk two measurements DISAGREE about is not a gap. Generating a third
+    # measurement for it would be asking a tie-break of a wave whose job is to
+    # cover an absence, and a contradiction between a guard that ran and a
+    # scenario that ran is a finding someone has to look at.
+    if getattr(verdict, "contradictions", None):
+        return False
     return bool(
         getattr(verdict, "uncovered_risks", None)
         and not getattr(verdict, "unverified", None)
@@ -1923,6 +1940,7 @@ async def _close_coverage_gaps(
     unit: Any,
     diff_files: Sequence[str],
     emit: Callable[[str], None],
+    changed_verification: Any = None,
 ) -> GapClosure:
     """Generate and execute the coverage a passing run is missing, then re-gate.
 
@@ -2035,6 +2053,7 @@ async def _close_coverage_gaps(
             closure.suite_result,
             generation_problems=planner.generation_problems(),
             risks=_identified_risks(planner),
+            changed_verification=changed_verification,
         )
 
         if closure.suite_result.blocking_failures():
@@ -2319,6 +2338,7 @@ def _apply_suite_precedence(
     emit: Callable[[str], None],
     generation_problems: Sequence[str] = (),
     risks: Sequence[Any] = (),
+    changed_verification: Any = None,
 ) -> EvaluatorDecision:
     """A required scenario that failed cannot be accepted away.
 
@@ -2339,7 +2359,10 @@ def _apply_suite_precedence(
     # required scenario that failed, was skipped, never ran, or cannot show its
     # evidence all reach here the same way: not verified.
     verdict = evaluate_gate(
-        suite_result, generation_problems=generation_problems, risks=risks
+        suite_result,
+        generation_problems=generation_problems,
+        risks=risks,
+        changed_verification=changed_verification,
     )
 
     if not verdict.blocks_acceptance and suite_result.full_run:
@@ -2366,7 +2389,7 @@ def _apply_suite_precedence(
         # correct, so this is a blocked run rather than a failing product.
         emit(
             f"  product evaluation ACCEPTed, but {len(verdict.uncovered_risks)} identified "
-            "acceptance-blocking risk(s) have no passing scenario."
+            "acceptance-blocking risk(s) have no passing measurement."
         )
         for line in verdict.summary_block().splitlines():
             emit(f"  {line}")
@@ -2408,7 +2431,7 @@ def _apply_suite_precedence(
         if verdict.uncovered_risks:
             causes.append(
                 f"{len(verdict.uncovered_risks)} identified acceptance-blocking risk(s) "
-                "have no passing scenario"
+                "have no passing measurement"
             )
         emit("  product evaluation ACCEPTed, but required verification did not run.")
         for line in verdict.summary_block().splitlines():
@@ -4362,6 +4385,10 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     )
     out(f"  scenarios:                     {passed} passed, {len(failures)} failed, "
         f"{max(0, executed - passed - len(failures))} not executed")
+    # Which KIND of measurement discharged each named risk. "3 risks covered"
+    # reads the same whether a command was executed or a box was ticked, and a
+    # founder deciding whether to trust this run is entitled to the difference.
+    out(f"  risk coverage:                 {_risk_coverage_headline(gate)}")
     tests = _recorded_test_commands(state)
     out(f"  tests run by the builder:      {tests or 'none recorded in this run'}")
     unresolved = _unresolved_findings(result)
@@ -4514,6 +4541,30 @@ def _repo_verification_headline(result: LoopResult) -> str:
     if verification is None:
         return "not taken for this run"
     return verification.headline()
+
+
+def _risk_coverage_headline(gate: Any) -> str:
+    """How many named risks were discharged, and by what kind of measurement.
+
+    Reads the gate's own records; asserts nothing of its own. A run with no risk
+    register says so rather than reporting a reassuring zero.
+    """
+    if gate is None:
+        return "no acceptance gate ran, so no risk was measured either way"
+    covered = list(getattr(gate, "covered_risks", None) or [])
+    gaps = list(getattr(gate, "uncovered_risks", None) or [])
+    clashes = list(getattr(gate, "contradictions", None) or [])
+    if not covered and not gaps:
+        return "this run identified no acceptance-blocking risk"
+    parts = [f"{len(covered)} of {len(covered) + len(gaps)} verified"]
+    sources = getattr(gate, "evidence_sources", None)
+    if covered and callable(sources):
+        parts.append(sources())
+    if clashes:
+        parts.append(f"{len(clashes)} with CONTRADICTORY evidence")
+    if len(gaps) > len(clashes):
+        parts.append(f"{len(gaps) - len(clashes)} with no passing measurement")
+    return " — ".join(p for p in parts if p)
 
 
 def _changed_verification_headline(result: LoopResult) -> str:

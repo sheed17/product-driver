@@ -1312,6 +1312,57 @@ quiet tree and finding nothing outstanding. The record is
 `blocks_claim` that `READY TO SHIP` is conjunctive over. Like its sibling,
 nothing is written into the repository being verified.
 
+### An executed guard may discharge the risk it measures
+
+The same run, one repair later. Both changed guards ran, both green, the
+forced-drift discrimination case ran beside them, the evaluator accepted and
+every scenario passed — and the run ended `BLOCKED` anyway, because the
+risk-coverage ledger recognised exactly two kinds of evidence, both of them
+scenarios:
+
+```
+[P1] conflicting_evidence — the live-status restatement in CURRENT.md could
+drift from IMPLEMENTATION-REGISTRY ... (no scenario exercising this risk was
+executed, so nothing about it has been verified)
+```
+
+True about the shape of the record and false about the world: the direct oracle
+for that risk was in the run's own evidence directory with a passing exit status.
+So a **third** attachment exists, and it is the narrowest one that closes that
+hole — a guard **this change delivered**, that **this driver ran**, that
+**passed**, whose own assertions are observed to read **everything the risk
+names**. What holds it honest:
+
+- **Grounded, never guessed.** The link is the concrete artifacts the risk names
+  — paths, declared constants, field and type names — checked against the ones
+  the guard's own *changed assertion span* reads. The guard's file name and its
+  test names are excluded from its side of that comparison, and its module
+  docstring with them: a driver that accepted
+  `test_current_status_reconciliation.py` as proof about "current status
+  reconciliation" would be reading a label.
+- **Only the deliverable.** `related` guards — the repository's standing checks
+  over the *other* files in the diff — discharge nothing, and neither does any
+  scenario-free green elsewhere in the tree.
+- **All of the risk, or none of it.** A guard that measures part of what a risk
+  names discharges nothing; the gap says which part is still unmeasured and the
+  generated scenario for it is still required.
+- **A negative guard owes its control.** An absence-asserting guard counts only
+  when the repository's own discrimination / anti-vacuity case was observed
+  passing beside it.
+- **A builder's report reaches no field here.** The inputs are executed-command
+  records and the run's own risk register.
+- **Disagreement fails closed.** Where a guard that measures a risk and a
+  scenario carrying it reach different answers, the risk is verified by neither,
+  the contradiction is stated, and no coverage-generation wave is spent trying to
+  break the tie.
+
+The evidence that discharged each risk is named in the verdict and in the founder
+summary — `generated scenario`, `reviewed scenario claim`, or `repository guard
+executed by this run` — because a "covered" that cannot name its own source reads
+the same whether a command ran or a box was ticked. The measured subjects are
+written down with the obligation, so a resumed run reaches the same answer from
+the same records. See `guard_coverage.py`.
+
 ## The completion auditor
 
 A builder saying something is done is a **claim**, not a fact. Before any

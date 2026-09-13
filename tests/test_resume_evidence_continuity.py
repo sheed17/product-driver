@@ -636,12 +636,16 @@ class TestTheHeadlineNamesTheRealBlocker:
         result = SuiteResult(expected_required_ids=["req"], assembly_problems=["p"])
         head = evaluate_gate(result, risks=risks).headline()
         assert "required scenario(s) did not establish a pass" in head
-        assert "have no passing scenario" in head
+        # "measurement", not "scenario": since direct repository-guard evidence
+        # can discharge a risk, a headline that named only scenarios would be
+        # telling a reader to go and write one when the missing thing may be a
+        # guard they already have.
+        assert "have no passing measurement" in head
         assert "generation/assembly problem" in head
 
         clean = SuiteResult(expected_required_ids=["req"], assembly_problems=["p"])
         head = evaluate_gate(clean).headline()
-        assert "have no passing scenario" not in head
+        assert "have no passing measurement" not in head
 
     def test_verified_is_unchanged(self):
         from neyma_product_driver.scenario_suite import Outcome, ScenarioOutcome

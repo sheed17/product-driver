@@ -38,6 +38,32 @@ move was to ask a builder for coverage that already existed, which does not
 converge. Attachment (1) is how already-existing evidence gets to speak, and it
 speaks only in the words a human wrote down in a reviewed file.
 
+A third attachment now exists, and it is the same kind of thing as the first:
+an explicit measurement, checked against what executed.
+
+    3. **a repository-native guard this run CHANGED and RAN.** When the thing a
+       task delivered IS a guard, the driver executes it (see
+       :mod:`~neyma_product_driver.changed_verification`), and the executed guard
+       is frequently the direct oracle for a risk the run named. A ledger that
+       recognised only scenarios reported "no scenario exercising this risk was
+       executed" about a risk whose oracle was sitting in the run's own evidence
+       directory with a passing exit status, and asked for a generated scenario
+       on top of it — which is asking a founder to relay a measurement the driver
+       is holding.
+
+That attachment is as narrow as the other two and is decided in
+:mod:`~neyma_product_driver.guard_coverage`, never here: the guard must be the
+deliverable rather than collateral, must have been run by this driver rather
+than reported by a builder, must have passed with its own anti-vacuity case
+where it asserts an absence, and must be observed to read every concrete
+artifact the risk names. Anything less leaves the risk open with the unmeasured
+part named, and the generated scenario is still owed.
+
+And where two kinds of evidence about one risk DISAGREE — a guard that measures
+it passing while a scenario carrying it failed, or the reverse — this fails
+closed. A contradiction is not a coverage question and is never resolved by
+preferring the more convenient half of it.
+
 Nothing in this module reads a mutable convenience flag, so forcing one to True
 cannot make an unverified run look verified. The evaluator does not participate:
 it judges what it saw, and this measures what actually ran.
@@ -46,10 +72,11 @@ it judges what it saw, and this measures what actually ran.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Sequence
+from typing import Any, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .guard_coverage import GuardVerdict, guard_evidence, guard_measurements
 from .scenario_plan import IdentifiedRisk
 from .scenario_suite import Origin, Outcome, ScenarioOutcome, SuiteResult
 
@@ -96,10 +123,15 @@ class UncoveredRisk(BaseModel):
     #: True when this risk's severity is one that blocks acceptance (P0/P1).
     required: bool = False
     reason: str = ""
+    #: Set when two kinds of evidence about this risk disagreed. Never a
+    #: coverage question: something measured this and something else measured it
+    #: differently, and exactly one of those two records is wrong.
+    contradiction: str = ""
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
-        return f"{head} — {self.description}  ({self.reason})"
+        tail = self.contradiction or self.reason
+        return f"{head} — {self.description}  ({tail})"
 
 
 class CoveredRisk(BaseModel):
@@ -121,26 +153,62 @@ class CoveredRisk(BaseModel):
     #: The scenario whose passing outcome carries the evidence.
     scenario_id: str = ""
     origin: str = ""
-    #: How that scenario's evidence attaches to this risk. Exactly two kinds
-    #: exist, and both are explicit declarations checked against execution:
+    #: How the evidence attaches to this risk. Exactly three kinds exist, and
+    #: every one of them is an explicit declaration or an executed command,
+    #: checked against what happened:
     #: "declared" — the scenario's own ``verifies:`` claim, established;
-    #: "risk_category" — a generated scenario planned for this risk category.
+    #: "risk_category" — a generated scenario planned for this risk category;
+    #: "repository_guard" — a guard this change delivered, run by this driver,
+    #: observed to read everything the risk names.
     basis: str = ""
+    #: The same answer in the words a reader wants: WHICH KIND of measurement
+    #: discharged this risk. A "covered" that cannot name its own source reads
+    #: the same whether it came from an executed command or from a whitelist.
+    evidence_source: str = ""
+    #: What to point at. A scenario id, or the path of the guard that ran.
+    measurement: str = ""
+    #: The command this driver executed, when the measurement was a guard.
+    command: str = ""
+    #: Anti-vacuity cases observed passing beside a guard that asserts an
+    #: absence. Empty for a positive guard, which proves itself by passing.
+    discrimination: list[str] = Field(default_factory=list)
     #: The declared claim's own words, when the basis is a declaration.
     claim: str = ""
     evidence_path: str = ""
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
-        detail = f"{self.scenario_id}" + (f" — {self.claim}" if self.claim else "")
-        return f"{head} — {self.description}  (verified by {detail})"
+        detail = self.measurement or self.scenario_id
+        if self.claim:
+            detail += f" — {self.claim}"
+        elif self.command:
+            detail += f" — `{self.command}`"
+        if self.discrimination:
+            detail += " (discrimination: " + ", ".join(self.discrimination[:2]) + ")"
+        source = self.evidence_source or self.basis or "unstated source"
+        return f"{head} — {self.description}  (verified by {source}: {detail})"
 
 
-#: How a passing outcome may attach to a risk. Both are explicit and both are
-#: checked against what executed; neither is inferred from prose, from a passing
-#: test suite, or from anything a model said.
+#: How a passing measurement may attach to a risk. All three are explicit and
+#: all three are checked against what executed; none is inferred from prose,
+#: from a passing test suite, or from anything a model said.
 BASIS_DECLARED = "declared"
 BASIS_CATEGORY = "risk_category"
+BASIS_GUARD = "repository_guard"
+
+#: The same three, in the words the report uses. Named separately because a
+#: reader asking "what discharged this?" wants the kind of measurement, and a
+#: fourth kind — a probe, an external oracle — would be added here beside them
+#: rather than folded into one of these.
+SOURCE_DECLARED = "reviewed scenario claim"
+SOURCE_CATEGORY = "generated scenario"
+SOURCE_GUARD = "repository guard executed by this run"
+
+_SOURCE_OF = {
+    BASIS_DECLARED: SOURCE_DECLARED,
+    BASIS_CATEGORY: SOURCE_CATEGORY,
+    BASIS_GUARD: SOURCE_GUARD,
+}
 
 
 def _satisfying_outcome(
@@ -177,6 +245,59 @@ def _satisfying_outcome(
         if outcome.risk_category == category:
             return outcome, BASIS_CATEGORY, ""
     return None
+
+
+def _scenario_refusal(
+    category: str, outcomes: Sequence[ScenarioOutcome]
+) -> ScenarioOutcome | None:
+    """A scenario attached to this risk that RAN AND FAILED.
+
+    Narrower than "did not pass" on purpose. A skipped or blocked scenario said
+    nothing about the risk, and a scenario whose evidence would not resolve is a
+    bookkeeping problem. Only an executed refusal is a second measurement able
+    to contradict a first one.
+    """
+    for outcome in outcomes:
+        if outcome.outcome is not Outcome.FAILED:
+            continue
+        if outcome.risk_category == category:
+            return outcome
+        if any(e.risk_category == category for e in outcome.risk_evidence):
+            return outcome
+    return None
+
+
+def _contradiction(
+    guard: GuardVerdict,
+    satisfied: tuple[ScenarioOutcome, str, str] | None,
+    refusal: ScenarioOutcome | None,
+) -> str:
+    """Two measurements of one risk that cannot both be right, stated as that.
+
+    This is the branch that fails closed. Both directions are the same event
+    seen from different sides, and neither is a coverage question: a risk with
+    two disagreeing measurements is a risk nobody has established, and choosing
+    the agreeable half of a contradiction is how a run launders a failure into
+    an acceptance.
+    """
+    if guard.discharges and refusal is not None:
+        detail = refusal.failed_assertions[0] if refusal.failed_assertions else refusal.error
+        return (
+            f"{guard.measurement.path} measures this risk and PASSED, while scenario "
+            f"{refusal.scenario_id} exercising the same risk FAILED "
+            f"({detail or 'no detail recorded'}). Exactly one of those two measurements is "
+            "wrong and this run does not know which, so the risk is not verified."
+        )
+    if guard.refuted and satisfied is not None:
+        outcome, _basis, claim = satisfied
+        return (
+            f"{guard.measurement.path} measures this risk and REFUSED "
+            f"({guard.measurement.detail[:160]}), while {outcome.scenario_id} "
+            + (f"established the claim {claim!r}" if claim else "passed carrying this risk")
+            + ". Exactly one of those two measurements is wrong and this run does not know "
+            "which, so the risk is not verified."
+        )
+    return ""
 
 
 def _gap_reason(category: str, outcomes: Sequence[ScenarioOutcome]) -> str:
@@ -240,18 +361,33 @@ def _gap_reason(category: str, outcomes: Sequence[ScenarioOutcome]) -> str:
 def risk_coverage(
     risks: Sequence[IdentifiedRisk],
     result: SuiteResult | None,
+    *,
+    changed_verification: Any = None,
 ) -> tuple[list[CoveredRisk], list[UncoveredRisk]]:
     """Split this run's acceptance-blocking risks into verified and not.
 
     One pass, one rule, and the same burden of proof on both sides, so the two
     lists cannot disagree. Deterministic: the inputs are the risk register the
-    run wrote down and the outcome records execution produced, and the answer is
-    a function of those two. Nothing here consults a model, and no model answer
-    can add a risk to either list or move one between them.
+    run wrote down, the outcome records execution produced, and the executed
+    changed-verification obligation — all three persisted, so a resumed run
+    reaches the same answer from the same evidence rather than re-deriving it.
+    Nothing here consults a model, and no model answer can add a risk to either
+    list or move one between them.
+
+    ``changed_verification`` is optional and read through ``getattr``: a run
+    without the obligation behaves exactly as this did before it existed.
+
+    The order of the branches is the argument. A contradiction is settled first,
+    because a risk two measurements disagree about is not covered by either of
+    them. Scenario evidence comes next, because it is the evidence this ledger
+    was built on and citing it keeps every existing record stable. A repository
+    guard comes last, and only for what scenarios left open — it is the answer
+    to "this risk has no evidence at all", never a way to retire a scenario.
     """
     if not risks:
         return [], []
     outcomes = list(result.outcomes) if result is not None else []
+    measurements = guard_measurements(changed_verification)
 
     covered: list[CoveredRisk] = []
     gaps: list[UncoveredRisk] = []
@@ -260,6 +396,23 @@ def risk_coverage(
             continue
         category = risk.risk_category.value
         found = _satisfying_outcome(category, outcomes)
+        guard = guard_evidence(risk, measurements)
+        clash = _contradiction(guard, found, _scenario_refusal(category, outcomes))
+
+        if clash:
+            gaps.append(
+                UncoveredRisk(
+                    risk_id=risk.id,
+                    description=risk.description,
+                    risk_category=category,
+                    severity=risk.severity.value,
+                    required=True,
+                    reason=clash,
+                    contradiction=clash,
+                )
+            )
+            continue
+
         if found is not None:
             outcome, basis, claim = found
             covered.append(
@@ -271,11 +424,40 @@ def risk_coverage(
                     scenario_id=outcome.scenario_id,
                     origin=outcome.origin.value,
                     basis=basis,
+                    evidence_source=_SOURCE_OF.get(basis, basis),
+                    measurement=outcome.scenario_id,
                     claim=claim,
                     evidence_path=outcome.evidence_path,
                 )
             )
             continue
+
+        if guard.discharges and guard.measurement is not None:
+            covered.append(
+                CoveredRisk(
+                    risk_id=risk.id,
+                    description=risk.description,
+                    risk_category=category,
+                    severity=risk.severity.value,
+                    origin="repository",
+                    basis=BASIS_GUARD,
+                    evidence_source=SOURCE_GUARD,
+                    measurement=guard.measurement.path,
+                    command=guard.measurement.command,
+                    discrimination=list(guard.measurement.discrimination),
+                    claim=(
+                        "this change delivered this guard and this run ran it; its own "
+                        "assertions read "
+                        + ", ".join(guard.covered[:4])
+                    ),
+                    evidence_path=guard.measurement.path,
+                )
+            )
+            continue
+
+        reason = _gap_reason(category, outcomes)
+        if guard.reason:
+            reason = f"{reason}; {guard.reason}"
         gaps.append(
             UncoveredRisk(
                 risk_id=risk.id,
@@ -283,7 +465,7 @@ def risk_coverage(
                 risk_category=category,
                 severity=risk.severity.value,
                 required=True,
-                reason=_gap_reason(category, outcomes),
+                reason=reason,
             )
         )
     return covered, gaps
@@ -292,22 +474,26 @@ def risk_coverage(
 def uncovered_required_risks(
     risks: Sequence[IdentifiedRisk],
     result: SuiteResult | None,
+    *,
+    changed_verification: Any = None,
 ) -> list[UncoveredRisk]:
-    """Which acceptance-blocking risks have no passing scenario behind them.
+    """Which acceptance-blocking risks have no passing measurement behind them.
 
     See :func:`risk_coverage`, of which this is the half callers most often
     want. Kept as a separate name because it is the question the acceptance
     path asks.
     """
-    return risk_coverage(risks, result)[1]
+    return risk_coverage(risks, result, changed_verification=changed_verification)[1]
 
 
 def covered_required_risks(
     risks: Sequence[IdentifiedRisk],
     result: SuiteResult | None,
+    *,
+    changed_verification: Any = None,
 ) -> list[CoveredRisk]:
     """Which acceptance-blocking risks were verified, and by what."""
-    return risk_coverage(risks, result)[0]
+    return risk_coverage(risks, result, changed_verification=changed_verification)[0]
 
 
 class GateVerdict(BaseModel):
@@ -343,6 +529,26 @@ class GateVerdict(BaseModel):
     def permanent_unverified(self) -> list[UnverifiedCase]:
         return [c for c in self.unverified if c.origin == Origin.PERMANENT.value]
 
+    @property
+    def contradictions(self) -> list[UncoveredRisk]:
+        """Risks two measurements disagreed about. Never merely uncovered."""
+        return [r for r in self.uncovered_risks if r.contradiction]
+
+    def evidence_sources(self) -> str:
+        """Which kinds of measurement discharged this run's risks, and how many.
+
+        A reader who is told "5 risks covered" learns nothing about whether the
+        coverage was executed or asserted. This says which of them came from a
+        generated scenario, a reviewed claim, or a guard the change delivered.
+        """
+        tally: dict[str, int] = {}
+        for risk in self.covered_risks:
+            key = risk.evidence_source or risk.basis or "unstated source"
+            tally[key] = tally.get(key, 0) + 1
+        if not tally:
+            return "none"
+        return ", ".join(f"{count} by {source}" for source, count in sorted(tally.items()))
+
     def headline(self) -> str:
         if self.status is GateStatus.VERIFIED:
             return (
@@ -362,10 +568,16 @@ class GateVerdict(BaseModel):
                 f"{len(self.unverified)} of {self.required_total} required scenario(s) "
                 "did not establish a pass"
             )
-        if self.uncovered_risks:
+        if self.contradictions:
             blockers.append(
-                f"{len(self.uncovered_risks)} identified acceptance-blocking risk(s) "
-                "have no passing scenario"
+                f"{len(self.contradictions)} identified acceptance-blocking risk(s) have "
+                "CONTRADICTORY evidence: two measurements of the same risk disagree"
+            )
+        remaining = len(self.uncovered_risks) - len(self.contradictions)
+        if remaining > 0:
+            blockers.append(
+                f"{remaining} identified acceptance-blocking risk(s) "
+                "have no passing measurement"
             )
         if self.generation_problems:
             blockers.append(
@@ -392,7 +604,7 @@ class GateVerdict(BaseModel):
         if self.covered_risks:
             lines.append(
                 "  RISK COVERAGE — risks this run identified, and the executed evidence "
-                "that verified each:"
+                "that verified each (" + self.evidence_sources() + "):"
             )
             for risk in self.covered_risks:
                 lines.append(f"    {risk.brief()}")
@@ -432,6 +644,7 @@ def evaluate_gate(
     *,
     generation_problems: Sequence[str] = (),
     risks: Sequence[IdentifiedRisk] = (),
+    changed_verification: Any = None,
 ) -> GateVerdict:
     """Decide whether the scenario evidence can support an ACCEPT.
 
@@ -444,6 +657,13 @@ def evaluate_gate(
     risk the run had named P0 had no scenario behind it at all — a question the
     evaluator was being asked ("was the coverage sufficient?") without being
     shown the answer the driver already had.
+
+    ``changed_verification`` is this run's executed changed-guard obligation.
+    Passing it closes the other half of the same hole: a risk whose direct
+    oracle is a guard this change delivered, which this driver ran and read the
+    exit status of, was reported as having "no scenario exercising this risk"
+    and sent back for a generated approximation of a measurement already taken.
+    Omitting it costs nothing and changes no other answer.
     """
     problems = [p for p in generation_problems if str(p).strip()]
     if result is not None:
@@ -452,7 +672,9 @@ def evaluate_gate(
         # unverified as one that failed.
         problems += [p for p in result.assembly_problems if str(p).strip()]
 
-    covered, gaps = risk_coverage(risks, result)
+    covered, gaps = risk_coverage(
+        risks, result, changed_verification=changed_verification
+    )
 
     if result is None:
         status = (
@@ -526,6 +748,10 @@ def evaluate_gate(
 __all__ = [
     "BASIS_CATEGORY",
     "BASIS_DECLARED",
+    "BASIS_GUARD",
+    "SOURCE_CATEGORY",
+    "SOURCE_DECLARED",
+    "SOURCE_GUARD",
     "CoveredRisk",
     "GateStatus",
     "GateVerdict",
