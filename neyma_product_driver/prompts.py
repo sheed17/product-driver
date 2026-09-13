@@ -430,6 +430,7 @@ def evaluator_prompt(
     coverage_gaps: list[str] | None = None,
     generation_problems: list[str] | None = None,
     review_is_integrated: bool = False,
+    changed_verification: Any = None,
 ) -> str:
     """Assemble the three context layers into one evaluator prompt.
 
@@ -559,6 +560,46 @@ def evaluator_prompt(
             "",
             "Describe coverage honestly. Never claim all possible cases were verified.",
         ]
+
+    if changed_verification is not None and getattr(changed_verification, "applicable", False):
+        # The observation an evaluator cannot honestly do without when the
+        # deliverable IS a guard. Without it the only available answer is "the
+        # changed behaviour was never observed", which is correct, unhelpful, and
+        # ends the run over a command the driver could have run itself.
+        gaps = list(getattr(changed_verification, "gap_reasons", []) or [])
+        parts += [
+            "",
+            "=== DIRECT OBSERVATION OF THE VERIFICATION THIS CHANGE ITSELF CHANGED ===",
+            "This change edited verification: "
+            + ", ".join(changed_verification.changed_paths[:6])
+            + ".",
+            "A guard is the one kind of deliverable a passing unrelated scenario cannot "
+            "speak for, so Product Driver executed it directly, in the target repository, "
+            "on the tree you are judging. Every line below is a command this driver ran "
+            "and read the exit status of.",
+            "",
+            changed_verification.summary_block(),
+            "",
+            "How to read this:",
+            "  - a PASS here IS an observation of the changed behaviour. It is not the "
+            "builder's report, and it is not a generated approximation of a test the "
+            "repository already has;",
+            "  - a FAIL here is a finding about the work. The harness already routes it "
+            "back as a correction, so do not accept around it;",
+            "  - a guard listed as COULD NOT RUN, or a changed guard absent from the "
+            "observations above, has NOT been observed. Say so plainly; the builder "
+            "saying it passes is not an observation of it passing.",
+        ]
+        if gaps:
+            parts += [
+                "",
+                "--- WHAT IS STILL NOT OBSERVED ABOUT THE CHANGED VERIFICATION ---",
+                *(f"  - {gap}" for gap in gaps[:8]),
+                "",
+                "This list is deterministic and computed by the harness, which already "
+                "refuses to accept a run that has one. State what it means for the work.",
+            ]
+        parts.append("")
 
     if service_logs:
         parts += ["", "=== SERVICE STARTUP OUTPUT ==="]

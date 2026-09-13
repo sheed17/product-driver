@@ -452,6 +452,56 @@ class RepositoryVerificationConfig(BaseModel):
         return v
 
 
+class ChangedVerificationConfig(BaseModel):
+    """Operating the verification a change CHANGED.
+
+    The sibling of :class:`RepositoryVerificationConfig`, and a different
+    question. That one asks the repository about the surface a change touched;
+    this one runs the guards the change itself edited, because a guard is the one
+    kind of deliverable a passing unrelated scenario can never speak for. See
+    :mod:`~neyma_product_driver.changed_verification`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Whether a run directly operates the verification files its diff changed
+    #: before it may state that the task was verified. Turning this off restores
+    #: the behaviour in which a changed guard's only evidence is the builder
+    #: saying it passed.
+    enabled: bool = True
+
+    #: How many changed verification files may be executed. A cap, not a target.
+    max_changed_guards: int = 4
+
+    #: How many of the repository's OWN guards over the other files the diff
+    #: changed may be executed alongside them. Small on purpose: this is
+    #: collateral, and a test edit must never turn into a suite run.
+    max_related_guards: int = 2
+
+    #: Wall clock for ONE selected guard.
+    timeout_s: int = 900
+
+    #: Whether the run re-asks the evaluator once when it blocked for want of an
+    #: observation this driver has since taken. Bounded to one re-ask per
+    #: iteration; the alternative is a founder relaying a measurement the driver
+    #: already holds.
+    reask_after_observation: bool = True
+
+    @field_validator("max_changed_guards", "max_related_guards")
+    @classmethod
+    def _bounded_guards(cls, v: int) -> int:
+        if v < 0 or v > 12:
+            raise ValueError("guard caps must be between 0 and 12")
+        return v
+
+    @field_validator("timeout_s")
+    @classmethod
+    def _bounded_changed_timeout(cls, v: int) -> int:
+        if v < 30 or v > 7200:
+            raise ValueError("timeout_s must be between 30 and 7200 seconds")
+        return v
+
+
 class DriverConfig(BaseModel):
     """Top-level configuration for a driver run."""
 
@@ -491,6 +541,9 @@ class DriverConfig(BaseModel):
     phase_closure: PhaseClosureConfig = Field(default_factory=PhaseClosureConfig)
     repository_verification: RepositoryVerificationConfig = Field(
         default_factory=RepositoryVerificationConfig
+    )
+    changed_verification: ChangedVerificationConfig = Field(
+        default_factory=ChangedVerificationConfig
     )
 
     # Safety switches. All default to the conservative choice.

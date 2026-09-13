@@ -255,6 +255,11 @@ class LoopResult:
     #: run's diff touched, when the diff touched any. See
     #: :mod:`~neyma_product_driver.repo_verification`.
     repository_verification: Any = None
+    #: Whether the verification this run's diff CHANGED was itself operated, and
+    #: what it said. Distinct from the field above: that one asks the repository
+    #: about collateral, this one runs the guards the change delivered. See
+    #: :mod:`~neyma_product_driver.changed_verification`.
+    changed_verification: Any = None
 
 
 # --------------------------------------------------------------------------
@@ -348,6 +353,35 @@ async def run_control_loop(
     # touched, keyed by the tree it was taken on, so an unchanged tree is never
     # re-verified and a changed one always is.
     repo_verification: dict[str, Any] = {"value": None, "commit": "", "files": ""}
+    # Whether the verification THIS RUN CHANGED has been operated. Not a cache:
+    # an obligation. It is keyed on the tree so an unchanged tree is not
+    # re-measured, and it survives into `state` so a restart cannot lose it —
+    # a resumed run that forgot which changed guard it never ran would read a
+    # clean tree, find nothing outstanding, and accept on a builder's word.
+    changed_verification: dict[str, Any] = {"value": None, "commit": "", "files": ""}
+    if state.verification_obligation:
+        # A restart is not a discharge. The obligation is restored with no tree
+        # fingerprint, so the first iteration of a resumed run re-selects and
+        # re-runs rather than trusting a record taken before the interruption:
+        # the point of carrying it is that the run remembers it OWES an
+        # observation, not that it already has one.
+        from .changed_verification import ChangedSurfaceVerification
+
+        try:
+            restored = ChangedSurfaceVerification.model_validate(
+                state.verification_obligation
+            )
+        except Exception as exc:  # a record this driver can no longer read
+            emit(f"  could not read this run's open verification obligation: {exc}")
+            restored = None
+        if restored is not None and restored.applicable:
+            changed_verification["value"] = restored
+            changed_verification["commit"] = restored.commit
+            if restored.blocks_claim:
+                emit(
+                    "  resuming with an open verification obligation: "
+                    + restored.headline()
+                )
     # Watched from before the first builder turn, so "what did this run change"
     # is answerable. An edit that removes or softens a mandatory control makes
     # the change high-consequence whatever else it did, and that is the one
@@ -394,6 +428,7 @@ async def run_control_loop(
             authority_report=authority_watcher.report(),
             phase_closure=phase_closure["value"],
             repository_verification=repo_verification["value"],
+            changed_verification=changed_verification["value"],
         )
 
     # Resolve authority once up front so the builder's task is scoped correctly.
@@ -739,6 +774,49 @@ async def run_control_loop(
                 except Exception as exc:  # diagnosis must never break the loop
                     emit(f"  investigation error: {type(exc).__name__}: {redact(str(exc))}")
 
+        # 3e. OPERATE THE VERIFICATION THIS DIFF CHANGED.
+        #
+        #     When the deliverable IS a guard, nothing else in this loop speaks
+        #     for it. A generated scenario proves what was built; a permanent
+        #     scenario proves an unrelated unit still holds; the repository's own
+        #     standing guards prove nothing broke around it. None of them run the
+        #     guard the change wrote, and a builder's "it passes" is a claim.
+        #
+        #     So it is run here, before the evaluator is asked anything, because
+        #     an evaluator shown no observation of the changed behaviour can only
+        #     honestly refuse — and the run then stops and asks the founder to
+        #     relay a command that was already in the repository and already
+        #     green. Run 20260913-041432 is exactly that: two changed boundary
+        #     guards, one unrelated scenario executed, BLOCKED for want of an
+        #     observation worth 1.4 seconds.
+        #
+        #     Bounded the same way its sibling is: only the verification files
+        #     the diff changed, plus the few guards the repository already keeps
+        #     over the other files the diff changed, both capped. A test edit
+        #     never becomes a suite run. See
+        #     :mod:`~neyma_product_driver.changed_verification`.
+        if config.changed_verification.enabled:
+            verification_now = _changed_surface_verification(
+                config=config,
+                base_commit=base_head,
+                head_commit=(record.git.head_commit if record.git else ""),
+                obligation=changed_verification,
+                emit=emit,
+            )
+            if verification_now is not None:
+                record.changed_verification = verification_now.model_dump(mode="json")
+                store.write_json(
+                    store.iteration_dir(iteration).relative_to(store.run_dir)
+                    / "changed-verification.json",
+                    record.changed_verification,
+                )
+                # Persisted on the run, not only the iteration: an obligation a
+                # restart forgets is an obligation that silently clears.
+                state.verification_obligation = record.changed_verification
+                store.save_state(state)
+                for line in verification_now.summary_block().splitlines():
+                    emit(f"  {line}")
+
         # 4. re-read repository authority — never reuse stale context
         repo_context = None
         if repo_loader is not None:
@@ -797,6 +875,11 @@ async def run_control_loop(
             # the run takes that review itself is what stops it writing a
             # sentence the run then contradicts (Neyma `P6-D34`).
             review_is_integrated=config.review.automatic,
+            # The direct observation of the verification this diff changed. An
+            # evaluator that cannot see it can only honestly answer "the changed
+            # behaviour was never observed" — which is how a run ends over a
+            # command this driver already ran.
+            changed_verification=changed_verification["value"],
         )
 
         provenance = _build_provenance(
@@ -815,6 +898,50 @@ async def run_control_loop(
         decision = await evaluator.evaluate(prompt, timeout_s=config.evaluator.turn_timeout_s)
         record.evaluator_session_id = evaluator.session_id
         state.evaluator_session_id = evaluator.session_id
+
+        # 5b. A BLOCKED FOR WANT OF AN OBSERVATION THIS RUN NOW HOLDS.
+        #
+        #     "The behaviour you changed was never observed" is a true and
+        #     correct refusal when nothing observed it. It is not a founder
+        #     question: it names a measurement, and when that measurement is a
+        #     guard already in the repository, this driver can take it and has.
+        #     So the evaluator is asked once more, with the same evidence plus the
+        #     observation it said was missing, rather than the run ending and the
+        #     founder being handed two commands to run by hand.
+        #
+        #     Deliberately NOT triggered by reading the evaluator's prose. The
+        #     trigger is this driver's own record: a complete, green, directly
+        #     taken observation of the surface the diff changed. Where that
+        #     observation is incomplete, failing or vacuous, no re-ask happens
+        #     and the precedence step below routes it as work instead. A second
+        #     refusal is final.
+        if (
+            decision.decision is Decision.BLOCKED
+            and config.changed_verification.reask_after_observation
+            and changed_verification["value"] is not None
+            and changed_verification["value"].applicable
+            and changed_verification["value"].results
+            and not changed_verification["value"].blocks_claim
+        ):
+            emit(
+                "  the evaluator blocked for want of an observation this run has since "
+                "taken; asking once more with it."
+            )
+            # The superseded refusal, kept in the record. `raw_decision` is not
+            # the place for it: that field means "the FIX the quality contract
+            # rejected", and a reader who found a BLOCKED there would be reading
+            # a different event.
+            record.notes.append(
+                "re-asked the evaluator with the direct observation of the changed "
+                "verification surface: " + changed_verification["value"].headline()
+            )
+            record.notes.append(f"superseded refusal: {decision.summary[:500]}")
+            decision = await evaluator.evaluate(
+                prompt + _observation_addendum(changed_verification["value"]),
+                timeout_s=config.evaluator.turn_timeout_s,
+            )
+            record.evaluator_session_id = evaluator.session_id
+            state.evaluator_session_id = evaluator.session_id
 
         # 6. prompt-quality gate — ungrounded work never reaches the builder
         reasons = validate_correction_quality(
@@ -947,6 +1074,18 @@ async def run_control_loop(
                     for line in suite_result.headline().splitlines():
                         emit(f"  {line}")
                 record.notes.extend(closure.notes)
+
+        # 6b-iii. combine: the verification this change CHANGED.
+        #
+        #     After the gate, because a gate refusal about generated coverage is
+        #     a different refusal and closure must have had its round. Before the
+        #     audit and the review, because a changed guard that refuses is a
+        #     finding about the work itself, and there is no point reviewing a
+        #     tree whose own new guard says no.
+        if changed_verification["value"] is not None:
+            decision = _apply_changed_verification_precedence(
+                changed_verification["value"], decision, scenario.name, emit
+            )
 
         # 6c. combine: a completion claim the repository does not support
         #     overrides an ACCEPT from the product evaluator.
@@ -1383,6 +1522,294 @@ def _repository_verification(
     cache["commit"] = head_commit
     cache["files"] = fingerprint
     return verification
+
+
+def _changed_surface_verification(
+    *,
+    config: DriverConfig,
+    base_commit: str,
+    head_commit: str,
+    obligation: dict[str, Any],
+    emit: Callable[[str], None],
+) -> Any:
+    """Operate the verification THIS DIFF CHANGED, and hold the obligation open.
+
+    The question :func:`_repository_verification` does not ask. That one runs
+    guards the change did not write, to catch collateral. This runs the guards
+    the change DELIVERED — and a deliverable that is itself a guard is the one
+    thing no other scenario can speak for, however green. A run whose whole diff
+    was two boundary guards once executed an unrelated permanent scenario, read
+    the builder's "both pass" as the only word on the subject, correctly refused
+    to accept it, and stopped to ask the founder to relay two commands that were
+    already in the repository and already passing.
+
+    Keyed on the tree, like the sibling above, with one difference that matters:
+    a record with something still unobserved is never treated as answered. That
+    is why the dictionary is called an obligation rather than a cache — a cached
+    "we looked" is exactly how an unrun guard becomes a silent pass.
+
+    Never raises. A guard that cannot be executed here is recorded as that, which
+    blocks the CLAIM without inventing a defect.
+    """
+    from .changed_verification import changed_verification_paths, verify_changed_surface
+    from .repo_verification import run_changed_files
+
+    diff_files = run_changed_files(config.neyma_repo, base_commit)
+    if not diff_files:
+        return obligation.get("value")
+    fingerprint = "\n".join(sorted(str(f) for f in diff_files))
+    held = obligation.get("value")
+    same_tree = obligation.get("commit") == head_commit and obligation.get("files") == fingerprint
+    if held is not None and same_tree and not held.blocks_claim:
+        return held
+    # Path-only, so a diff that changed no verification file costs nothing and
+    # says nothing. The announcement below is for runs where this applies.
+    if not changed_verification_paths(diff_files):
+        obligation["value"] = None
+        obligation["commit"] = head_commit
+        obligation["files"] = fingerprint
+        return None
+    emit("→ operating the verification this diff changed...")
+
+    # Carry an open obligation forward rather than re-measuring what already
+    # answered: on the same tree, only what has not been observed is run.
+    only: list[str] = []
+    if held is not None and same_tree:
+        only = [g.path for g in held.pending]
+
+    try:
+        verification = verify_changed_surface(
+            config.neyma_repo,
+            diff_files,
+            base_commit=base_commit,
+            commit=head_commit,
+            max_changed=config.changed_verification.max_changed_guards,
+            max_related=config.changed_verification.max_related_guards,
+            timeout_s=config.changed_verification.timeout_s,
+            only=only,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        emit(f"  changed-verification error: {type(exc).__name__}: {redact(str(exc))}")
+        return held
+
+    if not verification.applicable:
+        obligation["value"] = None
+        obligation["commit"] = head_commit
+        obligation["files"] = fingerprint
+        return None
+
+    if held is not None and same_tree and held.results:
+        # Merge, so a partial answer taken earlier on this same tree is not lost
+        # by a later round that only ran the remainder.
+        observed = {r.target.path for r in verification.results}
+        verification.results = [
+            r for r in held.results if r.target.path not in observed
+        ] + list(verification.results)
+    obligation["value"] = verification
+    obligation["commit"] = head_commit
+    obligation["files"] = fingerprint
+    return verification
+
+
+def _changed_verification_gap_correction(verification: Any) -> str:
+    """What the builder is asked for when a changed guard could not be measured.
+
+    A gap, stated as a gap. Nothing about the product was observed to be wrong,
+    so nothing here says it was, and nothing here asks for the guard to be
+    weakened or replaced — a driver that answers "this guard would not run" by
+    writing its own approximation has stopped measuring the repository.
+    """
+    return "\n".join(
+        [
+            "VERIFICATION GAP ON THE SURFACE THIS CHANGE DELIVERED — this is NOT a "
+            "product defect. Nothing about the product was observed to be wrong.",
+            "",
+            "This change's deliverable includes verification, and the verification could "
+            "not be observed:",
+            *(f"  - {reason}" for reason in verification.gap_reasons[:8]),
+            "",
+            "A guard's own green is not evidence that it was run, and your report that it "
+            "passes is not an observation — only a command this driver executed and read "
+            "the exit status of is.",
+            "",
+            "What to do:",
+            "  1. Make each changed guard runnable through one of this repository's "
+            "already-approved verification entry points, exactly as the repository "
+            "expects its own tests to be run, and report that command.",
+            "  2. Where a guard asserts that something must NOT be present and this "
+            "change altered what it asserts, add the smallest case proving it still "
+            "FIRES when the forbidden state is realised — a forced-drift case, a "
+            "mutation, a populated-population check. A guard that cannot fail is not a "
+            "guard.",
+            "  3. Do NOT weaken, narrow, skip, rename or delete any guard, and do not "
+            "replace a real measurement with an approximation of one, to make this pass.",
+            "  4. Preserve every implementation change and every passing scenario.",
+        ]
+    )
+
+
+def _apply_changed_verification_precedence(
+    verification: Any,
+    decision: EvaluatorDecision,
+    scenario_name: str,
+    emit: Callable[[str], None],
+) -> EvaluatorDecision:
+    """The verification a change changed outranks an opinion about it.
+
+    Three outcomes, and they are three different sentences:
+
+    * a changed guard RAN and REFUSED. That is a finding about the work, it is
+      executable engineering, and it goes back to the builder — from an ACCEPT
+      (the evaluator was looking at the wrong thing) and from a BLOCKED (the run
+      was about to ask the founder to relay a failing test);
+    * a changed guard could not be run, was never run, or asserts an absence
+      without any case proving it can still fire. That is a gap: the CLAIM is
+      refused, not the product, and the smallest measurement is asked for;
+    * everything ran and passed. Nothing to do — the observation stands on its
+      own and the decision is left exactly as it was.
+
+    ASK_USER is never touched. A product or authority question is the founder's,
+    and no measurement answers it.
+    """
+    if verification is None or not verification.applicable:
+        return decision
+    if decision.decision is Decision.ASK_USER:
+        return decision
+
+    if verification.product_failures:
+        failures = [r.brief() for r in verification.product_failures]
+        correction = "\n".join(
+            [
+                "The verification THIS CHANGE CHANGED fails on this tree. It is not a "
+                "generated scenario and not this driver's rule: it is the guard your own "
+                "change delivered, run as this repository runs it.",
+                "",
+                *(f"  - {f}" for f in failures),
+                "",
+                "Fix the product or the guard's own statement of what must hold, whichever "
+                "is actually wrong. Do NOT weaken, narrow, skip or delete the guard to make "
+                "it pass, and do not replace it with a different measurement. Preserve "
+                "every other implementation change and every passing scenario, then re-run "
+                "the named guard.",
+            ]
+        )
+        if decision.decision is Decision.FIX:
+            emit("  the verification this change changed also fails; folding it into the correction.")
+            merged = list(decision.problems)
+            for failure in failures:
+                if failure not in merged:
+                    merged.append(failure)
+            return decision.model_copy(
+                update={
+                    "problems": merged,
+                    "correction_prompt": decision.correction_prompt.rstrip()
+                    + "\n\nALSO, AND SEPARATELY:\n"
+                    + correction,
+                }
+            )
+        emit(f"  {verification.headline()}")
+        return EvaluatorDecision(
+            decision=Decision.FIX,
+            summary=verification.headline(),
+            problems=failures,
+            observed_behavior=list(decision.observed_behavior)
+            + verification.direct_observations(),
+            evidence_paths=list(decision.evidence_paths),
+            correction_prompt=correction,
+            requirement_reference=(
+                "the verification this change itself delivered: "
+                + ", ".join(verification.changed_paths[:4])
+            ),
+            product_principle_reference=(
+                "a guard is verified by running it; a builder's report that it passes is a "
+                "claim, not an observation"
+            ),
+            scenario=scenario_name,
+            observed_result="\n".join(failures)[:2000],
+            expected_result=(
+                "every verification file this change edited passes when executed as this "
+                "repository executes its own tests"
+            ),
+            preserve=(
+                "All implementation code, all valid evidence, and every acceptance guard. "
+                "No guard may be weakened, narrowed, skipped, renamed or deleted."
+            ),
+            retest="re-run the changed guard named above; it must pass on this tree",
+            confidence=0.9,
+        )
+
+    if verification.blocks_claim and decision.decision in (Decision.ACCEPT, Decision.BLOCKED):
+        reasons = verification.gap_reasons
+        emit(f"  {verification.headline()}")
+        for reason in reasons[:4]:
+            emit(f"    - {reason}")
+        return EvaluatorDecision(
+            decision=Decision.FIX,
+            summary=(
+                "Verification gap on the surface this change delivered: "
+                + verification.headline()
+            ),
+            problems=reasons,
+            observed_behavior=list(decision.observed_behavior)
+            + verification.direct_observations(),
+            evidence_paths=list(decision.evidence_paths),
+            correction_prompt=_changed_verification_gap_correction(verification),
+            requirement_reference=(
+                "the verification this change itself delivered: "
+                + ", ".join(verification.changed_paths[:4])
+            ),
+            product_principle_reference=(
+                "an unmeasured guard is not a passing guard, and a guard that asserts an "
+                "absence proves nothing until something shows it can still fire"
+            ),
+            scenario=scenario_name,
+            observed_result=verification.summary_block()[:2000],
+            expected_result=(
+                "each verification file this change edited is executed here and passes, and "
+                "each changed absence-asserting guard has a case proving it still fires"
+            ),
+            preserve=(
+                "All implementation code, all valid evidence, and every acceptance guard. "
+                "Nothing may be weakened or replaced with an approximation to close this."
+            ),
+            retest=(
+                "Product Driver re-runs the changed guards itself; the gap closes only when "
+                "each one is executed here and passes"
+            ),
+            confidence=0.6,
+        )
+    return decision
+
+
+def _observation_addendum(verification: Any) -> str:
+    """Told to an evaluator that blocked for want of an observation now in hand.
+
+    Not a new prompt and not an argument. The same evidence, with the one fact
+    the previous answer turned on stated plainly: these commands ran here, in
+    this run, and this is their exit status. The evaluator remains free to block
+    again for any other reason, and a second refusal stands.
+    """
+    return "\n".join(
+        [
+            "",
+            "=== THE OBSERVATION YOU RECORDED AS MISSING HAS BEEN TAKEN ===",
+            "You returned BLOCKED because the behaviour this change altered was never "
+            "observed. That was true of the evidence you were shown. It is no longer true: "
+            "Product Driver has since executed the verification this change itself "
+            "changed, in the target repository, on the exact tree you are judging.",
+            "",
+            verification.summary_block(),
+            "",
+            "These are commands this driver ran and read the exit status of — not the "
+            "builder's report, and not a generated approximation of a test the repository "
+            "already has.",
+            "",
+            "Judge again on that basis. If the observation answers what was missing, say "
+            "so. If something else is still missing, block again and name it — a second "
+            "refusal is not overridden, and nothing here asks you to accept anything you "
+            "cannot see. Do not repeat 'never observed' about a guard listed above.",
+        ]
+    )
 
 
 def _identified_risks(planner: Any) -> Sequence[Any]:
@@ -3650,6 +4077,21 @@ def _journal_the_outcome(
                 detail=outcome.brief() if hasattr(outcome, "brief") else "",
             )
 
+    # The verification this change itself DELIVERED, recorded as what it is: a
+    # command this driver ran with an exit status behind it. It belongs in the
+    # evidence section rather than the narrative, because the whole point is
+    # that it is not a claim. A run whose deliverable was two guards used to
+    # reach this file with nothing under "what evidence proves it" but an
+    # unrelated scenario.
+    changed = getattr(result, "changed_verification", None)
+    if changed is not None and changed.applicable:
+        for observed in changed.results:
+            journal.record_test_result(
+                observed.target.path,
+                passed=observed.passed,
+                detail=observed.brief(),
+            )
+
     # The run's own completion record for its declared task, copied verbatim.
     # The summary renders THIS rather than re-deriving a verdict, so the two can
     # never disagree about whether the task was finished.
@@ -3885,6 +4327,13 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         result.repository_verification is None
         or not result.repository_verification.blocks_push
     )
+    # A change whose deliverable was a guard is not shippable on a builder's word
+    # that the guard passes. Either this run ran it, or it did not.
+    changed_verified = (
+        result.changed_verification is None
+        or not result.changed_verification.applicable
+        or not result.changed_verification.blocks_claim
+    )
     shippable = (
         result.status is RunStatus.ACCEPTED
         and verified
@@ -3893,6 +4342,7 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
         and not dirty
         and not task_outstanding
         and repo_verified
+        and changed_verified
     )
     # A whole-phase BUILD is not shipped by its own run: a verified one is the
     # candidate the repository's phase closure takes next, and that is what the
@@ -3924,6 +4374,7 @@ def _report_founder_summary(result: LoopResult, store: EvidenceStore, config: Dr
     if len(task_outstanding) > 6:
         out(f"      - ... and {len(task_outstanding) - 6} more")
     out(f"  repository's own verification: {_repo_verification_headline(result)}")
+    out(f"  verification this diff changed: {_changed_verification_headline(result)}")
     out(f"  independent review:            {_review_headline(result)}")
     out(f"  phase acceptance:              {_phase_headline(result)}")
     if building_phase:
@@ -4065,6 +4516,19 @@ def _repo_verification_headline(result: LoopResult) -> str:
     return verification.headline()
 
 
+def _changed_verification_headline(result: LoopResult) -> str:
+    """One line: was the verification this change DELIVERED ever operated?
+
+    Printed even when the answer is "this change edited none", because the
+    founder reading a run whose whole deliverable was a guard must be able to see
+    which of the two sentences applies: the guard was run here, or nobody ran it.
+    """
+    verification = result.changed_verification
+    if verification is None:
+        return "not taken for this run"
+    return verification.headline()
+
+
 def _review_headline(result: LoopResult) -> str:
     """One line: was a review required, did it run, what did it say, did it measure.
 
@@ -4150,6 +4614,10 @@ def _unresolved_findings(result: LoopResult) -> list[str]:
             f"the repository's own verification could not be executed: {r.brief()}"
             for r in verification.infrastructure_problems
         ]
+    changed = getattr(result, "changed_verification", None)
+    if changed is not None and changed.applicable:
+        findings += [r.brief() for r in changed.product_failures]
+        findings += list(changed.gap_reasons)
     if result.reviews and result.reviews[-1].verdict != "SUPPORTED":
         findings += [f"[{f.severity}] {f.finding}" for f in result.reviews[-1].blockers]
     requirement = result.review_requirement
@@ -4259,6 +4727,9 @@ def _push_readiness(result: LoopResult, shippable: bool, dirty: str, commit: str
     verification = getattr(result, "repository_verification", None)
     if verification is not None and verification.blocks_push:
         return f"No — {verification.headline()}"
+    changed = getattr(result, "changed_verification", None)
+    if changed is not None and changed.applicable and changed.blocks_claim:
+        return f"No — {changed.headline()}"
     if result.status is RunStatus.ACCEPTED and dirty:
         return "Not yet — the accepted work is still uncommitted in the working tree."
     return "No — see the unresolved findings above."

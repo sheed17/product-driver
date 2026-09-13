@@ -331,6 +331,44 @@ repository_verification:
   # Wall clock for ONE discovered guard.
   timeout_s: 900
 
+# OPERATING THE VERIFICATION THIS RUN CHANGED.
+#
+# The sibling of the block above, and a different question. That one runs guards
+# the change did NOT write, to catch collateral. This one runs the guards the
+# change DELIVERED — because when the deliverable is itself a guard, nothing else
+# in the loop speaks for it. A passing scenario for another unit is not an
+# observation of your new oracle, and the builder saying "both pass" is a claim.
+#
+# Run 20260913-041432 is why this exists: the whole diff was two boundary guards,
+# the driver executed one unrelated permanent scenario, the evaluator correctly
+# refused to accept a self-report, and the run stopped and asked the founder to
+# relay two commands that were already in the repository and already green.
+#
+# Nothing here is product-specific: no test name, no phase, no unit. Which files
+# are verification is read from the repository's own naming; which tests changed
+# is read from the diff.
+changed_verification:
+  # A diff that edits no verification file runs nothing at all. Turning this off
+  # means a changed guard's only evidence is the builder saying it passed.
+  enabled: true
+
+  # How many changed verification files may be executed. A cap, not a target.
+  max_changed_guards: 4
+
+  # How many of the repository's OWN guards over the OTHER files in the diff may
+  # run alongside them. Small on purpose: this is collateral, and a test edit
+  # must never turn into a suite run.
+  max_related_guards: 2
+
+  # Wall clock for ONE selected guard.
+  timeout_s: 900
+
+  # Whether the run asks the evaluator once more when it blocked for want of an
+  # observation the driver has since taken. One extra question per iteration; a
+  # second refusal is final. The alternative is a founder relaying a measurement
+  # the run already holds.
+  reask_after_observation: true
+
 # Neyma is normally dirty mid-phase, so this defaults to true.
 
 allow_dirty_tree: true

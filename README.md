@@ -1240,6 +1240,78 @@ Verification never writes to the repository it is verifying: pytest's cache and
 the interpreter's bytecode are both turned off, because an untracked file left
 behind is evidence that two other checks read.
 
+## Operating the verification the change itself changed
+
+The section above asks the repository about guards the change did **not** write.
+This asks the other half of the question, and it is the half that stopped a run
+dead: **when the deliverable IS a guard, did anybody run it?**
+
+Run `20260913-041432`. The task's whole deliverable was two boundary guards — one
+corrected oracle whose fourth clause had gone stale against a legitimate
+lifecycle transition, and one new guard proving a status document cannot drift
+from the machine authority. The builder changed exactly those two files and
+reported both green. Product Driver executed one permanent regression scenario
+for an *unrelated* unit, which passed. The evaluator did precisely the right
+thing — it refused to treat a builder's self-report as an observation — and the
+run stopped `BLOCKED`, asking the founder to relay two measurements that were one
+command each, already present in the repository, and already passing.
+
+Nothing was wrong with the product, the evaluator, or the acceptance gate. The
+driver had never asked the changed guard to run. So now it does, **before** the
+evaluator is asked anything, because an evaluator shown no observation of the
+changed behaviour can only honestly refuse.
+
+Six properties, each one a rule the defect broke:
+
+- **Verification is matched to the changed surface.** Which files are
+  verification is read from the repository's own naming — the universal test
+  conventions plus the names repositories give executable checks that are not
+  collected as tests (`probe_*`, `*_oracle.py`, `mutate_*`, `*_guard.py`). An
+  unrelated permanent scenario is never an observation of a changed guard,
+  however green.
+- **Self-report is not observation.** The only thing that counts is a command
+  this driver ran and read the exit status of. The direct observation reaches the
+  evaluator as its own prompt section, and a changed guard absent from it is
+  stated as not observed.
+- **A real guard is executed, never approximated.** A valid measurement already
+  in the tree is run as the repository runs it. Nothing here writes, generates or
+  substitutes a test — a driver that replaces a real guard with its own
+  approximation has stopped measuring the repository.
+- **A changed negative guard owes discrimination evidence.** A guard that asserts
+  an absence passes vacuously the moment it stops looking. When the diff changes
+  what such a guard asserts — attributed **per test**, from the diff's own
+  assertion lines, so adding a case beside an untouched `refuses_` test demands
+  nothing — the run looks for the repository's own anti-vacuity case, the one
+  that proves the guard still fires. Its absence is reported as a gap, not
+  papered over with a green.
+- **It is not a suite run.** A diff that edits no verification file runs nothing.
+  One that does runs those files (`changed_verification.max_changed_guards`,
+  default 4) plus the few guards the repository already keeps over the *other*
+  files in the diff (`max_related_guards`, default 2). A test edit never becomes
+  a repository-wide run.
+- **Three outcomes, three sentences.** A changed guard that RUNS and REFUSES is a
+  finding about the work: it overrides an ACCEPT *and* a BLOCKED and goes back to
+  the builder as grounded work, because a failing test is executable engineering,
+  not a founder decision. A guard that could not be run, was never run, or
+  asserts an absence with nothing to show it can fire is a **gap**: it refuses
+  the *claim*, not the product, and the smallest measurement is asked for — never
+  a weakening of the guard. Everything green leaves the decision untouched.
+
+And one transition that closes the loop the defect opened. If the evaluator still
+returns `BLOCKED` while the run holds a complete, green, directly taken
+observation of the changed surface, it is asked **once** more with that
+observation made explicit, rather than the run ending and the founder relaying it
+by hand. The trigger is the driver's own record, never the evaluator's prose, and
+a second refusal is final. Where the observation is incomplete, failing or
+vacuous, no re-ask happens: it routes as work instead.
+
+The obligation is persisted on the **run**, not only the iteration, so a restart
+is not a discharge — a resumed run re-selects and re-runs rather than reading a
+quiet tree and finding nothing outstanding. The record is
+`changed-verification.json` per iteration, one line in the founder summary, and a
+`blocks_claim` that `READY TO SHIP` is conjunctive over. Like its sibling,
+nothing is written into the repository being verified.
+
 ## The completion auditor
 
 A builder saying something is done is a **claim**, not a fact. Before any

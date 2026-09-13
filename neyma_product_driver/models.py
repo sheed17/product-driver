@@ -351,6 +351,12 @@ class IterationRecord(BaseModel):
     #: surfaces this iteration's diff touched, when it touched any. Kept per
     #: iteration because the answer is about one tree, and the tree moves.
     repository_verification: dict[str, Any] | None = None
+    #: Whether the verification this iteration's diff CHANGED was operated, and
+    #: what it said. A changed guard is the one deliverable a passing unrelated
+    #: scenario cannot speak for, so the observation is kept per iteration
+    #: alongside the tree it was taken on. See
+    #: :mod:`~neyma_product_driver.changed_verification`.
+    changed_verification: dict[str, Any] | None = None
     investigation: dict[str, Any] | None = None
     independent_review: dict[str, Any] | None = None
     #: Whether this iteration's scoped task owed an independent review, and on
@@ -404,6 +410,11 @@ class RunState(BaseModel):
     task_scope: dict[str, Any] | None = None
     stop_requested: bool = False
     pid: int | None = None
+    #: The still-open obligation to operate the verification this run's diff
+    #: changed, carried across a restart. A resume that forgot it would re-read a
+    #: clean-looking tree, find nothing outstanding, and accept work whose only
+    #: changed guard was never run.
+    verification_obligation: dict[str, Any] | None = None
 
     def touch(self) -> None:
         self.updated_at = utcnow()
