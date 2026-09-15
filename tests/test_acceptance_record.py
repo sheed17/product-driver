@@ -591,8 +591,17 @@ class TestRunningTheClosureAgainIsIdempotent:
         rows = unit(control.repo, "P9")["acceptance_criteria"]
         assert len(rows) == 5
         assert [row["id"] for row in rows] == [f"AC-{i}" for i in range(1, 6)]
+        # Exactly one lead sentence per row, whichever authority wrote it: the
+        # adjudication for the criteria it scores, the structural gate for the
+        # criteria it owns. More than one means a re-run appended rather than
+        # recognised what was already recorded.
         assert all(
-            str(row["adjudication_evidence"]).count("Adjudicated") == 1 for row in rows
+            sum(
+                str(row["adjudication_evidence"]).count(lead)
+                for lead in ("Adjudicated ", "Established on ")
+            )
+            == 1
+            for row in rows
         )
         assert len(registry(control.repo)["units"]) == 3
 

@@ -49,6 +49,8 @@ from phase_fixtures import (
     FakeAssessment,
     FakeFinding,
     FakeReview,
+    criterion,
+    default_criteria,
     head,
     phase_repo,
     supporting_review,
@@ -327,12 +329,39 @@ class TestAResponseThatDidNotCoverTheContract:
 
 class TestACompleteResponseCountsHoweverUncertain:
     def _all_undetermined(self, tmp_path: Path) -> PhaseClosureController:
-        repo = phase_repo(tmp_path)
+        """A complete, entirely uncertain answer over a phase that still owes one thing.
+
+        The extra criterion is the point. The fixture's ordinary criteria are
+        already established on the tree by their own falsifiable evidence, and
+        its other three are settled by gates — so with nothing else added, an
+        all-CANNOT_DETERMINE response leaves a phase whose every criterion some
+        authority has established, and the closure carries on, correctly.
+        ``AC-6`` is a criterion the reviewer OWNS and nothing has run: the
+        repository records it PENDING and points at an artifact in the tree, so
+        it is UNOBSERVED rather than missing, which is exactly the state an
+        adjudication exists to settle. An adjudicator that could not settle it
+        is where this phase stops — on the evidence, which is the distinction
+        this test is about.
+        """
+        repo = phase_repo(
+            tmp_path,
+            criteria=default_criteria()
+            + [
+                criterion(
+                    "AC-6",
+                    "unproven_behaviour",
+                    result="PENDING",
+                    evidence=(
+                        "eval/tests/test_behaviour.py::test_behaviour_holds would establish it"
+                    ),
+                )
+            ],
+        )
         control = ready(repo)
         control.ingest_review(
             scored(
                 repo,
-                {cid: "CANNOT_DETERMINE" for cid in ALL_CRITERIA},
+                {cid: "CANNOT_DETERMINE" for cid in [*ALL_CRITERIA, "AC-6"]},
                 verdict="INSUFFICIENT_EVIDENCE",
             )
         )

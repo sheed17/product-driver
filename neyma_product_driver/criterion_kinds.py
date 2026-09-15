@@ -57,6 +57,23 @@ class CriterionKind(str, Enum):
 
 #: The kinds a LATER gate settles. A build session owes none of them and may
 #: award none of them; phase closure takes each to its own authority.
+#:
+#: **A gate-owned criterion is settled by its gate and by nothing else.** That
+#: is the whole point of the classification and it has one consequence worth
+#: stating separately, because getting it wrong is self-referential rather than
+#: merely wrong: the INDEPENDENT_REVIEW criterion describes the reviewer's own
+#: independence. Asking the reviewer to score it asks a session to certify that
+#: the harness constructed it outside the build lineage — a fact the session
+#: cannot observe and the harness already established mechanically when it
+#: built the session, checked it against the builder lineage, bound it to the
+#: exact tree and the exact frozen criteria, and checked its response against
+#: the contract. The same shape applies to the other two: an external verifier
+#: settles the CI criterion, the residual ledger settles the residual one, and
+#: a reviewer's opinion about either is a comment on a measurement rather than
+#: the measurement.
+#:
+#: A reviewer may still say whatever it likes about a gate-owned criterion, and
+#: what it says is recorded and auditable. It is never read as the answer.
 GATE_KINDS = frozenset(
     {
         CriterionKind.INDEPENDENT_REVIEW,
@@ -236,3 +253,18 @@ def criterion_kind(criterion_id: str = "", name: str = "", requirement: str = ""
     if is_residual_criterion(criterion_id, name):
         return CriterionKind.RESIDUAL_LEDGER
     return CriterionKind.IMPLEMENTATION
+
+
+def gate_kind(
+    criterion_id: str = "", name: str = "", requirement: str = ""
+) -> CriterionKind | None:
+    """The structural gate that OWNS this criterion, or ``None``.
+
+    ``None`` means no gate owns it, so the phase's own implementation owes it
+    and the independent adjudication scores it — the ordinary case. A kind from
+    :data:`GATE_KINDS` means the named gate is the only authority over it: the
+    gate's own mechanical facts settle it, and no session's score for it —
+    including the reviewer's — may establish it or refute it.
+    """
+    kind = criterion_kind(criterion_id, name, requirement)
+    return kind if kind in GATE_KINDS else None

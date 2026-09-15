@@ -1165,6 +1165,12 @@ class PhaseLedger(BaseModel):
     #: finding that demonstrates them false. Counted as neither pass nor fail,
     #: because both counts would be a claim nobody is entitled to make yet.
     criteria_contradicted: list[str] = Field(default_factory=list)
+    #: Required criteria a structural gate OWNS, each with the gate that settles
+    #: it and what that gate currently says. Reported separately because the
+    #: reviewer's own score for them is not the answer and a reader who is only
+    #: shown a pass count cannot tell which authority produced it. The reviewer's
+    #: score stays on the adjudication record, unedited.
+    criteria_gate_settled: list[str] = Field(default_factory=list)
 
     blocking_residuals: int = 0
     nonblocking_residuals: int = 0
@@ -1229,6 +1235,9 @@ class PhaseLedger(BaseModel):
                 "  contradicted (scored PASS and refuted by the same adjudication): "
                 + ", ".join(self.criteria_contradicted[:8])
             )
+        if self.criteria_gate_settled:
+            lines.append("  settled by a structural gate, not by a reviewer's score:")
+            lines += [f"    - {line}" for line in self.criteria_gate_settled[:8]]
         lines += [
             f"blocking_residuals: {self.blocking_residuals}",
             f"nonblocking_residuals: {self.nonblocking_residuals}",

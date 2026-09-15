@@ -60,6 +60,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .criterion_kinds import CriterionKind, gate_kind
 from .external_verification import (
     ExternalEvidence,
     ExternalRequirement,
@@ -112,7 +113,69 @@ CLOSURE_FILE = "phase-closure.json"
 #:    under rule 2 may carry an adjudication that was never a complete answer
 #:    and was nonetheless read as the phase's one independent opinion, so the
 #:    migration re-derives it rather than inheriting that reading.
-CLOSURE_RULE_VERSION = "3"
+#: 4: a criterion a structural gate OWNS is settled by that gate and by nothing
+#:    else — see :func:`gate_owned`. Under rule 3 the reviewer's own score for
+#:    the criterion that demands an independent review decided whether that
+#:    review had happened, so the reviewer was asked to certify its own
+#:    independence and a record could sit BLOCKED on a mechanically valid
+#:    adjudication. The migration re-derives the gate evidence and the
+#:    statements made about it, and it launches nothing.
+CLOSURE_RULE_VERSION = "4"
+
+
+# --------------------------------------------------------------------------
+# Who owns which criterion
+# --------------------------------------------------------------------------
+
+
+def gate_owned(criteria: Any) -> dict[str, CriterionKind]:
+    """The frozen criteria a structural gate owns, and which gate owns each.
+
+    One rule, applied to a criterion set wherever a decision needs it, so that
+    every consumer answers "who settles this?" the same way:
+
+        a criterion whose IDENTIFIERS classify it as an independent review, an
+        external verification or a residual-ledger statement is settled by that
+        gate. The gate's facts are mechanical, and no session's score for that
+        criterion — the independent reviewer's included — establishes it or
+        refutes it.
+
+    The reviewer-facing half of that rule is the one worth spelling out, because
+    without it the machine is circular. ``independent_phase_review_by_a_non_builder``
+    is a statement about how Product Driver CONSTRUCTED the reviewing session:
+    outside the builder lineage, inheriting no builder conversation, bound to
+    the exact candidate tree and the exact frozen criteria, answering the
+    response contract. Every one of those is checked here, by this module,
+    before a single score is read — so asking the reviewer whether it was
+    independent asks the one participant who cannot observe the answer, and
+    lets a truthful ``CANNOT_DETERMINE`` refuse a review that demonstrably
+    happened.
+
+    What this rule does NOT do is let a valid review award anything else. The
+    reviewer still owns every criterion outside :data:`GATE_KINDS`, and its
+    PASS / FAIL / CANNOT_DETERMINE on those is exactly as decisive as before.
+    """
+    owners: dict[str, CriterionKind] = {}
+    for criterion in getattr(criteria, "criteria", []) or []:
+        cid = str(getattr(criterion, "criterion_id", "") or "")
+        if not cid:
+            continue
+        kind = gate_kind(
+            cid,
+            str(getattr(criterion, "name", "") or ""),
+            str(getattr(criterion, "requirement", "") or ""),
+        )
+        if kind is not None:
+            owners[cid] = kind
+    return owners
+
+
+#: What settles each gate-owned kind, in the words a report uses.
+GATE_AUTHORITY_NAMES: dict[CriterionKind, str] = {
+    CriterionKind.INDEPENDENT_REVIEW: "the independent-review gate",
+    CriterionKind.EXTERNAL_VERIFICATION: "the external-verification gate",
+    CriterionKind.RESIDUAL_LEDGER: "the residual ledger",
+}
 
 
 # --------------------------------------------------------------------------
@@ -434,11 +497,32 @@ class PhaseAdjudication(BaseModel):
         did not cover the contract is not an answer to read in either
         direction: :meth:`taken` refuses it first, and what is owed is a fresh
         adjudication rather than a decision about the phase.
+
+        And it settles only the criteria it OWNS, which is rule 4. A criterion
+        a structural gate owns — the external verifier's, this adjudication's
+        own existence, the residual ledger's — is settled by that gate and is
+        not this response's to award or withhold; see :func:`gate_owned`. So a
+        reviewer that answered everything asked of it and could not certify its
+        own independence has discharged its adjudication, and the phase's
+        remaining question is what the gates say, not whether to buy another
+        reviewer. The reviewer's score for a gate-owned criterion is still
+        recorded, still readable and still reported — it is simply not the
+        authority over a fact this module established mechanically.
         """
         taken, why = self.taken(criteria)
         if not taken:
             return False, why
-        required = {c.criterion_id for c in getattr(criteria, "required", [])}
+        gates = gate_owned(criteria)
+        required = {
+            c.criterion_id
+            for c in getattr(criteria, "required", [])
+            if c.criterion_id not in gates
+        }
+        if not required:
+            return True, (
+                "every required criterion is owned by a structural gate; this adjudication "
+                "was asked to settle none of them and covered the response contract"
+            )
         scored = {
             r.criterion_id: r
             for r in self.criterion_results
@@ -458,7 +542,9 @@ class PhaseAdjudication(BaseModel):
             return False, (
                 f"the adjudication could not determine {', '.join(undetermined[:6])}"
             )
-        return True, f"the adjudication scored all {len(required)} required criteria PASS"
+        return True, (
+            f"the adjudication scored all {len(required)} required criteria it owns PASS"
+        )
 
     def result_for(self, criterion_id: str) -> CriterionVerdict | None:
         for r in self.criterion_results:
@@ -1604,32 +1690,31 @@ class PhaseClosureController:
             )
 
         adjudication = record.adjudication
-        # Whether an adjudication HAPPENED. A response that failed the contract
-        # was not an observation: recording it as one made the review evidence
-        # observed-and-not-established, which reads as REFUTED — so a malformed
-        # reply permanently consumed the very criterion that demands an
-        # independent review, and the phase reported a product failure over a
-        # reviewer that never answered.
+        # Whether an adjudication HAPPENED — which is the whole of what the
+        # independent-review gate measures, and all of it is mechanical:
+        # :meth:`PhaseAdjudication.taken` is this module's own record that the
+        # session was outside the builder lineage, inherited no builder
+        # conversation, read the exact candidate tree, was given the exact
+        # frozen criteria, and answered the response contract.
+        #
+        # Rule 4 is the line below NOT reading the reviewer's own score for this
+        # criterion. It used to: `established` was the reviewer's PASS, falling
+        # back to a mechanical test only when the reviewer had not scored it —
+        # and a protocol-complete response scores every frozen criterion, so the
+        # mechanical path was unreachable. That asked the reviewer to certify
+        # that Product Driver had constructed it independently, which is neither
+        # the reviewer's fact nor one it can observe, and let an honest
+        # CANNOT_DETERMINE refuse a review that had demonstrably happened.
+        #
+        # None of the independence checks is weakened by this: every one of them
+        # is inside `taken`, and any of them failing leaves the gate
+        # unestablished exactly as before.
         taken = bool(
             adjudication is not None and adjudication.taken(record.criteria)[0]
         )
         for criterion in authority.independent_review_criteria:
             if criterion.criterion_id not in record.criteria.ids:
                 continue
-            result = (
-                adjudication.result_for(criterion.criterion_id)
-                if adjudication is not None and taken
-                else None
-            )
-            established = bool(
-                taken
-                and (
-                    result.passed
-                    if result is not None
-                    else adjudication is not None
-                    and adjudication.discharges(record.criteria)[0]
-                )
-            )
             replace(
                 criterion.criterion_id,
                 EvidenceRef(
@@ -1641,9 +1726,9 @@ class PhaseClosureController:
                         else "(no adjudication taken)"
                     ),
                     observed=taken,
-                    established=established,
+                    established=taken,
                     observed_at_tree=tree,
-                    detail=self._review_line(),
+                    detail=self._gate_evidence_detail(criterion.criterion_id),
                 ),
             )
 
@@ -2092,12 +2177,48 @@ class PhaseClosureController:
             )
 
         # A criterion the adjudication scored FAIL is the adjudication's own
-        # refusal, and it is the one thing an adjudication exists to say.
+        # refusal, and it is the one thing an adjudication exists to say — about
+        # the criteria it owns. A FAIL on a criterion a structural gate owns is
+        # a reviewer disagreeing with a measurement rather than taking one, so
+        # it is recorded in full, attributed, and left unable to refute the gate
+        # that owns the fact: minting it as a demonstrated product defect would
+        # reinstate the override rule 4 removes, by the back door of a finding.
+        # An independence defect that is real comes from :func:`check_independence`,
+        # a red external record comes from the external evidence, and a blocking
+        # residual comes from the ledger.
         for result in adjudication.criterion_results:
             if not result.failed or result.outside_authority:
                 continue
             criterion = record.criteria.get(result.criterion_id)
             if criterion is None or not criterion.required:
+                continue
+            owner = self._gate_owner(result.criterion_id)
+            if owner is not None:
+                authority = GATE_AUTHORITY_NAMES.get(owner, "a structural gate")
+                self._add_finding(
+                    PhaseFinding(
+                        finding_id=f"{result.criterion_id}-REVIEWER-DISSENT",
+                        classification=FindingClass.VERIFICATION_GAP,
+                        severity="major" if result.basis else "minor",
+                        phase_id=record.phase_id,
+                        about_adjudication=_adjudication_identity(adjudication),
+                        summary=(
+                            f"the independent adjudication scored {result.criterion_id} FAIL; "
+                            f"{authority} owns that criterion and its own record is what "
+                            f"settles it. The score is recorded and does not replace the "
+                            f"gate: {result.basis[:300]}"
+                        ),
+                        evidence=[result.basis[:300]] if result.basis else [],
+                        closure_condition=(
+                            f"{authority} is re-read on the accepted tree; if the reviewer is "
+                            "describing a real defect in it, that defect is demonstrated "
+                            "against the gate rather than scored against the criterion"
+                        ),
+                        observed_at_tree=record.fingerprint().identity,
+                        criteria_fingerprint=record.criteria_fingerprint,
+                        source="phase adjudication",
+                    )
+                )
                 continue
             self._add_finding(
                 PhaseFinding(
@@ -2294,6 +2415,15 @@ class PhaseClosureController:
         the repair is to make it showable. It does not itself block — the
         unsatisfied criterion does — but without it the founder reads BLOCKED
         with no sentence explaining which step fell short.
+
+        Only for the criteria the RESPONSE owed, which is rule 4 reaching this
+        sentence. A criterion a structural gate owns was never this reviewer's
+        to settle, so "the adjudication did not settle the phase: it could not
+        determine the criterion demanding an independent review" described a
+        completed, independent, protocol-complete adjudication as a shortfall —
+        over the one criterion the gate it came from had already established.
+        :meth:`PhaseAdjudication.discharges` now measures the response against
+        what it owned, and this finding follows it.
         """
         record = self.record
         adjudication = record.adjudication
@@ -2307,6 +2437,7 @@ class PhaseClosureController:
             return
         discharged, reason = adjudication.discharges(record.criteria)
         if discharged:
+            self._withdraw_settled_adjudication_gap(reason)
             return
         self._add_finding(
             PhaseFinding(
@@ -2325,6 +2456,36 @@ class PhaseClosureController:
                 source="phase adjudication",
             )
         )
+
+    def _withdraw_settled_adjudication_gap(self, reason: str) -> None:
+        """Retire a stored "it did not settle the phase" that no longer holds.
+
+        The one case this exists for is a record written under closure rule 3,
+        where a criterion a gate owns counted against the response that was
+        never asked to settle it. Nothing is deleted: the finding keeps every
+        word, gains the reason it stopped applying, and the withdrawal is
+        written into the record's history — so a reader sees both that the
+        sentence was made and why it is no longer the state.
+
+        Only this module's own statement about the CURRENT adjudication. A
+        statement about a superseded response is retired by its own rule, and
+        nothing observed about the product is ever withdrawn here.
+        """
+        record = self.record
+        current = _adjudication_identity(record.adjudication)
+        for finding in record.findings:
+            if not finding.finding_id.endswith("-ADJUDICATION-INCOMPLETE"):
+                continue
+            if not finding.live or finding.about_adjudication != current:
+                continue
+            finding.withdrawn = (
+                "under closure rule 4 the criteria a structural gate owns are not this "
+                f"response's to settle, and it settled everything it owned: {reason}"
+            )
+            record.note(
+                f"withdrawn, and kept: {finding.finding_id} — it counted a gate-owned "
+                "criterion against a response that was never asked to settle it"
+            )
 
     def materialize_acceptance_record(self) -> Any:
         """Write the repository's own acceptance record, once nothing else is owed.
@@ -2378,6 +2539,7 @@ class PhaseClosureController:
             registry_paths=self.registry_paths or (),
             acceptance_globs=self.acceptance_record_globs,
             declared_globs=self.status_restatement_globs,
+            gate_established=self._gate_established(),
         )
 
         if plan.authority_gap and plan.existing_record:
@@ -2579,31 +2741,22 @@ class PhaseClosureController:
         if not ids:
             return []
         adjudication = record.adjudication
+        # The same mechanical gate :meth:`_attach_gate_evidence` applies, for
+        # the same reason: what an independent-review criterion asserts is that
+        # this adjudication happened and counted, and `taken` is the whole of
+        # that question. The reviewer's own score for it is recorded on the
+        # adjudication and reported in the detail, never read as the answer.
         taken = bool(adjudication is not None and adjudication.taken(record.criteria)[0])
-        detail = self._review_line()
         changed: list[str] = []
         for cid in ids:
-            result = (
-                adjudication.result_for(cid)
-                if adjudication is not None and taken
-                else None
-            )
-            established = bool(
-                taken
-                and (
-                    result.passed
-                    if result is not None
-                    else adjudication is not None
-                    and adjudication.discharges(record.criteria)[0]
-                )
-            )
+            detail = self._gate_evidence_detail(cid)
             for ref in record.evidence.for_criterion(cid):
                 if ref.kind is not EvidenceKind.REVIEW or ref.stale:
                     continue
-                if (ref.observed, ref.established) != (taken, established):
+                if (ref.observed, ref.established) != (taken, taken):
                     changed.append(cid)
                 ref.observed = taken
-                ref.established = established
+                ref.established = taken
                 ref.detail = detail
         return _dedupe_ids(changed)
 
@@ -2686,19 +2839,152 @@ class PhaseClosureController:
         adjudication was never launched — the closure loop could not start.
         """
         record = self.record
-        if record.gate_criterion_ids:
-            return set(record.gate_criterion_ids) & record.criteria.ids
+        # The structural classification of the FROZEN set is the answer, and it
+        # is available on a resume that never re-read the repository. The
+        # persisted list is unioned in rather than preferred, so a record frozen
+        # under an earlier vocabulary keeps every gate it already recorded.
+        ids = set(gate_owned(record.criteria))
+        ids.update(record.gate_criterion_ids)
         authority = self.authority
-        if authority is None:
-            return set()
-        ids: set[str] = set()
-        for group in (
-            authority.external_criteria,
-            authority.independent_review_criteria,
-            authority.residual_criteria,
-        ):
-            ids.update(c.criterion_id for c in group)
+        if authority is not None:
+            for group in (
+                authority.external_criteria,
+                authority.independent_review_criteria,
+                authority.residual_criteria,
+            ):
+                ids.update(c.criterion_id for c in group)
         return ids & record.criteria.ids
+
+    def _gate_owner(self, criterion_id: str) -> CriterionKind | None:
+        """Which structural gate owns one criterion, or ``None`` if none does.
+
+        Read from the frozen criterion set's own identifiers — see
+        :func:`gate_owned` — so a resumed controller that has not re-read the
+        repository answers it the same way a fresh one does. The persisted gate
+        list is consulted as well, and a criterion recorded as a gate under an
+        earlier vocabulary keeps the kind it was recorded under where that can
+        be recovered, because narrowing a gate mid-attempt would hand a
+        reviewer authority the attempt never gave it.
+        """
+        record = self.record
+        owners = gate_owned(record.criteria)
+        if criterion_id in owners:
+            return owners[criterion_id]
+        if criterion_id not in set(record.gate_criterion_ids):
+            return None
+        if criterion_id in set(record.independent_review_criterion_ids):
+            return CriterionKind.INDEPENDENT_REVIEW
+        # Recorded as a gate by an earlier freeze whose kind cannot be recovered
+        # from the identifiers. It is still a gate; which one is read off the
+        # evidence this module attached for it.
+        for ref in record.evidence.for_criterion(criterion_id):
+            if ref.stale:
+                continue
+            if ref.kind is EvidenceKind.CI_JOB:
+                return CriterionKind.EXTERNAL_VERIFICATION
+            if ref.kind is EvidenceKind.REVIEW:
+                return CriterionKind.INDEPENDENT_REVIEW
+            if ref.kind is EvidenceKind.INVARIANT_QUERY:
+                return CriterionKind.RESIDUAL_LEDGER
+        return None
+
+    def _gate_established(self) -> dict[str, str]:
+        """Gate-owned criteria this attempt established, and what established them.
+
+        Read from the evidence map, so the sentence handed to the repository's
+        acceptance record is the same fact the closure decided on rather than a
+        second derivation of it. A gate-owned criterion the gate has NOT
+        established is absent, and the record is refused for it exactly as
+        before — this widens nothing.
+        """
+        record = self.record
+        out: dict[str, str] = {}
+        for criterion in record.criteria.criteria:
+            cid = criterion.criterion_id
+            owner = self._gate_owner(cid)
+            if owner is None:
+                continue
+            if record.evidence.status_for(cid) is not CriterionEvidenceStatus.ESTABLISHED:
+                continue
+            authority = GATE_AUTHORITY_NAMES.get(owner, "a structural gate")
+            # Short on purpose. This sentence is written into the REPOSITORY's
+            # own criterion row, where a paragraph is noise; the full mechanical
+            # basis stays in the closure record's evidence detail and ledger,
+            # which is where an auditor reads it.
+            if owner is CriterionKind.INDEPENDENT_REVIEW:
+                adjudication = record.adjudication
+                who = (
+                    adjudication.reviewer_session_id
+                    if adjudication is not None and adjudication.reviewer_session_id
+                    else "an unnamed session"
+                )
+                out[cid] = f"{authority} (session {who}, outside this run's builder lineage)"
+            elif owner is CriterionKind.EXTERNAL_VERIFICATION:
+                external = record.external_evidence
+                out[cid] = f"{authority}" + (
+                    f" ({external.brief()})" if external is not None else ""
+                )
+            else:
+                out[cid] = (
+                    f"{authority} ({len(record.residuals)} recorded, none of them blocking)"
+                )
+        return out
+
+    def _gate_settlement_lines(self) -> list[str]:
+        """One line per required gate-owned criterion: who owns it, what it says.
+
+        So the record states the two facts separately, which is the whole point
+        of rule 4 being visible rather than merely correct: the gate established
+        the criterion, and the reviewer's own score for it was whatever it was.
+        A reader who only sees a pass count cannot tell those apart, and the
+        reviewer's answer must never be rewritten to agree.
+        """
+        record = self.record
+        adjudication = record.adjudication
+        lines: list[str] = []
+        for criterion in record.criteria.required:
+            cid = criterion.criterion_id
+            owner = self._gate_owner(cid)
+            if owner is None:
+                continue
+            status = record.evidence.status_for(cid)
+            established = status is CriterionEvidenceStatus.ESTABLISHED
+            line = (
+                f"{cid}: {GATE_AUTHORITY_NAMES.get(owner, 'a structural gate')} "
+                + ("ESTABLISHED it" if established else f"has NOT established it ({status.value})")
+            )
+            result = adjudication.result_for(cid) if adjudication is not None else None
+            if result is not None:
+                line += (
+                    f"; the reviewer's own score was "
+                    f"{result.verdict.strip().upper() or 'unreadable'}, recorded and not read "
+                    "as the answer"
+                )
+            lines.append(line)
+        return lines
+
+    def _gate_evidence_detail(self, criterion_id: str) -> str:
+        """What settled one gate-owned criterion, and what the reviewer said of it.
+
+        Both halves, always, and kept apart. The gate's sentence is the finding
+        of fact; the reviewer's own score is recorded beside it so the record
+        stays append-only and a reader can see that the reviewer answered
+        ``CANNOT_DETERMINE`` about its own independence AND that the gate
+        established the criterion mechanically anyway. Nothing here rewrites
+        what the reviewer said.
+        """
+        line = self._review_line()
+        adjudication = self.record.adjudication
+        if adjudication is None:
+            return line
+        result = adjudication.result_for(criterion_id)
+        if result is None:
+            return line
+        return (
+            f"{line}. The reviewer's own score for {criterion_id} was "
+            f"{result.verdict.strip().upper() or 'unreadable'}; it is recorded and it is not "
+            "the authority over a fact this gate establishes mechanically"
+        )
 
     def _unevidenced_required(self, *, exclude_gates: bool = False) -> list[str]:
         """Required criteria whose evidence cannot support them.
@@ -2761,6 +3047,17 @@ class PhaseClosureController:
         And it is not satisfied when something refutes it: evidence observed not
         to hold, an adjudication that scored it FAIL, or a blocking finding that
         names it. Those come first, because a refutation outranks every record.
+
+        Rule 4 carves out the criteria a structural gate OWNS — the external
+        verifier's, the independent review's own existence, the residual
+        ledger's. For those, the gate's evidence is the only thing read: not the
+        reviewer's score for it, which is a comment on a measurement rather than
+        the measurement, and not the repository's own record of it either, since
+        a repository writing PASS beside "independently reviewed by a
+        non-builder" would be certifying exactly the thing an independent review
+        exists not to take on trust. A blocking finding still refutes a
+        gate-owned criterion: a finding is something somebody DEMONSTRATED, and
+        the gates are falsifiable like everything else.
         """
         record = self.record
         cid = criterion.criterion_id
@@ -2778,6 +3075,17 @@ class PhaseClosureController:
                 "it false; the contradiction is unresolved"
             )
 
+        status = record.evidence.status_for(cid)
+        owner = self._gate_owner(cid)
+        if owner is not None:
+            authority = GATE_AUTHORITY_NAMES.get(owner, "a structural gate")
+            if status is CriterionEvidenceStatus.ESTABLISHED:
+                return True, f"{authority} established it on this tree"
+            return False, (
+                f"{authority} owns it and has not established it on this tree "
+                f"(evidence: {status.value})"
+            )
+
         adjudication = record.adjudication
         result = (
             adjudication.result_for(cid)
@@ -2789,7 +3097,6 @@ class PhaseClosureController:
         if result is not None and result.failed:
             return False, "the independent adjudication scored it FAIL"
 
-        status = record.evidence.status_for(cid)
         if status is CriterionEvidenceStatus.REFUTED:
             return False, "its own evidence was observed not to hold"
 
@@ -2931,6 +3238,7 @@ class PhaseClosureController:
                     if cid in record.criteria.required_ids
                 }
             ),
+            criteria_gate_settled=self._gate_settlement_lines(),
             criteria_unevidenced=self._unevidenced_required(),
             criteria_non_instantiable=[c.criterion_id for c in record.criteria.non_instantiable()],
             blocking_residuals=len(record.residuals.blocking),
@@ -3006,6 +3314,7 @@ class PhaseClosureController:
             + (f"  ({', '.join(refuted[:6])})" if refuted else ""),
             f"CRITERIA SETTLED BY A LATER GATE:{len(gated)}"
             + (f"  ({', '.join(gated[:6])})" if gated else ""),
+            *[f"  GATE: {line}" for line in self._gate_settlement_lines()],
             f"NON-INSTANTIABLE CRITERIA:     {len(record.criteria.non_instantiable())}",
             f"OPEN BLOCKING RESIDUALS:       {len(record.residuals.blocking)}",
             f"OPEN NONBLOCKING RESIDUALS:    {len(record.residuals.nonblocking)}",
@@ -3051,8 +3360,25 @@ class PhaseClosureController:
                 "still owed — a reviewer session was spent and its response did not cover "
                 f"the frozen criterion contract: {protocol.problem}"
             )
+        # Past the two refusals above, the gate is established: independence and
+        # a covered response contract are the whole of what it measures, and
+        # they are exactly what the two returns before this one rule out. So the
+        # gate's own sentence comes first — it is the mechanical fact — and what
+        # the reviewer scored is the next sentence, settling what the reviewer
+        # owns and nothing else.
         discharged, reason = adjudication.discharges(self.record.criteria)
-        return ("yes — " if discharged else "taken, and it did not settle the phase — ") + reason
+        gate = (
+            "yes — the independent-review gate is established: "
+            f"session {adjudication.reviewer_session_id or 'unnamed'} was outside the "
+            f"builder lineage, inherited no builder context, read {adjudication.reviewed_tree} "
+            f"against criteria {adjudication.criteria_fingerprint}, and covered the response "
+            "contract"
+        )
+        return gate + (
+            f". It settled the criteria it owns: {reason}"
+            if discharged
+            else f". It did not settle every criterion it owns — {reason}"
+        )
 
 
 # --------------------------------------------------------------------------
@@ -3104,11 +3430,19 @@ def phase_adjudication_prompt(
         f"  criteria fingerprint: {record.criteria_fingerprint}",
         "",
     ]
+    gates = gate_owned(record.criteria)
     for criterion in record.criteria.criteria:
         status = record.evidence.status_for(criterion.criterion_id)
+        owner = gates.get(criterion.criterion_id)
         lines.append(
             f"  {criterion.criterion_id}  [{'required' if criterion.required else 'optional'}, "
-            f"repository records {criterion.result}, evidence {status.value}]"
+            f"repository records {criterion.result}, evidence {status.value}"
+            + (
+                f", SETTLED BY {GATE_AUTHORITY_NAMES.get(owner, 'a structural gate').upper()}"
+                if owner is not None
+                else ""
+            )
+            + "]"
         )
         if criterion.name:
             lines.append(f"      name: {criterion.name}")
@@ -3121,6 +3455,32 @@ def phase_adjudication_prompt(
         "",
         "SCORE EXACTLY THESE CRITERIA AND NO OTHERS.",
         "",
+    ]
+    if gates:
+        lines += [
+            "--- THE CRITERIA MARKED 'SETTLED BY' ARE NOT YOURS TO AWARD ---",
+            "",
+            "Some criteria above are settled by a gate outside this adjudication: an "
+            "external verifier's record of this exact commit, the residual ledger, and — "
+            "for the criterion that demands an independent review by a non-builder — this "
+            "harness's own construction of you. That last one is worth being explicit "
+            "about, because you are the one participant who cannot check it: whether you "
+            "were built outside the build lineage, inherited none of the builder's "
+            "conversation, were handed this exact tree and these exact frozen criteria, "
+            "and answered the response contract is measured mechanically, by the harness, "
+            "and it is already measured by the time you read this.",
+            "",
+            "Still score them — the response contract below is one entry per criterion and "
+            "an omission is not an answer. CANNOT_DETERMINE is the honest score for a fact "
+            "you cannot observe, and scoring it that way costs the phase nothing: your "
+            "score for a gate-settled criterion is recorded and reported beside the gate's "
+            "own finding, and it does not establish the criterion or refuse it. If you "
+            "believe a gate is actually wrong — the external record is not this commit, a "
+            "blocking residual is open — say so as a FINDING with what you ran, which is "
+            "how a measurement is challenged.",
+            "",
+        ]
+    lines += [
         "You will very likely see something worth improving that no criterion above "
         "demands — a guard that could be stronger, a test that could be cleaner, a "
         "scanner that would be useful. Say so: it is recorded as carried debt and it is "

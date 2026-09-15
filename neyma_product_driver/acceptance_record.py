@@ -52,7 +52,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import yaml
 
@@ -1082,12 +1082,25 @@ def _semantic_paths(old: Any, new: Any, path: str = "") -> list[str]:
 # --------------------------------------------------------------------------
 
 
-def _evidence_text(verdict: Any, candidate: Any, adjudication: Any) -> str:
+def _evidence_text(
+    verdict: Any, candidate: Any, adjudication: Any, *, gate_basis: str = ""
+) -> str:
     """What established this criterion, and which tree it was established on."""
     head = str(getattr(candidate, "head", "") or "")[:12]
     tree = str(getattr(candidate, "tree", "") or "")[:12]
     where = f"{head or '(no commit)'}/{tree or '(no tree)'}"
     who = str(getattr(adjudication, "reviewer_session_id", "") or "").strip()
+    if gate_basis:
+        # A criterion a structural gate owns. What the repository is told is
+        # what settled it, which is the gate — and the reviewer's own score,
+        # verbatim, so the record does not read as though the reviewer awarded
+        # a fact it was never the authority over.
+        scored = str(getattr(verdict, "verdict", "") or "").strip().upper()
+        return f"Established on {where} by {gate_basis}." + (
+            f" The adjudication scored it {scored}; recorded, not the authority over it."
+            if scored
+            else ""
+        )
     lead = (
         f"Adjudicated {str(getattr(verdict, 'verdict', '') or '').strip()} on {where} "
         f"by an independent session"
@@ -1150,12 +1163,26 @@ def plan_acceptance_record(
     registry_paths: Sequence[str] = (),
     acceptance_globs: Sequence[str] = (),
     declared_globs: Sequence[str] = (),
+    gate_established: Mapping[str, str] | None = None,
 ) -> AcceptanceRecordPlan:
     """Work out the status-only change that records this phase's acceptance.
 
     A dry run in the strict sense: the file is rendered and parsed here, and
     :func:`write_acceptance_record` only flushes what this already proved safe.
+
+    ``gate_established`` is how the caller says which criteria a STRUCTURAL GATE
+    settled, and in one sentence each, what settled them. The record may say
+    what the phase's authorities established, and for those criteria the
+    adjudication is not the authority: an external verifier's record of the
+    exact commit, the residual ledger, and — for the criterion demanding an
+    independent review by a non-builder — the mechanical fact that such a review
+    was constructed, bound to this tree and these criteria, and answered.
+    Without it, a phase whose reviewer honestly scored CANNOT_DETERMINE on its
+    own independence reached READY_FOR_ACCEPTANCE_COMMIT and then had its record
+    refused, which is the same self-reference one step later. The evidence
+    written for such a criterion names the gate, not the reviewer.
     """
+    gate_established = dict(gate_established or {})
     repo = Path(repo)
     plan = AcceptanceRecordPlan(phase_id=phase_id)
 
@@ -1221,6 +1248,8 @@ def plan_acceptance_record(
         cid = criterion.criterion_id
         if cid not in rows:
             unsupported.append(f"{cid} (no row in {source})")
+            continue
+        if cid in gate_established:
             continue
         verdict = adjudication.result_for(cid) if adjudication is not None else None
         if verdict is None or not verdict.passed or verdict.outside_authority:
@@ -1320,8 +1349,11 @@ def plan_acceptance_record(
         id_match = _KEY_RE.match(_normalized(lines[id_line]))
         assert id_match is not None
         cid = _scalar_text(id_match.group("rest"))
+        gate_basis = gate_established.get(cid, "")
         verdict = adjudication.result_for(cid) if adjudication is not None else None
-        if verdict is None or not verdict.passed or verdict.outside_authority:
+        if not gate_basis and (
+            verdict is None or not verdict.passed or verdict.outside_authority
+        ):
             continue
         row = rows.get(cid)
         if row is None:
@@ -1338,7 +1370,11 @@ def plan_acceptance_record(
                 (conv.result_key,),
                 conv.pass_token,
                 conv.result_key,
-                "the adjudication scored it PASS on the accepted tree",
+                (
+                    gate_basis
+                    if gate_basis
+                    else "the adjudication scored it PASS on the accepted tree"
+                ),
                 f"{row_path}.{conv.result_key}",
             )
         )
@@ -1347,7 +1383,9 @@ def plan_acceptance_record(
         existing = str(row.get(conv.evidence_key) or "").strip()
         if existing:
             continue
-        written = " ".join(_evidence_text(verdict, candidate, adjudication).split())
+        written = " ".join(
+            _evidence_text(verdict, candidate, adjudication, gate_basis=gate_basis).split()
+        )
         anchor = _find_key(lines, item_start, item_end, item_body, (conv.result_key,))
         anchor = anchor if anchor is not None else id_line
         evidence_line = _find_key(lines, item_start, item_end, item_body, (conv.evidence_key,))
