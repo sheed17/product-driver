@@ -6476,8 +6476,7 @@ async def cmd_phase_external_evidence(args: argparse.Namespace) -> int:
         out("")
         out(controller.record.external_requirement.waiting_block())
         return 11
-    controller.decide()
-    controller.save()
+    controller.settle()
     out("")
     out(controller.record.ledger.render())
     return _phase_exit_code(controller.record.state)
@@ -6522,11 +6521,21 @@ async def cmd_phase_close(args: argparse.Namespace) -> int:
         out("→ asking the configured external verification probe...")
         controller.fetch_external_evidence()
 
+    # Settle the state before asking which transition is next. The preflight's
+    # own verdict is taken before the gate above has answered, and before the
+    # stop rule has run at all — branching on it asked "is an adjudication due?"
+    # of a reading that could not yet know. So the attempt that had just been
+    # handed a green gate on the exact candidate tree, and the attempt resuming
+    # from a persisted READY_FOR_ADJUDICATION, both fell through to the bottom
+    # of this function, printed READY_FOR_ADJUDICATION and exited without ever
+    # launching the adjudicator that state names.
+    settled = controller.settle()
+
     # The independent adjudication, when the phase's own criteria demand one and
-    # the preflight says it is worth paying for.
+    # the settled state says it is the next transition.
     if (
         not analysis
-        and record.state.value == "READY_FOR_ADJUDICATION"
+        and settled.value == "READY_FOR_ADJUDICATION"
         and not getattr(args, "no_adjudication", False)
     ):
         code = await _run_phase_adjudication(config, store, controller, args)
@@ -6534,8 +6543,7 @@ async def cmd_phase_close(args: argparse.Namespace) -> int:
             _report_phase_closure(controller)
             return code
 
-    controller.decide()
-    controller.save()
+    controller.settle()
     _report_phase_closure(controller)
 
     # The acceptance record, when everything required passes.
@@ -6669,8 +6677,7 @@ async def _run_phase_adjudication(
         out(f"    {result.verdict:<18} {result.criterion_id}{mark}")
     if not adjudication.independent:
         error(f"\nThis adjudication does not count: {adjudication.independence_problem}")
-        controller.decide()
-        controller.save()
+        controller.settle()
         return 21
     return None
 

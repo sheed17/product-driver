@@ -1790,14 +1790,14 @@ class PhaseClosureController:
             self._rebuild_ledger()
             return record.state
 
-        def settle(state: ClosureState) -> ClosureState:
+        def stop_at(state: ClosureState) -> ClosureState:
             record.state = state
             self._rebuild_ledger()
             return state
 
         # A demonstrated defect, or a residual the repository says blocks.
         if record.blocking_findings or record.residuals.blocking:
-            return settle(ClosureState.BLOCKED)
+            return stop_at(ClosureState.BLOCKED)
 
         # An adjudication that says two incompatible things about one criterion.
         # Checked after the blocking test, because a demonstrated failure that
@@ -1805,21 +1805,21 @@ class PhaseClosureController:
         # owns it; checked before everything else, because a contradiction means
         # the adjudication this attempt rests on cannot be read.
         if record.inconsistent_findings:
-            return settle(ClosureState.ADJUDICATION_INCONSISTENT)
+            return stop_at(ClosureState.ADJUDICATION_INCONSISTENT)
 
         # 1. the canonical scope is built.
         if self._checkpoints_short():
-            return settle(ClosureState.PREFLIGHT_BLOCKED)
+            return stop_at(ClosureState.PREFLIGHT_BLOCKED)
 
         # 2. the required external verification is green on THIS tree.
         if record.external_requirement.required:
             evidence = record.external_evidence
             if evidence is None or not evidence.satisfies(record.external_requirement)[0]:
-                return settle(ClosureState.WAITING_FOR_EXTERNAL_VERIFICATION)
+                return stop_at(ClosureState.WAITING_FOR_EXTERNAL_VERIFICATION)
 
         # 3. the independent adjudication the phase's own criteria demand.
         if self._adjudication_outstanding():
-            return settle(ClosureState.READY_FOR_ADJUDICATION)
+            return stop_at(ClosureState.READY_FOR_ADJUDICATION)
         self._record_adjudication_gap()
 
         # 4. every required criterion is satisfied. Last, because the two gates
@@ -1827,9 +1827,29 @@ class PhaseClosureController:
         #    still unsatisfied once both have passed is a genuine block rather
         #    than a step that has not happened yet.
         if self.unsatisfied_required():
-            return settle(ClosureState.BLOCKED)
+            return stop_at(ClosureState.BLOCKED)
 
-        return settle(ClosureState.READY_FOR_ACCEPTANCE_COMMIT)
+        return stop_at(ClosureState.READY_FOR_ACCEPTANCE_COMMIT)
+
+    def settle(self) -> ClosureState:
+        """Take the stop rule over everything known so far, and persist it.
+
+        The state :meth:`preflight` leaves behind is a reading of the tree taken
+        BEFORE the external gate has answered and before the stop rule has run.
+        It is the cheapest thing in the machine that can refuse, and it is not
+        the state. Anything that asks "which transition is next?" must ask this
+        instead, because the answer has to account for evidence that arrived
+        after the preflight read the tree.
+
+        That is not a distinction without a difference: a gate that went green
+        in this invocation — or in the one before it, leaving the attempt
+        resting at ``READY_FOR_ADJUDICATION`` — is invisible to the preflight's
+        verdict, so a caller branching on it declined to take the very
+        transition the record it then printed said was due.
+        """
+        state = self.decide()
+        self.save()
+        return state
 
     def _record_adjudication_gap(self) -> None:
         """Say out loud when a taken adjudication left a criterion unsettled.
