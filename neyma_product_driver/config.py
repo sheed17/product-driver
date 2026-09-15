@@ -371,6 +371,31 @@ class PhaseClosureConfig(BaseModel):
     #: ACCEPTANCE_RECORD is still refused.
     status_restatement_globs: list[str] = Field(default_factory=list)
 
+    #: Turns the whole-phase adjudicator may spend before it must answer.
+    #:
+    #: Its own budget, not the ordinary reviewer's, because it is not the
+    #: ordinary reviewer's job. A change review reads one diff and rules on it;
+    #: a phase adjudication re-derives EVERY frozen criterion of a whole phase
+    #: on an exact tree, and it must return one score per criterion or the
+    #: response is not an answer at all — see
+    #: :func:`~neyma_product_driver.phase_closure.check_adjudication_protocol`.
+    #:
+    #: Measured too low at the reviewer default of 40: run
+    #: ``p7-closure-e9f75e18``, over a phase with 17 frozen criteria, ended
+    #: ``error_max_turns`` with an EMPTY ``criteria_assessment`` — a spent
+    #: independent session that scored nothing. The arithmetic says why 40
+    #: could not work: ``review.reviewer_max_commands`` alone permits 40
+    #: commands and each costs at least one turn, so a reviewer that used its
+    #: command budget had no turn left to read with and none left to answer in.
+    #:
+    #: 200 keeps roughly four times the command ceiling for reading the tree
+    #: and the criteria, plus room for the reply and for the one bounded
+    #: corrective request. It is still a HARD bound and there is deliberately
+    #: no way to express "unlimited": a session that spends 200 turns is
+    #: describing a verification gap rather than performing a verification, and
+    #: an unbounded adjudicator is an unbounded cost.
+    adjudication_max_turns: int = 200
+
     #: One read-only command that reports the external verifier's result for a
     #: commit. ``{sha}`` is substituted. Human-authored, like the scenario
     #: approved-command list — never inferred and never generated. Empty means
@@ -388,6 +413,34 @@ class PhaseClosureConfig(BaseModel):
     #: change, refuses anything outside the acceptance record, and prints the
     #: exact commit for the founder or a builder session to make under the
     #: repository's own rules.
+
+    @field_validator("adjudication_max_turns")
+    @classmethod
+    def _bounded_adjudication_turns(cls, v: int) -> int:
+        """A real budget, both ends. Neither zero nor unlimited is one.
+
+        The floor is the ORDINARY REVIEWER'S budget rather than 1, because this
+        job is strictly larger than that one: a phase adjudication scores every
+        frozen criterion, and giving it less than a single change review gets is
+        not a choice about cost, it is the defect this field exists to fix,
+        reintroduced through configuration. 40 itself is still accepted — on a
+        two-criterion phase it may well be plenty — and what is refused is
+        anything below the number that was already observed to be too few for
+        seventeen.
+        """
+        if v < 40:
+            raise ValueError(
+                "phase_closure.adjudication_max_turns must be >= 40: a whole-phase "
+                "adjudication scores every frozen criterion and 40 was already observed "
+                "to be too few"
+            )
+        if v > 1000:
+            raise ValueError(
+                "phase_closure.adjudication_max_turns must be <= 1000: the budget is a "
+                "bound, and a session that needs more than this is describing a "
+                "verification gap rather than performing a verification"
+            )
+        return v
 
     @field_validator("external_probe_timeout_s")
     @classmethod

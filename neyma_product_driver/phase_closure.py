@@ -106,7 +106,13 @@ CLOSURE_FILE = "phase-closure.json"
 #:
 #: 2: a finding may not contradict the adjudication that carried it — see rule 4
 #:    in :mod:`~neyma_product_driver.phase_acceptance`.
-CLOSURE_RULE_VERSION = "2"
+#: 3: an adjudication counts as TAKEN only when its response covered the frozen
+#:    criterion contract — one score per frozen criterion, no omissions and no
+#:    duplicates. See :func:`check_adjudication_protocol`. A record written
+#:    under rule 2 may carry an adjudication that was never a complete answer
+#:    and was nonetheless read as the phase's one independent opinion, so the
+#:    migration re-derives it rather than inheriting that reading.
+CLOSURE_RULE_VERSION = "3"
 
 
 # --------------------------------------------------------------------------
@@ -133,6 +139,191 @@ class CriterionVerdict(BaseModel):
     @property
     def failed(self) -> bool:
         return self.verdict.strip().upper() in ("FAIL", "FAILED", "NOT_SUPPORTED", "REFUSED")
+
+    @property
+    def undetermined(self) -> bool:
+        """The adjudicator looked and could not tell. A real score, not a gap.
+
+        Kept apart from "no entry at all", because the two have opposite
+        owners: a criterion nobody could determine is a statement about what
+        the repository can currently show, and a criterion nobody scored is a
+        statement about the response.
+        """
+        return self.verdict.strip().upper() in (
+            "CANNOT_DETERMINE",
+            "CANNOT DETERMINE",
+            "CANNOTDETERMINE",
+            "UNDETERMINED",
+            "INDETERMINATE",
+            "INCONCLUSIVE",
+            "INSUFFICIENT_EVIDENCE",
+            "INSUFFICIENT EVIDENCE",
+            "UNKNOWN",
+        )
+
+    @property
+    def scored(self) -> bool:
+        """Whether this entry says one of the three things a score may say."""
+        return self.passed or self.failed or self.undetermined
+
+
+class AdjudicationProtocol(BaseModel):
+    """Whether an adjudication's RESPONSE satisfied the response contract.
+
+    This is not a question about the phase. It is the prior question of whether
+    an answer was given at all, and it exists because the two were being read
+    as one. The prompt closes the criterion set and asks for one entry per
+    criterion; a reply that scores none of them has not refused the phase, it
+    has not answered — and the difference decides who owns the result. Reading
+    an unanswered adjudication as the phase's one independent opinion turns a
+    reviewer-protocol failure into a product verdict, spends the independence
+    that cannot be spent twice, and leaves the phase permanently short of an
+    adjudication it never received.
+
+    ``CANNOT_DETERMINE`` is a score and is complete. Every frozen criterion
+    scored ``CANNOT_DETERMINE`` is a full answer with an uncertain content: the
+    phase may legitimately stop there, and nothing about it justifies buying
+    another reviewer.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: False on a record written before this check existed, so a reader can
+    #: tell "the response was checked and passed" from "nobody looked".
+    checked: bool = False
+    complete: bool = False
+    #: Every frozen criterion the response was asked to score, in order.
+    expected: list[str] = Field(default_factory=list)
+    #: Frozen criteria the response scored exactly once, with a readable score.
+    scored: list[str] = Field(default_factory=list)
+    #: Frozen criteria with no readable score in the response.
+    missing: list[str] = Field(default_factory=list)
+    #: Frozen criteria the response scored more than once. Two answers to one
+    #: question are not an answer: nothing here may pick which one was meant.
+    duplicated: list[str] = Field(default_factory=list)
+    #: Frozen criteria the response named with something that is not one of
+    #: PASS, FAIL or CANNOT_DETERMINE.
+    unreadable: list[str] = Field(default_factory=list)
+    #: Empty when the response covered the contract; otherwise exactly what is
+    #: wrong with it, in the words a corrective request would use.
+    problem: str = ""
+
+    @property
+    def violated(self) -> bool:
+        return self.checked and not self.complete
+
+    def outstanding_ids(self) -> list[str]:
+        """The criterion ids a contract-complete answer would have to repair."""
+        return _dedupe_ids([*self.missing, *self.duplicated, *self.unreadable])
+
+    def brief(self) -> str:
+        if not self.checked:
+            return "the response contract was not checked"
+        if self.complete:
+            return (
+                f"the response scored all {len(self.expected)} frozen criteria exactly once"
+            )
+        return self.problem or "the response did not cover the frozen criterion contract"
+
+
+def _dedupe_ids(ids: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in ids:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def check_adjudication_protocol(
+    criterion_results: Sequence[CriterionVerdict], criteria: Any
+) -> AdjudicationProtocol:
+    """Whether one response covered the frozen criterion contract. Generic.
+
+    The contract is the prompt's own: *one entry per criterion above*, scored
+    PASS, FAIL or CANNOT_DETERMINE, for exactly the frozen set. So three things
+    break it, and each is reported separately because each names a different
+    repair:
+
+    * a frozen criterion with no entry — the response is short of an answer;
+    * a frozen criterion with two entries — there are two answers and no rule
+      here may choose between them;
+    * an entry whose score is not one of the three — a word nobody can act on.
+
+    Criteria the response scored that the frozen set does not contain are NOT
+    part of this: they are recorded as outside the authority elsewhere, they
+    never widen the bar, and they cannot make a response incomplete either.
+
+    A phase with no frozen criteria at all is complete here, vacuously. That
+    state is an authority gap and it is refused by a louder mechanism than this
+    one; failing it here as well would only make the quieter message the one a
+    reader sees.
+    """
+    expected = [
+        str(getattr(c, "criterion_id", "") or "")
+        for c in getattr(criteria, "criteria", []) or []
+    ]
+    expected = [cid for cid in expected if cid]
+    protocol = AdjudicationProtocol(checked=True, expected=expected)
+    if not expected:
+        protocol.complete = True
+        protocol.problem = ""
+        return protocol
+
+    counts: dict[str, int] = {cid: 0 for cid in expected}
+    unreadable: list[str] = []
+    for result in criterion_results or []:
+        if getattr(result, "outside_authority", False):
+            continue
+        cid = str(getattr(result, "criterion_id", "") or "")
+        if cid not in counts:
+            continue
+        if not result.scored:
+            unreadable.append(cid)
+            continue
+        counts[cid] += 1
+
+    protocol.scored = [cid for cid in expected if counts[cid] == 1]
+    protocol.missing = [cid for cid in expected if counts[cid] == 0 and cid not in unreadable]
+    protocol.duplicated = [cid for cid in expected if counts[cid] > 1]
+    protocol.unreadable = _dedupe_ids([cid for cid in expected if cid in unreadable])
+    protocol.complete = not (protocol.missing or protocol.duplicated or protocol.unreadable)
+
+    if protocol.complete:
+        protocol.problem = ""
+        return protocol
+
+    parts: list[str] = []
+    if protocol.missing:
+        parts.append(f"it did not score {_name_ids(protocol.missing)}")
+    if protocol.duplicated:
+        parts.append(f"it scored {_name_ids(protocol.duplicated)} more than once")
+    if protocol.unreadable:
+        parts.append(
+            f"it answered {_name_ids(protocol.unreadable)} with something that is not "
+            "PASS, FAIL or CANNOT_DETERMINE"
+        )
+    protocol.problem = (
+        f"the response did not cover the frozen criterion contract "
+        f"({len(protocol.scored)} of {len(expected)} criteria scored exactly once): "
+        + "; ".join(parts)
+    )
+    return protocol
+
+
+def _adjudication_identity(adjudication: Any) -> str:
+    """How a finding names the adjudication response it is a statement about."""
+    if adjudication is None:
+        return ""
+    who = getattr(adjudication, "reviewer_session_id", "") or "an unnamed session"
+    return f"attempt {getattr(adjudication, 'attempt', 1)} by {who}"
+
+
+def _name_ids(ids: Sequence[str], limit: int = 8) -> str:
+    listed = list(ids)
+    shown = ", ".join(listed[:limit])
+    return shown + (f" and {len(listed) - limit} more" if len(listed) > limit else "")
 
 
 class PhaseAdjudication(BaseModel):
@@ -165,6 +356,18 @@ class PhaseAdjudication(BaseModel):
     #: Empty when the adjudication is structurally independent and about the
     #: right tree and the right criteria; otherwise says exactly what is wrong.
     independence_problem: str = ""
+    #: Whether the RESPONSE covered the frozen criterion contract, as checked
+    #: when it was ingested. Stored so the artifact says it, and re-derived by
+    #: :meth:`protocol_for` wherever a decision depends on it — a record written
+    #: before this check existed carries ``checked=False`` and must not be read
+    #: as a response that passed it.
+    protocol: AdjudicationProtocol = Field(default_factory=AdjudicationProtocol)
+    #: Which response, within this attempt, this is. 1 is the first answer the
+    #: fresh session gave; 2 is the answer to a bounded corrective request.
+    attempt: int = 1
+    #: Set when a later response replaced this one, naming the reviewer session
+    #: and attempt that did. The replaced record is kept, never overwritten.
+    superseded_by: str = ""
 
     @property
     def independent(self) -> bool:
@@ -173,6 +376,45 @@ class PhaseAdjudication(BaseModel):
     @property
     def supported(self) -> bool:
         return self.independent and self.verdict.strip().upper() == "SUPPORTED"
+
+    def protocol_for(self, criteria: Any) -> AdjudicationProtocol:
+        """The response contract, re-derived from what this record stores.
+
+        Derived rather than read from :attr:`protocol`, because the stored copy
+        is an artifact and this is a decision. A record persisted before the
+        check existed has no stored answer, and a record whose criteria were
+        re-frozen has a stale one; both re-derive correctly from the scores the
+        record already carries.
+        """
+        return check_adjudication_protocol(self.criterion_results, criteria)
+
+    def taken(self, criteria: Any) -> tuple[bool, str]:
+        """Whether the phase's one independent adjudication HAPPENED, and why not.
+
+        Two conditions, and they are different questions from whether the phase
+        passed:
+
+        * the session was independent, about the exact tree, against the exact
+          frozen criteria — :func:`check_independence`;
+        * the response covered the frozen criterion contract —
+          :func:`check_adjudication_protocol`.
+
+        Either one failing means no adjudication was taken, and the repair is a
+        fresh one. Neither failing says anything whatsoever about the product:
+        an adjudication that was taken and came back entirely
+        ``CANNOT_DETERMINE`` is taken, and asking for another because the answer
+        was uncertain is how one honest "I could not tell" becomes an unbounded
+        series of reviewer sessions.
+        """
+        if not self.independent:
+            return False, self.independence_problem
+        protocol = self.protocol_for(criteria)
+        if not protocol.complete:
+            return False, protocol.problem
+        return True, (
+            f"an independent session scored all {len(protocol.expected)} frozen criteria "
+            "exactly once"
+        )
 
     def discharges(self, criteria: Any) -> tuple[bool, str]:
         """Whether this adjudication settles the phase's required criteria.
@@ -185,25 +427,23 @@ class PhaseAdjudication(BaseModel):
         the adjective as the answer lets the outside one reopen the phase,
         which is exactly the loop this controller exists to end.
 
-        The adjective is still honoured in the one case where it is all there
-        is: an adjudication that scored no frozen criterion at all has told us
-        nothing per-criterion, so its summary is the only thing to go on.
+        Nothing here reads the adjective, and that is the change rule 3 makes.
+        An adjudication that scored no frozen criterion used to fall through to
+        its summary — so a malformed reply became a verdict about the product,
+        in whichever direction its adjective happened to point. A response that
+        did not cover the contract is not an answer to read in either
+        direction: :meth:`taken` refuses it first, and what is owed is a fresh
+        adjudication rather than a decision about the phase.
         """
-        if not self.independent:
-            return False, self.independence_problem
+        taken, why = self.taken(criteria)
+        if not taken:
+            return False, why
         required = {c.criterion_id for c in getattr(criteria, "required", [])}
         scored = {
             r.criterion_id: r
             for r in self.criterion_results
             if not r.outside_authority and r.criterion_id in required
         }
-        if not scored:
-            if self.verdict.strip().upper() == "SUPPORTED":
-                return True, "the adjudication supported the phase and scored no criterion"
-            return False, (
-                f"the adjudication returned {self.verdict} and scored none of the "
-                "required criteria"
-            )
         failed = sorted(cid for cid, r in scored.items() if r.failed)
         if failed:
             return False, f"the adjudication scored {', '.join(failed)} FAIL"
@@ -229,6 +469,12 @@ class PhaseAdjudication(BaseModel):
     def brief(self) -> str:
         if not self.independent:
             return f"NOT INDEPENDENT — {self.independence_problem}"
+        if self.protocol.violated:
+            return (
+                f"RESPONSE PROTOCOL INCOMPLETE — {self.protocol.problem} "
+                f"(reported {self.verdict} by "
+                f"{self.reviewer_session_id or 'an unnamed session'})"
+            )
         passed = sum(1 for r in self.criterion_results if r.passed and not r.outside_authority)
         failed = sum(1 for r in self.criterion_results if r.failed and not r.outside_authority)
         outside = sum(1 for r in self.criterion_results if r.outside_authority)
@@ -675,6 +921,13 @@ class PhaseClosureRecord(BaseModel):
     external_history: list[ExternalEvidence] = Field(default_factory=list)
 
     adjudication: PhaseAdjudication | None = None
+    #: Every adjudication response this attempt ever ingested, in order,
+    #: including the ones a later response replaced. A malformed response is a
+    #: fact about what a reviewer session actually returned, and it is the only
+    #: record of where the independence was spent, so it is kept rather than
+    #: overwritten — the same rule ``external_history`` follows for a refused
+    #: CI record.
+    adjudication_history: list[PhaseAdjudication] = Field(default_factory=list)
     builder_session_ids: list[str] = Field(default_factory=list)
 
     authority: dict[str, Any] = Field(default_factory=dict)
@@ -701,13 +954,24 @@ class PhaseClosureRecord(BaseModel):
         return None
 
     @property
+    def live_findings(self) -> list[PhaseFinding]:
+        """Every finding that still applies. A withdrawn one is kept, not read.
+
+        Withdrawn means the statement's subject was superseded — the only thing
+        that can be withdrawn is this controller's own sentence about one
+        adjudication response, and only a later response withdraws it. Nothing
+        observed about the product is ever withdrawn.
+        """
+        return [f for f in self.findings if f.live]
+
+    @property
     def blocking_findings(self) -> list[PhaseFinding]:
-        return [f for f in self.findings if f.blocks_phase_acceptance]
+        return [f for f in self.live_findings if f.blocks_phase_acceptance]
 
     @property
     def inconsistent_findings(self) -> list[PhaseFinding]:
         """Findings that contradict the adjudication that carried them."""
-        return [f for f in self.findings if f.contradicts_adjudication]
+        return [f for f in self.live_findings if f.contradicts_adjudication]
 
     @property
     def nonblocking_findings(self) -> list[PhaseFinding]:
@@ -721,7 +985,7 @@ class PhaseClosureRecord(BaseModel):
         """
         return [
             f
-            for f in self.findings
+            for f in self.live_findings
             if not f.blocks_phase_acceptance
             and not f.contradicts_adjudication
             and f.classification is not FindingClass.AUTHORITY_GAP
@@ -730,15 +994,18 @@ class PhaseClosureRecord(BaseModel):
     def adjudication_scores(self) -> AdjudicationScores | None:
         """What the INDEPENDENT adjudication scored, or nothing.
 
-        ``None`` when there is no adjudication or it is not independent, and
-        that is not the same as an adjudication that scored nothing: a
-        contradiction needs a score to contradict, and a score that does not
-        count cannot be contradicted. Criteria the reviewer scored outside the
-        frozen authority are dropped here, because they were never part of the
-        bar this attempt is measured against.
+        ``None`` when there is no adjudication, it is not independent, or its
+        response did not cover the frozen criterion contract — and that is not
+        the same as an adjudication that scored nothing: a contradiction needs a
+        score to contradict, and a score that does not count cannot be
+        contradicted. Criteria the reviewer scored outside the frozen authority
+        are dropped here, because they were never part of the bar this attempt
+        is measured against.
         """
         adjudication = self.adjudication
         if adjudication is None or not adjudication.independent:
+            return None
+        if not adjudication.protocol_for(self.criteria).complete:
             return None
         passed = [
             r.criterion_id
@@ -754,7 +1021,9 @@ class PhaseClosureRecord(BaseModel):
 
     @property
     def authority_gaps(self) -> list[PhaseFinding]:
-        return [f for f in self.findings if f.classification is FindingClass.AUTHORITY_GAP]
+        return [
+            f for f in self.live_findings if f.classification is FindingClass.AUTHORITY_GAP
+        ]
 
 
 # --------------------------------------------------------------------------
@@ -858,10 +1127,45 @@ class PhaseClosureController:
             return
         previous = record.decision_rule_version or "(unversioned)"
         changed = self._rederive_findings()
+        # The review criteria too. Under rule 2 an adjudication that answered
+        # nothing was still recorded as an OBSERVATION of the criterion that
+        # demands an independent review — observed and not established, which
+        # reads as refuted — so the stored evidence map says the product failed
+        # a review that never happened. Re-derived from the same stored
+        # adjudication, so a run reopens eligible for an adjudication instead of
+        # needing its evidence edited by hand.
+        repointed = self._refresh_adjudication_evidence()
+        # Rule 2's own sentence about the adjudication. It wrote exactly one,
+        # under a fixed id, about whatever adjudication the record carried — so
+        # it is stamped with that subject here and then retired by the ordinary
+        # rule if the subject no longer holds. A migration is the one place that
+        # may recognise an earlier writer by the shape of what it wrote.
+        for finding in record.findings:
+            if finding.finding_id.endswith("-ADJUDICATION-INCOMPLETE") and not (
+                finding.about_adjudication
+            ):
+                finding.about_adjudication = _adjudication_identity(record.adjudication)
+        if record.adjudication is not None and not record.adjudication.taken(record.criteria)[0]:
+            # The statement was about an adjudication rule 3 does not consider
+            # taken at all. What that response did is now said by the protocol
+            # finding, under the layer that owns it, so the verification-owned
+            # sentence about it is withdrawn rather than left to duplicate it.
+            for finding in record.findings:
+                if finding.finding_id.endswith("-ADJUDICATION-INCOMPLETE") and finding.live:
+                    finding.withdrawn = (
+                        "under closure rule 3 this response was not an adjudication at all; "
+                        "the protocol finding says what happened, under the layer that owns it"
+                    )
+                    record.note(f"withdrawn, and kept: {finding.finding_id}")
         record.decision_rule_version = CLOSURE_RULE_VERSION
         record.note(
             f"closure rule {previous} -> {CLOSURE_RULE_VERSION}: "
             f"{len(changed)} of {len(record.findings)} findings re-derived"
+            + (
+                f", and the review evidence for {', '.join(repointed)} re-derived"
+                if repointed
+                else ""
+            )
         )
         for line in changed:
             record.note(f"  re-derived: {line}")
@@ -1300,21 +1604,30 @@ class PhaseClosureController:
             )
 
         adjudication = record.adjudication
+        # Whether an adjudication HAPPENED. A response that failed the contract
+        # was not an observation: recording it as one made the review evidence
+        # observed-and-not-established, which reads as REFUTED — so a malformed
+        # reply permanently consumed the very criterion that demands an
+        # independent review, and the phase reported a product failure over a
+        # reviewer that never answered.
+        taken = bool(
+            adjudication is not None and adjudication.taken(record.criteria)[0]
+        )
         for criterion in authority.independent_review_criteria:
             if criterion.criterion_id not in record.criteria.ids:
                 continue
             result = (
                 adjudication.result_for(criterion.criterion_id)
-                if adjudication is not None
+                if adjudication is not None and taken
                 else None
             )
             established = bool(
-                adjudication is not None
-                and adjudication.independent
+                taken
                 and (
                     result.passed
                     if result is not None
-                    else adjudication.discharges(record.criteria)[0]
+                    else adjudication is not None
+                    and adjudication.discharges(record.criteria)[0]
                 )
             )
             replace(
@@ -1327,7 +1640,7 @@ class PhaseClosureController:
                         if adjudication is not None
                         else "(no adjudication taken)"
                     ),
-                    observed=bool(adjudication is not None and adjudication.independent),
+                    observed=taken,
                     established=established,
                     observed_at_tree=tree,
                     detail=self._review_line(),
@@ -1595,6 +1908,18 @@ class PhaseClosureController:
         criterion assessments are matched against the FROZEN set: anything else
         it scored is recorded as outside the current authority, and can never
         make the phase not-closable.
+
+        Two things this does NOT do, and both of them are rule 3:
+
+        * it does not replace a previous response. Whatever was ingested before
+          moves into ``adjudication_history`` first, marked with what
+          superseded it, so a malformed reply that cost a session's
+          independence stays readable afterwards.
+        * it does not read a response that failed the contract as a verdict
+          about the product. A reply that omitted frozen criteria, duplicated
+          them, or scored none of them has not said the phase failed and has
+          not said it passed; its own scores and findings are recorded on the
+          adjudication record and are not minted into criterion failures.
         """
         record = self.record
         fingerprint = record.fingerprint()
@@ -1638,7 +1963,25 @@ class PhaseClosureController:
             criteria_fingerprint=adjudication.criteria_fingerprint,
             frozen_fingerprint=record.criteria_fingerprint,
         )
+        adjudication.protocol = check_adjudication_protocol(results, record.criteria)
 
+        previous = record.adjudication
+        # Every response this attempt has ever ingested, plus this one. Counted
+        # from the history AND the current record, because the current one has
+        # not been moved into the history yet.
+        adjudication.attempt = (
+            len(record.adjudication_history) + (1 if previous is not None else 0) + 1
+        )
+        if previous is not None:
+            previous.superseded_by = (
+                f"attempt {adjudication.attempt} by "
+                f"{adjudication.reviewer_session_id or 'an unnamed session'}"
+            )
+            record.adjudication_history.append(previous)
+            record.note(
+                f"adjudication attempt {previous.attempt} was superseded and kept: "
+                f"{previous.brief()}"
+            )
         record.adjudication = adjudication
         if not adjudication.independent:
             self._add_finding(
@@ -1681,12 +2024,27 @@ class PhaseClosureController:
                 )
             )
 
-        self._ingest_review_findings(review, adjudication)
+        self._retire_superseded_adjudication_statements()
+        if adjudication.protocol.complete:
+            self._ingest_review_findings(review, adjudication)
+        else:
+            # Fail closed, and fail on the right layer. A reply that did not
+            # answer cannot be mined for product defects: classifying its prose
+            # would invent a Neyma failure out of a Product Driver / reviewer
+            # protocol failure, which is the one substitution this controller
+            # exists to prevent. Everything the reply did say is on the
+            # adjudication record and in the preserved response artifact.
+            self._record_adjudication_protocol_failure()
         # Everything recorded before this adjudication was scored against no
         # score. Now there is one, and a finding that contradicts it must say so.
         self._reclassify_findings()
         if self.authority is not None:
             self._attach_gate_evidence(self.authority, fingerprint)
+        else:
+            # A resumed controller has not re-read the repository, so there is
+            # no live authority to walk — but the review criteria are persisted,
+            # and what this adjudication is worth to them has just changed.
+            self._refresh_adjudication_evidence()
         record.note(f"phase adjudication ingested: {adjudication.brief()}")
         self._rebuild_ledger()
         self.save()
@@ -1818,6 +2176,13 @@ class PhaseClosureController:
                 return stop_at(ClosureState.WAITING_FOR_EXTERNAL_VERIFICATION)
 
         # 3. the independent adjudication the phase's own criteria demand.
+        #    A response that failed the contract is recorded as the protocol
+        #    failure it is BEFORE the outstanding test, because that test then
+        #    says the phase still owes an adjudication and returns here — so
+        #    without this the founder would read READY_FOR_ADJUDICATION over a
+        #    run that had already spent a reviewer, with no sentence saying what
+        #    happened to it.
+        self._record_adjudication_protocol_failure()
         if self._adjudication_outstanding():
             return stop_at(ClosureState.READY_FOR_ADJUDICATION)
         self._record_adjudication_gap()
@@ -1851,6 +2216,75 @@ class PhaseClosureController:
         self.save()
         return state
 
+    def _record_adjudication_protocol_failure(self) -> None:
+        """Record that the reviewer's RESPONSE failed the adjudication contract.
+
+        Owned by Product Driver, not by the product and not by the phase's
+        verification. A reply that scored none of the frozen criteria says
+        nothing about Neyma; what it says is that this system asked for an
+        answer in a shape it did not get, and did not detect that it had not
+        got one. So the finding is a harness defect, it routes to Product
+        Driver, and it names no criterion — a protocol failure may not be
+        allowed to demonstrate a criterion false, which is exactly the
+        substitution that made a malformed reply read as a product refusal.
+
+        It does not block: the phase stops because it still owes an
+        adjudication, which is a resting place a later ``phase close`` can
+        leave. One finding per response, so a second malformed reply is
+        recorded as its own event rather than folded into the first.
+        """
+        record = self.record
+        adjudication = record.adjudication
+        if adjudication is None or not self._adjudication_demanded():
+            return
+        if not adjudication.independent:
+            # A session that was not independent is refused by its own finding,
+            # and saying its answer was also short of the contract would only
+            # report the same non-event twice under two owners.
+            return
+        protocol = adjudication.protocol_for(record.criteria)
+        if protocol.complete:
+            return
+        phase = record.phase_id or "phase"
+        self._add_finding(
+            PhaseFinding(
+                finding_id=f"{phase}-ADJUDICATION-PROTOCOL-VIOLATION-{adjudication.attempt:02d}",
+                classification=FindingClass.HARNESS_DEFECT,
+                severity="blocker",
+                phase_id=record.phase_id,
+                summary=(
+                    "the independent adjudication was not taken: "
+                    f"{protocol.problem}. The session "
+                    f"({adjudication.reviewer_session_id or 'unnamed'}) was independent and "
+                    f"read the candidate tree, and its reply reported "
+                    f"{adjudication.verdict}; a reply that does not cover the contract is "
+                    "not a verdict about the product in either direction"
+                    # What the session itself said about why, verbatim and
+                    # short. A reply that ran out of turns and a reply that
+                    # ignored the contract are the same shape and different
+                    # repairs, and this is the only place the difference is
+                    # written down.
+                    + (
+                        f'. The session reported: "{adjudication.summary[:200]}"'
+                        if adjudication.summary
+                        else ""
+                    )
+                ),
+                closure_condition=(
+                    "a fresh independent session adjudicates the exact candidate tree and "
+                    "returns exactly one score — PASS, FAIL or CANNOT_DETERMINE — for each "
+                    "of the frozen criteria"
+                ),
+                observed_at_tree=record.fingerprint().identity,
+                criteria_fingerprint=record.criteria_fingerprint,
+                source="phase adjudication protocol",
+            )
+        )
+        record.note(
+            f"adjudication attempt {adjudication.attempt} did not satisfy the response "
+            f"contract: {protocol.problem}"
+        )
+
     def _record_adjudication_gap(self) -> None:
         """Say out loud when a taken adjudication left a criterion unsettled.
 
@@ -1865,6 +2299,12 @@ class PhaseClosureController:
         adjudication = record.adjudication
         if adjudication is None or not self._adjudication_demanded():
             return
+        if not adjudication.taken(record.criteria)[0]:
+            # Not this finding's subject. A response that never answered has not
+            # "left a criterion unsettled" — it left the phase owing an
+            # adjudication, which _record_adjudication_protocol_failure says,
+            # under the layer that actually owns it.
+            return
         discharged, reason = adjudication.discharges(record.criteria)
         if discharged:
             return
@@ -1874,6 +2314,7 @@ class PhaseClosureController:
                 classification=FindingClass.VERIFICATION_GAP,
                 severity="major",
                 phase_id=record.phase_id,
+                about_adjudication=_adjudication_identity(adjudication),
                 summary=f"the independent adjudication did not settle the phase: {reason}",
                 closure_condition=(
                     "the criteria it could not settle are made showable, and an "
@@ -2053,7 +2494,7 @@ class PhaseClosureController:
         return plan
 
     def routing(self) -> RoutingPlan:
-        return route_findings(self.record.findings)
+        return route_findings(self.record.live_findings)
 
     # -- helpers ----------------------------------------------------------
 
@@ -2068,13 +2509,103 @@ class PhaseClosureController:
         if not self._adjudication_demanded():
             return False
         adjudication = self.record.adjudication
-        # Outstanding means NOT TAKEN. An adjudication that was taken, was
-        # independent, and then failed to settle a criterion has not left the
-        # phase owing another adjudication — asking for one again is how a
-        # criterion the adjudicator honestly could not determine turns into an
-        # unbounded series of reviewer sessions. It leaves the phase with an
-        # unsatisfied criterion, which the stop rule's last step answers.
-        return adjudication is None or not adjudication.independent
+        if adjudication is None:
+            return True
+        # Outstanding means NOT TAKEN, and the two ways of not being taken are
+        # the two halves of PhaseAdjudication.taken: the session was not
+        # independent evidence about this tree, or its response never covered
+        # the frozen criterion contract.
+        #
+        # What is deliberately NOT outstanding: an adjudication that was taken,
+        # answered every frozen criterion, and could not determine some of them.
+        # Asking for another because the answer was uncertain is how one honest
+        # "I could not tell" becomes an unbounded series of reviewer sessions.
+        # It leaves the phase with an unsatisfied criterion, which the stop
+        # rule's last step answers.
+        return not adjudication.taken(self.record.criteria)[0]
+
+    def _retire_superseded_adjudication_statements(self) -> list[str]:
+        """Withdraw this controller's sentences about an adjudication that moved on.
+
+        "The adjudication did not settle the phase" is a statement about ONE
+        response. When a later response replaces it, the sentence describes
+        nothing: leaving it live reports a phase as short of an adjudication it
+        now has, and — because a gap is owned by verification — it hands the
+        product-verification layer work that no longer exists.
+
+        Nothing is deleted. The finding keeps every word it recorded and gains
+        the reason it stopped applying, so a reader sees that attempt 1 was
+        judged incomplete AND that attempt 2 answered.
+
+        Only statements. A finding about the product, and the protocol failure
+        of the superseded response itself, are facts that a new response cannot
+        make untrue, and they stay live.
+        """
+        record = self.record
+        current = _adjudication_identity(record.adjudication)
+        retired: list[str] = []
+        for finding in record.findings:
+            if not finding.about_adjudication or finding.withdrawn:
+                continue
+            if finding.about_adjudication == current:
+                continue
+            finding.withdrawn = (
+                f"it was a statement about {finding.about_adjudication}, which "
+                f"{current or 'no adjudication'} replaced"
+            )
+            retired.append(finding.finding_id)
+        for finding_id in retired:
+            record.note(f"withdrawn, and kept: {finding_id} — a later adjudication replaced it")
+        return retired
+
+    def _refresh_adjudication_evidence(self) -> list[str]:
+        """Re-point the review criteria at what the stored adjudication is worth.
+
+        The persisted ``independent_review_criterion_ids`` rather than the live
+        authority, because this has to work on a resume that has not re-read the
+        repository — which is exactly the case where a record written under an
+        earlier rule is loaded and reopened.
+
+        Only refs this module wrote, and never a stale one: evidence retired by
+        a tree movement stays retired, because whether it described the product
+        is a question the tree already answered.
+        """
+        record = self.record
+        ids = [
+            cid
+            for cid in record.independent_review_criterion_ids
+            if cid in record.criteria.ids
+        ]
+        if not ids:
+            return []
+        adjudication = record.adjudication
+        taken = bool(adjudication is not None and adjudication.taken(record.criteria)[0])
+        detail = self._review_line()
+        changed: list[str] = []
+        for cid in ids:
+            result = (
+                adjudication.result_for(cid)
+                if adjudication is not None and taken
+                else None
+            )
+            established = bool(
+                taken
+                and (
+                    result.passed
+                    if result is not None
+                    else adjudication is not None
+                    and adjudication.discharges(record.criteria)[0]
+                )
+            )
+            for ref in record.evidence.for_criterion(cid):
+                if ref.kind is not EvidenceKind.REVIEW or ref.stale:
+                    continue
+                if (ref.observed, ref.established) != (taken, established):
+                    changed.append(cid)
+                ref.observed = taken
+                ref.established = established
+                ref.detail = detail
+        return _dedupe_ids(changed)
 
     def _adjudication_demanded(self) -> bool:
         """Whether the phase's own criteria call for an independent session."""
@@ -2317,6 +2848,22 @@ class PhaseClosureController:
             existing.adjudication_inconsistency = (
                 existing.adjudication_inconsistency or finding.adjudication_inconsistency
             )
+            if (
+                finding.about_adjudication
+                and finding.about_adjudication != existing.about_adjudication
+            ):
+                # The same statement, re-made about a LATER response. Its
+                # subject is that response now, so it is live again and says
+                # what the new response left unsettled — without this, a
+                # withdrawn statement would swallow the one that replaced it and
+                # the second unsettled adjudication would be reported by
+                # nothing.
+                existing.about_adjudication = finding.about_adjudication
+                existing.withdrawn = ""
+                existing.summary = finding.summary
+                existing.closure_condition = (
+                    finding.closure_condition or existing.closure_condition
+                )
             return existing
         record.findings.append(finding)
         return finding
@@ -2398,6 +2945,17 @@ class PhaseClosureController:
             external_sha=record.external_requirement.expected_sha,
             independent_review_status=(
                 adjudication.verdict if adjudication is not None else "NOT_TAKEN"
+            ),
+            independent_review_protocol=(
+                ""
+                if adjudication is None
+                or not adjudication.independent
+                or adjudication.protocol_for(record.criteria).complete
+                else (
+                    "INCOMPLETE — "
+                    + adjudication.protocol_for(record.criteria).problem
+                    + "; this adjudication was not taken and one is still owed"
+                )
             ),
             reviewer_session_id=(
                 adjudication.reviewer_session_id if adjudication is not None else ""
@@ -2487,6 +3045,12 @@ class PhaseClosureController:
             return "owed, and none has been taken for this tree"
         if not adjudication.independent:
             return f"taken and it does not count — {adjudication.independence_problem}"
+        protocol = adjudication.protocol_for(self.record.criteria)
+        if not protocol.complete:
+            return (
+                "still owed — a reviewer session was spent and its response did not cover "
+                f"the frozen criterion contract: {protocol.problem}"
+            )
         discharged, reason = adjudication.discharges(self.record.criteria)
         return ("yes — " if discharged else "taken, and it did not settle the phase — ") + reason
 
@@ -2623,6 +3187,7 @@ def phase_adjudication_prompt(
         lines += [f"--- RUN EVIDENCE ---", f"  {evidence_dir}", ""]
     if policy is not None and getattr(policy, "vocabulary_block", None) is not None:
         lines += [policy.vocabulary_block(), ""]
+    required_count = len(record.criteria.criteria)
     lines += [
         "--- WHAT TO RETURN ---",
         "A JSON object with:",
@@ -2635,6 +3200,75 @@ def phase_adjudication_prompt(
         "",
         "Use the criterion IDs exactly as written above. Do not invent criteria, do not "
         "merge two into one, and do not omit one because it looked settled.",
+        "",
+        "THE RESPONSE CONTRACT, WHICH IS CHECKED MECHANICALLY:",
+        f"  criteria_assessment MUST contain exactly {required_count} entries — one for "
+        f"each of the {required_count} criterion IDs listed above, each appearing exactly "
+        "once, each scored PASS, FAIL or CANNOT_DETERMINE.",
+        "",
+        "If you run short of turns, or cannot verify something, or are unsure: SCORE IT "
+        "CANNOT_DETERMINE. That is a complete answer and an honest one. An omitted "
+        "criterion, a duplicated one, or an empty criteria_assessment is NOT an answer — "
+        "it is not read as a failure of the product, it is read as this adjudication not "
+        "having happened, and the work of it is spent for nothing. Budget your session so "
+        "that the scored list is returned: leave yourself the turn to answer.",
+    ]
+    return "\n".join(lines)
+
+
+def adjudication_correction_prompt(
+    record: PhaseClosureRecord, protocol: AdjudicationProtocol
+) -> str:
+    """One bounded corrective request, to the session that already answered.
+
+    What this may and may not do is the whole design. It may not restate the
+    criteria, relax what PASS means, or hint at an answer — an adjudication
+    corrected into agreement is not an adjudication. All it may do is say that
+    the response did not cover the contract, name the ids that are missing,
+    duplicated or unreadable, and repeat that ``CANNOT_DETERMINE`` is a real and
+    complete score. The session is the SAME one: the same fresh, read-only,
+    non-inheriting session that has already read the tree, so nothing about
+    independence, the tree, or the frozen criteria changes by asking again.
+
+    Exactly once. A second corrective request would be the beginning of the
+    unbounded loop this whole controller exists to end; if the second response
+    is still short of the contract, the adjudication is owed and a later
+    ``phase close`` launches a genuinely fresh session.
+    """
+    outstanding = protocol.outstanding_ids()
+    lines = [
+        "=== YOUR RESPONSE DID NOT COVER THE ADJUDICATION CONTRACT ===",
+        "",
+        "This is not a disagreement with your judgement. It is a statement about the "
+        "shape of the reply: the phase adjudication asks for exactly one score per "
+        f"frozen criterion, and {protocol.brief()}",
+        "",
+        "Nothing about the question has changed. The criteria are the same closed set "
+        f"(fingerprint {record.criteria_fingerprint}), the tree is the same one you read "
+        f"({record.fingerprint().describe()}), the bar has not moved, and you are still "
+        "read-only and still not being asked to fix anything.",
+        "",
+        "Return the SAME JSON object, with criteria_assessment covering every criterion "
+        f"exactly once — all {len(protocol.expected)} of them:",
+        *[f"  {cid}" for cid in protocol.expected],
+        "",
+    ]
+    if outstanding:
+        lines += [
+            "The entries that were missing, duplicated or unscorable as written:",
+            *[f"  {cid}" for cid in outstanding],
+            "",
+        ]
+    lines += [
+        "CANNOT_DETERMINE is a real score and a complete answer. If you did not verify a "
+        "criterion, could not reach the evidence for it, or are not sure, score it "
+        "CANNOT_DETERMINE with a basis saying what stopped you. Do NOT upgrade anything "
+        "to PASS to fill the list, do NOT downgrade anything to FAIL, and do not change a "
+        "score you already reached — keep every assessment you already made exactly as "
+        "you made it and add the ones that are absent.",
+        "",
+        "A criterion is still FAIL only if you can demonstrate it false, and your "
+        "findings and your scores must still agree with each other.",
     ]
     return "\n".join(lines)
 

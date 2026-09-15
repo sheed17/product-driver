@@ -79,6 +79,15 @@ def _safe_text(text: str | None) -> str:
     return cleaned
 
 
+#: The phase adjudication a ``phase close`` ingested, at the run root beside the
+#: closure record. Numbered copies beside it are the responses it superseded.
+PHASE_ADJUDICATION_FILE = "phase-adjudication.json"
+#: What the adjudicator was asked, and what a bounded corrective request asked
+#: for. Numbered the same way, so one attempt's question cannot replace another's.
+PHASE_ADJUDICATION_PROMPT_FILE = "phase-adjudication-prompt.md"
+PHASE_ADJUDICATION_CORRECTION_PROMPT_FILE = "phase-adjudication-correction-prompt.md"
+
+
 class EvidenceStore:
     """Filesystem-backed evidence and state store for one run."""
 
@@ -423,6 +432,61 @@ class EvidenceStore:
                 )
         rel = d.relative_to(self.run_dir)
         return self.write_json(rel / "independent-review.json", review)
+
+    def _supersede(self, relative: str) -> Path | None:
+        """Move an existing run-root artifact aside, under the next free number.
+
+        Returns where it went, or ``None`` when there was nothing there. The
+        numbering starts at 2 because the un-numbered name is the current one,
+        which is what every reader already looks for.
+        """
+        current = self.run_dir / relative
+        if not current.exists():
+            return None
+        stem, _dot, ext = relative.rpartition(".")
+        for number in range(2, _ALLOCATION_ATTEMPTS):
+            superseded = self.run_dir / f"{stem}-{number:02d}.{ext}"
+            if not superseded.exists():
+                current.rename(superseded)
+                return superseded
+        raise IterationAllocationError(  # pragma: no cover - a thousand attempts
+            f"run {self.run_id} already holds every numbered {relative}; refusing to "
+            "write over one"
+        )
+
+    def save_phase_adjudication_prompt(self, prompt: str, *, corrective: bool = False) -> Path:
+        """Persist what an adjudicator was actually asked, without losing the last one.
+
+        One prompt per attempt, kept for the same reason the responses are: the
+        only way to check afterwards whether a malformed answer was the
+        reviewer's doing or the question's is to still have the question.
+        """
+        name = (
+            PHASE_ADJUDICATION_CORRECTION_PROMPT_FILE
+            if corrective
+            else PHASE_ADJUDICATION_PROMPT_FILE
+        )
+        self._supersede(name)
+        return self.write_text(name, prompt)
+
+    def save_phase_adjudication(self, review: dict[str, Any]) -> Path:
+        """Persist one phase-adjudication response, without replacing an earlier one.
+
+        The same rule as :meth:`save_independent_review`, at the run root where
+        a phase closure keeps its artifacts, and for the same reason twice over.
+        A phase adjudication spends an independence that cannot be spent again,
+        so what the session actually returned is the only record of where it
+        went; and a response that failed the adjudication contract is the
+        evidence that the failure was the reviewer protocol's rather than the
+        product's. A second attempt — a bounded correction, or a fresh session
+        in a later ``phase close`` — must not be able to erase either.
+
+        The current response keeps the name every reader already looks for. The
+        one it supersedes is moved aside first, under the next free
+        ``phase-adjudication-NN.json``, and stays exactly as it was.
+        """
+        self._supersede(PHASE_ADJUDICATION_FILE)
+        return self.write_json(PHASE_ADJUDICATION_FILE, review)
 
     def save_prompt_manifest(
         self, iteration: int, provenance: dict[str, Any], prompt: str

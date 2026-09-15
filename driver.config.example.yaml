@@ -254,6 +254,24 @@ phase_closure:
   #   acceptance_record_globs: ["state/PHASES.json"]
   acceptance_record_globs: []
 
+  # Turns the WHOLE-PHASE adjudicator may spend before it must answer. Its own
+  # budget, not the ordinary reviewer's: a change review reads one diff, while a
+  # phase adjudication re-derives every frozen criterion of a whole phase and
+  # must return one score per criterion — PASS, FAIL or CANNOT_DETERMINE — or
+  # the response is not an answer at all and no adjudication was taken.
+  #
+  # Measured too low at the ordinary reviewer's 40: a 17-criterion phase ended
+  # `error_max_turns` with an empty criteria_assessment, spending an independent
+  # session that scored nothing. review.reviewer_max_commands alone permits 40
+  # commands and each costs at least one turn, so a reviewer that used its
+  # command budget had no turn left to read with and none to answer in.
+  #
+  # Bounded at both ends on purpose: never below the ordinary reviewer's 40,
+  # because this job is strictly larger than that one, and never above 1000,
+  # because a session needing more is describing a verification gap rather than
+  # performing a verification. There is no way to say "unlimited".
+  adjudication_max_turns: 200
+
   # ONE read-only command that reports your external verifier's result for a
   # commit. `{sha}` is substituted with the exact candidate commit. Written by
   # a human, like the scenario approved-command list — never inferred, never

@@ -665,6 +665,23 @@ class PhaseFinding(BaseModel):
     criteria_fingerprint: str = ""
     #: Who or what reported it.
     source: str = ""
+    #: Set when this finding is a STATEMENT ABOUT ONE ADJUDICATION RESPONSE —
+    #: "attempt 1 by <session>" — rather than an observation of the product.
+    #: Only the closure controller's own sentence about what an adjudication
+    #: left unsettled carries this, and it carries it so that a REPLACEMENT
+    #: adjudication can retire the sentence: "the adjudication did not settle
+    #: the phase" is a true statement about a response, and a later response
+    #: makes it a statement about nothing.
+    about_adjudication: str = ""
+    #: Why this finding is no longer one of the attempt's live findings. Set
+    #: only on a statement whose subject was superseded; never on anything
+    #: observed about the product, and never a deletion — the finding stays in
+    #: the record, with the reason it stopped applying attached to it.
+    withdrawn: str = ""
+
+    @property
+    def live(self) -> bool:
+        return not self.withdrawn
 
     @property
     def contradicts_adjudication(self) -> bool:
@@ -675,7 +692,9 @@ class PhaseFinding(BaseModel):
         return criterion_id in self.not_falsified_criterion_ids
 
     def brief(self) -> str:
-        if self.adjudication_inconsistency:
+        if self.withdrawn:
+            mark = f"WITHDRAWN ({self.withdrawn})"
+        elif self.adjudication_inconsistency:
             mark = "ADJUDICATION INCONSISTENT"
         elif self.blocks_phase_acceptance:
             mark = "BLOCKING"
@@ -1156,6 +1175,13 @@ class PhaseLedger(BaseModel):
     external_sha: str = ""
 
     independent_review_status: str = "NOT_TAKEN"
+    #: Why the response was not an answer, when it was not. Empty when the
+    #: adjudication covered the frozen criterion contract or none was taken —
+    #: the verdict above is then the whole story. Kept apart from the status
+    #: because they are different facts: a reviewer can return a perfectly
+    #: shaped INSUFFICIENT_EVIDENCE, and a reviewer can return SUPPORTED while
+    #: scoring nothing, and only one of those is an adjudication.
+    independent_review_protocol: str = ""
     reviewer_session_id: str = ""
     builder_session_ids: list[str] = Field(default_factory=list)
     inherited_builder_context: bool = False
@@ -1216,6 +1242,11 @@ class PhaseLedger(BaseModel):
             f"  sha: {self.external_sha or '(none)'}",
             "independent_review:",
             f"  status: {self.independent_review_status}",
+            *(
+                [f"  response_protocol: {self.independent_review_protocol}"]
+                if self.independent_review_protocol
+                else []
+            ),
             f"  reviewer: {self.reviewer_session_id or '(none)'}",
             f"  inherited_builder_context: {'true' if self.inherited_builder_context else 'false'}",
         ]

@@ -141,10 +141,11 @@ class TestOneRequiredCriterionFails:
         control.preflight()
         green_ci(control, repo)
         control.ingest_review(
-            FakeReview(
+            supporting_review(
+                ALL_CRITERIA,
+                failing=["AC-1"],
                 verdict="NOT_SUPPORTED",
                 reviewed_fingerprint=capture_fingerprint(repo).to_dict(),
-                criteria_assessment=[FakeAssessment("AC-1", "FAIL", "observed red")],
             )
         )
         blocking = control.record.blocking_findings
@@ -882,7 +883,8 @@ class TestTheStopRule:
             FakeReview(
                 reviewed_fingerprint=capture_fingerprint(repo).to_dict(),
                 criteria_assessment=[
-                    FakeAssessment(c, "PASS", "re-derived") for c in ALL_CRITERIA[1:]
+                    FakeAssessment("AC-1", "CANNOT_DETERMINE", "nothing here shows it"),
+                    *[FakeAssessment(c, "PASS", "re-derived") for c in ALL_CRITERIA[1:]],
                 ],
             )
         )
@@ -1030,8 +1032,12 @@ class TestAPhaseBeingClosedForTheFirstTime:
         control.preflight()
         green_ci(control, repo)
         control.ingest_review(
-            supporting_review(
-                ALL_CRITERIA, reviewed_fingerprint=capture_fingerprint(repo).to_dict()
+            FakeReview(
+                reviewed_fingerprint=capture_fingerprint(repo).to_dict(),
+                criteria_assessment=[
+                    *[FakeAssessment(c, "PASS", "re-derived") for c in ALL_CRITERIA],
+                    FakeAssessment("AC-6", "CANNOT_DETERMINE", "nothing counted them"),
+                ],
             )
         )
         assert control.decide() is ClosureState.BLOCKED

@@ -6346,7 +6346,7 @@ def _report_phase_closure(controller: Any) -> None:
 
     if record.state.value == "AUTHORITY_GAP":
         header("AUTHORITY GAP — STOPPED")
-        for finding in record.findings:
+        for finding in record.live_findings:
             if finding.classification.value == "AUTHORITY_GAP":
                 out(f"  {finding.summary}")
                 out(f"  closes when: {finding.closure_condition}")
@@ -6603,7 +6603,7 @@ async def _run_phase_adjudication(
     ``None`` means "carry on"; anything else is the exit code the command should
     return, because the adjudication could not be taken or did not count.
     """
-    from .phase_closure import phase_adjudication_prompt
+    from .phase_closure import adjudication_correction_prompt, phase_adjudication_prompt
     from .reviewer import IndependentReviewerSession
 
     if not _preflight_api_key(config):
@@ -6624,8 +6624,10 @@ async def _run_phase_adjudication(
         "not write any status file. It scores exactly the frozen criteria and may not add\n"
         "one."
     )
+    adjudication_max_turns = config.phase_closure.adjudication_max_turns
     out(f"  adjudicating: {fingerprint.describe()}")
     out(f"  criteria:     {record.criteria_fingerprint} ({len(record.criteria.required)} required)")
+    out(f"  turn budget:  {adjudication_max_turns} (phase_closure.adjudication_max_turns)")
 
     if not getattr(args, "yes", False):
         if not sys.stdin.isatty():
@@ -6652,7 +6654,12 @@ async def _run_phase_adjudication(
         policy=policy,
     )
     if store is not None:
-        store.write_text("phase-adjudication-prompt.md", prompt)
+        store.save_phase_adjudication_prompt(prompt)
+
+    def persist(review: Any) -> None:
+        """Keep the response, and never over the one before it."""
+        if store is not None:
+            store.save_phase_adjudication(review.model_dump(mode="json"))
 
     out("\n→ independent phase adjudicator working...")
     async with IndependentReviewerSession(
@@ -6663,23 +6670,72 @@ async def _run_phase_adjudication(
         fingerprint=fingerprint,
         scope_id=record.phase_id,
         builder_session_id=(record.builder_session_ids[0] if record.builder_session_ids else ""),
+        # Explicitly, and never the reviewer default. A whole-phase adjudication
+        # scores every frozen criterion; the ordinary reviewer's 40 turns ran out
+        # before the answer on a 17-criterion phase, and the session's
+        # independence was spent for nothing. See
+        # PhaseClosureConfig.adjudication_max_turns.
+        max_turns=adjudication_max_turns,
     ) as reviewer:
         review = await reviewer.review(prompt)
+        persist(review)
+        adjudication = controller.ingest_review(review, reviewed_tree=fingerprint.identity)
+        _report_adjudication(adjudication)
 
-    if store is not None:
-        store.write_json("phase-adjudication.json", review.model_dump(mode="json"))
-    adjudication = controller.ingest_review(review, reviewed_tree=fingerprint.identity)
+        # ONE bounded corrective request, while the session that answered is
+        # still open. A response that omitted frozen criteria has not refused
+        # the phase and has not passed it — it has not answered — and the
+        # cheapest honest repair is to say so to the session that already read
+        # this tree. Same session, so independence, the tree and the frozen
+        # criteria are unchanged by construction; exactly once, so this can
+        # never become a loop; and it may not ask for a different answer, only
+        # for a complete one. See adjudication_correction_prompt.
+        protocol = adjudication.protocol_for(controller.record.criteria)
+        if adjudication.independent and not protocol.complete:
+            error(f"\nThe adjudication response did not cover the contract: {protocol.problem}")
+            out("\n→ asking the SAME session once for a contract-complete answer...")
+            corrective = adjudication_correction_prompt(controller.record, protocol)
+            if store is not None:
+                store.save_phase_adjudication_prompt(corrective, corrective=True)
+            try:
+                corrected = await reviewer.review(corrective)
+            except Exception as exc:  # the session may be finished or errored
+                corrected = None
+                error(f"  the corrective request could not be made: {exc}")
+            if corrected is not None:
+                persist(corrected)
+                adjudication = controller.ingest_review(
+                    corrected, reviewed_tree=fingerprint.identity
+                )
+                _report_adjudication(adjudication)
 
+    if not adjudication.independent:
+        error(f"\nThis adjudication does not count: {adjudication.independence_problem}")
+        controller.settle()
+        return 21
+    protocol = adjudication.protocol_for(controller.record.criteria)
+    if not protocol.complete:
+        error(
+            "\nNo phase adjudication was taken. The reviewer session was independent and "
+            "read the exact candidate tree, and its response did not cover the "
+            f"adjudication contract: {protocol.problem}"
+        )
+        error(
+            "This is a Product Driver / reviewer-protocol failure, NOT a product result. "
+            "Nothing here says the phase failed: the phase still owes an adjudication, and "
+            "a later 'phase close' will launch a fresh independent session for it."
+        )
+        controller.settle()
+        return PHASE_ADJUDICATION_PROTOCOL_EXIT
+    return None
+
+
+def _report_adjudication(adjudication: Any) -> None:
     header("PHASE ADJUDICATION")
     out(f"  {adjudication.brief()}")
     for result in adjudication.criterion_results:
         mark = "  outside authority" if result.outside_authority else ""
         out(f"    {result.verdict:<18} {result.criterion_id}{mark}")
-    if not adjudication.independent:
-        error(f"\nThis adjudication does not count: {adjudication.independence_problem}")
-        controller.settle()
-        return 21
-    return None
 
 
 def _prepare_phase_acceptance_commit(
@@ -6768,6 +6824,13 @@ def _phase_exit_code(state: Any) -> int:
         "AUTHORITY_GAP": 14,
         "ADJUDICATION_INCONSISTENT": 15,
     }.get(value, 1)
+
+
+#: The adjudication was launched, was independent, and its response did not
+#: cover the frozen criterion contract. Distinct from 21 (not independent) and
+#: from every product state, because the owner is different: nothing was
+#: measured about the product, and the phase still owes an adjudication.
+PHASE_ADJUDICATION_PROTOCOL_EXIT = 22
 
 
 async def cmd_feedback(args: argparse.Namespace) -> int:

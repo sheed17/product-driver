@@ -946,6 +946,41 @@ writes `NOT_SUPPORTED` because it also wants a guard nobody asked for has said
 one thing inside the authority and one outside it; reading the adjective as the
 answer is how phase closure used to run forever.
 
+### The response contract
+
+Independence and the exact tree say the adjudication *could* count. The response
+contract says one *happened*: `criteria_assessment` must carry **exactly one
+score per frozen criterion** — `PASS`, `FAIL` or `CANNOT_DETERMINE` — with no
+omission, no duplicate and no other word. `CANNOT_DETERMINE` is a real score, so
+every frozen criterion scored `CANNOT_DETERMINE` is a *complete* adjudication:
+the phase may legitimately stop because the evidence is insufficient, and
+nothing about that buys a second reviewer.
+
+A response that omits criteria, duplicates one, or scores none of them is not an
+answer, and it is read as neither a pass nor a failure. It is recorded as a
+Product Driver / reviewer-protocol failure (`HARNESS_DEFECT`, routed to
+`PRODUCT_DRIVER`), it never falsifies a criterion, it never consumes the
+criterion that demands an independent review, and the phase stays at
+`READY_FOR_ADJUDICATION` so a later `phase close` launches a genuinely fresh
+session. The repair inside one invocation is bounded to exactly one corrective
+request to the **same** open session — same tree, same frozen criteria,
+read-only, no context inherited — which may only ask for a complete answer and
+explicitly allows `CANNOT_DETERMINE`. Never a retry loop.
+
+Every response is kept. The current one is `phase-adjudication.json`; each one it
+supersedes moves to `phase-adjudication-NN.json` with the question that produced
+it beside it, and the closure record carries the same sequence in
+`adjudication_history`.
+
+The adjudicator is given its own turn budget —
+`phase_closure.adjudication_max_turns`, default **200**, passed explicitly and
+never inherited from the ordinary reviewer's 40. A change review reads one diff;
+a phase adjudication re-derives every frozen criterion and must return a score
+for each, and `review.reviewer_max_commands` alone permits 40 commands at a turn
+apiece, so 40 turns left nothing to read or answer with. The field is bounded at
+both ends (40 ≤ *n* ≤ 1000) and there is no way to express "unlimited". Ordinary
+independent review is unaffected.
+
 ### The external gate
 
 Nothing here knows about any particular CI provider. Either you configure one
@@ -1121,7 +1156,13 @@ python -m neyma_product_driver phase ledger [--run <id>] [--json]
 
 Exit codes are one per resting place, so a script can tell them apart: `0` ready
 or already accepted, `10` ready for adjudication, `11` waiting for external
-verification, `12` preflight blocked, `13` blocked, `14` authority gap.
+verification, `12` preflight blocked, `13` blocked, `14` authority gap, `15`
+adjudication inconsistent. Two more are about the adjudication rather than the
+phase, because their owner is not the product: `21` the session that adjudicated
+was not independent evidence about this tree, and `22` it was, and its response
+did not cover the frozen criterion contract — one score per frozen criterion,
+`PASS`, `FAIL` or `CANNOT_DETERMINE`. A `22` says no adjudication was taken and
+one is still owed; it never says the phase failed.
 
 ### The phase ledger
 
@@ -2500,6 +2541,15 @@ emptied so a repository secret cannot leak into a run.
   see what the code does.
 - One automatic reviewer, sequentially. There is no panel and no second opinion
   on the reviewer itself.
+- **A reviewer that runs out of turns answers nothing.** It ends
+  `error_max_turns`, and a session that has already ended cannot answer the one
+  corrective request either. That is now detected, attributed to the reviewer
+  protocol and recoverable — the response contract above — and the whole-phase
+  adjudicator has its own budget (`phase_closure.adjudication_max_turns`,
+  default 200) rather than the ordinary reviewer's 40, which was measured
+  insufficient on a 17-criterion phase. It is still a bound: a phase large
+  enough to exhaust 200 turns needs the budget raised deliberately, and the
+  prompt tells the reviewer to score `CANNOT_DETERMINE` rather than run out.
 - Phase-closure **evidence assembly reads the repository's own recorded evidence
   as prose.** It extracts test node ids, paths, bare filenames and bare test
   names and checks each resolves in the tree; a criterion whose evidence is a
