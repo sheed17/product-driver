@@ -34,6 +34,18 @@ design:
   compared against the original: if anything changed that this module did not
   intend, nothing is written at all.
 
+The one exception to that last constraint is the repository's own, and it is an
+exception only in form: where a repository MARKS a bounded region of a status
+document and that region is a faithful projection of the machine record — see
+:func:`bounded_live_projection` — that region is REGENERATED from the post-edit
+record rather than token-substituted, and it is the ONLY part of that document
+this touches or reads. Everything around it is the repository's own orientation
+and history, kept byte for byte and never mistaken for a live claim. A
+repository that marks no such region has said nothing about where its prose
+stops being status, and gets the conservative behaviour unchanged: what a
+machine can move without composing a sentence moves, and everything else is
+reported as an ``AUTHORITY_GAP`` rather than guessed at.
+
 The next unit advances only where the repository's own authority says it
 should — the accepted unit's own "what this unlocks" field names it, the
 repository has made that same move before, the successor's declared dependencies
@@ -613,6 +625,248 @@ def _states_fact(text: str, fact: "StatusFact") -> bool:
     return False
 
 
+# --------------------------------------------------------------------------
+# A bounded region the repository declares a DETERMINISTIC PROJECTION of the
+# machine record
+# --------------------------------------------------------------------------
+
+#: A region marker as documents that carry a machine-maintained region write
+#: one: an HTML comment opening with a NAME and an edge, in either order —
+#: ``<!-- LIVE-STATUS:BEGIN ... -->`` or ``<!-- BEGIN LIVE-STATUS -->``. Only
+#: the opening of the comment is read, so the sentence a repository writes after
+#: the marker explaining what the region is stays free prose.
+_REGION_MARKER = re.compile(
+    r"<!--\s*(?:(?P<name_first>[A-Z][A-Z0-9_-]*)\s*:\s*(?P<edge_last>BEGIN|END)"
+    r"|(?P<edge_first>BEGIN|END)[\s:]+(?P<name_last>[A-Z][A-Z0-9_-]*))(?![A-Z0-9_-])"
+)
+
+#: A markdown table's separator row, and nothing else.
+_SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
+
+#: A subject cell that names one unit and says nothing else. A projection's
+#: subject is an identifier, never a sentence and never a link.
+_BARE_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+#: A column heading that names a registry field. Markup is stripped first, so a
+#: repository that writes its headings in backticks still declares a field.
+_FIELD_HEADING = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: How many rows a marked region needs before it is believable as a PROJECTION
+#: of the machine record rather than an ordinary table that happens to sit
+#: between two comments. One row is indistinguishable from a restatement, and
+#: the conservative path already handles that correctly.
+_MIN_PROJECTION_ROWS = 2
+
+
+@dataclass(frozen=True)
+class LiveProjection:
+    """A bounded region a repository declares a projection of its machine record.
+
+    Not something Product Driver looks for in a document it hopes is a status
+    table: the repository MARKED this region, the region carries nothing but a
+    table, every column names a field the registry's units actually have, every
+    row's subject is a unit the registry actually declares, and rendering the
+    region from the registry's CURRENT values reproduces it byte for byte. That
+    last property is the whole proof — a region that can be re-derived from the
+    machine record exactly as it stands is a projection of it, and regenerating
+    it from the record's NEXT values invents nothing.
+    """
+
+    name: str
+    #: 0-based line indices of the two markers. The region is strictly between.
+    begin_line: int
+    end_line: int
+    #: The registry field each column after the subject carries.
+    fields: tuple[str, ...]
+    #: ``(line index, unit id as the row writes it)``, in the region's own order.
+    rows: tuple[tuple[int, str], ...]
+
+    @property
+    def unit_ids(self) -> tuple[str, ...]:
+        return tuple(uid for _line, uid in self.rows)
+
+
+def _units_by_id(registry_text: str) -> dict[str, dict]:
+    """The registry's units, keyed by upper-case id. Empty when it will not parse."""
+    try:
+        data = yaml.safe_load(registry_text)
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    key = next((k for k in _UNITS_KEYS if k in data), "")
+    raw = data.get(key)
+    ordered = list(raw.values()) if isinstance(raw, dict) else list(raw or [])
+    out: dict[str, dict] = {}
+    for unit in ordered:
+        if not isinstance(unit, dict):
+            continue
+        uid = _unit_id(unit)
+        if uid:
+            out[uid.upper()] = unit
+    return out
+
+
+def _heading_field(cell: str) -> str:
+    """One column heading as the registry field it names, or empty if it names none."""
+    stripped = (cell or "").strip().strip("*").strip("`").strip("*").strip()
+    return stripped if _FIELD_HEADING.fullmatch(stripped) else ""
+
+
+def _substitute_row(line: str, values: "Sequence[str]") -> str:
+    """One table row with its value cells replaced, pipes and padding preserved.
+
+    Textual and cell-local for the same reason the registry edit is: everything
+    this does not set is everything it does not touch.
+    """
+    parts = line.split("|")
+    # parts[0] is what precedes the first pipe, parts[1] the subject cell,
+    # parts[2:] the value cells, parts[-1] what follows the last pipe.
+    if len(parts) < len(values) + 3:
+        return line
+    for offset, value in enumerate(values):
+        index = 2 + offset
+        cell = parts[index]
+        body = cell.strip()
+        if not body:
+            continue
+        lead = cell[: len(cell) - len(cell.lstrip())]
+        trail = cell[len(cell.rstrip()) :]
+        parts[index] = f"{lead}{value}{trail}"
+    return "|".join(parts)
+
+
+def _marker_pairs(lines: "Sequence[str]") -> list[tuple[str, int, int]]:
+    """Every ``NAME:BEGIN`` ... ``NAME:END`` pair, outermost first."""
+    opens: dict[str, int] = {}
+    pairs: list[tuple[str, int, int]] = []
+    for index, line in enumerate(lines):
+        match = _REGION_MARKER.search(line)
+        if match is None:
+            continue
+        name = match.group("name_first") or match.group("name_last") or ""
+        edge = match.group("edge_last") or match.group("edge_first") or ""
+        if not name:
+            continue
+        if edge == "BEGIN":
+            opens.setdefault(name, index)
+        elif name in opens:
+            pairs.append((name, opens.pop(name), index))
+    return sorted(pairs, key=lambda p: p[1])
+
+
+def _validate_projection(
+    lines: "Sequence[str]", name: str, begin: int, end: int, units: "Mapping[str, dict]"
+) -> tuple["LiveProjection | None", str]:
+    """Whether one marked region really is a projection of this registry."""
+    body = [(index, lines[index]) for index in range(begin + 1, end)]
+    table = [(index, text) for index, text in body if text.strip()]
+    if any(not text.strip().startswith("|") for _index, text in table):
+        return None, f"the marked {name} region carries prose as well as a table"
+    if len(table) < 2 + _MIN_PROJECTION_ROWS:
+        return None, f"the marked {name} region carries too few rows to be a projection"
+
+    header = _row_cells(table[0][1]) or []
+    separator = _row_cells(table[1][1]) or []
+    if len(header) < 2:
+        return None, f"the marked {name} region's table declares no value columns"
+    if len(separator) != len(header) or not all(
+        _SEPARATOR_CELL.fullmatch(cell) for cell in separator
+    ):
+        return None, f"the marked {name} region's table has no separator row"
+
+    fields = tuple(_heading_field(cell) for cell in header[1:])
+    if not all(fields):
+        return None, (
+            f"the marked {name} region's columns do not all name a field of the machine record"
+        )
+
+    rows: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for index, text in table[2:]:
+        cells = _row_cells(text) or []
+        if len(cells) != len(header):
+            return None, f"the marked {name} region has a row of a different width"
+        uid = cells[0]
+        if not _BARE_ID.fullmatch(uid):
+            return None, f"the marked {name} region has a row whose subject is not a unit id"
+        unit = units.get(uid.upper())
+        if unit is None:
+            return None, f"the marked {name} region names {uid}, which the registry does not declare"
+        if uid.upper() in seen:
+            return None, f"the marked {name} region names {uid} twice"
+        seen.add(uid.upper())
+        missing = [f for f in fields if f not in unit]
+        if missing:
+            return None, (
+                f"the marked {name} region projects {', '.join(missing)}, which {uid} does not record"
+            )
+        current = [str(unit[f]) for f in fields]
+        if _substitute_row(text, current) != text:
+            return None, (
+                f"the marked {name} region's row for {uid} is not what this registry renders, so "
+                "it cannot be regenerated deterministically"
+            )
+        rows.append((index, uid))
+
+    return (
+        LiveProjection(
+            name=name, begin_line=begin, end_line=end, fields=fields, rows=tuple(rows)
+        ),
+        "",
+    )
+
+
+def bounded_live_projection(
+    text: str, units: "Mapping[str, dict]"
+) -> tuple["LiveProjection | None", str]:
+    """The bounded deterministic projection this document declares, if it does.
+
+    Returns ``(projection, why_not)``. A document that marks no region at all
+    gets ``(None, "")`` and is reconciled exactly as before — a repository that
+    has not said where its machine-derived status lives has not said it, and
+    guessing is the defect this exists to avoid. A document that marks a region
+    which is NOT a faithful projection also gets no projection, and the reason
+    is returned so it is reported rather than silently swallowed.
+    """
+    if not units:
+        return None, ""
+    lines = text.split("\n")
+    reasons: list[str] = []
+    for name, begin, end in _marker_pairs(lines):
+        projection, why = _validate_projection(lines, name, begin, end, units)
+        if projection is not None:
+            return projection, ""
+        if why:
+            reasons.append(why)
+    return None, "; ".join(reasons[:3])
+
+
+def apply_live_projection(
+    text: str, projection: "LiveProjection", units: "Mapping[str, dict]"
+) -> tuple[str, list[tuple[int, str, str, str]]]:
+    """Regenerate the bounded region from the machine record it projects.
+
+    Every value written comes out of ``units`` and nothing else, every line
+    outside the region is returned unchanged byte for byte, and inside the
+    region only the value cells of the projected rows move — the markers, the
+    heading, the separator, the blank lines and each row's own spacing are the
+    document's and stay the document's.
+    """
+    lines = text.split("\n")
+    moved: list[tuple[int, str, str, str]] = []
+    for index, uid in projection.rows:
+        unit = units.get(uid.upper())
+        if not isinstance(unit, dict) or any(f not in unit for f in projection.fields):
+            continue
+        values = [str(unit[f]) for f in projection.fields]
+        rendered = _substitute_row(lines[index], values)
+        if rendered != lines[index]:
+            moved.append((index + 1, lines[index], rendered, uid))
+            lines[index] = rendered
+    return "\n".join(lines), moved
+
+
 def reconcile_restatement(
     text: str, facts: "Sequence[StatusFact]"
 ) -> tuple[str, list[tuple[int, str, str]], list["StaleRestatement"]]:
@@ -824,6 +1078,8 @@ def restatement_surfaces(
     exclude: "Sequence[str]" = (),
     acceptance_globs: "Sequence[str]" = (),
     declared_globs: "Sequence[str]" = (),
+    units_before: "Mapping[str, dict] | None" = None,
+    units_after: "Mapping[str, dict] | None" = None,
 ) -> tuple[list[str], list[str], list[str]]:
     """This repository's live status documents that have gone stale.
 
@@ -841,6 +1097,16 @@ def restatement_surfaces(
     surface the classifier does not call ``ACCEPTANCE_RECORD`` is not writable
     here whatever it is classified as upstream, and a surface that states none
     of the moving facts is already consistent and is left alone.
+
+    ``units_before`` and ``units_after`` are the registry's units as this
+    acceptance found them and as it will leave them. Given both, a surface that
+    declares a BOUNDED DETERMINISTIC PROJECTION of the machine record — see
+    :func:`bounded_live_projection` — is judged on that region alone: it is
+    stale exactly when regenerating the region from ``units_after`` would change
+    it, and the document around it is the repository's own orientation and
+    history rather than a live restatement this may read. Without them, or on a
+    document that declares no such region, the conservative whole-document scan
+    is what runs, unchanged.
     """
     repo = Path(repo)
     notes: list[str] = []
@@ -879,12 +1145,40 @@ def restatement_surfaces(
             continue
         writable.append(rel)
 
-    stale = [
-        rel
-        for rel in writable
-        if any(_states_fact(_read_text(repo / rel), fact) for fact in facts)
-    ]
+    stale: list[str] = []
+    for rel in writable:
+        text = _read_text(repo / rel)
+        projection, why = _declared_projection(text, units_before)
+        if why:
+            notes.append(f"{rel} marks a region this cannot regenerate: {why}")
+        if projection is not None:
+            notes.append(_projection_note(rel, projection))
+            _updated, moved = apply_live_projection(text, projection, units_after or {})
+            if moved:
+                stale.append(rel)
+            continue
+        if any(_states_fact(text, fact) for fact in facts):
+            stale.append(rel)
     return stale, declared, notes
+
+
+def _declared_projection(
+    text: str, units_before: "Mapping[str, dict] | None"
+) -> tuple["LiveProjection | None", str]:
+    """The bounded projection a surface declares, when the registry is in hand."""
+    if not units_before:
+        return None, ""
+    return bounded_live_projection(text, units_before)
+
+
+def _projection_note(rel: str, projection: "LiveProjection") -> str:
+    return (
+        f"{rel} declares a bounded {projection.name} region at lines "
+        f"{projection.begin_line + 1}-{projection.end_line + 1}, a deterministic projection of "
+        f"{len(projection.rows)} unit(s) over {', '.join(projection.fields)}; that region is "
+        "regenerated from the machine record and the rest of the document is the repository's "
+        "own orientation and history, which is not read as a live restatement"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1604,18 +1898,55 @@ def _plan_restatements(
     be brought into line is an AUTHORITY_GAP, because the alternative is an
     acceptance commit that contradicts itself — the registry saying the phase is
     accepted and the document beside it saying the phase has not started.
+
+    Where the repository has DECLARED which region of a document is machine
+    status, that declaration is what runs, and it outranks token scanning. The
+    registry is edited first — ``plan.rendered[source]`` is the post-edit
+    record by the time this is called — the bounded region is regenerated from
+    those post-edit values, and everything outside it is left byte for byte as
+    the repository wrote it and is not read as a live claim at all. A repository
+    that declares no such boundary has said nothing about where its prose stops
+    being status, and gets the conservative behaviour: what a machine can move
+    without composing a sentence is moved, and everything else is reported.
     """
+    units_before = _units_by_id(plan.original.get(source, ""))
+    units_after = _units_by_id(plan.rendered.get(source, ""))
     stale, declared, notes = restatement_surfaces(
         repo,
         facts,
         exclude=[source],
         acceptance_globs=acceptance_globs,
         declared_globs=declared_globs,
+        units_before=units_before,
+        units_after=units_after,
     )
     plan.declared_surfaces = list(declared)
     plan.notes.extend(notes)
     for rel in stale:
         text = _read_text(repo / rel)
+        projection, _why = _declared_projection(text, units_before)
+        if projection is not None:
+            updated, projected = apply_live_projection(text, projection, units_after)
+            if not projected:
+                continue
+            plan.rendered[rel] = updated
+            plan.original[rel] = text
+            for _line_no, before, after, uid in projected:
+                plan.edits.append(
+                    RecordEdit(
+                        path=rel,
+                        unit_id=uid,
+                        field_path=f"{projection.name} projection",
+                        before=before.strip()[:80],
+                        after=after.strip()[:80],
+                        why=(
+                            "the repository declares this bounded region a deterministic "
+                            "projection of the machine record, regenerated from it and never "
+                            "narrated"
+                        ),
+                    )
+                )
+            continue
         updated, moved, stuck = reconcile_restatement(text, facts)
         for entry in stuck:
             entry.path = rel
