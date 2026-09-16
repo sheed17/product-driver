@@ -124,6 +124,13 @@ REJECTED_CONTRACT = "generation_contract"
 #: register as an obligation the acceptance gate still enforces.
 REJECTED_INVOCATION = "invalid_invocation"
 
+#: ``REJECTED_HELD`` — a restored or executed scenario whose recorded result
+#: cannot be judged under the outcome contract it never declared. Not lost
+#: coverage and not a generation failure: it blocks through the plan's
+#: unbuildable channel until a re-derived replacement is admitted, which is
+#: what makes it dischargeable rather than permanent.
+REJECTED_HELD = "held_for_rederivation"
+
 
 #: Categories whose whole claim is about an effect having (or not having)
 #: durably happened. For these, an HTTP status is not evidence — the scenario
@@ -321,6 +328,16 @@ class GeneratedAction(BaseModel):
     command: str = Field(default="", json_schema_extra=EXECUTION_SEMANTICS)
     expect_exit_code: int | None = 0
     expect_contains: list[str] = Field(
+        default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
+    )
+    #: For ``command``: the OUTCOME CONTRACT. ``permitted`` — the operation
+    #: must succeed; ``refused`` — the product must refuse it, and that refusal
+    #: is the pass condition. ``None`` only on a scenario written before the
+    #: contract existed. See :mod:`~neyma_product_driver.outcome_contract`.
+    expect_outcome: Literal["permitted", "refused"] | None = None
+    #: For ``refused``: literal text the product's refusal path prints. Required
+    #: there, because a non-zero exit alone is not a refusal.
+    refusal_evidence: list[str] = Field(
         default_factory=list, json_schema_extra=EXECUTION_SEMANTICS
     )
     #: Seconds, fractional allowed. See GeneratedRequest.timeout_s.
@@ -574,6 +591,22 @@ class ObservationBinding(BaseModel):
     )
 
 
+class AuthorityCitation(BaseModel):
+    """Repository text a scenario's expected outcome rests on, quoted verbatim.
+
+    Read by Product Driver, never executed. The quote is checked against the
+    cited repository document before anything runs; ``requires`` is the
+    generator's declaration of which way the text cuts, and is checked only
+    against the scenario's own expectations — never inferred from the prose.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    quote: str
+    requires: Literal["refusal", "permission"]
+
+
 class GeneratedScenario(BaseModel):
     """One situation the driver decided is worth exercising."""
 
@@ -649,6 +682,21 @@ class GeneratedScenario(BaseModel):
     #: again, and never counted as coverage. The risk it was meant to verify is
     #: carried in the risk register instead, where the gate still enforces it.
     retired_reason: str = ""
+    #: The repository authority this scenario's expected outcomes rest on.
+    #: Required for any command that expects a refusal.
+    authority: list[AuthorityCitation] = Field(default_factory=list)
+    #: Held scenarios this one re-derives under the outcome contract. Checked
+    #: against the plan; admitting the replacement retires what it replaces.
+    replaces: list[str] = Field(default_factory=list)
+    #: Set when this scenario's recorded result cannot be judged under the
+    #: outcome contract it never declared (see
+    #: :func:`~neyma_product_driver.outcome_contract.undeclared_refusal`). A
+    #: HELD scenario is never executed again and is not coverage, but unlike a
+    #: retired one it keeps BLOCKING the gate until a replacement is admitted.
+    contract_hold: str = ""
+    #: How many re-derivation waves have been spent on this hold. Persisted so
+    #: that repeated resumes cannot buy unbounded generation.
+    rederive_attempts: int = 0
 
     @field_validator("confidence")
     @classmethod
@@ -719,7 +767,11 @@ class GeneratedScenario(BaseModel):
         if self.persisted_state_checks:
             return True
         for action in self.actions:
-            if action.expect_contains or action.expect_exit_code is not None and action.kind == "command":
+            if action.kind == "command" and (
+                action.expect_contains
+                or action.expect_exit_code is not None
+                or action.expect_outcome is not None
+            ):
                 return True
             if action.kind == "request" and action.request is not None:
                 if action.request.expect_status is not None or action.request.expect_contains:
@@ -1014,6 +1066,10 @@ class CoverageSummary(BaseModel):
     #: in ``total_scenarios``: they are not coverage, and their risks are carried
     #: in the register instead.
     retired: int = 0
+    #: Generated scenarios HELD for re-derivation under the outcome contract.
+    #: Not coverage and not executed, but still blocking — see
+    #: :attr:`GeneratedScenario.contract_hold`.
+    held: int = 0
 
     def render(self) -> str:
         cats = ", ".join(sorted(self.by_risk_category)) or "none"
@@ -1023,6 +1079,12 @@ class CoverageSummary(BaseModel):
                 f" ({self.retired} more retired as harness-generation defects and not "
                 "counted: their risks are carried as uncovered obligations)"
                 if self.retired
+                else ""
+            )
+            + (
+                f" ({self.held} more HELD for re-derivation under the outcome contract: "
+                "not executed, not counted, and blocking until replaced)"
+                if self.held
                 else ""
             ),
             f"generation: {self.proposed} proposed, {self.accepted} accepted for "
@@ -1065,6 +1127,10 @@ class RejectedScenario(BaseModel):
     @property
     def is_invocation_defect(self) -> bool:
         return self.kind == REJECTED_INVOCATION
+
+    @property
+    def is_held(self) -> bool:
+        return self.kind == REJECTED_HELD
 
 
 class WaveRecord(BaseModel):
@@ -1109,7 +1175,7 @@ class WaveRecord(BaseModel):
     @property
     def filtered_rejections(self) -> list[RejectedScenario]:
         """Candidates Product Driver understood and decided against. Intended."""
-        return [r for r in self.rejected if not r.is_contract_failure]
+        return [r for r in self.rejected if not r.is_contract_failure and not r.is_held]
 
     @property
     def invocation_rejections(self) -> list[RejectedScenario]:
@@ -1181,7 +1247,11 @@ class GeneratedScenarioPlan(BaseModel):
         the record of what was generated and what ran — but it is not coverage,
         planned or otherwise, and nothing that counts coverage may count it.
         """
-        return [s for s in self.scenarios if not s.retired_reason]
+        return [s for s in self.scenarios if not s.retired_reason and not s.contract_hold]
+
+    def held_scenarios(self) -> list[GeneratedScenario]:
+        """Scenarios held for re-derivation: blocking, not executable, not coverage."""
+        return [s for s in self.scenarios if s.contract_hold and not s.retired_reason]
 
     def signatures(self) -> set[str]:
         return {s.signature() for s in self.active_scenarios()}
@@ -1201,7 +1271,8 @@ class GeneratedScenarioPlan(BaseModel):
         )
         self.coverage_summary = CoverageSummary(
             total_scenarios=len(active),
-            retired=len(self.scenarios) - len(active),
+            retired=sum(1 for s in self.scenarios if s.retired_reason),
+            held=len(self.held_scenarios()),
             by_risk_category=by_cat,
             by_priority=by_pri,
             uncovered_risks=[
@@ -1256,6 +1327,11 @@ class GeneratedScenarioPlan(BaseModel):
                         "      RETIRED — harness-generation defect, never executed again and "
                         f"not coverage: {s.retired_reason}"
                     )
+                elif s.contract_hold:
+                    lines.append(
+                        "      HELD — blocking until re-derived under the outcome contract, "
+                        f"never executed again: {s.contract_hold}"
+                    )
                 if s.purpose:
                     lines.append(f"      purpose: {s.purpose}")
                 lines.append(f"      grounded in: {s.requirement_reference or '(none)'}")
@@ -1288,6 +1364,8 @@ def _rejection_label(rejected: RejectedScenario) -> str:
         return "INVALID — harness could not read it"
     if rejected.is_invocation_defect:
         return "INVALID INVOCATION — harness-generation defect, not a product failure"
+    if rejected.is_held:
+        return "HELD — outcome contract undeclared; blocking until re-derived"
     return "filtered"
 
 
@@ -1571,6 +1649,8 @@ def _compile_action(
                 run=check(action.command, "action"),
                 expect_exit_code=action.expect_exit_code,
                 expect_contains=list(action.expect_contains),
+                expect_outcome=action.expect_outcome,
+                expect_refusal=list(action.refusal_evidence),
                 timeout_s=action.timeout_s,
             ),
         )

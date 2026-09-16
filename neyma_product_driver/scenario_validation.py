@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from .command_guard import classify_command, classify_worktree_ownership, is_secret_path
+from .outcome_contract import RepositoryText, contract_problems
 from .runner import child_env
 from .scenario_plan import (
     EFFECT_FAMILY,
@@ -624,6 +625,14 @@ class ValidationContext:
     #: and a repository that declares none has made nothing mechanical. See
     #: :mod:`~neyma_product_driver.invocation_grammar`.
     invocation_grammar: "InvocationGrammar | None" = None
+    #: Read-only access to the repository's tracked text, for the outcome
+    #: contract: verifying authority citations and refusal evidence. ``None``
+    #: in a context that cannot read the repository, where any scenario that
+    #: RELIES on those checks — one expecting a refusal — is refused, because
+    #: its authority cannot be verified.
+    repository_text: "RepositoryText | None" = None
+    #: Held scenarios a proposal may re-derive: id -> (risk category, priority).
+    held_scenarios: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def grounds_requirement(self, reference: str) -> bool:
         text = (reference or "").strip().lower()
@@ -1746,6 +1755,7 @@ def validate_scenario(
     reasons += _check_safety(generated, context)
     invalid = invocation_reasons(generated, context)
     reasons += invalid
+    reasons += outcome_reasons(generated, context)
     # An invocation the program refuses is never run to find out what it
     # prints: asking it would execute the very thing this refusal exists to
     # keep from executing. Without the probe an attribution it would have
@@ -1778,10 +1788,63 @@ def invocation_reasons(
     return _dedupe(problem.reason() for problem in grammar.problems(generated))
 
 
+def outcome_reasons(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """Why this scenario's OUTCOME expectations are unlawful. Empty is lawful.
+
+    A scenario whose expectation contradicts the repository authority it cites,
+    or that would read an unevidenced failure as a refusal, is refused before
+    anything runs — it could only pass against a product that regressed, or
+    pass on any crash. Like an invalid invocation, this is a harness-generation
+    defect, never a statement about the product. See
+    :mod:`~neyma_product_driver.outcome_contract`.
+    """
+    repository = context.repository_text or RepositoryText(None)
+    reasons = [
+        f"outcome contract: {problem}. This is a harness-generation defect in Product "
+        "Driver, not a product failure."
+        for problem in contract_problems(generated, repository)
+    ]
+    reasons += _replacement_problems(generated, context)
+    return _dedupe(reasons)
+
+
+def _replacement_problems(
+    generated: GeneratedScenario, context: ValidationContext
+) -> list[str]:
+    """A re-derivation may only replace a held scenario, and may not weaken it."""
+    reasons: list[str] = []
+    for held_id in generated.replaces:
+        held = context.held_scenarios.get(held_id)
+        if held is None:
+            reasons.append(
+                f"replaces {held_id!r}, which is not a scenario this run holds for "
+                "re-derivation; only a held scenario may be replaced"
+            )
+            continue
+        category, priority = held
+        if generated.risk_category.value != category:
+            reasons.append(
+                f"replaces {held_id!r} ({category}) with a {generated.risk_category.value} "
+                "scenario; a re-derivation must verify the same risk"
+            )
+        if generated.priority.rank > Priority(priority).rank:
+            reasons.append(
+                f"replaces {held_id!r} ({priority}) at the lower priority "
+                f"{generated.priority.value}; a re-derivation may not weaken the obligation"
+            )
+    if generated.provenance.stage == "rederivation" and not generated.replaces:
+        reasons.append(
+            "a re-derivation scenario must name the held scenario it replaces in `replaces`"
+        )
+    return reasons
+
+
 #: The stages that may produce a scenario. Anything else is not a stage the
 #: planner runs, so a scenario claiming one did not come from this system.
 _KNOWN_STAGES = frozenset(
-    {"initial", "diff_refinement", "adaptive", "coverage_gap"}
+    {"initial", "diff_refinement", "adaptive", "coverage_gap", "rederivation"}
 )
 
 
@@ -1894,7 +1957,11 @@ def safety_reasons(generated: GeneratedScenario, context: ValidationContext) -> 
     they are NOW — a plan persisted before this rule existed is exactly where an
     impossible invocation would otherwise be replayed.
     """
-    return _check_safety(generated, context) + invocation_reasons(generated, context)
+    return (
+        _check_safety(generated, context)
+        + invocation_reasons(generated, context)
+        + outcome_reasons(generated, context)
+    )
 
 
 def _check_safety(generated: GeneratedScenario, context: ValidationContext) -> list[str]:

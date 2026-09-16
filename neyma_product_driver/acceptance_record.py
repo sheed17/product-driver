@@ -84,6 +84,15 @@ from .phase_authority import (
     _UNITS_KEYS,
     _first,
 )
+from .status_authority import (  # the shared reading of a declared status region
+    _HISTORICAL,
+    _marker_pairs,
+    _row_cells,
+    _substitute_row,
+    mask_history as _mask_history,
+    parse_status_region,
+    units_by_id as _units_by_id,
+)
 
 #: The unit fields that carry a phase's acceptance state, as a repository might
 #: name them. Each group is one fact; the first name present on the unit wins.
@@ -496,19 +505,6 @@ class StaleRestatement:
         )
 
 
-#: A line that marks itself as a record of what WAS true is not a live claim,
-#: and rewriting it would destroy the history it exists to keep. Deliberately
-#: generous: a false positive here leaves a line alone, and a line left alone
-#: that IS live is then reported as an unreconciled restatement rather than
-#: silently rewritten. There is no path on which this marker edits something it
-#: should not have — it only ever withholds an edit.
-_HISTORICAL = re.compile(
-    r"(?i)\b(?:until this|until the|previously|formerly|historical|superseded|retired|"
-    r"replaced rather than|kept verbatim|no longer|used to|was true|were true|"
-    r"true when written|is false now|stale now|earlier read|as of the|"
-    r"this (?:cell|row|line|paragraph|document|record) read)\b|\bREPLACED\b"
-)
-
 #: A unit identifier as repositories write them. Used to count how many units a
 #: table row is ABOUT: a row whose subject is a RANGE (``P8-P14``) states one
 #: fact about several units, and moving it would move units this acceptance
@@ -538,13 +534,6 @@ def _unit_token(unit_id: str) -> "re.Pattern[str]":
     return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(unit_id) + r"(?![A-Za-z0-9_])")
 
 
-def _row_cells(line: str) -> list[str] | None:
-    stripped = line.strip()
-    if not stripped.startswith("|"):
-        return None
-    return [c.strip() for c in stripped.strip("|").split("|")]
-
-
 def _tracked_files(repo: Path) -> list[str]:
     try:
         proc = subprocess.run(
@@ -565,40 +554,6 @@ def _read_text(path: Path, limit: int = 4_000_000) -> str:
         return path.read_text(encoding="utf-8", errors="replace")[:limit]
     except OSError:
         return ""
-
-
-#: Spans in which a document keeps the wording it replaced. Repositories that
-#: preserve superseded claims IN PLACE — rather than deleting them — mark them,
-#: and these are the two marks in general use: an italic parenthetical aside,
-#: and a blockquote. Text inside one is a record of what WAS said. It is never
-#: read as a live claim and never edited.
-_ASIDE = re.compile(r"\*\([^)]*\)\*", re.S)
-_QUOTED = re.compile(r"\"[^\"\n]{0,400}\"")
-
-
-def _mask_history(text: str) -> str:
-    """The document with its preserved-history spans blanked, positions intact.
-
-    Length-preserving, so an offset in the masked text is the same offset in the
-    original. What remains is what the document says in its own voice, now.
-    """
-    masked = list(text)
-
-    def blank(match: "re.Match[str]") -> None:
-        for position in range(match.start(), match.end()):
-            if masked[position] != "\n":
-                masked[position] = " "
-
-    for pattern in (_ASIDE, _QUOTED):
-        for match in pattern.finditer(text):
-            blank(match)
-    offset = 0
-    for line in text.split("\n"):
-        if line.lstrip().startswith(">"):
-            for position in range(offset, offset + len(line)):
-                masked[position] = " "
-        offset += len(line) + 1
-    return "".join(masked)
 
 
 #: A cell that carries a STATUS VALUE rather than a sentence about one. Status
@@ -630,34 +585,6 @@ def _states_fact(text: str, fact: "StatusFact") -> bool:
 # machine record
 # --------------------------------------------------------------------------
 
-#: A region marker as documents that carry a machine-maintained region write
-#: one: an HTML comment opening with a NAME and an edge, in either order —
-#: ``<!-- LIVE-STATUS:BEGIN ... -->`` or ``<!-- BEGIN LIVE-STATUS -->``. Only
-#: the opening of the comment is read, so the sentence a repository writes after
-#: the marker explaining what the region is stays free prose.
-_REGION_MARKER = re.compile(
-    r"<!--\s*(?:(?P<name_first>[A-Z][A-Z0-9_-]*)\s*:\s*(?P<edge_last>BEGIN|END)"
-    r"|(?P<edge_first>BEGIN|END)[\s:]+(?P<name_last>[A-Z][A-Z0-9_-]*))(?![A-Z0-9_-])"
-)
-
-#: A markdown table's separator row, and nothing else.
-_SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
-
-#: A subject cell that names one unit and says nothing else. A projection's
-#: subject is an identifier, never a sentence and never a link.
-_BARE_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
-
-#: A column heading that names a registry field. Markup is stripped first, so a
-#: repository that writes its headings in backticks still declares a field.
-_FIELD_HEADING = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-#: How many rows a marked region needs before it is believable as a PROJECTION
-#: of the machine record rather than an ordinary table that happens to sit
-#: between two comments. One row is indistinguishable from a restatement, and
-#: the conservative path already handles that correctly.
-_MIN_PROJECTION_ROWS = 2
-
-
 @dataclass(frozen=True)
 class LiveProjection:
     """A bounded region a repository declares a projection of its machine record.
@@ -686,132 +613,34 @@ class LiveProjection:
         return tuple(uid for _line, uid in self.rows)
 
 
-def _units_by_id(registry_text: str) -> dict[str, dict]:
-    """The registry's units, keyed by upper-case id. Empty when it will not parse."""
-    try:
-        data = yaml.safe_load(registry_text)
-    except yaml.YAMLError:
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    key = next((k for k in _UNITS_KEYS if k in data), "")
-    raw = data.get(key)
-    ordered = list(raw.values()) if isinstance(raw, dict) else list(raw or [])
-    out: dict[str, dict] = {}
-    for unit in ordered:
-        if not isinstance(unit, dict):
-            continue
-        uid = _unit_id(unit)
-        if uid:
-            out[uid.upper()] = unit
-    return out
-
-
-def _heading_field(cell: str) -> str:
-    """One column heading as the registry field it names, or empty if it names none."""
-    stripped = (cell or "").strip().strip("*").strip("`").strip("*").strip()
-    return stripped if _FIELD_HEADING.fullmatch(stripped) else ""
-
-
-def _substitute_row(line: str, values: "Sequence[str]") -> str:
-    """One table row with its value cells replaced, pipes and padding preserved.
-
-    Textual and cell-local for the same reason the registry edit is: everything
-    this does not set is everything it does not touch.
-    """
-    parts = line.split("|")
-    # parts[0] is what precedes the first pipe, parts[1] the subject cell,
-    # parts[2:] the value cells, parts[-1] what follows the last pipe.
-    if len(parts) < len(values) + 3:
-        return line
-    for offset, value in enumerate(values):
-        index = 2 + offset
-        cell = parts[index]
-        body = cell.strip()
-        if not body:
-            continue
-        lead = cell[: len(cell) - len(cell.lstrip())]
-        trail = cell[len(cell.rstrip()) :]
-        parts[index] = f"{lead}{value}{trail}"
-    return "|".join(parts)
-
-
-def _marker_pairs(lines: "Sequence[str]") -> list[tuple[str, int, int]]:
-    """Every ``NAME:BEGIN`` ... ``NAME:END`` pair, outermost first."""
-    opens: dict[str, int] = {}
-    pairs: list[tuple[str, int, int]] = []
-    for index, line in enumerate(lines):
-        match = _REGION_MARKER.search(line)
-        if match is None:
-            continue
-        name = match.group("name_first") or match.group("name_last") or ""
-        edge = match.group("edge_last") or match.group("edge_first") or ""
-        if not name:
-            continue
-        if edge == "BEGIN":
-            opens.setdefault(name, index)
-        elif name in opens:
-            pairs.append((name, opens.pop(name), index))
-    return sorted(pairs, key=lambda p: p[1])
-
-
 def _validate_projection(
     lines: "Sequence[str]", name: str, begin: int, end: int, units: "Mapping[str, dict]"
 ) -> tuple["LiveProjection | None", str]:
-    """Whether one marked region really is a projection of this registry."""
-    body = [(index, lines[index]) for index in range(begin + 1, end)]
-    table = [(index, text) for index, text in body if text.strip()]
-    if any(not text.strip().startswith("|") for _index, text in table):
-        return None, f"the marked {name} region carries prose as well as a table"
-    if len(table) < 2 + _MIN_PROJECTION_ROWS:
-        return None, f"the marked {name} region carries too few rows to be a projection"
+    """Whether one marked region really is a projection of this registry.
 
-    header = _row_cells(table[0][1]) or []
-    separator = _row_cells(table[1][1]) or []
-    if len(header) < 2:
-        return None, f"the marked {name} region's table declares no value columns"
-    if len(separator) != len(header) or not all(
-        _SEPARATOR_CELL.fullmatch(cell) for cell in separator
-    ):
-        return None, f"the marked {name} region's table has no separator row"
-
-    fields = tuple(_heading_field(cell) for cell in header[1:])
-    if not all(fields):
+    The structure — a table and nothing else, columns naming registry fields,
+    subjects naming registry units — is what makes a region a DECLARATION of
+    machine status, and :mod:`~neyma_product_driver.status_authority` owns that
+    reading because the completion auditor needs the same one. What this adds is
+    the proof of FAITHFULNESS: a region whose rows do not re-render from the
+    registry exactly as they stand is a region that cannot be regenerated
+    deterministically, so it is not a projection and is not rewritten.
+    """
+    region, why = parse_status_region(lines, name, begin, end, units)
+    if region is None:
+        return None, why
+    for row in region.divergent_rows:
         return None, (
-            f"the marked {name} region's columns do not all name a field of the machine record"
+            f"the marked {name} region's row for {row.unit_id} is not what this registry "
+            "renders, so it cannot be regenerated deterministically"
         )
-
-    rows: list[tuple[int, str]] = []
-    seen: set[str] = set()
-    for index, text in table[2:]:
-        cells = _row_cells(text) or []
-        if len(cells) != len(header):
-            return None, f"the marked {name} region has a row of a different width"
-        uid = cells[0]
-        if not _BARE_ID.fullmatch(uid):
-            return None, f"the marked {name} region has a row whose subject is not a unit id"
-        unit = units.get(uid.upper())
-        if unit is None:
-            return None, f"the marked {name} region names {uid}, which the registry does not declare"
-        if uid.upper() in seen:
-            return None, f"the marked {name} region names {uid} twice"
-        seen.add(uid.upper())
-        missing = [f for f in fields if f not in unit]
-        if missing:
-            return None, (
-                f"the marked {name} region projects {', '.join(missing)}, which {uid} does not record"
-            )
-        current = [str(unit[f]) for f in fields]
-        if _substitute_row(text, current) != text:
-            return None, (
-                f"the marked {name} region's row for {uid} is not what this registry renders, so "
-                "it cannot be regenerated deterministically"
-            )
-        rows.append((index, uid))
-
     return (
         LiveProjection(
-            name=name, begin_line=begin, end_line=end, fields=fields, rows=tuple(rows)
+            name=region.name,
+            begin_line=region.begin_line,
+            end_line=region.end_line,
+            fields=region.fields,
+            rows=tuple((row.line, row.unit_id) for row in region.rows),
         ),
         "",
     )

@@ -105,6 +105,7 @@ class GenerationBrief:
         prior_rejections: list[str] | None = None,
         command_notes: list[str] | None = None,
         vocabulary_notes: list[str] | None = None,
+        held_scenarios: list[str] | None = None,
     ) -> None:
         self.stage = stage
         self.wave = wave
@@ -147,6 +148,10 @@ class GenerationBrief:
         )
         #: Options whose values the repository proves are a closed vocabulary.
         self.vocabulary_notes = vocabulary_notes or []
+        #: Scenarios held because their oracle predates the outcome contract,
+        #: rendered with what they ran and what was observed. A re-derivation
+        #: wave exists to replace exactly these.
+        self.held_scenarios = held_scenarios or []
 
     def render(self) -> str:
         parts: list[str] = [
@@ -214,6 +219,27 @@ class GenerationBrief:
                 "that only looks like coverage. Say so in `unresolved_questions` instead: "
                 "an honestly unclosable gap blocks acceptance, which is the correct "
                 "outcome, and a scenario that pretends to close it is worse than the gap.",
+            ]
+        if self.held_scenarios:
+            parts += [
+                "",
+                "SCENARIOS HELD FOR RE-DERIVATION. Each was generated before the outcome "
+                "contract existed, expected its command to succeed, and the product ended "
+                "in a typed refusal. Product Driver cannot tell whether that refusal is "
+                "the repository's mandated fail-closed behaviour or a regression, so the "
+                "scenario blocks acceptance until you re-derive it:",
+                *(f"  - {h}" for h in self.held_scenarios[:20]),
+                "",
+                "For each, propose ONE replacement: set `replaces` to the held id, keep its "
+                "risk_category and at least its priority, set `source_risks` to the risk "
+                "key it verifies, and declare the outcome from the REPOSITORY'S AUTHORITY, "
+                "not from the observed output. If the repository requires refusal, expect "
+                "`refused`, name the refusal text in `refusal_evidence`, and cite the "
+                "requiring text in `authority`. If the repository requires the operation "
+                "to succeed, expect `permitted` — the product will then fail, correctly. "
+                "Only assert output the command prints BEFORE any refusal ends it. If the "
+                "repository does not say which, propose nothing and say so in "
+                "`unresolved_questions`.",
             ]
         if self.prior_rejections:
             parts += [
@@ -670,6 +696,29 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "description": "Alternative to source_failures: the failure cluster "
                         "id(s) (C01, C02 …) this scenario answers.",
                     },
+                    "authority": {
+                        "type": "array",
+                        "description": "The repository text your expected outcomes rest "
+                        "on. REQUIRED when any command expects `refused`. Each entry "
+                        "quotes a repository DOCUMENT (not source code, not tests) "
+                        "verbatim; the harness checks the quote is really there and "
+                        "refuses the scenario if it is not.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "quote": {"type": "string"},
+                                "requires": {"type": "string", "enum": ["refusal", "permission"]},
+                            },
+                            "required": ["path", "quote", "requires"],
+                        },
+                    },
+                    "replaces": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Only in a re-derivation: the held scenario id(s) "
+                        "this scenario replaces.",
+                    },
                     "source_risks": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -755,7 +804,13 @@ Categories available: {CATEGORIES}
 WHAT AN ACTION MAY BE. `actions` is an ordered list; each entry has a `kind`:
 
   command           {"kind":"command","name":...,"command":"<an approved command>",
-                     "expect_exit_code":0,"expect_contains":[...]}
+                     "expect_outcome":"permitted","expect_exit_code":0,
+                     "expect_contains":[...]}
+                    or, where the repository requires the product to REFUSE:
+                    {"kind":"command","name":...,"command":"<an approved command>",
+                     "expect_outcome":"refused","expect_exit_code":null,
+                     "refusal_evidence":["<text the refusal path prints>"],
+                     "expect_contains":[...]}
   request           {"kind":"request","request":{"method":"POST","path":"/api/x",
                      "json_body":{...},"expect_status":200,"expect_contains":[...],
                      "timeout_s":5}}
@@ -779,6 +834,23 @@ WHAT AN ACTION MAY BE. `actions` is an ordered list; each entry has a `kind`:
   wait              {"kind":"wait","wait_ms":500}
   restart_service / stop_service / start_service  {"kind":"restart_service",
                      "service":"<a service you listed in service_refs>"}
+
+EVERY COMMAND DECLARES ITS OUTCOME. Exit 0 is not the same thing as correct
+behaviour. For risks about missing, unregistered, unreadable or unauthorised
+input, the correct behaviour is usually a REFUSAL, and a scenario that expects
+success there can only pass if the product regresses. So each `command` action
+sets `expect_outcome`:
+  - "permitted": the operation must succeed (exit 0).
+  - "refused": the product must refuse; that refusal is the PASS condition. You
+    must list `refusal_evidence` — literal text the product's refusal path prints
+    (an exception class name or refusal message that exists in the repository) —
+    because a non-zero exit alone is also what a crash looks like. And you must
+    cite, in the scenario's `authority`, repository documentation that requires
+    the refusal, quoted verbatim, with "requires":"refusal".
+Choose the outcome from what the REPOSITORY requires, never from what you expect
+the code to do. A scenario that cites authority requiring refusal while expecting
+success is refused before it runs. When the refusal ends the program, only text
+printed before it can be asserted.
 
 HARD CONSTRAINTS — a scenario violating any of these is discarded by the harness:
 
@@ -921,6 +993,8 @@ def parse_scenarios(
             "isolation_key": str(raw.get("isolation_key") or "default").strip() or "default",
             "generated_from": _strings(raw.get("generated_from")),
             "confidence": _float(raw.get("confidence"), 0.5),
+            "authority": _dicts(raw.get("authority")),
+            "replaces": _strings(raw.get("replaces")),
             "provenance": provenance.model_copy(
                 update={
                     "generating_risk": str(raw.get("generating_risk") or ""),

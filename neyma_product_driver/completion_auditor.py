@@ -59,6 +59,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from .context import ActiveUnit, RepositoryContextLoader
 from .criterion_kinds import is_independent_review_criterion
 from .models import redact, utcnow
+from .status_authority import (
+    StatusAuthority,
+    prose_status_claims,
+    resolve_status_authority,
+    attributed_subject,
+)
 from .task_scope import ScopedCompletion, TaskResult, TaskScope, scoped_completion
 
 # --------------------------------------------------------------------------
@@ -401,13 +407,13 @@ _CLAIM_PATTERNS: list[tuple[ClaimType, re.Pattern[str]]] = [
     (
         ClaimType.PHASE_COMPLETE,
         re.compile(
-            rf"\b({_UNIT_RE})\b[^.\n]{{0,60}}?\b(?:is\s+|now\s+|marked\s+|✅\s*)?COMPLETE\b",
+            rf"\b({_UNIT_RE})\b([^.\n]{{0,60}}?)\b(?:is\s+|now\s+|marked\s+|✅\s*)?COMPLETE\b",
             re.I,
         ),
     ),
     (
         ClaimType.PHASE_COMPLETE,
-        re.compile(rf"\b(?:phase|unit)\s+({_UNIT_RE}|\d+)\b[^.\n]{{0,40}}\bcomplete\b", re.I),
+        re.compile(rf"\b(?:phase|unit)\s+({_UNIT_RE}|\d+)\b([^.\n]{{0,40}})\bcomplete\b", re.I),
     ),
     (
         ClaimType.IMPLEMENTATION_COMPLETE,
@@ -586,6 +592,12 @@ def extract_claims(text: str, source: str = "builder report") -> list[Completion
             value = ""
             if match.groups():
                 value = str(match.group(1) or "")
+            # A pattern that captures the gap between its subject and its status
+            # token asks for the token to be ATTRIBUTED: a report that says "P8
+            # implementation continues while P7 is COMPLETE" is claiming nothing
+            # about P8, and is claiming something true about P7.
+            if len(match.groups()) > 1:
+                value = attributed_subject(value, match.group(2) or "")
             key = (claim_type.value, value.upper())
             if key in seen:
                 continue
@@ -698,6 +710,33 @@ class CompletionAuditor:
             return path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return ""
+
+    def _surface_text(self, rel: str) -> str:
+        """A status surface's text, wherever the repository keeps it."""
+        return self._read_text(rel) or self._read_text(f"docs/implementation/{rel}")
+
+    # -- who says what the current status is --------------------------------
+
+    def status_authority(self) -> StatusAuthority:
+        """The machine record, and what each surface declares about it.
+
+        The registry is the machine record. A surface that MARKS a bounded
+        region as a projection of it has said where its machine status lives,
+        and that declaration outranks the words in the prose around it. A
+        surface that marks no such region has said nothing, and its prose is
+        read conservatively exactly as before.
+
+        Read fresh every time, and deliberately not cached: one auditor serves
+        every iteration of a run, and the builder edits these very files between
+        them. A resolution held over from the last iteration would answer
+        questions about a repository that no longer exists.
+        """
+        return resolve_status_authority(
+            REGISTRY_REL,
+            self._read_text(REGISTRY_REL),
+            NARRATIVE_SURFACES,
+            self._surface_text,
+        )
 
     # -- weighted acceptance ----------------------------------------------
 
@@ -911,55 +950,90 @@ class CompletionAuditor:
     # -- status consistency ------------------------------------------------
 
     def status_contradictions(self, unit: ActiveUnit, state: ObservedState) -> list[Contradiction]:
-        """Compare every live status surface against the registry."""
+        """Compare what the repository CURRENTLY declares against the registry.
+
+        Declared machine status first. A surface that marks a bounded region as
+        its machine status has answered the question, and its answer is the
+        region's rows — a row that disagrees with the registry is two machine
+        surfaces contradicting each other and blocks; the narrative around the
+        region asserts no lifecycle at all and cannot manufacture one.
+
+        Only a surface that declares no such region is read as prose, and then
+        conservatively: preserved history is not a live claim, a status token
+        does not reach across a sentence boundary, and it belongs to the nearest
+        subject in front of it.
+        """
         found: list[Contradiction] = []
         registry_status = unit.status
+        authority = self.status_authority()
 
         # A narrative surface declaring completion the registry does not record.
         if registry_status != "COMPLETE":
-            uid = re.escape(unit.unit_id)
-            claim_re = re.compile(
-                rf"(?:\b{uid}\b|implementation\s+phase\s+{re.escape(unit.unit_id.lstrip('P'))})"
-                rf"[^\n]{{0,60}}?(?:✅\s*)?\bCOMPLETE\b",
-                re.I,
-            )
             for surface in NARRATIVE_SURFACES:
-                text = self._read_text(surface) or self._read_text(f"docs/implementation/{surface}")
+                declared = authority.surface(surface)
+                if declared is not None and declared.declares(unit.unit_id):
+                    # This document said where this unit's machine status lives.
+                    # What that region says is checked below, against the
+                    # registry itself; the prose around it is orientation and
+                    # history. A region that does not name the unit has declared
+                    # nothing about it, and the prose is read as before.
+                    continue
+                text = self._surface_text(surface)
                 if not text:
                     continue
-                for m in claim_re.finditer(text):
+                for claim in prose_status_claims(
+                    text,
+                    unit.unit_id,
+                    "COMPLETE",
+                    surface=declared,
+                    known_ids=tuple(authority.units),
+                ):
                     # A markdown blockquote, or text inside quotation marks, is a
                     # citation — typically of a claim the document is refuting —
                     # not an assertion by the document itself.
-                    line_start = text.rfind("\n", 0, m.start()) + 1
-                    raw_line = text[line_start : text.find("\n", m.end()) % (len(text) + 1)]
+                    line_start = text.rfind("\n", 0, claim.start) + 1
+                    raw_line = text[line_start : text.find("\n", claim.end) % (len(text) + 1)]
                     if raw_line.lstrip().startswith(">"):
                         continue
-                    if _is_quoted(text, m.start(), m.end()):
+                    if _is_quoted(text, claim.start, claim.end):
                         continue
 
-                    line = text[max(0, m.start() - 40) : m.end() + 40].replace("\n", " ")
+                    line = claim.excerpt(text)
                     # "may not be recorded COMPLETE", "is NOT COMPLETE", "before
                     # P3 is COMPLETE" are statements of incompleteness, not claims.
                     # Negation may sit before the match ("may not be recorded
                     # COMPLETE") or after it ("Requires P3 COMPLETE, and P3 is
                     # not."), so inspect the whole surrounding sentence.
-                    before = text[max(0, m.start() - 90) : m.start()].replace("\n", " ")
-                    after = text[m.end() : m.end() + 70].split("\n")[0]
+                    before = text[max(0, claim.start - 90) : claim.start].replace("\n", " ")
+                    after = text[claim.end : claim.end + 70].split("\n")[0]
                     if any(
                         _NEGATED_COMPLETION_RE.search(chunk)
-                        for chunk in (m.group(0), before, after)
+                        for chunk in (claim.span, before, after)
                     ):
                         continue
                     found.append(
                         Contradiction(
                             what=f"{surface} declares {unit.unit_id} COMPLETE",
-                            claimed=f"...{line.strip()[:160]}...",
-                            observed=f"registry records {unit.unit_id} as {registry_status}",
+                            claimed=f"...{line[:160]}...",
+                            observed=(
+                                f"registry records {unit.unit_id} as {registry_status}"
+                                + (
+                                    f"; the marked region here is not read as machine status "
+                                    f"because {declared.why_not}"
+                                    if declared is not None and declared.why_not
+                                    else ""
+                                )
+                            ),
                             authority=REGISTRY_REL,
                         )
                     )
                     break
+
+        # Two MACHINE surfaces disagreeing. A declared region is the repository's
+        # own projection of the registry, so a row the registry does not render
+        # is a genuine status contradiction — for any unit it names, not only the
+        # active one — and no preference for structured authority may soften it.
+        found += self._declared_status_contradictions(authority, unit)
 
         # A reported percentage the criteria do not support.
         if state.build_status_percent is not None:
@@ -984,6 +1058,37 @@ class CompletionAuditor:
         found += self._erased_limitations()
 
         return found
+
+    def _declared_status_contradictions(
+        self, authority: StatusAuthority, unit: ActiveUnit
+    ) -> list[Contradiction]:
+        """Rows of a declared status region the registry does not render."""
+        by_unit: dict[tuple[str, str, str], list[Any]] = {}
+        for divergence in authority.divergences():
+            key = (divergence.surface, divergence.region, divergence.unit_id)
+            by_unit.setdefault(key, []).append(divergence)
+
+        def nearest(key: tuple[str, str, str]) -> tuple[int, str]:
+            return (0 if _same_unit(key[2], unit.unit_id) else 1, key[2])
+
+        out: list[Contradiction] = []
+        for key in sorted(by_unit, key=nearest)[:3]:
+            surface, region, uid = key
+            fields = by_unit[key]
+            out.append(
+                Contradiction(
+                    what=f"{surface}'s {region} region and the registry disagree about {uid}",
+                    claimed="; ".join(
+                        f"{d.field} = {d.declared or '(empty)'}" for d in fields[:4]
+                    )
+                    + f"  [{surface}:{fields[0].line}]",
+                    observed="; ".join(
+                        f"{d.field} = {d.recorded or '(empty)'}" for d in fields[:4]
+                    ),
+                    authority=authority.registry_rel,
+                )
+            )
+        return out
 
     def _dependency_contradictions(self) -> list[Contradiction]:
         data = self._read_yaml(REGISTRY_REL)

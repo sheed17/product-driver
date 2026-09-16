@@ -38,7 +38,7 @@ from typing import Any, Callable, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ScenarioGenerationConfig
-from .evidence import EvidenceStore
+from .evidence import EvidenceStore, sanitize_filename
 from .failure_clustering import FailureCluster
 from .models import redact_persisted, utcnow
 from .scenario_generator import (
@@ -50,9 +50,16 @@ from .scenario_generator import (
     provenance_for,
 )
 from .invocation_grammar import InvocationGrammar
+from .outcome_contract import (
+    RepositoryText,
+    command_actions,
+    contract_problems,
+    undeclared_refusal,
+)
 from .scenario_plan import (
     REJECTED_CONTRACT,
     REJECTED_FILTERED,
+    REJECTED_HELD,
     REJECTED_INVOCATION,
     CompilationError,
     GeneratedScenario,
@@ -69,6 +76,7 @@ from .scenario_validation import (
     ApprovedInvocationProbe,
     ApprovedCommands,
     ValidationContext,
+    _norm_command,
     bind_observations,
     established_observations_from,
     grounding_tokens_from,
@@ -101,6 +109,16 @@ STAGE_COVERAGE_GAP = "coverage_gap"
 #: Recorded on a wave whose "generation" was the resume itself: scenarios the
 #: plan had committed to that can no longer be executed.
 STAGE_RESUME = "resume"
+#: A wave that re-derives HELD scenarios under the outcome contract. It repairs
+#: an oracle Product Driver itself invalidated rather than adding coverage, so
+#: it is bounded per held scenario (see :data:`MAX_REDERIVE_ATTEMPTS`) and not
+#: by the discretionary wave budget: a run that had spent its waves would
+#: otherwise hold the scenario, and block, forever over bookkeeping.
+STAGE_REDERIVE = "rederivation"
+#: Recorded when an executed scenario is held. Not a generation stage.
+STAGE_HOLD = "outcome_contract_hold"
+#: Re-derivation waves one held scenario may consume, across every resume.
+MAX_REDERIVE_ATTEMPTS = 2
 
 
 @dataclass(frozen=True)
@@ -294,6 +312,7 @@ class ScenarioPlanner:
         #: running the real program. Left unset on the real path, where the
         #: probe is built against the repository under test.
         self._contract_probe_cache = contract_probe
+        self._repository_cache: RepositoryText | None = None
         self._established_cache: dict[str, frozenset[str]] | None = None
         self._grammar_cache: InvocationGrammar | None = None
         #: Added to every per-wave file index, so a wave record can never be
@@ -362,8 +381,26 @@ class ScenarioPlanner:
 
     @property
     def unbuildable_scenarios(self) -> dict[str, str]:
-        """Committed scenarios with no executable under the current approved set."""
-        return dict(self._unbuildable)
+        """Committed scenarios with no executable, and why.
+
+        A HELD scenario is one of them: it has an executable, and Product Driver
+        refuses to run it because its recorded result cannot be judged under the
+        outcome contract it never declared. It blocks here, exactly as an
+        unbuildable one does, until a re-derived replacement is admitted.
+        """
+        out = dict(self._unbuildable)
+        for scenario in self.plan.held_scenarios():
+            out.setdefault(
+                scenario.id,
+                "held for re-derivation under the outcome contract — this is a "
+                "harness-oracle defect, not a product failure, and it blocks until a "
+                f"replacement passes: {scenario.contract_hold}",
+            )
+        return out
+
+    @property
+    def held_scenario_ids(self) -> list[str]:
+        return [s.id for s in self.plan.held_scenarios()]
 
     def generation_problems(self) -> list[str]:
         """Waves that failed rather than waves that had nothing to add.
@@ -434,6 +471,11 @@ class ScenarioPlanner:
             if record.stage != STAGE_RESUME:
                 continue
             for rejected in record.rejected:
+                if rejected.is_held:
+                    # Blocking, but through `unbuildable_scenarios`, which a
+                    # re-derived replacement clears. Recording it here as well
+                    # would make the hold permanent.
+                    continue
                 if rejected.is_invocation_defect:
                     # Retired, not lost. Its invocation was never going to
                     # verify anything, its risk is carried in the register as
@@ -580,10 +622,11 @@ class ScenarioPlanner:
         limit: int,
         clusters: Sequence[FailureCluster] = (),
         gaps: Sequence[Any] | None = None,
+        budgeted: bool = True,
     ) -> None:
         record = WaveRecord(wave=self._wave + 1, stage=stage, basis=basis)
 
-        if self._wave >= self.config.max_waves:
+        if budgeted and self._wave >= self.config.max_waves:
             record.budget_notes.append(
                 f"refused: {self.config.max_waves} generation wave(s) already used"
             )
@@ -591,7 +634,7 @@ class ScenarioPlanner:
             return
 
         room = self.config.max_total_scenarios - len(self.plan.scenarios)
-        if room <= 0:
+        if budgeted and room <= 0:
             record.budget_notes.append(
                 f"refused: the run's {self.config.max_total_scenarios}-scenario total is "
                 "already reached"
@@ -599,7 +642,7 @@ class ScenarioPlanner:
             self._finish_wave(record)
             return
 
-        allowed = min(limit, room)
+        allowed = min(limit, room) if budgeted else limit
         if allowed < limit:
             record.budget_notes.append(
                 f"wave narrowed from {limit} to {allowed} by the total-scenario budget"
@@ -629,6 +672,7 @@ class ScenarioPlanner:
                 for command in self.approved_commands.entries
             ],
             vocabulary_notes=self._invocation_grammar.vocabulary_lines(),
+            held_scenarios=self._held_briefs(),
             available_services=[s.name for s in (self.base_scenario.services if self.base_scenario else [])],
             app_url=self.base_scenario.app_url if self.base_scenario else "",
             # What is actually available, not what would be convenient. Telling
@@ -732,7 +776,12 @@ class ScenarioPlanner:
         # in the register to be compared against.
         impossible: list[tuple[GeneratedScenario, RejectedScenario]] = []
         for s, reasons in refused:
-            invalid = bool(invocation_reasons(s, context))
+            # An unlawful outcome contract is the same kind of defect as an
+            # impossible invocation: the scenario could only pass against a
+            # product that regressed, or on any crash. Its risk is carried.
+            invalid = bool(invocation_reasons(s, context)) or bool(
+                contract_problems(s, self._repository)
+            )
             rejected = RejectedScenario(
                 id=s.id,
                 title=s.title,
@@ -770,6 +819,8 @@ class ScenarioPlanner:
                     record.budget_notes.append(f"{scenario.id}: {note}")
                 continue
             record.accepted_ids.append(scenario.id)
+            for note in self._release_holds(scenario):
+                record.budget_notes.append(note)
 
         # Risks are additive across waves; the plan keeps the union.
         self._merge_risks(parse_risks(payload))
@@ -797,14 +848,19 @@ class ScenarioPlanner:
         self._finish_wave(record)
 
     def _admit(self, scenario: GeneratedScenario) -> str:
-        """Apply the remaining budgets and compile. Returns a refusal, or ""."""
-        if len(self.plan.scenarios) >= self.config.max_total_scenarios:
+        """Apply the remaining budgets and compile. Returns a refusal, or "".
+
+        A replacement for a held scenario is net-zero coverage — admitting it
+        retires what it replaces — so the coverage budgets do not apply to it.
+        """
+        replacement = bool(scenario.replaces)
+        if not replacement and len(self.plan.scenarios) >= self.config.max_total_scenarios:
             return (
                 f"budget: the run's {self.config.max_total_scenarios}-scenario total is "
                 "reached, so this scenario was not admitted"
             )
         per_category = self.plan.count_for(scenario.risk_category)
-        if per_category >= self.config.max_scenarios_per_risk_category:
+        if not replacement and per_category >= self.config.max_scenarios_per_risk_category:
             return (
                 f"budget: {self.config.max_scenarios_per_risk_category} scenarios already "
                 f"cover {scenario.risk_category.value}"
@@ -859,6 +915,181 @@ class ScenarioPlanner:
                     if len(out) >= limit:
                         return out
         return out
+
+    # -- the outcome contract ------------------------------------------------
+
+    @property
+    def _repository(self) -> RepositoryText:
+        """Read-only access to the repository's tracked text, cached per planner."""
+        if self._repository_cache is None:
+            self._repository_cache = RepositoryText(self.repo)
+        return self._repository_cache
+
+    def _held_briefs(self) -> list[str]:
+        out: list[str] = []
+        for scenario in self.plan.held_scenarios():
+            keys = [
+                r.key for r in self.plan.risks if r.risk_category is scenario.risk_category
+            ]
+            commands = "; ".join(c[:400] for c in scenario.command_strings())
+            out.append(
+                f"{scenario.id} [{scenario.priority.value} {scenario.risk_category.value}] "
+                f"{scenario.title} — risk keys: {', '.join(keys) or '(none)'} — it ran: "
+                f"{commands} — held because {scenario.contract_hold[:600]}"
+            )
+        return out
+
+    def hold(self, scenario: GeneratedScenario, reason: str) -> bool:
+        """Hold ``scenario``: blocking, never executed again, awaiting re-derivation."""
+        if scenario.retired_reason or scenario.contract_hold or not reason:
+            return False
+        scenario.contract_hold = reason
+        self.compiled.pop(scenario.id, None)
+        self._unbuildable.pop(scenario.id, None)
+        self.emit(
+            f"  {scenario.id} HELD — a harness-oracle defect, not a product failure: {reason}"
+        )
+        return True
+
+    @staticmethod
+    def _executions_for(
+        scenario: GeneratedScenario, commands: Sequence[Any]
+    ) -> list[tuple[int | None, bool, str]]:
+        """The recorded executions of this scenario's undeclared exit-0 commands.
+
+        ``commands`` are ``CommandResult`` models or their persisted dicts.
+        """
+        wanted = {
+            _norm_command(action.command)
+            for _index, action in command_actions(scenario)
+            if not action.expect_outcome and action.expect_exit_code == 0
+        }
+        out: list[tuple[int | None, bool, str]] = []
+        for command in commands:
+            record = command if isinstance(command, dict) else command.model_dump()
+            if _norm_command(str(record.get("command", ""))) not in wanted:
+                continue
+            out.append(
+                (
+                    record.get("exit_code"),
+                    bool(record.get("timed_out", False)),
+                    f"{record.get('stdout') or ''}\n{record.get('stderr') or ''}",
+                )
+            )
+        return out
+
+    def hold_undeclared_refusals(
+        self, outcomes: Sequence[Any], results: Any
+    ) -> list[str]:
+        """Hold every executed pre-contract scenario that met a typed refusal.
+
+        Called right after a suite executes. The scenario's outcome is not
+        judged as a product defect; the caller withdraws it from the gate's view
+        and the hold blocks in its place until re-derivation replaces it.
+        """
+        held: list[RejectedScenario] = []
+        for outcome in outcomes:
+            if str(getattr(outcome.origin, "value", outcome.origin)) != "generated":
+                continue
+            if str(getattr(outcome.outcome, "value", outcome.outcome)) != "FAILED":
+                continue
+            scenario = self.plan.by_id(outcome.scenario_id)
+            result = (results or {}).get(outcome.scenario_id)
+            if scenario is None or result is None:
+                continue
+            reason = undeclared_refusal(
+                scenario, self._executions_for(scenario, result.commands), self._repository
+            )
+            if reason and self.hold(scenario, reason):
+                held.append(
+                    RejectedScenario(
+                        id=scenario.id, title=scenario.title, reasons=[reason], kind=REJECTED_HELD
+                    )
+                )
+        if held:
+            self.plan.waves.append(
+                WaveRecord(wave=self._wave, stage=STAGE_HOLD, basis=self.plan.generation_basis, rejected=held)
+            )
+            self.plan.recompute_coverage()
+            self.persist()
+        return [r.id for r in held]
+
+    def _recorded_undeclared_refusal(self, scenario: GeneratedScenario) -> str:
+        """Hold reason from this scenario's LATEST recorded execution, or ``""``."""
+        if self.store is None or not any(
+            not getattr(a, "expect_outcome", None) for _i, a in command_actions(scenario)
+        ):
+            return ""
+        latest: tuple[int, dict[str, Any]] | None = None
+        folder = sanitize_filename(scenario.id)
+        for path in self.store.run_dir.glob(f"iteration-*/scenarios/{folder}/result.json"):
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(record, dict) or record.get("scenario_id") != scenario.id:
+                continue
+            iteration = int(record.get("iteration", 0) or 0)
+            if latest is None or iteration > latest[0]:
+                latest = (iteration, record)
+        if latest is None:
+            return ""
+        commands = [c for c in latest[1].get("commands", []) if isinstance(c, dict)]
+        # Only a record of THIS body. A command the scenario no longer runs
+        # means the record belongs to a superseded measurement.
+        current = {_norm_command(c) for c in scenario.command_strings()}
+        if any(_norm_command(str(c.get("command", ""))) not in current for c in commands):
+            return ""
+        reason = undeclared_refusal(
+            scenario, self._executions_for(scenario, commands), self._repository
+        )
+        return f"{reason} (recorded in iteration {latest[0]})" if reason else ""
+
+    def _release_holds(self, replacement: GeneratedScenario) -> list[str]:
+        """Retire the held scenarios an admitted replacement re-derives."""
+        notes: list[str] = []
+        for held_id in replacement.replaces:
+            held = self.plan.by_id(held_id)
+            if held is None or not held.contract_hold or held.retired_reason:
+                continue
+            held.retired_reason = (
+                f"replaced by {replacement.id}, re-derived under the outcome contract; it "
+                f"was held because {held.contract_hold}"
+            )
+            self.compiled.pop(held_id, None)
+            self._unbuildable.pop(held_id, None)
+            note = f"{held_id} replaced by {replacement.id} under the outcome contract"
+            notes.append(note)
+            self.emit(f"  {note}")
+        if notes:
+            self.plan.recompute_coverage()
+        return notes
+
+    def rederive_held(
+        self,
+        *,
+        task: str,
+        unit: Any = None,
+        diff_files: Sequence[str] | None = None,
+    ) -> GeneratedScenarioPlan:
+        """Re-derive every held scenario that still has attempts left.
+
+        Bounded per held scenario and persisted, so neither a long run nor a
+        chain of resumes can turn a hold into unbounded generation. A hold whose
+        attempts are spent stays held — and blocking — which is honest: the
+        repository did not let Product Driver derive a lawful oracle for it.
+        """
+        pending = [
+            s for s in self.plan.held_scenarios() if s.rederive_attempts < MAX_REDERIVE_ATTEMPTS
+        ]
+        if not pending:
+            return self.plan
+        for scenario in pending:
+            scenario.rederive_attempts += 1
+        self.persist()
+        basis = self._basis(task=task, unit=unit, diff_files=list(diff_files or []))
+        self._generate(basis, stage=STAGE_REDERIVE, limit=len(pending), budgeted=False)
+        return self.plan
 
     @property
     def _contract_probe(self) -> ApprovedInvocationProbe:
@@ -1054,6 +1285,11 @@ class ScenarioPlanner:
             # What each program accepts, refuses, and can establish when it
             # refuses — read from the same files as the approved commands.
             invocation_grammar=self._invocation_grammar,
+            repository_text=self._repository,
+            held_scenarios={
+                s.id: (s.risk_category.value, s.priority.value)
+                for s in self.plan.held_scenarios()
+            },
             grounding_tokens=grounding_tokens_from(self._unit),
             principle_tokens=principle_tokens_from(self.founder),
             existing_signatures=self.plan.signatures()
@@ -1364,6 +1600,8 @@ class ScenarioPlanner:
         retired: list[RejectedScenario] = []
         retired_notes: list[str] = []
         already_retired = 0
+        held: list[RejectedScenario] = []
+        already_held = 0
 
         def retire_if_impossible(
             scenario: GeneratedScenario, persisted: GeneratedScenario | None = None
@@ -1433,7 +1671,27 @@ class ScenarioPlanner:
                 already_retired += 1
                 self.compiled.pop(scenario.id, None)
                 continue
+            if scenario.contract_hold:
+                # Held earlier. It stays held, and blocking, until replaced.
+                already_held += 1
+                self.compiled.pop(scenario.id, None)
+                continue
             if retire_if_impossible(scenario):
+                continue
+            # Asked BEFORE compiling, for the same reason retirement is: a
+            # pre-contract scenario whose own recorded execution already met a
+            # typed refusal must not be executed again to ask the product to
+            # stop refusing.
+            hold_reason = self._recorded_undeclared_refusal(scenario)
+            if hold_reason and self.hold(scenario, hold_reason):
+                held.append(
+                    RejectedScenario(
+                        id=scenario.id,
+                        title=scenario.title,
+                        reasons=[hold_reason],
+                        kind=REJECTED_HELD,
+                    )
+                )
                 continue
             try:
                 self.compiled[scenario.id] = compile_to_scenario(
@@ -1537,7 +1795,7 @@ class ScenarioPlanner:
                     ],
                 )
             )
-        if dropped or rebound_notes or retired:
+        if dropped or rebound_notes or retired or held:
             # Recorded in the plan, not only on the terminal. A scenario the run
             # had committed to and can no longer execute is lost coverage, and
             # coverage that vanishes between two processes with nothing but a
@@ -1552,7 +1810,7 @@ class ScenarioPlanner:
                     stage=STAGE_RESUME,
                     basis=plan.generation_basis,
                     proposed=len(rejected) + len(rebound_notes) + len(retired),
-                    rejected=rejected + retired,
+                    rejected=rejected + retired + held,
                     budget_notes=rebound_notes + retired_notes,
                 )
             )
@@ -1590,6 +1848,11 @@ class ScenarioPlanner:
                 f"; {len(retired) + already_retired} generated scenario(s) retired as "
                 "harness-generation defects and not executed"
             )
+        if held or already_held:
+            note += (
+                f"; {len(held) + already_held} generated scenario(s) HELD for re-derivation "
+                "under the outcome contract (blocking, not executed)"
+            )
         previous_head = plan.generation_basis.repository_head
         current_head = head_commit(self.repo)
         if previous_head and current_head and previous_head != current_head:
@@ -1598,7 +1861,7 @@ class ScenarioPlanner:
                 "the plan was made, so its coverage was chosen against different code"
             )
         self.emit(f"  {note}")
-        if dropped or rebound_notes or retired:
+        if dropped or rebound_notes or retired or held:
             self.persist()
         return PlanRestore(state="restored", note=note)
 
@@ -1864,6 +2127,7 @@ __all__ = [
     "PromotionCandidate",
     "PromotionLedger",
     "STAGE_ADAPTIVE",
+    "STAGE_REDERIVE",
     "STAGE_DIFF",
     "STAGE_INITIAL",
     "ScenarioPlanner",

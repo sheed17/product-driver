@@ -293,6 +293,11 @@ class ScenarioResult(BaseModel):
     #: execution that ended before the claims could be resolved — a scenario
     #: whose setup failed verified nothing, and says so by having nothing here.
     risk_evidence: list[RiskEvidence] = Field(default_factory=list)
+    #: Set when a command with a declared outcome contract never reached the
+    #: product — a timeout, a missing interpreter, a program that did not parse.
+    #: Such a result is the harness's failure, not the product's, and the suite
+    #: records it as BLOCKED rather than FAILED.
+    infrastructure_failure: str = ""
 
     @property
     def passed(self) -> bool:

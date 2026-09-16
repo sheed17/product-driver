@@ -91,6 +91,9 @@ from .scenario_planner import (
     diff_stat,
     record_promotion_candidates,
 )
+from .evidence_lineage import accumulated_result
+from .evidence_lineage import assess as assess_evidence
+from .evidence_lineage import inherit as inherit_evidence
 from .scenario_gate import evaluate_gate
 from .scenario_suite import (
     Origin,
@@ -484,7 +487,12 @@ async def run_control_loop(
     )
     prior_problems: list[str] = []
     sent_corrections: list[str] = []
-    previous_suite: SuiteResult | None = None
+    # The run's evidence so far, not merely the last iteration's. A resumed
+    # process continues the lineage the previous one built; which of it still
+    # stands is decided per scenario before anything executes.
+    previous_suite: SuiteResult | None = (
+        accumulated_result(store.run_dir, config.neyma_repo) if planner is not None else None
+    )
 
     # The budget is a number of iterations THIS invocation may perform, which
     # is not the same thing as the number an iteration is filed under. They
@@ -561,6 +569,16 @@ async def run_control_loop(
                 diff_files=diff_files,
                 diff_stat=diff_stat(config.neyma_repo),
             )
+            # A held scenario blocks until it is re-derived under the outcome
+            # contract. Doing that here, before execution, lets the replacement
+            # run in this same iteration.
+            held_ids = list(getattr(planner, "held_scenario_ids", None) or [])
+            if held_ids:
+                emit(
+                    "→ re-deriving held scenario(s) under the outcome contract: "
+                    + ", ".join(held_ids)
+                )
+                planner.rederive_held(task=state.task, unit=active_unit, diff_files=diff_files)
 
         # 3. operate the product
         suite: ScenarioSuite | None = None
@@ -583,6 +601,7 @@ async def run_control_loop(
                 run_id=state.run_id,
                 iteration=iteration,
                 emit=lambda _m: None,
+                repo=config.neyma_repo,
             )
             suite_result = await suite_executor.run(
                 suite, selection_reason="the selected scenario"
@@ -599,11 +618,27 @@ async def run_control_loop(
             )
         else:
             suite = _assemble_suite(scenario, planner)
-            only, reason = select_rerun(
-                suite,
+            forced = list(getattr(planner, "rebound_scenario_ids", ()))
+            only, reason = select_rerun(suite, previous_suite, must_run=forced)
+            # Which earlier evidence still stands on THIS tree. Anything the
+            # narrowing skipped that has no valid earlier evidence runs now;
+            # anything with valid evidence is carried, never re-blessed wholesale.
+            lineage_check = assess_evidence(
                 previous_suite,
-                must_run=getattr(planner, "rebound_scenario_ids", ()),
+                suite,
+                repo=config.neyma_repo,
+                run_dir=store.run_dir,
+                run_id=state.run_id,
+                forced=forced,
             )
+            if previous_suite is not None:
+                owed = [i for i in lineage_check.must_run(suite) if i not in only]
+                if owed:
+                    only = [*only, *owed]
+                    reason += (
+                        f"; plus {len(owed)} case(s) with no earlier evidence still valid on "
+                        "this tree"
+                    )
             emit(f"→ running scenario suite ({len(only)} of {len(suite)}): {reason}")
 
             def new_suite_executor() -> SuiteExecutor:
@@ -616,10 +651,21 @@ async def run_control_loop(
                     run_id=state.run_id,
                     iteration=iteration,
                     emit=emit,
+                    repo=config.neyma_repo,
                 )
 
             suite_executor = new_suite_executor()
             suite_result = await suite_executor.run(suite, only=only, selection_reason=reason)
+            if previous_suite is not None:
+                suite_result = inherit_evidence(
+                    suite_result, suite, lineage_check, iteration=iteration
+                )
+                if suite_result.lineage is not None:
+                    for line in suite_result.lineage.lines()[:1]:
+                        emit(f"  {line}")
+            suite, suite_result = _withhold_held(
+                planner, scenario, suite, suite_result, suite_executor, emit
+            )
 
             # An ACCEPT may never rest on a narrowed pass. If everything the
             # narrowed set covered is green, widen to the full required
@@ -633,6 +679,9 @@ async def run_control_loop(
                     suite,
                     only=None,
                     selection_reason="full required regression set before acceptance",
+                )
+                suite, suite_result = _withhold_held(
+                    planner, scenario, suite, suite_result, suite_executor, emit
                 )
 
             previous_suite = suite_result
@@ -649,14 +698,19 @@ async def run_control_loop(
             # Persisted before the evaluator is consulted: if this iteration dies
             # later, a resumed run still knows what already ran.
             planner.note_executed(
-                [o.scenario_id for o in suite_result.outcomes if o.outcome is not Outcome.SKIPPED]
+                [
+                    o.scenario_id
+                    for o in suite_result.outcomes
+                    if o.outcome is not Outcome.SKIPPED and not o.inherited_from_iteration
+                ]
             )
             _record_defects(defects, suite_result, suite_executor, iteration)
             newly_promotable = record_promotion_candidates(
                 ledger=ledger,
                 memory=defects,
                 plan=planner.plan,
-                outcomes=suite_result.outcomes,
+                # Only what this iteration executed can be "now passes".
+                outcomes=[o for o in suite_result.outcomes if not o.inherited_from_iteration],
                 iteration=iteration,
             )
             for candidate in newly_promotable:
@@ -2213,6 +2267,52 @@ def _verification_gap_decision(
             "executed scenario passes against it."
         ),
         confidence=0.6,
+    )
+
+
+def _withhold_held(
+    planner: Any,
+    scenario: Scenario,
+    suite: ScenarioSuite,
+    suite_result: SuiteResult,
+    suite_executor: SuiteExecutor,
+    emit: Callable[[str], None],
+) -> tuple[ScenarioSuite, SuiteResult]:
+    """Hold executed pre-contract scenarios that met a typed refusal.
+
+    Their outcomes are withdrawn from judgement — kept on the record as
+    ``withheld_outcomes`` — and each hold blocks in their place through the
+    suite's assembly problems, until a re-derived replacement is admitted. The
+    builder is never asked to make a held scenario pass.
+    """
+    hold = getattr(planner, "hold_undeclared_refusals", None)
+    if hold is None:
+        return suite, suite_result
+    held = {str(i) for i in (hold(suite_result.outcomes, suite_executor.results) or [])}
+    if not held:
+        return suite, suite_result
+    emit(
+        f"  {len(held)} scenario(s) HELD — harness-oracle defect, not a product failure: "
+        + ", ".join(sorted(held))
+    )
+    suite = _assemble_suite(scenario, planner)
+    problems = list(suite_result.assembly_problems)
+    problems += [p for p in suite.assembly_conflicts if p not in problems]
+    return suite, suite_result.model_copy(
+        update={
+            "outcomes": [o for o in suite_result.outcomes if o.scenario_id not in held],
+            "withheld_outcomes": list(suite_result.withheld_outcomes)
+            + [o for o in suite_result.outcomes if o.scenario_id in held],
+            "expected_required_ids": [
+                i for i in suite_result.expected_required_ids if i not in held
+            ],
+            "assembly_problems": problems,
+            "clusters": [
+                c
+                for c in suite_result.clusters
+                if set(getattr(c, "affected_scenarios", [])) - held
+            ],
+        }
     )
 
 

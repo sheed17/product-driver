@@ -34,6 +34,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from .evidence import sanitize_filename
+from .evidence_lineage import EvidenceLineage, TreeIdentity, stamp, worktree_identity
 from .failure_clustering import FailureCluster, FailureRecord, cluster_failures
 from .models import RiskEvidence, ScenarioResult, redact, redact_obj, utcnow
 from .scenario_plan import GeneratedScenario, Priority, RiskCategory, neighbours
@@ -119,6 +120,19 @@ class ScenarioOutcome(BaseModel):
     #: produce one. A risk is satisfied by an entry here only when the entry was
     #: established AND this outcome itself passed with resolvable evidence.
     risk_evidence: list[RiskEvidence] = Field(default_factory=list)
+    #: What this outcome is evidence OF: the iteration that executed it, and the
+    #: single clean git tree it executed against (``""`` when the worktree was
+    #: dirty or moved during execution — such evidence is never inherited).
+    evidence_iteration: int = 0
+    evidence_tree: str = ""
+    #: Digest of the compiled scenario that ran, so a later iteration can tell
+    #: the same measurement from a re-materialized one.
+    scenario_digest: str = ""
+    #: Non-zero when this outcome was NOT executed in the iteration whose
+    #: result carries it: it is valid earlier evidence, and this names the
+    #: iteration that executed it, on a tree nothing since has changed inside
+    #: the scenario's subject. See :mod:`~neyma_product_driver.evidence_lineage`.
+    inherited_from_iteration: int = 0
 
     def established_risk_categories(self) -> set[str]:
         """Risk categories this outcome actually established evidence for.
@@ -179,6 +193,16 @@ class SuiteResult(BaseModel):
     assembly_problems: list[str] = Field(default_factory=list)
     outcomes: list[ScenarioOutcome] = Field(default_factory=list)
     clusters: list[FailureCluster] = Field(default_factory=list)
+    #: The git tree this execution ran against.
+    tree: str = ""
+    #: Where each outcome's evidence came from — fresh, inherited, or
+    #: invalidated and re-executed. ``None`` for an execution nothing was
+    #: inherited into.
+    lineage: EvidenceLineage | None = None
+    #: Outcomes withdrawn from judgement because their scenario was HELD after
+    #: executing (see :mod:`~neyma_product_driver.outcome_contract`). Kept as the
+    #: record of what ran; the hold blocks in their place.
+    withheld_outcomes: list[ScenarioOutcome] = Field(default_factory=list)
 
     # -- counts ------------------------------------------------------------
 
@@ -270,10 +294,12 @@ class SuiteResult(BaseModel):
     def headline(self) -> str:
         permanent = sum(1 for o in self.outcomes if o.origin is Origin.PERMANENT)
         generated = self.total - permanent
+        inherited = sum(1 for o in self.outcomes if o.inherited_from_iteration)
         return (
             f"{generated} generated case(s) + {permanent} permanent regression scenario(s): "
             f"{self.passed} passed, {self.failed} failed, {self.blocked} blocked, "
             f"{self.skipped} skipped"
+            + (f" ({inherited} of the passes inherited from valid earlier evidence)" if inherited else "")
         )
 
     def summary_block(self) -> str:
@@ -288,6 +314,14 @@ class SuiteResult(BaseModel):
             lines.append(
                 f"NARROWED RUN — not every scenario was executed ({self.selection_reason}). "
                 "This cannot support an acceptance on its own."
+            )
+        if self.lineage is not None and (self.lineage.inherited or self.lineage.invalidated):
+            lines.append("")
+            lines += self.lineage.lines()
+        for withheld in self.withheld_outcomes:
+            lines.append(
+                f"WITHHELD {withheld.scenario_id}: held for re-derivation under the outcome "
+                "contract; its result is a harness-oracle defect, not a product failure"
             )
         coverage = self.coverage_by_risk_category()
         if coverage:
@@ -552,8 +586,12 @@ class SuiteExecutor:
         run_id: str = "",
         iteration: int = 0,
         emit: Callable[[str], None] = lambda _m: None,
+        repo: Path | None = None,
     ) -> None:
         self.make_executor = make_executor
+        #: The repository under test. When given, every outcome is stamped with
+        #: the git tree it is evidence of — see :mod:`evidence_lineage`.
+        self.repo = Path(repo) if repo is not None else None
         self.artifact_root = Path(artifact_root)
         self.browser_enabled = browser_enabled
         self.execution_budget_s = execution_budget_s
@@ -588,6 +626,7 @@ class SuiteExecutor:
         selection_reason: str = "",
     ) -> SuiteResult:
         started = time.monotonic()
+        before = worktree_identity(self.repo) if self.repo is not None else TreeIdentity()
         order = suite.execution_order(only)
         result = SuiteResult(
             full_run=only is None or len(order) == len(suite),
@@ -692,6 +731,14 @@ class SuiteExecutor:
             result.outcomes.append(outcome)
 
         result.duration_s = time.monotonic() - started
+        if self.repo is not None:
+            stamp(
+                result,
+                suite,
+                iteration=self.iteration,
+                before=before,
+                after=worktree_identity(self.repo),
+            )
         result.clusters = cluster_failures(
             [
                 FailureRecord.from_result(
@@ -816,6 +863,9 @@ class SuiteExecutor:
             not result.readiness_ok
             or (result.error is not None and not result.assertions)
             or (result.browser is not None and not result.browser.page_loaded)
+            # A declared outcome contract that never reached the product. Not a
+            # refusal and not a defect: nothing about the product was observed.
+            or bool(result.infrastructure_failure)
         )
         if never_observed:
             outcome = Outcome.BLOCKED
@@ -835,7 +885,9 @@ class SuiteExecutor:
             assertions_total=len(result.assertions),
             assertions_failed=len(failed),
             failed_assertions=[f"{a.kind}: {a.target} — {a.detail}".strip(" —") for a in failed],
-            error=result.error or ("" if result.readiness_ok else result.readiness_detail),
+            error=result.error
+            or ("" if result.readiness_ok else result.readiness_detail)
+            or result.infrastructure_failure,
             evidence_path=str(artifact_dir),
             generated_because=_because(entry),
             requirement_reference=entry.generated.requirement_reference if entry.generated else "",
@@ -1212,7 +1264,18 @@ def merge_suite_results(
     ]
 
     recorded = {o.scenario_id for o in outcomes}
+    lineage = base.lineage
+    if lineage is not None:
+        lineage = lineage.model_copy(
+            update={
+                "fresh": sorted(set(lineage.fresh) | replaced),
+                "inherited": [e for e in lineage.inherited if e.scenario_id not in replaced],
+            }
+        )
     return SuiteResult(
+        tree=base.tree,
+        lineage=lineage,
+        withheld_outcomes=list(base.withheld_outcomes) + list(addition.withheld_outcomes),
         started_at=base.started_at,
         duration_s=base.duration_s + addition.duration_s,
         full_run=all(e.scenario_id in recorded for e in suite.entries),

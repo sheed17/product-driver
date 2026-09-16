@@ -44,6 +44,7 @@ from .models import (
     ScenarioResult,
     redact,
 )
+from .outcome_contract import judge as judge_outcome
 from .runner import ProcessRunner, ServiceManager, http_request, wait_for_readiness
 
 
@@ -92,6 +93,13 @@ class CommandSpec(BaseModel):
     run: str
     expect_exit_code: int | None = 0
     expect_contains: list[str] = Field(default_factory=list)
+    #: The declared outcome contract — ``permitted`` or ``refused`` — or
+    #: ``None`` for a command written before the contract existed, which keeps
+    #: the plain exit-code check. See :mod:`~neyma_product_driver.outcome_contract`.
+    expect_outcome: Literal["permitted", "refused"] | None = None
+    #: For ``refused``: literal text the product's refusal path prints. A
+    #: non-zero exit without it is not a refusal.
+    expect_refusal: list[str] = Field(default_factory=list)
     #: Seconds; fractional allowed.
     timeout_s: float | None = None
 
@@ -1097,7 +1105,28 @@ class ScenarioExecutor:
         res = await runner.run(command, timeout_s=spec.timeout_s or self.cfg.command_timeout_s)
         result.commands.append(res)
         start = len(result.assertions)
-        if spec.expect_exit_code is not None:
+        combined = f"{res.stdout}\n{res.stderr}"
+        if spec.expect_outcome is not None:
+            verdict = judge_outcome(
+                expect_outcome=spec.expect_outcome,
+                expect_exit_code=spec.expect_exit_code,
+                refusal_evidence=spec.expect_refusal,
+                exit_code=res.exit_code,
+                timed_out=res.timed_out,
+                output=combined,
+            )
+            result.assertions.append(
+                AssertionResult(
+                    kind="expect_state",
+                    target=f"{spec.name or command}: outcome == {spec.expect_outcome}",
+                    passed=verdict.passed,
+                    detail=f"actual outcome: {verdict.actual} (exit={res.exit_code}"
+                    f"{', timed out' if res.timed_out else ''}) — {verdict.detail}",
+                )
+            )
+            if verdict.infrastructure and not result.infrastructure_failure:
+                result.infrastructure_failure = f"{spec.name or command}: {verdict.detail}"
+        elif spec.expect_exit_code is not None:
             result.assertions.append(
                 AssertionResult(
                     kind="expect_state",
@@ -1106,7 +1135,6 @@ class ScenarioExecutor:
                     detail=f"got exit={res.exit_code}{' (timed out)' if res.timed_out else ''}",
                 )
             )
-        combined = f"{res.stdout}\n{res.stderr}"
         for needle in spec.expect_contains:
             result.assertions.append(
                 AssertionResult(

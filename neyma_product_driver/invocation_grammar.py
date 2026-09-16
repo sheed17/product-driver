@@ -636,7 +636,9 @@ def _slots(generated: GeneratedScenario) -> list[_Slot]:
         match = re.fullmatch(r"actions\[(\d+)\]\.command", path)
         if match is not None:
             action = generated.actions[int(match.group(1))]
-            out.append(_Slot(path, command, action.expect_exit_code, True, literals))
+            # A declared refusal asserts its evidence as surely as its output.
+            evidence = list(action.refusal_evidence) if action.expect_outcome == "refused" else []
+            out.append(_Slot(path, command, action.expect_exit_code, True, literals + evidence))
             continue
         out.append(_Slot(path, command, None, False, literals))
     return out

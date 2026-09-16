@@ -81,6 +81,11 @@ from .scenario_plan import IdentifiedRisk
 from .scenario_suite import Origin, Outcome, ScenarioOutcome, SuiteResult
 
 
+#: When the evidence behind a covered risk was taken. See CoveredRisk.freshness.
+FRESH = "fresh"
+INHERITED = "inherited"
+REEXERCISED = "reexercised"
+
 class GateStatus(str, Enum):
     """Whether the scenario evidence can support an acceptance."""
 
@@ -175,6 +180,14 @@ class CoveredRisk(BaseModel):
     #: The declared claim's own words, when the basis is a declaration.
     claim: str = ""
     evidence_path: str = ""
+    #: Where the evidence comes from in time. ``fresh`` — executed in the
+    #: iteration being judged; ``inherited`` — earlier evidence from this run
+    #: that nothing since has invalidated; ``reexercised`` — earlier evidence a
+    #: change invalidated, executed again in this iteration.
+    freshness: str = FRESH
+    #: For ``inherited``: the iteration that executed it, and the tree it ran on.
+    evidence_iteration: int = 0
+    evidence_tree: str = ""
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
@@ -186,7 +199,14 @@ class CoveredRisk(BaseModel):
         if self.discrimination:
             detail += " (discrimination: " + ", ".join(self.discrimination[:2]) + ")"
         source = self.evidence_source or self.basis or "unstated source"
-        return f"{head} — {self.description}  (verified by {source}: {detail})"
+        when = {
+            INHERITED: (
+                f"; INHERITED from iteration {self.evidence_iteration} on tree "
+                f"{self.evidence_tree[:12]}, unchanged inside its subject since"
+            ),
+            REEXERCISED: "; earlier evidence was INVALIDATED by a change and this was re-executed",
+        }.get(self.freshness, "; executed fresh")
+        return f"{head} — {self.description}  (verified by {source}: {detail}{when})"
 
 
 #: How a passing measurement may attach to a risk. All three are explicit and
@@ -387,6 +407,7 @@ def risk_coverage(
     if not risks:
         return [], []
     outcomes = list(result.outcomes) if result is not None else []
+    lineage = result.lineage if result is not None else None
     measurements = guard_measurements(changed_verification)
 
     covered: list[CoveredRisk] = []
@@ -415,6 +436,12 @@ def risk_coverage(
 
         if found is not None:
             outcome, basis, claim = found
+            if outcome.inherited_from_iteration:
+                freshness = INHERITED
+            elif lineage is not None and outcome.scenario_id in lineage.invalidated_ids():
+                freshness = REEXERCISED
+            else:
+                freshness = FRESH
             covered.append(
                 CoveredRisk(
                     risk_id=risk.id,
@@ -428,6 +455,9 @@ def risk_coverage(
                     measurement=outcome.scenario_id,
                     claim=claim,
                     evidence_path=outcome.evidence_path,
+                    freshness=freshness,
+                    evidence_iteration=outcome.evidence_iteration,
+                    evidence_tree=outcome.evidence_tree,
                 )
             )
             continue
@@ -520,6 +550,8 @@ class GateVerdict(BaseModel):
     #: all — a generator that failed, a wave that errored. A run whose
     #: verification never got built has not verified anything.
     generation_problems: list[str] = Field(default_factory=list)
+    #: The evidence lineage of the result this verdict judged, as lines.
+    lineage: list[str] = Field(default_factory=list)
 
     @property
     def blocks_acceptance(self) -> bool:
@@ -615,7 +647,39 @@ class GateVerdict(BaseModel):
                 "  KNOWN COVERAGE GAPS — risks this run identified and did not verify:"
             )
             lines += [f"    {risk.brief()}" for risk in self.uncovered_risks]
+        if self.covered_risks or self.uncovered_risks:
+            lines += [f"  {line}" for line in self.risk_ledger()]
+        lines += [f"  {line}" for line in self.lineage]
         return "\n".join(lines)
+
+    def risk_ledger(self) -> list[str]:
+        """Every acceptance-blocking risk, by WHEN its evidence was taken."""
+        groups = {
+            FRESH: [r for r in self.covered_risks if r.freshness == FRESH],
+            INHERITED: [r for r in self.covered_risks if r.freshness == INHERITED],
+            REEXERCISED: [r for r in self.covered_risks if r.freshness == REEXERCISED],
+        }
+        label = lambda r: r.risk_id or r.description[:60]  # noqa: E731
+        return [
+            "RISK LEDGER — "
+            f"freshly exercised: {len(groups[FRESH])}; "
+            f"inherited from valid earlier same-subject evidence: {len(groups[INHERITED])}; "
+            f"invalidated and re-exercised: {len(groups[REEXERCISED])}; "
+            f"still uncovered: {len(self.uncovered_risks)}",
+            "  fresh: " + (", ".join(label(r) for r in groups[FRESH]) or "none"),
+            "  inherited: "
+            + (
+                ", ".join(
+                    f"{label(r)} (iteration {r.evidence_iteration}, {r.scenario_id})"
+                    for r in groups[INHERITED]
+                )
+                or "none"
+            ),
+            "  invalidated and re-exercised: "
+            + (", ".join(f"{label(r)} ({r.scenario_id})" for r in groups[REEXERCISED]) or "none"),
+            "  still uncovered: "
+            + (", ".join(label(r) for r in self.uncovered_risks) or "none"),
+        ]
 
 
 def _reason_for(outcome: ScenarioOutcome) -> str:
@@ -676,6 +740,9 @@ def evaluate_gate(
         risks, result, changed_verification=changed_verification
     )
 
+    lineage_lines = (
+        result.lineage.lines() if result is not None and result.lineage is not None else []
+    )
     if result is None:
         status = (
             GateStatus.NOT_VERIFIED if (problems or gaps) else GateStatus.VERIFIED
@@ -742,6 +809,7 @@ def evaluate_gate(
         uncovered_risks=gaps,
         covered_risks=covered,
         generation_problems=problems,
+        lineage=lineage_lines,
     )
 
 
