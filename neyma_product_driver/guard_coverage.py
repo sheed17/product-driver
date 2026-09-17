@@ -191,6 +191,10 @@ class GuardMeasurement(BaseModel):
     #: The repository's own discrimination cases, observed passing beside it.
     discrimination: list[str] = Field(default_factory=list)
     detail: str = ""
+    #: Per moved test: what it names, what it structurally measures, and whether
+    #: it carries its own positive control. Read by
+    #: :func:`~neyma_product_driver.risk_grounding.guard_structural_evidence`.
+    tests: list[Any] = Field(default_factory=list)
 
     @property
     def discriminating(self) -> bool:
@@ -251,6 +255,7 @@ def guard_measurements(verification: Any) -> list[GuardMeasurement]:
                     str(n) for n in (getattr(guard, "discrimination_names", None) or [])
                 ],
                 detail=str(getattr(result, "detail", "") or "")[:300],
+                tests=list(getattr(guard, "test_measures", None) or []),
             )
         )
     return out

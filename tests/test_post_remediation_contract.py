@@ -438,8 +438,13 @@ class TestUncoveredRisksReachAcceptance:
         alone is equally satisfied by `coverage_gaps=[]`, which is the mutation
         this test exists to catch.
         """
-        source = inspect.getsource(driver_cli.run_control_loop)
-        assert "coverage_gaps=_coverage_gap_briefs(planner, suite_result)" in source
+        source = " ".join(inspect.getsource(driver_cli.run_control_loop).split())
+        # The gaps are computed from the same evidence the gate reads, including
+        # the changed-verification record (run 20260917-063502).
+        assert (
+            "coverage_gaps=_coverage_gap_briefs( planner, suite_result, "
+            'changed_verification=changed_verification["value"] )'
+        ) in source
 
     def test_the_gap_briefs_helper_reads_the_planner_risk_register(self) -> None:
         class Plan:

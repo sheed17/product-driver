@@ -489,8 +489,24 @@ _CLAIM_PATTERNS: list[tuple[ClaimType, re.Pattern[str]]] = [
 
 # Phrases that mean the builder is explicitly NOT claiming completion.
 _NEGATION_RE = re.compile(
-    r"\b(?:no|not|never|none|zero|cannot|can't|isn't|is\s+not|won't|refuse|refusing|"
-    r"without|pending|awaiting|remains?|still|neither|nor)\b[^.\n]{0,40}$",
+    r"\b(?:no|not|never|none|nothing|nobody|no\s+one|no-one|zero|cannot|can't|isn't|"
+    r"is\s+not|won't|refuse|refusing|without|pending|awaiting|remains?|still|neither|nor)"
+    r"\b[^.\n]{0,40}$",
+    re.I,
+)
+
+#: A sentence that FRAMES what follows as a hypothesis, a question or a risk to
+#: verify rather than asserting it. "R8: the capability may be live in
+#: production for tenants; verify it" is a verification obligation, and reading
+#: it as "the capability is live" manufactures a product state nobody claimed.
+#: Read only in the part of the sentence BEFORE the matched claim, so the
+#: claim's own words ("may begin") are never mistaken for its framing.
+_HYPOTHESIS_RE = re.compile(
+    r"\b(?:might|may(?!\s+not\b)|could(?!\s+(?:confirm|verify|see|observe)\b)|whether|if|"
+    r"suppose|supposing|in\s+case|hypothes\w*|suspect\w*|possibl[ey]|potentially|"
+    r"(?:verify|check|confirm|test|ensure)\s+(?:that|whether|if)|"
+    r"(?:the\s+)?risk\s+(?:is\s+)?that)\b"
+    r"|(?:^|\s)(?:risk(?:\s+hypothesis)?|hypothesis|R\d+|RISK-[\w-]+)\s*:",
     re.I,
 )
 
@@ -587,6 +603,11 @@ def extract_claims(text: str, source: str = "builder report") -> list[Completion
             if claim_type in _NEGATION_SENSITIVE and any(
                 _NEGATED_COMPLETION_RE.search(chunk) for chunk in (match.group(0), before, after)
             ):
+                continue
+            # A hypothesis is a verification obligation, not a claim. It stays
+            # whatever the run's risk register says it is, and is never turned
+            # into a statement about the product here.
+            if claim_type in _NEGATION_SENSITIVE and _HYPOTHESIS_RE.search(before):
                 continue
 
             value = ""

@@ -2166,7 +2166,18 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
 
     # -- regression scope ---------------------------------------------------
     if generated.risk_category is RiskCategory.REGRESSION:
-        if not (generated.provenance.diff_files_consulted or generated.generated_from):
+        # A coverage-gap case that cites a risk this run registered is in scope
+        # by that citation: the risk is already an acceptance obligation of this
+        # task, and refusing the only kind of scenario that can measure it left
+        # run 20260917-063502 with a ships-dark obligation nothing could discharge.
+        cites_registered_risk = generated.provenance.stage == "coverage_gap" and bool(
+            {str(r).strip() for r in generated.provenance.source_risks} & context.known_risk_ids
+        )
+        if not (
+            generated.provenance.diff_files_consulted
+            or generated.generated_from
+            or cites_registered_risk
+        ):
             reasons.append(
                 "a regression scenario must name the diff or prior evidence that puts the "
                 "behaviour it guards inside this task's scope"

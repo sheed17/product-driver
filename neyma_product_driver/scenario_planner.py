@@ -56,6 +56,7 @@ from .outcome_contract import (
     contract_problems,
     undeclared_refusal,
 )
+from .refusal_semantics import refusal_note, semantics_problems
 from .scenario_plan import (
     REJECTED_CONTRACT,
     REJECTED_FILTERED,
@@ -642,6 +643,8 @@ class ScenarioPlanner:
             self._finish_wave(record)
             return
 
+        # The builder may have committed since the last wave.
+        self._repository.refresh()
         allowed = min(limit, room) if budgeted else limit
         if allowed < limit:
             record.budget_notes.append(
@@ -668,8 +671,17 @@ class ScenarioPlanner:
             # And what the repository's scenario files say each one IS, where
             # they say it is a refusal. Same order, same length.
             command_notes=[
-                self._invocation_grammar.command_note(command)
-                for command in self.approved_commands.entries
+                " ".join(
+                    note
+                    for note in (
+                        self._invocation_grammar.command_note(command),
+                        refusal_note(verbatim, self._repository),
+                    )
+                    if note
+                )
+                for command, verbatim in zip(
+                    self.approved_commands.entries, self.approved_commands.verbatim
+                )
             ],
             vocabulary_notes=self._invocation_grammar.vocabulary_lines(),
             held_scenarios=self._held_briefs(),
@@ -923,6 +935,7 @@ class ScenarioPlanner:
         """Read-only access to the repository's tracked text, cached per planner."""
         if self._repository_cache is None:
             self._repository_cache = RepositoryText(self.repo)
+            self._repository_cache.refresh()
         return self._repository_cache
 
     def _held_briefs(self) -> list[str]:
@@ -988,6 +1001,7 @@ class ScenarioPlanner:
         and the hold blocks in its place until re-derivation replaces it.
         """
         held: list[RejectedScenario] = []
+        self._repository.refresh()
         for outcome in outcomes:
             if str(getattr(outcome.origin, "value", outcome.origin)) != "generated":
                 continue
@@ -999,7 +1013,7 @@ class ScenarioPlanner:
                 continue
             reason = undeclared_refusal(
                 scenario, self._executions_for(scenario, result.commands), self._repository
-            )
+            ) or self._contradicted_operations(scenario)
             if reason and self.hold(scenario, reason):
                 held.append(
                     RejectedScenario(
@@ -1013,6 +1027,28 @@ class ScenarioPlanner:
             self.plan.recompute_coverage()
             self.persist()
         return [r.id for r in held]
+
+    def _contradicted_operations(self, scenario: GeneratedScenario) -> str:
+        """Hold reason when a DECLARED outcome contradicts what its operations are, or ``""``.
+
+        The declared-contract twin of the legacy hold. A scenario admitted
+        before operation semantics were checked can declare ``permitted`` for a
+        probe that runs an operation the repository's own guards only ever
+        exercise as a refusal. Executing it again can only ask the product to
+        stop refusing, so it is held and re-derived instead — decided from the
+        scenario's text and the repository, before anything runs.
+        """
+        problems = semantics_problems(scenario, self._repository)
+        if not problems:
+            return ""
+        return (
+            "its declared outcome contradicts the repository's own semantics for an "
+            "operation it runs: "
+            + "; ".join(problems)
+            + ". This is a harness-oracle defect in Product Driver, not a product failure; "
+            "it is HELD — blocking, not executed again — until it is re-derived under the "
+            "outcome contract"
+        )
 
     def _recorded_undeclared_refusal(self, scenario: GeneratedScenario) -> str:
         """Hold reason from this scenario's LATEST recorded execution, or ``""``."""
@@ -1548,6 +1584,7 @@ class ScenarioPlanner:
             return self._plan_is_unreadable(path, exc)
 
         self.plan = plan
+        self._repository.refresh()
         self._adopt_wave_file_offset()
         # Recomputed, never restored. Permanent coverage is a fact about the
         # scenario files as they are *now*, not about the plan as it was
@@ -1682,7 +1719,9 @@ class ScenarioPlanner:
             # pre-contract scenario whose own recorded execution already met a
             # typed refusal must not be executed again to ask the product to
             # stop refusing.
-            hold_reason = self._recorded_undeclared_refusal(scenario)
+            hold_reason = self._recorded_undeclared_refusal(
+                scenario
+            ) or self._contradicted_operations(scenario)
             if hold_reason and self.hold(scenario, hold_reason):
                 held.append(
                     RejectedScenario(

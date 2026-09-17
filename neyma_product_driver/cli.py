@@ -917,7 +917,9 @@ async def run_control_loop(
             founder_feedback=feedback_text,
             previous_corrections=sent_corrections,
             suite=suite_result,
-            coverage_gaps=_coverage_gap_briefs(planner, suite_result),
+            coverage_gaps=_coverage_gap_briefs(
+                planner, suite_result, changed_verification=changed_verification["value"]
+            ),
             # Coverage the run set out to produce and did not. Without this the
             # evaluator read "0 generated case(s)" off the suite summary and
             # wrote it down as a finding, when nine had been proposed and the
@@ -1616,7 +1618,12 @@ def _changed_surface_verification(
     Never raises. A guard that cannot be executed here is recorded as that, which
     blocks the CLAIM without inventing a defect.
     """
-    from .changed_verification import changed_verification_paths, verify_changed_surface
+    from .changed_verification import (
+        ChangedSurfaceVerification,
+        changed_verification_paths,
+        structural_measurements,
+        verify_changed_surface,
+    )
     from .repo_verification import run_changed_files
 
     diff_files = run_changed_files(config.neyma_repo, base_commit)
@@ -1630,10 +1637,19 @@ def _changed_surface_verification(
     # Path-only, so a diff that changed no verification file costs nothing and
     # says nothing. The announcement below is for runs where this applies.
     if not changed_verification_paths(diff_files):
-        obligation["value"] = None
+        # No guard changed, so there is no obligation — but the driver's own
+        # structural scan of the changed product modules is still a measurement
+        # a risk may need, and it is kept on a record that claims nothing else.
+        structural = structural_measurements(config.neyma_repo, diff_files, commit=head_commit)
+        value = (
+            ChangedSurfaceVerification(commit=head_commit, module_reachability=structural)
+            if structural
+            else None
+        )
+        obligation["value"] = value
         obligation["commit"] = head_commit
         obligation["files"] = fingerprint
-        return None
+        return value
     emit("→ operating the verification this diff changed...")
 
     # Carry an open obligation forward rather than re-measuring what already
@@ -1658,10 +1674,11 @@ def _changed_surface_verification(
         return held
 
     if not verification.applicable:
-        obligation["value"] = None
+        value = verification if verification.module_reachability else None
+        obligation["value"] = value
         obligation["commit"] = head_commit
         obligation["files"] = fingerprint
-        return None
+        return value
 
     if held is not None and same_tree and held.results:
         # Merge, so a partial answer taken earlier on this same tree is not lost
@@ -1888,7 +1905,9 @@ def _identified_risks(planner: Any) -> Sequence[Any]:
     return list(getattr(plan, "risks", None) or [])
 
 
-def _coverage_gap_briefs(planner: Any, suite_result: Any) -> list[str]:
+def _coverage_gap_briefs(
+    planner: Any, suite_result: Any, *, changed_verification: Any = None
+) -> list[str]:
     """The deterministic coverage gaps, rendered for the evaluator.
 
     The evaluator is asked whether the coverage was sufficient. Asking that
@@ -1900,7 +1919,11 @@ def _coverage_gap_briefs(planner: Any, suite_result: Any) -> list[str]:
 
     return [
         risk.brief()
-        for risk in uncovered_required_risks(_identified_risks(planner), suite_result)
+        for risk in uncovered_required_risks(
+            _identified_risks(planner),
+            suite_result,
+            changed_verification=changed_verification,
+        )
     ]
 
 

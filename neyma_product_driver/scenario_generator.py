@@ -852,6 +852,19 @@ the code to do. A scenario that cites authority requiring refusal while expectin
 success is refused before it runs. When the refusal ends the program, only text
 printed before it can be asserted.
 
+A COMMAND'S OUTCOME IS THE OUTCOME OF EVERY OPERATION IN IT. A compound probe —
+many structural checks and one deliberate call that must be refused — is judged
+operation by operation against the repository's own guards: a call the
+repository only ever exercises as a refusal (its tests and probes wrap it in
+`pytest.raises` / `except <RefusalClass>`) must be refused here too. So either
+the probe catches that refusal itself and you assert the text only its refusal
+branch prints (then "permitted" is right: the probe exits 0 and a silent default
+would print something else), or the refusal ends the program and the command is
+"refused", asserting only what was printed before it. Calling such an operation
+unguarded and declaring "permitted" is refused before it runs, whether or not you
+cite anything. An approved command annotated REFUSING OPERATION is exactly that
+shape.
+
 HARD CONSTRAINTS — a scenario violating any of these is discarded by the harness:
 
   - A `command` or `state_check` may use ONLY a command from the approved list you

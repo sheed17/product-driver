@@ -267,6 +267,46 @@ class RepositoryText:
         self._literal: dict[str, bool] = {}
         self._classes: dict[str, str] = {}
         self._tracked: set[str] | None = None
+        self._refusal_index: object | None = None
+        self._index_head = ""
+        self._programs: dict[str, object] = {}
+
+    def refusal_index(self):
+        """What the repository's own guards say each closed operation is. Cached.
+
+        See :class:`~neyma_product_driver.refusal_semantics.RefusalIndex`.
+        """
+        if self._refusal_index is None:
+            from .refusal_semantics import RefusalIndex
+
+            self._refusal_index = RefusalIndex.build(self)
+        return self._refusal_index
+
+    def refresh(self) -> None:
+        """Forget every cached answer if the repository's HEAD has moved.
+
+        A builder commits between iterations of one run, and what the
+        repository's files and guards say must be read from the tree being
+        judged. Called by the planner once per wave, resume and hold pass —
+        not per question, which would cost a subprocess per approved command.
+        """
+        head = _git(self.repo, "rev-parse", "HEAD")[1].strip() if self.repo is not None else ""
+        if head == self._index_head:
+            return
+        self._index_head = head
+        self._files.clear()
+        self._literal.clear()
+        self._classes.clear()
+        self._tracked = None
+        self._refusal_index = None
+
+    def program_analysis(self, text: str):
+        """The operations of one probe program, parsed once. ``None`` if unparseable."""
+        if text not in self._programs:
+            from .refusal_semantics import analyse_program
+
+            self._programs[text] = analyse_program(text)
+        return self._programs[text]
 
     def tracked(self) -> set[str]:
         if self._tracked is None:
@@ -479,6 +519,16 @@ def contract_problems(generated: object, repository: RepositoryText) -> list[str
                 "'refusal' whose quote the repository contains). Without it, a failing "
                 "command could be read as a passing scenario"
             )
+
+    # The operations inside each command, read against what the repository's
+    # own guards say they are. A generator that cites nothing cannot thereby
+    # outvote the repository: a compound probe that runs an operation the
+    # repository only ever exercises as a refusal, and declares the command
+    # permitted, is the same contradiction as citing a refusal mandate and
+    # expecting success — it is merely silent about it.
+    from .refusal_semantics import semantics_problems
+
+    problems += semantics_problems(generated, repository)
 
     if REQUIRES_REFUSAL in requires and REFUSED not in expected:
         problems.append(

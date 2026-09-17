@@ -59,6 +59,26 @@ where it asserts an absence, and must be observed to read every concrete
 artifact the risk names. Anything less leaves the risk open with the unmeasured
 part named, and the generated scenario is still owed.
 
+Two further attachments exist for STRUCTURAL risks, and they only exist once a
+risk has been grounded (:mod:`~neyma_product_driver.risk_grounding`): its
+subjects are what it names plus the changed product modules it refers to, and
+its hypothesis is one the tree can decide — today, "this capability is wired
+into the live path". Run 20260917-063502 named that hypothesis twice, in words
+that named no file, and reported both as uncovered beside the green,
+positive-controlled repository guard that measured exactly it.
+
+    4. **a changed repository guard with one structural test** that names every
+       grounded subject, measures the hypothesised property, and asserts its own
+       positive control; executed and passing on the judged tree;
+    5. **the driver's own structural scan** of the judged tree, which says DARK
+       only when no product import chain from an entry point reaches the
+       module and its resolver's positive control fired. A reachable module is
+       never read as a refutation: an import is not a live binding.
+
+Two wordings of one grounded structural risk are ONE obligation — the second
+joins the first entry as a duplicate rather than blocking a second time — and
+a risk that cannot be grounded keeps blocking, saying so.
+
 And where two kinds of evidence about one risk DISAGREE — a guard that measures
 it passing while a scenario carrying it failed, or the reverse — this fails
 closed. A contradiction is not a coverage question and is never resolved by
@@ -77,6 +97,12 @@ from typing import Any, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from .guard_coverage import GuardVerdict, guard_evidence, guard_measurements
+from .risk_grounding import (
+    Grounding,
+    ground,
+    guard_structural_evidence,
+    reachability_evidence,
+)
 from .scenario_plan import IdentifiedRisk
 from .scenario_suite import Origin, Outcome, ScenarioOutcome, SuiteResult
 
@@ -132,11 +158,18 @@ class UncoveredRisk(BaseModel):
     #: coverage question: something measured this and something else measured it
     #: differently, and exactly one of those two records is wrong.
     contradiction: str = ""
+    #: What the risk was grounded to before it was allowed to block.
+    grounding: list[str] = Field(default_factory=list)
+    #: Other register entries that are this same obligation in other words.
+    duplicates: list[str] = Field(default_factory=list)
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
         tail = self.contradiction or self.reason
-        return f"{head} — {self.description}  ({tail})"
+        merged = (
+            f" [one obligation with {', '.join(self.duplicates)}]" if self.duplicates else ""
+        )
+        return f"{head} — {self.description}{merged}  ({tail})"
 
 
 class CoveredRisk(BaseModel):
@@ -164,7 +197,10 @@ class CoveredRisk(BaseModel):
     #: "declared" — the scenario's own ``verifies:`` claim, established;
     #: "risk_category" — a generated scenario planned for this risk category;
     #: "repository_guard" — a guard this change delivered, run by this driver,
-    #: observed to read everything the risk names.
+    #: observed to read everything the risk names;
+    #: "repository_guard_structural" — such a guard's single test that
+    #: structurally measures the grounded risk, with its own positive control;
+    #: "driver_structural" — this driver's positive-controlled scan of the tree.
     basis: str = ""
     #: The same answer in the words a reader wants: WHICH KIND of measurement
     #: discharged this risk. A "covered" that cannot name its own source reads
@@ -188,9 +224,15 @@ class CoveredRisk(BaseModel):
     #: For ``inherited``: the iteration that executed it, and the tree it ran on.
     evidence_iteration: int = 0
     evidence_tree: str = ""
+    #: What the risk was grounded to, when grounding decided which measurement applied.
+    grounding: list[str] = Field(default_factory=list)
+    #: Other register entries that are this same obligation in other words.
+    duplicates: list[str] = Field(default_factory=list)
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
+        if self.duplicates:
+            head += f" [one obligation with {', '.join(self.duplicates)}]"
         detail = self.measurement or self.scenario_id
         if self.claim:
             detail += f" — {self.claim}"
@@ -215,6 +257,11 @@ class CoveredRisk(BaseModel):
 BASIS_DECLARED = "declared"
 BASIS_CATEGORY = "risk_category"
 BASIS_GUARD = "repository_guard"
+#: A changed, executed repository guard with one test that structurally
+#: measures the grounded risk and carries its own positive control.
+BASIS_STRUCTURAL_GUARD = "repository_guard_structural"
+#: The driver's own structural scan, positive-controlled, on the judged tree.
+BASIS_DRIVER_STRUCTURAL = "driver_structural"
 
 #: The same three, in the words the report uses. Named separately because a
 #: reader asking "what discharged this?" wants the kind of measurement, and a
@@ -223,12 +270,24 @@ BASIS_GUARD = "repository_guard"
 SOURCE_DECLARED = "reviewed scenario claim"
 SOURCE_CATEGORY = "generated scenario"
 SOURCE_GUARD = "repository guard executed by this run"
+SOURCE_STRUCTURAL_GUARD = "changed repository guard executed by this run (structural test)"
+SOURCE_DRIVER_STRUCTURAL = "structural reachability measurement taken by this driver"
 
 _SOURCE_OF = {
     BASIS_DECLARED: SOURCE_DECLARED,
     BASIS_CATEGORY: SOURCE_CATEGORY,
     BASIS_GUARD: SOURCE_GUARD,
+    BASIS_STRUCTURAL_GUARD: SOURCE_STRUCTURAL_GUARD,
+    BASIS_DRIVER_STRUCTURAL: SOURCE_DRIVER_STRUCTURAL,
 }
+
+#: What a gap says when the risk could not be grounded in anything concrete.
+UNGROUNDED = (
+    "the risk names no concrete repository artifact and none of the product modules "
+    "this diff changed could be tied to it, so no guard or structural measurement can "
+    "be held against it yet; it stays blocking until a scenario that names its subject "
+    "measures it"
+)
 
 
 def _satisfying_outcome(
@@ -409,96 +468,226 @@ def risk_coverage(
     outcomes = list(result.outcomes) if result is not None else []
     lineage = result.lineage if result is not None else None
     measurements = guard_measurements(changed_verification)
+    # The product modules the judged diff changed, as the driver's own
+    # structural scan recorded them. Absent on a record taken before grounding
+    # existed, in which case nothing below grounds anything and every answer is
+    # the one this ledger gave before.
+    reachability = list(getattr(changed_verification, "module_reachability", None) or [])
+    changed_modules = [str(getattr(m, "path", "")) for m in reachability]
+    tree = str(getattr(changed_verification, "commit", "") or "")
 
     covered: list[CoveredRisk] = []
     gaps: list[UncoveredRisk] = []
+    # One obligation per semantic risk: same category, same structural
+    # hypothesis, same grounded subjects. A second wording joins the first
+    # entry instead of becoming a second blocker; a risk whose subjects differ,
+    # or that hypothesises nothing structural, is never merged.
+    by_key: dict[tuple[str, str, tuple[str, ...]], CoveredRisk | UncoveredRisk] = {}
     for risk in risks:
         if not risk.severity.blocks_acceptance:
             continue
         category = risk.risk_category.value
-        found = _satisfying_outcome(category, outcomes)
-        guard = guard_evidence(risk, measurements)
-        clash = _contradiction(guard, found, _scenario_refusal(category, outcomes))
-
-        if clash:
-            gaps.append(
-                UncoveredRisk(
-                    risk_id=risk.id,
-                    description=risk.description,
-                    risk_category=category,
-                    severity=risk.severity.value,
-                    required=True,
-                    reason=clash,
-                    contradiction=clash,
-                )
-            )
+        grounding = ground(risk.description, changed_modules) if changed_modules else Grounding()
+        key = grounding.key(category)
+        if key is not None and key in by_key:
+            by_key[key].duplicates.append(risk.id or risk.description[:60])
             continue
-
-        if found is not None:
-            outcome, basis, claim = found
-            if outcome.inherited_from_iteration:
-                freshness = INHERITED
-            elif lineage is not None and outcome.scenario_id in lineage.invalidated_ids():
-                freshness = REEXERCISED
-            else:
-                freshness = FRESH
-            covered.append(
-                CoveredRisk(
-                    risk_id=risk.id,
-                    description=risk.description,
-                    risk_category=category,
-                    severity=risk.severity.value,
-                    scenario_id=outcome.scenario_id,
-                    origin=outcome.origin.value,
-                    basis=basis,
-                    evidence_source=_SOURCE_OF.get(basis, basis),
-                    measurement=outcome.scenario_id,
-                    claim=claim,
-                    evidence_path=outcome.evidence_path,
-                    freshness=freshness,
-                    evidence_iteration=outcome.evidence_iteration,
-                    evidence_tree=outcome.evidence_tree,
-                )
-            )
-            continue
-
-        if guard.discharges and guard.measurement is not None:
-            covered.append(
-                CoveredRisk(
-                    risk_id=risk.id,
-                    description=risk.description,
-                    risk_category=category,
-                    severity=risk.severity.value,
-                    origin="repository",
-                    basis=BASIS_GUARD,
-                    evidence_source=SOURCE_GUARD,
-                    measurement=guard.measurement.path,
-                    command=guard.measurement.command,
-                    discrimination=list(guard.measurement.discrimination),
-                    claim=(
-                        "this change delivered this guard and this run ran it; its own "
-                        "assertions read "
-                        + ", ".join(guard.covered[:4])
-                    ),
-                    evidence_path=guard.measurement.path,
-                )
-            )
-            continue
-
-        reason = _gap_reason(category, outcomes)
-        if guard.reason:
-            reason = f"{reason}; {guard.reason}"
-        gaps.append(
-            UncoveredRisk(
-                risk_id=risk.id,
-                description=risk.description,
-                risk_category=category,
-                severity=risk.severity.value,
-                required=True,
-                reason=reason,
-            )
+        entry = _judge_risk(
+            risk,
+            category,
+            outcomes,
+            lineage,
+            measurements,
+            grounding,
+            reachability,
+            tree,
         )
+        (covered if isinstance(entry, CoveredRisk) else gaps).append(entry)
+        if key is not None:
+            by_key[key] = entry
     return covered, gaps
+
+
+def _judge_risk(
+    risk: IdentifiedRisk,
+    category: str,
+    outcomes: Sequence[ScenarioOutcome],
+    lineage: Any,
+    measurements: Sequence[Any],
+    grounding: Grounding,
+    reachability: Sequence[Any],
+    tree: str,
+) -> CoveredRisk | UncoveredRisk:
+    """One risk, one verdict, in the order the evidence is trusted."""
+    found = _satisfying_outcome(category, outcomes)
+    refusal = _scenario_refusal(category, outcomes)
+    guard = guard_evidence(risk, measurements)
+    structural, structural_test, structural_gap = guard_structural_evidence(
+        grounding, [m for m in measurements if m.passed or not m.executable]
+    )
+    refuting, refuting_test, _gap = guard_structural_evidence(
+        grounding, [m for m in measurements if not m.passed and m.executable]
+    )
+    # A guard FILE that failed is a refutation of this risk only when the
+    # structural test itself is the one reported failing; another test in the
+    # same file failing says nothing about this measurement either way.
+    if refuting is not None and refuting_test.name not in refuting.detail:
+        refuting = refuting_test = None
+    clash = _contradiction(guard, found, refusal)
+    if not clash and structural is not None and refusal is not None:
+        detail = refusal.failed_assertions[0] if refusal.failed_assertions else refusal.error
+        clash = (
+            f"{structural.path}::{structural_test.name} measures this risk and PASSED, while "
+            f"scenario {refusal.scenario_id} exercising the same risk FAILED "
+            f"({detail or 'no detail recorded'}). Exactly one of those two measurements is "
+            "wrong and this run does not know which, so the risk is not verified."
+        )
+    if not clash and refuting is not None and found is not None:
+        clash = (
+            f"{refuting.path}::{refuting_test.name} measures this risk and REFUSED "
+            f"({refuting.detail[:160]}), while {found[0].scenario_id} passed carrying it. "
+            "Exactly one of those two measurements is wrong and this run does not know "
+            "which, so the risk is not verified."
+        )
+    basis_lines = list(grounding.basis)
+
+    if clash:
+        return UncoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            required=True,
+            reason=clash,
+            contradiction=clash,
+            grounding=basis_lines,
+        )
+
+    if found is not None:
+        outcome, basis, claim = found
+        if outcome.inherited_from_iteration:
+            freshness = INHERITED
+        elif lineage is not None and outcome.scenario_id in lineage.invalidated_ids():
+            freshness = REEXERCISED
+        else:
+            freshness = FRESH
+        return CoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            scenario_id=outcome.scenario_id,
+            origin=outcome.origin.value,
+            basis=basis,
+            evidence_source=_SOURCE_OF.get(basis, basis),
+            measurement=outcome.scenario_id,
+            claim=claim,
+            evidence_path=outcome.evidence_path,
+            freshness=freshness,
+            evidence_iteration=outcome.evidence_iteration,
+            evidence_tree=outcome.evidence_tree,
+        )
+
+    if guard.discharges and guard.measurement is not None:
+        return CoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            origin="repository",
+            basis=BASIS_GUARD,
+            evidence_source=SOURCE_GUARD,
+            measurement=guard.measurement.path,
+            command=guard.measurement.command,
+            discrimination=list(guard.measurement.discrimination),
+            claim=(
+                "this change delivered this guard and this run ran it; its own "
+                "assertions read "
+                + ", ".join(guard.covered[:4])
+            ),
+            evidence_path=guard.measurement.path,
+        )
+
+    if refuting is not None:
+        reason = (
+            f"{refuting.path}::{refuting_test.name} structurally measures this risk and REFUSED "
+            f"on this tree: {refuting.detail[:200]}"
+        )
+        return UncoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            required=True,
+            reason=reason,
+            grounding=basis_lines,
+        )
+
+    if structural is not None and structural.passed:
+        return CoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            origin="repository",
+            basis=BASIS_STRUCTURAL_GUARD,
+            evidence_source=SOURCE_STRUCTURAL_GUARD,
+            measurement=f"{structural.path}::{structural_test.name}",
+            command=structural.command,
+            discrimination=["its own positive control: the scan is asserted to find what it must"],
+            claim=(
+                f"this change delivered this guard and this run ran it on this tree; its test "
+                f"{structural_test.name} measures {grounding.hypothesis} over "
+                + ", ".join(grounding.subjects[:4])
+            ),
+            evidence_path=structural.path,
+            evidence_tree=tree,
+            grounding=basis_lines,
+        )
+
+    discharged, driver_detail = reachability_evidence(grounding, reachability)
+    if discharged and refusal is None:
+        return CoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            origin="driver",
+            basis=BASIS_DRIVER_STRUCTURAL,
+            evidence_source=SOURCE_DRIVER_STRUCTURAL,
+            measurement=", ".join(grounding.capability_paths),
+            discrimination=["positive control: the same resolver found each module imported by verification"],
+            claim=driver_detail,
+            evidence_tree=tree,
+            grounding=basis_lines,
+        )
+
+    reason = _gap_reason(category, outcomes)
+    if grounding.hypothesis:
+        guard_side = structural_gap
+        if grounding.hypothesis and not guard_side:
+            guard_side = (
+                f"no changed guard with a positive-controlled {grounding.hypothesis} test "
+                "covers " + ", ".join(grounding.subjects[:4] or ["its subject"])
+            )
+        if grounding.hypothesis and not driver_detail:
+            driver_detail = "no structural measurement of its subject was taken on this tree"
+        extra = [d for d in (guard_side, driver_detail) if d]
+        reason = f"{reason}; " + "; ".join(extra)
+    elif guard.reason:
+        reason = f"{reason}; {guard.reason}"
+    # Grounding is only possible where the judged diff is known.
+    if reachability and not grounding.grounded:
+        reason = f"{reason}; {UNGROUNDED}"
+    return UncoveredRisk(
+        risk_id=risk.id,
+        description=risk.description,
+        risk_category=category,
+        severity=risk.severity.value,
+        required=True,
+        reason=reason,
+        grounding=basis_lines,
+    )
 
 
 def uncovered_required_risks(

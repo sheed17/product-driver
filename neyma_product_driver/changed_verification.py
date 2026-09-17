@@ -47,14 +47,15 @@ names, and nothing is written into the repository being verified.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .guard_coverage import subjects
+from .guard_coverage import MIN_TOKEN, normalise, subjects
 from .models import utcnow
 from .repo_verification import (
     _VENDOR,
@@ -155,6 +156,115 @@ _TEST_DEF = re.compile(r"def\s+(test_\w+)")
 # --------------------------------------------------------------------------
 
 
+#: The structural property a test measures when it walks import statements.
+IMPORT_REACHABILITY = "import_reachability"
+_IMPORT_NODES = frozenset({"Import", "ImportFrom"})
+_MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+class GuardTestMeasure(BaseModel):
+    """What ONE test this change moved measures, read from its own body.
+
+    Per test, not per file: a file whose one test scans imports and whose
+    other test names a module has not thereby measured that module's imports.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    #: Concrete artifacts the test body names (its docstring and name excluded).
+    subjects: list[str] = Field(default_factory=list)
+    #: Structural properties its body measures, e.g. :data:`IMPORT_REACHABILITY`.
+    properties: list[str] = Field(default_factory=list)
+    #: Whether the test asserts that its own scan FOUND something — the control
+    #: that separates "nothing is there" from "the scan stopped looking".
+    positive_control: bool = False
+
+
+def _names_in(node: ast.AST) -> set[str]:
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+
+
+def _mentions_import_nodes(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if isinstance(child, ast.Attribute) and child.attr in _IMPORT_NODES:
+            return True
+        if isinstance(child, ast.Name) and child.id in _IMPORT_NODES:
+            return True
+    return False
+
+
+def measure_test(function: ast.FunctionDef | ast.AsyncFunctionDef, source: str) -> GuardTestMeasure:
+    """Read one test function's own body for what it structurally measures."""
+    body = list(function.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant):
+        body = body[1:]  # the docstring is intention, not measurement
+    text = "\n".join(ast.get_source_segment(source, statement) or "" for statement in body)
+    measure = GuardTestMeasure(name=function.name, subjects=subjects(text))
+    # Names the import scan populates: anything appended/added/assigned under a
+    # branch or comprehension that inspects import nodes.
+    scanned: set[str] = set()
+    for node in ast.walk(function):
+        if isinstance(node, (ast.If, ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            if not _mentions_import_nodes(node):
+                continue
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute):
+                    if inner.func.attr in {"append", "add", "extend", "update"} and isinstance(
+                        inner.func.value, ast.Name
+                    ):
+                        scanned.add(inner.func.value.id)
+        if isinstance(node, ast.Assign) and _mentions_import_nodes(node.value):
+            for target in node.targets:
+                scanned |= _names_in(target)
+    if _mentions_import_nodes(function):
+        measure.properties.append(IMPORT_REACHABILITY)
+        # An import scan names the modules it looks for as bare strings —
+        # "rule", "pkg.rule", "rule.py" — which are exactly its subjects.
+        for node in ast.walk(function):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                text = node.value.strip()
+                if _MODULE_NAME.fullmatch(text):
+                    name = normalise(text[:-3] if text.endswith(".py") else text.rsplit(".", 1)[-1])
+                    if len(name) >= MIN_TOKEN and name not in measure.subjects:
+                        measure.subjects.append(name)
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+            continue
+        compare = node.test
+        if any(isinstance(op, ast.In) for op in compare.ops):
+            if any(_names_in(c) & scanned for c in compare.comparators):
+                measure.positive_control = True
+        if (
+            isinstance(compare.left, ast.Call)
+            and getattr(compare.left.func, "id", "") == "len"
+            and _names_in(compare.left) & scanned
+            and any(isinstance(op, (ast.Gt, ast.GtE)) for op in compare.ops)
+        ):
+            measure.positive_control = True
+    return measure
+
+
+def measure_tests(text: str, names: Sequence[str]) -> list[GuardTestMeasure]:
+    """Per-test measurements for ``names`` in one verification file."""
+    wanted = set(names or ())
+    if not wanted:
+        return []
+    try:
+        tree = ast.parse(text or "")
+    except (SyntaxError, ValueError, RecursionError):
+        return []
+    out: list[GuardTestMeasure] = []
+    seen: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in wanted:
+            if node.name in seen:
+                continue
+            seen.add(node.name)
+            out.append(measure_test(node, text))
+    return out
+
+
 class ChangedGuard(BaseModel):
     """One piece of verification this diff changed, and what it is.
 
@@ -189,6 +299,10 @@ class ChangedGuard(BaseModel):
     #: rather than being re-derived from a tree that has since moved on. See
     #: :mod:`~neyma_product_driver.guard_coverage`.
     measured_subjects: list[str] = Field(default_factory=list)
+    #: The same question asked per moved test, with the structural property each
+    #: one measures and whether it carries its own positive control. See
+    #: :mod:`~neyma_product_driver.risk_grounding`.
+    test_measures: list[GuardTestMeasure] = Field(default_factory=list)
 
     @property
     def path(self) -> str:
@@ -249,6 +363,11 @@ class ChangedSurfaceVerification(BaseModel):
     notes: list[str] = Field(default_factory=list)
     commit: str = ""
     ran_at: str = Field(default_factory=utcnow)
+    #: The driver's own structural reachability scan of every product module
+    #: the diff changed, on :attr:`commit`. Independent of whether any guard
+    #: changed, so it is recorded even when :attr:`applicable` is False. See
+    #: :func:`~neyma_product_driver.risk_grounding.measure_reachability`.
+    module_reachability: list[Any] = Field(default_factory=list)
 
     # -- what happened ----------------------------------------------------
 
@@ -667,6 +786,7 @@ def analyse_guard(
         # "status reconciliation" would be reading a label, which is the one
         # thing every rule here refuses.
         measured_subjects=subjects(assertion_span(text, moved), exclude=[rel]),
+        test_measures=measure_tests(text, moved),
     )
 
 
@@ -796,6 +916,23 @@ def discrimination_gaps(repo: Path, guards: Sequence[ChangedGuard]) -> list[str]
 # --------------------------------------------------------------------------
 
 
+def structural_measurements(repo: Path, diff_files: Sequence[str], *, commit: str = "") -> list[Any]:
+    """The driver's own reachability scan of the product modules a diff changed.
+
+    Never raises: a scan that could not be taken is simply absent, and an
+    absent measurement discharges nothing.
+    """
+    from .risk_grounding import measure_reachability, product_modules
+
+    modules = product_modules(diff_files)
+    if not modules:
+        return []
+    try:
+        return list(measure_reachability(Path(repo), modules, tree=commit))
+    except Exception:  # pragma: no cover - defensive
+        return []
+
+
 def verify_changed_surface(
     repo: Path,
     diff_files: Sequence[str],
@@ -814,6 +951,7 @@ def verify_changed_surface(
     the same measurement twice.
     """
     repo = Path(repo)
+    reachability = structural_measurements(repo, diff_files, commit=commit)
     guards, changed_paths, related_paths, notes = select_changed_verification(
         repo,
         diff_files,
@@ -827,6 +965,7 @@ def verify_changed_surface(
         guards=guards,
         notes=notes,
         commit=commit,
+        module_reachability=reachability,
     )
     if not guards:
         return record
