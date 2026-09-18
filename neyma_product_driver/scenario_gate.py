@@ -73,7 +73,10 @@ positive-controlled repository guard that measured exactly it.
     5. **the driver's own structural scan** of the judged tree, which says DARK
        only when no product import chain from an entry point reaches the
        module and its resolver's positive control fired. A reachable module is
-       never read as a refutation: an import is not a live binding.
+       never read as a refutation: an import is not a live binding. It does,
+       however, withhold 3 and 4 for the same subject on the same tree — a
+       guard whose scan missed an importer the driver's resolver found is not
+       what discharges the risk.
 
 Two wordings of one grounded structural risk are ONE obligation — the second
 joins the first entry as a duplicate rather than blocking a second time — and
@@ -98,7 +101,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .guard_coverage import GuardVerdict, guard_evidence, guard_measurements
 from .risk_grounding import (
+    IMPORT_REACHABLE,
+    REACHABILITY,
     Grounding,
+    ModuleReachability,
     ground,
     guard_structural_evidence,
     reachability_evidence,
@@ -472,9 +478,21 @@ def risk_coverage(
     # structural scan recorded them. Absent on a record taken before grounding
     # existed, in which case nothing below grounds anything and every answer is
     # the one this ledger gave before.
-    reachability = list(getattr(changed_verification, "module_reachability", None) or [])
-    changed_modules = [str(getattr(m, "path", "")) for m in reachability]
+    # A persisted record carries its scan as plain mappings; read them back as
+    # the measurements they are, or a restored record silently loses them.
+    reachability = [
+        ModuleReachability.model_validate(m) if isinstance(m, dict) else m
+        for m in (getattr(changed_verification, "module_reachability", None) or [])
+    ]
     tree = str(getattr(changed_verification, "commit", "") or "")
+    # Subject identity comes from the TASK's changed product modules, measured
+    # from the run's base, so a later verification-only commit cannot erase
+    # what a risk is about. The measurement result is only ever this tree's.
+    # A record from before the task scope was kept falls back to the modules
+    # its own scan covered, which is what this ledger read before.
+    changed_modules = list(getattr(changed_verification, "task_modules", None) or []) or [
+        str(getattr(m, "path", "")) for m in reachability
+    ]
 
     covered: list[CoveredRisk] = []
     gaps: list[UncoveredRisk] = []
@@ -501,6 +519,7 @@ def risk_coverage(
             grounding,
             reachability,
             tree,
+            bool(changed_modules),
         )
         (covered if isinstance(entry, CoveredRisk) else gaps).append(entry)
         if key is not None:
@@ -517,6 +536,7 @@ def _judge_risk(
     grounding: Grounding,
     reachability: Sequence[Any],
     tree: str,
+    scope_known: bool = False,
 ) -> CoveredRisk | UncoveredRisk:
     """One risk, one verdict, in the order the evidence is trusted."""
     found = _satisfying_outcome(category, outcomes)
@@ -588,6 +608,40 @@ def _judge_risk(
             evidence_tree=outcome.evidence_tree,
         )
 
+    # A repository guard's pass and the driver's own scan of the SAME grounded
+    # subject on the SAME tree disagree when the scan finds a product import
+    # chain from an entry point. An import is not proof of a live binding, so
+    # this refutes nothing — but a guard whose scan missed an importer the
+    # driver's resolver found cannot be what discharges the risk either. A
+    # guard that tests a narrower import shape than the risk names is exactly
+    # how a wired-in capability would pass.
+    reached = _reached_from_entry(grounding, reachability, tree)
+    if reached and (
+        (guard.discharges and guard.measurement is not None)
+        or (structural is not None and structural.passed)
+    ):
+        source = (
+            f"{structural.path}::{structural_test.name}"
+            if structural is not None
+            else guard.measurement.path
+        )
+        disagreement = (
+            f"{source} passed, but this driver's scan of the same subject on tree "
+            f"{tree[:12] or 'this tree'} found it import-reachable: "
+            + "; ".join(r.brief() for r in reached)
+            + " — liveness is unresolved, so neither measurement discharges the risk"
+        )
+        return UncoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            required=True,
+            reason=disagreement,
+            contradiction=disagreement,
+            grounding=basis_lines,
+        )
+
     if guard.discharges and guard.measurement is not None:
         return CoveredRisk(
             risk_id=risk.id,
@@ -645,7 +699,7 @@ def _judge_risk(
             grounding=basis_lines,
         )
 
-    discharged, driver_detail = reachability_evidence(grounding, reachability)
+    discharged, driver_detail = reachability_evidence(grounding, reachability, tree=tree)
     if discharged and refusal is None:
         return CoveredRisk(
             risk_id=risk.id,
@@ -676,8 +730,8 @@ def _judge_risk(
         reason = f"{reason}; " + "; ".join(extra)
     elif guard.reason:
         reason = f"{reason}; {guard.reason}"
-    # Grounding is only possible where the judged diff is known.
-    if reachability and not grounding.grounded:
+    # Grounding is only possible where the task's changed modules are known.
+    if scope_known and not grounding.grounded:
         reason = f"{reason}; {UNGROUNDED}"
     return UncoveredRisk(
         risk_id=risk.id,
@@ -688,6 +742,19 @@ def _judge_risk(
         reason=reason,
         grounding=basis_lines,
     )
+
+
+def _reached_from_entry(grounding: Grounding, reachability: Sequence[Any], tree: str) -> list[Any]:
+    """This tree's scan records of a reachability risk's own subjects that an
+    entry point's import chain reaches."""
+    if grounding.hypothesis != REACHABILITY or not grounding.capability_paths:
+        return []
+    wanted = set(grounding.capability_paths)
+    return [
+        m
+        for m in reachability
+        if m.path in wanted and m.status == IMPORT_REACHABLE and (not tree or m.tree == tree)
+    ]
 
 
 def uncovered_required_risks(

@@ -368,6 +368,12 @@ class ChangedSurfaceVerification(BaseModel):
     #: changed, so it is recorded even when :attr:`applicable` is False. See
     #: :func:`~neyma_product_driver.risk_grounding.measure_reachability`.
     module_reachability: list[Any] = Field(default_factory=list)
+    #: The product modules the TASK changed, from the run's own base: what a
+    #: risk is grounded against. Stable across iterations — a later commit that
+    #: only touches verification does not remove a module the task built —
+    #: while :attr:`module_reachability` is always a measurement of
+    #: :attr:`commit`. Subject identity from the task; result from this tree.
+    task_modules: list[str] = Field(default_factory=list)
 
     # -- what happened ----------------------------------------------------
 
@@ -950,6 +956,8 @@ def verify_changed_surface(
     observed some of them carries the obligation forward rather than paying for
     the same measurement twice.
     """
+    from .risk_grounding import product_modules
+
     repo = Path(repo)
     reachability = structural_measurements(repo, diff_files, commit=commit)
     guards, changed_paths, related_paths, notes = select_changed_verification(
@@ -966,6 +974,7 @@ def verify_changed_surface(
         notes=notes,
         commit=commit,
         module_reachability=reachability,
+        task_modules=product_modules(diff_files),
     )
     if not guards:
         return record

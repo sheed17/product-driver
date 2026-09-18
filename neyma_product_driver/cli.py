@@ -396,8 +396,23 @@ async def run_control_loop(
 
     # Where the repository stood before this run touched it. Everything the run
     # changed is measured from here — including the work the builder commits,
-    # which a working-tree read cannot see.
-    base_head = git_snapshot(config.neyma_repo).head_commit
+    # which a working-tree read cannot see. It is the RUN's base, not this
+    # process's: a resume that measured from the HEAD it restarted on saw only
+    # the commits made since, and a verification-only hardening commit then
+    # erased every product module the task's risks are about.
+    from .repo_verification import task_base_commit
+
+    base_head, base_how = task_base_commit(
+        config.neyma_repo,
+        recorded=state.task_base_commit,
+        created_at=state.created_at if state.iterations else "",
+    )
+    if not base_head:
+        base_head, base_how = git_snapshot(config.neyma_repo).head_commit, "this run's first HEAD"
+    if base_head != state.task_base_commit:
+        state.task_base_commit = base_head
+        store.save_state(state)
+        emit(f"  task base: {base_head[:12]} ({base_how})")
 
     def _terminate(status: RunStatus, decision: EvaluatorDecision, record: IterationRecord) -> LoopResult:
         """The only way out of this loop.
@@ -1154,6 +1169,29 @@ async def run_control_loop(
                 changed_verification["value"], decision, scenario.name, emit
             )
 
+        # 6b-iv. SEQUENCE THE REVIEW AFTER THE EVIDENCE IT NEEDS.
+        #
+        #     The audit does not see the gate. Left alone it reported the task
+        #     AWAITING_INDEPENDENT_REVIEW, review as the next safe action, beside
+        #     a gate that said NOT_VERIFIED for want of execution evidence — and
+        #     a reviewer cannot execute that evidence into existence. While the
+        #     gate or a changed-guard obligation is open, the review stays owed
+        #     and is not next. The launch itself was already ACCEPT-only; this
+        #     makes what the run SAYS agree with what it will do.
+        if audit is not None:
+            from .completion_auditor import hold_review_behind
+
+            audit = hold_review_behind(
+                audit, _pre_review_blockers(last_gate["value"], changed_verification["value"])
+            )
+            if audit.pre_review_blockers:
+                last_audit["value"] = audit
+                record.completion_audit = audit.model_dump(mode="json")
+                if audit.completion is not None:
+                    record.scoped_completion = audit.completion.model_dump(mode="json")
+                store.save_completion_audit(iteration, record.completion_audit)
+                emit(f"  review held: {audit.next_safe_action()[:240]}")
+
         # 6c. combine: a completion claim the repository does not support
         #     overrides an ACCEPT from the product evaluator.
         if audit is not None and audit.blocks_acceptance:
@@ -1628,7 +1666,13 @@ def _changed_surface_verification(
 
     diff_files = run_changed_files(config.neyma_repo, base_commit)
     if not diff_files:
-        return obligation.get("value")
+        # Nothing to measure is not a licence to answer with a record taken on
+        # another tree: evidence describes the tree it was read from, and an
+        # old tree's DARK says nothing about this one.
+        held = obligation.get("value")
+        if held is not None and getattr(held, "commit", "") == head_commit:
+            return held
+        return None
     fingerprint = "\n".join(sorted(str(f) for f in diff_files))
     held = obligation.get("value")
     same_tree = obligation.get("commit") == head_commit and obligation.get("files") == fingerprint
@@ -1640,9 +1684,15 @@ def _changed_surface_verification(
         # No guard changed, so there is no obligation — but the driver's own
         # structural scan of the changed product modules is still a measurement
         # a risk may need, and it is kept on a record that claims nothing else.
+        from .risk_grounding import product_modules
+
         structural = structural_measurements(config.neyma_repo, diff_files, commit=head_commit)
         value = (
-            ChangedSurfaceVerification(commit=head_commit, module_reachability=structural)
+            ChangedSurfaceVerification(
+                commit=head_commit,
+                module_reachability=structural,
+                task_modules=product_modules(diff_files),
+            )
             if structural
             else None
         )
@@ -1691,6 +1741,28 @@ def _changed_surface_verification(
     obligation["commit"] = head_commit
     obligation["files"] = fingerprint
     return verification
+
+
+def _pre_review_blockers(gate: Any, changed: Any) -> list[str]:
+    """What must be established before an independent review can be next.
+
+    Execution evidence only: an unverified or uncovered scenario-gate case, and
+    a changed guard whose obligation still blocks acceptance. Nothing a reviewer
+    could close by reading.
+    """
+    blockers: list[str] = []
+    if gate is not None and getattr(gate, "blocks_acceptance", False):
+        blockers += [f"scenario gate: {p}" for p in getattr(gate, "generation_problems", []) or []]
+        blockers += [f"scenario gate: {c.brief()}" for c in getattr(gate, "unverified", []) or []]
+        blockers += [
+            f"scenario gate: uncovered risk {r.brief()}"
+            for r in getattr(gate, "uncovered_risks", []) or []
+        ]
+        if not blockers:
+            blockers.append(gate.headline())
+    if changed is not None and getattr(changed, "blocks_acceptance", False):
+        blockers += [f"changed verification: {g}" for g in changed.gap_reasons]
+    return blockers
 
 
 def _changed_verification_gap_correction(verification: Any) -> str:
@@ -4309,6 +4381,13 @@ def _next_safe_action(result: LoopResult) -> str:
                     "until that passes; this run did not accept it.")
         return ("Read the diff yourself, then decide whether to commit and push it — the "
                 "driver stops before every remote action, by design.")
+    # A run that stopped with pre-review evidence still open names that
+    # evidence, not the review that has to wait for it.
+    blockers = list(getattr(result.audit, "pre_review_blockers", None) or [])
+    if blockers:
+        return "Establish the pre-review acceptance evidence before any review: " + "; ".join(
+            blockers[:3]
+        )
     return ""
 
 

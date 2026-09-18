@@ -24,10 +24,15 @@ This module supplies the missing step between "a risk was written down" and "a
 risk blocks acceptance":
 
 * **grounding.** A risk's subjects are what it names (paths, identifiers — the
-  guard ledger's own reading), plus the product modules THIS DIFF changed that
+  guard ledger's own reading), plus the product modules THE TASK changed that
   the risk refers to by name: ``the rule capability`` is ``rule.py`` when the
-  diff changed ``rule.py``. An exact module-name match wins; only when there
-  is none are modules whose name merely contains the word considered.
+  task changed ``rule.py``. A module named outright wins, then an exact
+  module-name match of an ordinary word; only when there is neither are
+  modules whose name merely contains the word considered. A compound name is
+  one subject: ``rule_admission.py`` does not also mean ``rule.py``.
+  The modules come from the run's base, not from the last commit, so a later
+  verification-only commit cannot erase what a risk is about; the measurement
+  of them is always the judged tree's.
 * **the property.** A small, closed set of hypotheses is STRUCTURAL: it can be
   decided by reading the tree rather than running the product. Today there is
   one — :data:`REACHABILITY`, "this capability is wired into / reachable from
@@ -35,8 +40,9 @@ risk blocks acceptance":
   only chooses which measurement may be asked for. Recognising it never
   discharges anything.
 * **one obligation per semantic risk.** Two risks with the same category, the
-  same structural property and the same grounded subjects are one obligation,
-  however differently they are worded. Risks whose subjects differ stay
+  same structural property and the same resolved repository modules are one
+  obligation, however differently they are worded and whatever package name or
+  milestone label one of them also mentions. Risks whose subjects differ stay
   distinct, and a risk with no structural property is never merged with
   anything.
 * **the driver's own measurement.** :func:`measure_reachability` reads every
@@ -177,25 +183,46 @@ class Grounding(BaseModel):
         return bool(self.subjects)
 
     def key(self, category: str) -> tuple[str, str, tuple[str, ...]] | None:
-        """The identity of the obligation, when it can be compared at all."""
+        """The identity of the obligation, when it can be compared at all.
+
+        Keyed on the repository modules the risk resolved to, not on every token
+        its prose happened to contain: "the rule capability" and "the U8.2 rule
+        capability (rule.py / M12) ... outside the freight_recon package" are
+        the same hypothesis about the same module, and a package name or a
+        milestone label in one wording must not make them two obligations.
+        """
         if not self.hypothesis or not self.capability_paths:
             return None
-        return (category, self.hypothesis, tuple(sorted(self.subjects)))
+        return (category, self.hypothesis, tuple(sorted(self.capability_paths)))
+
+
+#: A compound identifier or path — ``rule_admission``, ``rule.py``,
+#: ``src/pkg/mod.py``. Its parts are not separate words about separate things.
+_COMPOUND = re.compile(r"\b\w+(?:[./]\w+)+\b|\b[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+\b")
 
 
 def ground(description: str, diff_files: Sequence[str]) -> Grounding:
-    """Ground one risk description against the diff that is being judged."""
+    """Ground one risk description against the task's changed product modules.
+
+    A module the risk names outright is its subject. Only the risk's ordinary
+    words are then matched against module names, with compound identifiers
+    removed first: a risk about ``rule_admission.py`` is not a risk about
+    ``rule.py`` because the one name contains the other's word.
+    """
     named = subjects(description or "")
-    words = risk_words(description)
     changed = product_modules(diff_files)
-    exact = [p for p in changed if _singular(normalise(p)) in words]
+    named_modules = [p for p in changed if normalise(p) in named]
+    words = risk_words(_COMPOUND.sub(" ", description or ""))
+    exact = [
+        p for p in changed if p not in named_modules and _singular(normalise(p)) in words
+    ]
     loose: list[str] = []
-    if not exact:
+    if not named_modules and not exact:
         for path in changed:
             tokens = {_singular(t) for t in normalise(path).split("_") if len(t) >= _MIN_WORD}
             if tokens & words:
                 loose.append(path)
-    capability = exact or loose
+    capability = named_modules + exact or loose
     grounding = Grounding(
         hypothesis=hypothesis_property(description),
         subjects=list(dict.fromkeys(named + [normalise(p) for p in capability])),
@@ -205,7 +232,7 @@ def ground(description: str, diff_files: Sequence[str]) -> Grounding:
         grounding.basis.append("named by the risk: " + ", ".join(named[:6]))
     if capability:
         grounding.basis.append(
-            ("changed modules the risk names: " if exact else "changed modules sharing a word with the risk: ")
+            ("changed modules the risk names: " if not loose else "changed modules sharing a word with the risk: ")
             + ", ".join(capability)
         )
     return grounding
@@ -460,17 +487,26 @@ def measure_reachability(
 
 
 def reachability_evidence(
-    grounding: Grounding, measurements: Sequence[ModuleReachability]
+    grounding: Grounding, measurements: Sequence[ModuleReachability], *, tree: str = ""
 ) -> tuple[bool, str]:
-    """``(discharges, why)`` for a reachability risk from the driver's own scan."""
+    """``(discharges, why)`` for a reachability risk from the driver's own scan.
+
+    ``tree`` is the tree being judged. A record read from any other tree is not
+    evidence about this one, however DARK it was: the subject of a risk is
+    stable across the task, its measurement never is.
+    """
     if grounding.hypothesis != REACHABILITY or not grounding.capability_paths:
         return False, ""
-    by_path = {m.path: m for m in measurements}
+    by_path = {m.path: m for m in measurements if not tree or m.tree == tree}
     missing = [p for p in grounding.capability_paths if p not in by_path]
     if missing:
-        return False, "no structural reachability measurement was taken of " + ", ".join(missing)
+        return False, (
+            "no structural reachability measurement was taken of "
+            + ", ".join(missing)
+            + (f" on tree {tree[:12]}" if tree else "")
+        )
     records = [by_path[p] for p in grounding.capability_paths]
-    open_ = [r for r in records if r.status != DARK]
+    open_ = [r for r in records if r.status != DARK or not r.control_importers]
     if open_:
         return False, "; ".join(r.brief() for r in open_) + (
             " — a static import chain from an entry point is not proof of a live binding, "

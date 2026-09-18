@@ -51,7 +51,7 @@ import re
 import subprocess
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -317,6 +317,12 @@ class CompletionAudit(BaseModel):
     #: For a whole-phase build: criteria a later gate settles — the independent
     #: review, the external verifier, the residual ledger. Never this run's.
     left_to_phase_closure: list[str] = Field(default_factory=list)
+    #: Acceptance evidence that must be coherent BEFORE an independent review
+    #: can be the next step — an unverified scenario gate, an open changed-guard
+    #: obligation. A reviewer reads a candidate; it does not execute the
+    #: measurements the candidate still lacks, so while any of these is open the
+    #: review is owed but is not what happens next. See :func:`hold_review_behind`.
+    pre_review_blockers: list[str] = Field(default_factory=list)
 
     @property
     def blocks_acceptance(self) -> bool:
@@ -359,6 +365,13 @@ class CompletionAudit(BaseModel):
     def next_safe_action(self) -> str:
         st = self.observed_state
         scope = self.scope
+        if self.pre_review_blockers:
+            return (
+                "establish the pre-review acceptance evidence first — "
+                + "; ".join(self.pre_review_blockers[:3])
+                + (" — then take the required independent review"
+                   if self.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW else "")
+            )
         if scope is not None and scope.phase_implementation_requested:
             phase = scope.parent_phase_id or scope.scope_id
             if self.decision is AuditDecision.VERIFIED:
@@ -2397,6 +2410,46 @@ def _mentions_scope(rel_path: str, scope: TaskScope) -> bool:
     if nested:
         tokens.append(nested)
     return any(re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", name) for t in tokens)
+
+
+def hold_review_behind(audit: CompletionAudit, blockers: Sequence[str]) -> CompletionAudit:
+    """The audit, with an owed review sequenced after the evidence it needs.
+
+    An audit reads claims against the repository; it does not see the scenario
+    gate. Left alone it reported a task AWAITING_INDEPENDENT_REVIEW with the
+    review as the only thing outstanding and the next safe action, while the
+    same run's gate said NOT_VERIFIED for want of execution evidence on three
+    blocking risks. A review cannot close a coverage obligation, so that pair
+    of sentences told the founder to spend a reviewer on the wrong thing.
+
+    With blockers, the task result is UNPROVEN, the blockers are outstanding
+    ahead of the review, and the review stays listed — it is still owed, only
+    not next. Without blockers the audit is returned unchanged. The audit's own
+    decision is never altered: whether the repository requires a review is a
+    fact about the task, and it is still read from here.
+    """
+    blockers = [str(b) for b in blockers if str(b).strip()]
+    if not blockers:
+        return audit
+    update: dict[str, Any] = {"pre_review_blockers": blockers}
+    completion = audit.completion
+    if completion is not None and completion.task_result in (
+        TaskResult.AWAITING_INDEPENDENT_REVIEW,
+        TaskResult.VERIFIED,
+    ):
+        outstanding = list(blockers) + [
+            o for o in completion.task_outstanding if o not in blockers
+        ]
+        update["completion"] = completion.model_copy(
+            update={"task_result": TaskResult.UNPROVEN, "task_outstanding": outstanding}
+        )
+    if audit.decision is AuditDecision.REQUIRES_INDEPENDENT_REVIEW:
+        scope_id = audit.scope.scope_id if audit.scope is not None else "the task"
+        update["headline"] = (
+            f"{scope_id} — pre-review acceptance evidence still open "
+            f"({len(blockers)}); the required independent review follows it"
+        )
+    return audit.model_copy(update=update)
 
 
 def _task_result_for(decision: AuditDecision) -> TaskResult:

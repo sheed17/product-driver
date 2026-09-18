@@ -367,6 +367,47 @@ def run_changed_files(repo: Path, base_commit: str = "") -> list[str]:
     return sorted(dict.fromkeys(files))
 
 
+def _commit(repo: Path, *args: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def task_base_commit(repo: Path, recorded: str = "", created_at: str = "") -> tuple[str, str]:
+    """Where the repository stood before this RUN touched it: ``(commit, how)``.
+
+    A risk belongs to the task, not to the last corrective commit. Measured from
+    the HEAD a resumed process happens to start on, "what this run changed" is
+    only what changed since the resume, and a verification-only hardening commit
+    then erases every product module the task built. Run 20260917-063502
+    resumed at the task's own product commit, judged a diff of one test file,
+    and could ground none of its ships-dark risks.
+
+    The base is recorded once, when the run starts. A run recorded before that
+    field existed is given the commit its HEAD's first-parent history pointed
+    at when the run was created — derived from the run's own timestamp and the
+    repository, never from task prose. ``""`` when neither is available, and the
+    caller falls back to the current HEAD, which is what it always did.
+    """
+    repo = Path(repo)
+    if recorded and _commit(repo, "rev-parse", "--verify", "--quiet", f"{recorded}^{{commit}}"):
+        return recorded, "recorded when the run started"
+    if created_at:
+        found = _commit(repo, "rev-list", "-1", "--first-parent", f"--before={created_at}", "HEAD")
+        if found:
+            return found, f"HEAD's first-parent history at the run's creation ({created_at})"
+    return "", ""
+
+
 def _read(path: Path, limit: int = 200_000) -> str:
     try:
         if not path.is_file():

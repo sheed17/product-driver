@@ -420,6 +420,10 @@ class RunState(BaseModel):
     #: clean-looking tree, find nothing outstanding, and accept work whose only
     #: changed guard was never run.
     verification_obligation: dict[str, Any] | None = None
+    #: The commit the repository stood at before this run touched it. Recorded
+    #: once and kept across every resume, so "what this task changed" is always
+    #: measured from the task's start and never from wherever a restart landed.
+    task_base_commit: str = ""
 
     def touch(self) -> None:
         self.updated_at = utcnow()
