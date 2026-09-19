@@ -78,6 +78,18 @@ positive-controlled repository guard that measured exactly it.
        guard whose scan missed an importer the driver's resolver found is not
        what discharges the risk.
 
+One more attachment exists for a risk whose words name too little for any of
+the above to check a guard against it:
+
+    6. **a guard bound to a verification-gap obligation this run routed.** When
+       the driver routes such a risk to the builder, it names the exact risk
+       keys and records the tree; only the tests the answering change moved are
+       bound to those keys, the driver executes them by node id on the judged
+       tree, and a control bound in the same answer must show the guard can go
+       RED. Wordings routed together are one entry. A RED bound guard refutes
+       the risk; evidence from any other tree is none. See
+       :mod:`~neyma_product_driver.verification_obligations`.
+
 Two wordings of one grounded structural risk are ONE obligation — the second
 joins the first entry as a duplicate rather than blocking a second time — and
 a risk that cannot be grounded keeps blocking, saying so.
@@ -110,6 +122,7 @@ from .risk_grounding import (
     reachability_evidence,
 )
 from .scenario_plan import IdentifiedRisk
+from .verification_obligations import bound_evidence, find_obligation
 from .scenario_suite import Origin, Outcome, ScenarioOutcome, SuiteResult
 
 
@@ -168,6 +181,8 @@ class UncoveredRisk(BaseModel):
     grounding: list[str] = Field(default_factory=list)
     #: Other register entries that are this same obligation in other words.
     duplicates: list[str] = Field(default_factory=list)
+    #: The verification-gap obligation this risk was routed under, if any.
+    obligation: str = ""
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
@@ -234,6 +249,8 @@ class CoveredRisk(BaseModel):
     grounding: list[str] = Field(default_factory=list)
     #: Other register entries that are this same obligation in other words.
     duplicates: list[str] = Field(default_factory=list)
+    #: The verification-gap obligation this risk was routed under, if any.
+    obligation: str = ""
 
     def brief(self) -> str:
         head = f"[{self.severity or '??'}] {self.risk_category or 'uncategorised'}"
@@ -268,6 +285,10 @@ BASIS_GUARD = "repository_guard"
 BASIS_STRUCTURAL_GUARD = "repository_guard_structural"
 #: The driver's own structural scan, positive-controlled, on the judged tree.
 BASIS_DRIVER_STRUCTURAL = "driver_structural"
+#: A guard bound to a verification-gap obligation this run routed by risk
+#: identity, moved by the change that answered that routing, executed by node
+#: id on the judged tree, with discrimination bound in the same answer.
+BASIS_BOUND_GAP = "verification_gap_bound_guard"
 
 #: The same three, in the words the report uses. Named separately because a
 #: reader asking "what discharged this?" wants the kind of measurement, and a
@@ -278,6 +299,9 @@ SOURCE_CATEGORY = "generated scenario"
 SOURCE_GUARD = "repository guard executed by this run"
 SOURCE_STRUCTURAL_GUARD = "changed repository guard executed by this run (structural test)"
 SOURCE_DRIVER_STRUCTURAL = "structural reachability measurement taken by this driver"
+SOURCE_BOUND_GAP = (
+    "guard bound to a routed verification-gap obligation, executed by this driver"
+)
 
 _SOURCE_OF = {
     BASIS_DECLARED: SOURCE_DECLARED,
@@ -285,6 +309,7 @@ _SOURCE_OF = {
     BASIS_GUARD: SOURCE_GUARD,
     BASIS_STRUCTURAL_GUARD: SOURCE_STRUCTURAL_GUARD,
     BASIS_DRIVER_STRUCTURAL: SOURCE_DRIVER_STRUCTURAL,
+    BASIS_BOUND_GAP: SOURCE_BOUND_GAP,
 }
 
 #: What a gap says when the risk could not be grounded in anything concrete.
@@ -448,6 +473,9 @@ def risk_coverage(
     result: SuiteResult | None,
     *,
     changed_verification: Any = None,
+    obligations: Sequence[Any] = (),
+    judged_tree: str = "",
+    repo: Any = None,
 ) -> tuple[list[CoveredRisk], list[UncoveredRisk]]:
     """Split this run's acceptance-blocking risks into verified and not.
 
@@ -461,6 +489,12 @@ def risk_coverage(
 
     ``changed_verification`` is optional and read through ``getattr``: a run
     without the obligation behaves exactly as this did before it existed.
+
+    ``obligations`` are the PRODUCT-VERIFICATION GAPs this run routed by risk
+    identity (:mod:`~neyma_product_driver.verification_obligations`). Every
+    register entry an obligation names is judged as ONE entry, and the guard the
+    answering change bound may speak for exactly those entries — on
+    ``judged_tree`` only, read from ``repo``. Without them nothing changes.
 
     The order of the branches is the argument. A contradiction is settled first,
     because a risk two measurements disagree about is not covered by either of
@@ -501,8 +535,19 @@ def risk_coverage(
     # entry instead of becoming a second blocker; a risk whose subjects differ,
     # or that hypothesises nothing structural, is never merged.
     by_key: dict[tuple[str, str, tuple[str, ...]], CoveredRisk | UncoveredRisk] = {}
+    # One entry per routed verification-gap obligation. Its members were named
+    # together, by identity, when the gap was routed; they are one blocker.
+    by_obligation: dict[str, CoveredRisk | UncoveredRisk] = {}
+    if judged_tree == "" and changed_verification is not None:
+        judged_tree = str(getattr(changed_verification, "tree", "") or "")
     for risk in risks:
         if not risk.severity.blocks_acceptance:
+            continue
+        obligation = find_obligation(obligations, risk) if obligations else None
+        if obligation is not None and obligation.obligation_id in by_obligation:
+            by_obligation[obligation.obligation_id].duplicates.append(
+                risk.id or risk.description[:60]
+            )
             continue
         category = risk.risk_category.value
         grounding = ground(risk.description, changed_modules) if changed_modules else Grounding()
@@ -521,10 +566,126 @@ def risk_coverage(
             tree,
             bool(changed_modules),
         )
+        if obligation is not None:
+            entry = _apply_bound_obligation(
+                entry,
+                risk,
+                category,
+                obligation,
+                outcomes,
+                changed_verification=changed_verification,
+                judged_tree=judged_tree,
+                repo=repo,
+            )
+            by_obligation[obligation.obligation_id] = entry
         (covered if isinstance(entry, CoveredRisk) else gaps).append(entry)
         if key is not None:
             by_key[key] = entry
     return covered, gaps
+
+
+def _apply_bound_obligation(
+    entry: CoveredRisk | UncoveredRisk,
+    risk: IdentifiedRisk,
+    category: str,
+    obligation: Any,
+    outcomes: Sequence[ScenarioOutcome],
+    *,
+    changed_verification: Any,
+    judged_tree: str,
+    repo: Any,
+) -> CoveredRisk | UncoveredRisk:
+    """What a routed verification-gap obligation's bound guard adds to one verdict.
+
+    A RED bound guard refutes the risk — against a scenario that passed it is a
+    contradiction, and fails closed. A discharging one covers a risk nothing
+    else covered, and contradicts a scenario that failed carrying it. Anything
+    short of a discharge leaves the verdict standing and says what is missing.
+    """
+    from pathlib import Path
+
+    if repo is None:
+        return entry
+    verdict = bound_evidence(
+        obligation,
+        Path(repo),
+        judged_tree=judged_tree,
+        changed_verification=changed_verification,
+    )
+    refusal = _scenario_refusal(category, outcomes)
+    tag = {"obligation": obligation.obligation_id}
+    if verdict.refuted:
+        if isinstance(entry, CoveredRisk):
+            clash = (
+                f"{verdict.reason}, while {entry.measurement or entry.scenario_id} covered it. "
+                "Exactly one of those two measurements is wrong and this run does not know "
+                "which, so the risk is not verified."
+            )
+            return UncoveredRisk(
+                risk_id=risk.id,
+                description=risk.description,
+                risk_category=category,
+                severity=risk.severity.value,
+                required=True,
+                reason=clash,
+                contradiction=clash,
+                duplicates=list(entry.duplicates),
+                **tag,
+            )
+        return entry.model_copy(update={"reason": verdict.reason, **tag})
+    if verdict.discharges:
+        if refusal is not None:
+            detail = refusal.failed_assertions[0] if refusal.failed_assertions else refusal.error
+            clash = (
+                f"{verdict.citation()} discharges this risk, while scenario "
+                f"{refusal.scenario_id} exercising it FAILED ({detail or 'no detail recorded'}). "
+                "Exactly one of those two measurements is wrong and this run does not know "
+                "which, so the risk is not verified."
+            )
+            return UncoveredRisk(
+                risk_id=risk.id,
+                description=risk.description,
+                risk_category=category,
+                severity=risk.severity.value,
+                required=True,
+                reason=clash,
+                contradiction=clash,
+                **tag,
+            )
+        if isinstance(entry, CoveredRisk):
+            return entry.model_copy(update=tag)
+        routing = obligation.corrections[0] if obligation.corrections else None
+        return CoveredRisk(
+            risk_id=risk.id,
+            description=risk.description,
+            risk_category=category,
+            severity=risk.severity.value,
+            origin="repository",
+            basis=BASIS_BOUND_GAP,
+            evidence_source=SOURCE_BOUND_GAP,
+            measurement=", ".join(verdict.guards),
+            command=verdict.command,
+            discrimination=list(verdict.discrimination),
+            claim=(
+                f"obligation {obligation.label()} was routed to the builder"
+                + (
+                    f" at iteration {routing.routed_iteration} on tree {routing.routed_tree[:12]}"
+                    if routing is not None
+                    else ""
+                )
+                + f"; the answering change bound {', '.join(verdict.guards)}; this driver "
+                f"executed it on the judged tree {judged_tree[:12]} and it passed, with its "
+                "control observed"
+            ),
+            evidence_path=", ".join(sorted({g.split('::', 1)[0] for g in verdict.guards})),
+            evidence_tree=judged_tree,
+            **tag,
+        )
+    if isinstance(entry, UncoveredRisk):
+        return entry.model_copy(
+            update={"reason": f"{entry.reason}; {verdict.reason}", **tag}
+        )
+    return entry.model_copy(update=tag)
 
 
 def _judge_risk(
@@ -762,6 +923,7 @@ def uncovered_required_risks(
     result: SuiteResult | None,
     *,
     changed_verification: Any = None,
+    **bound: Any,
 ) -> list[UncoveredRisk]:
     """Which acceptance-blocking risks have no passing measurement behind them.
 
@@ -769,7 +931,7 @@ def uncovered_required_risks(
     want. Kept as a separate name because it is the question the acceptance
     path asks.
     """
-    return risk_coverage(risks, result, changed_verification=changed_verification)[1]
+    return risk_coverage(risks, result, changed_verification=changed_verification, **bound)[1]
 
 
 def covered_required_risks(
@@ -777,9 +939,10 @@ def covered_required_risks(
     result: SuiteResult | None,
     *,
     changed_verification: Any = None,
+    **bound: Any,
 ) -> list[CoveredRisk]:
     """Which acceptance-blocking risks were verified, and by what."""
-    return risk_coverage(risks, result, changed_verification=changed_verification)[0]
+    return risk_coverage(risks, result, changed_verification=changed_verification, **bound)[0]
 
 
 class GateVerdict(BaseModel):
@@ -965,6 +1128,9 @@ def evaluate_gate(
     generation_problems: Sequence[str] = (),
     risks: Sequence[IdentifiedRisk] = (),
     changed_verification: Any = None,
+    obligations: Sequence[Any] = (),
+    judged_tree: str = "",
+    repo: Any = None,
 ) -> GateVerdict:
     """Decide whether the scenario evidence can support an ACCEPT.
 
@@ -993,7 +1159,12 @@ def evaluate_gate(
         problems += [p for p in result.assembly_problems if str(p).strip()]
 
     covered, gaps = risk_coverage(
-        risks, result, changed_verification=changed_verification
+        risks,
+        result,
+        changed_verification=changed_verification,
+        obligations=obligations,
+        judged_tree=judged_tree,
+        repo=repo,
     )
 
     lineage_lines = (
@@ -1070,6 +1241,7 @@ def evaluate_gate(
 
 
 __all__ = [
+    "BASIS_BOUND_GAP",
     "BASIS_CATEGORY",
     "BASIS_DECLARED",
     "BASIS_GUARD",

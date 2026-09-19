@@ -361,13 +361,16 @@ async def run_control_loop(
     # re-measured, and it survives into `state` so a restart cannot lose it —
     # a resumed run that forgot which changed guard it never ran would read a
     # clean tree, find nothing outstanding, and accept on a builder's word.
-    changed_verification: dict[str, Any] = {"value": None, "commit": "", "files": ""}
+    changed_verification: dict[str, Any] = {
+        "value": None, "commit": "", "files": "", "tree": ""
+    }
     if state.verification_obligation:
-        # A restart is not a discharge. The obligation is restored with no tree
-        # fingerprint, so the first iteration of a resumed run re-selects and
-        # re-runs rather than trusting a record taken before the interruption:
-        # the point of carrying it is that the run remembers it OWES an
-        # observation, not that it already has one.
+        # A restart is not a discharge — and it is not an erasure either. The
+        # obligation is restored WITH the whole-tree identity it was measured
+        # on, so a resumed run on the identical tree keeps every observation it
+        # already took and runs only what is still owed; on any other tree the
+        # identity does not match and everything is measured again. A record
+        # from before the identity was kept has none, and is re-measured.
         from .changed_verification import ChangedSurfaceVerification
 
         try:
@@ -380,6 +383,8 @@ async def run_control_loop(
         if restored is not None and restored.applicable:
             changed_verification["value"] = restored
             changed_verification["commit"] = restored.commit
+            changed_verification["files"] = restored.diff_fingerprint
+            changed_verification["tree"] = restored.tree
             if restored.blocks_claim:
                 emit(
                     "  resuming with an open verification obligation: "
@@ -509,6 +514,11 @@ async def run_control_loop(
         accumulated_result(store.run_dir, config.neyma_repo) if planner is not None else None
     )
 
+    # Consecutive builder turns that errored and left the tree untouched. Two
+    # in a row pause the run instead of spending iterations on a tree that
+    # cannot have changed. See step 1 below.
+    idle_builder_errors = 0
+
     # The budget is a number of iterations THIS invocation may perform, which
     # is not the same thing as the number an iteration is filed under. They
     # were one variable, so a resume counted from one again and wrote its first
@@ -539,6 +549,9 @@ async def run_control_loop(
 
         # 1. builder works
         emit("→ builder working...")
+        from .worktree_state import worktree_tree_hash
+
+        tree_before_turn, _ = worktree_tree_hash(config.neyma_repo)
         turn = await builder.send(next_prompt, timeout_s=config.builder.turn_timeout_s)
         record.builder_session_id = builder.session_id
         state.builder_session_id = builder.session_id
@@ -549,6 +562,36 @@ async def run_control_loop(
         if getattr(turn, "is_error", False):
             record.notes.append(f"builder error: {getattr(turn, 'error_detail', '')}")
             emit(f"  builder reported an error: {getattr(turn, 'error_detail', '')}")
+            tree_after_turn, _ = worktree_tree_hash(config.neyma_repo)
+            idle = bool(tree_before_turn) and tree_after_turn == tree_before_turn
+            idle_builder_errors = idle_builder_errors + 1 if idle else 0
+            if idle_builder_errors >= 2:
+                # The builder could not work, twice running, and nothing moved.
+                # Judging the same tree again teaches nothing and spends an
+                # iteration of the run's budget — U8.4's run 20260918-223447
+                # spent ten that way on "You've hit your session limit". Pause,
+                # resumable in place, with the reason stated.
+                detail = getattr(turn, "error_detail", "") or "no detail"
+                emit(
+                    "  the builder errored on consecutive turns and changed nothing; "
+                    "pausing the run so it can be resumed in place"
+                )
+                return _terminate(
+                    RunStatus.STOPPED,
+                    EvaluatorDecision(
+                        decision=Decision.BLOCKED,
+                        summary=(
+                            "Paused: the builder could not work on two consecutive turns "
+                            f"({detail[:200]}) and the working tree did not change, so there "
+                            "was nothing new to judge. Resume this run in place once the "
+                            "builder is available."
+                        ),
+                        problems=[f"builder unavailable: {detail[:300]}"],
+                    ),
+                    record,
+                )
+        else:
+            idle_builder_errors = 0
 
         # 2. read-only git snapshot
         record.git = git_snapshot(config.neyma_repo)
@@ -865,12 +908,20 @@ async def run_control_loop(
         #     never becomes a suite run. See
         #     :mod:`~neyma_product_driver.changed_verification`.
         if config.changed_verification.enabled:
+
+            def _persist_verification_pass(pass_record: Any) -> None:
+                # After every bounded pass, so an interruption between passes
+                # resumes with what was already observed on this tree.
+                state.verification_obligation = pass_record.model_dump(mode="json")
+                store.save_state(state)
+
             verification_now = _changed_surface_verification(
                 config=config,
                 base_commit=base_head,
                 head_commit=(record.git.head_commit if record.git else ""),
                 obligation=changed_verification,
                 emit=emit,
+                persist=_persist_verification_pass,
             )
             if verification_now is not None:
                 record.changed_verification = verification_now.model_dump(mode="json")
@@ -885,6 +936,25 @@ async def run_control_loop(
                 store.save_state(state)
                 for line in verification_now.summary_block().splitlines():
                     emit(f"  {line}")
+
+        # 3f. ROUTED VERIFICATION-GAP OBLIGATIONS: bind, operate, persist.
+        #
+        #     A gap this run routed to the builder by risk identity is answered
+        #     by the tests the next change moved, and by nothing else. Those are
+        #     bound here, executed here by exact node id on the tree being
+        #     judged, and persisted before anything reads them, so the evaluator,
+        #     the gate and a resumed run all see the same evidence. See
+        #     :mod:`~neyma_product_driver.verification_obligations`.
+        bound_gap = _operate_gap_obligations(
+            config=config,
+            state=state,
+            store=store,
+            iteration=iteration,
+            register=_identified_risks(planner),
+            changed_tree=changed_verification.get("tree", ""),
+            record=record,
+            emit=emit,
+        )
 
         # 4. re-read repository authority — never reuse stale context
         repo_context = None
@@ -933,7 +1003,10 @@ async def run_control_loop(
             previous_corrections=sent_corrections,
             suite=suite_result,
             coverage_gaps=_coverage_gap_briefs(
-                planner, suite_result, changed_verification=changed_verification["value"]
+                planner,
+                suite_result,
+                changed_verification=changed_verification["value"],
+                bound=bound_gap,
             ),
             # Coverage the run set out to produce and did not. Without this the
             # evaluator read "0 generated case(s)" off the suite summary and
@@ -1080,6 +1153,7 @@ async def run_control_loop(
                 ),
                 risks=_identified_risks(planner),
                 changed_verification=changed_verification["value"],
+                **bound_gap,
             )
             before_gate = decision
             decision = _apply_suite_precedence(
@@ -1092,6 +1166,7 @@ async def run_control_loop(
                 ),
                 risks=_identified_risks(planner),
                 changed_verification=changed_verification["value"],
+                bound=bound_gap,
             )
             gate_overrode = decision is not before_gate
 
@@ -1125,7 +1200,18 @@ async def run_control_loop(
                     diff_files=diff_files,
                     changed_verification=changed_verification["value"],
                     emit=emit,
+                    bound=bound_gap,
                 )
+                if closure.verification_gap and closure.routed_group:
+                    _record_gap_routing(
+                        state=state,
+                        store=store,
+                        iteration=iteration,
+                        group=closure.routed_group,
+                        tree=bound_gap.get("judged_tree", ""),
+                        record=record,
+                        emit=emit,
+                    )
                 if closure.decision is not None:
                     suite = closure.suite
                     suite_result = closure.suite_result
@@ -1636,6 +1722,7 @@ def _changed_surface_verification(
     head_commit: str,
     obligation: dict[str, Any],
     emit: Callable[[str], None],
+    persist: Callable[[Any], None] | None = None,
 ) -> Any:
     """Operate the verification THIS DIFF CHANGED, and hold the obligation open.
 
@@ -1664,7 +1751,10 @@ def _changed_surface_verification(
     )
     from .repo_verification import run_changed_files
 
+    from .worktree_state import worktree_tree_hash
+
     diff_files = run_changed_files(config.neyma_repo, base_commit)
+    tree, _tree_error = worktree_tree_hash(config.neyma_repo)
     if not diff_files:
         # Nothing to measure is not a licence to answer with a record taken on
         # another tree: evidence describes the tree it was read from, and an
@@ -1675,7 +1765,14 @@ def _changed_surface_verification(
         return None
     fingerprint = "\n".join(sorted(str(f) for f in diff_files))
     held = obligation.get("value")
-    same_tree = obligation.get("commit") == head_commit and obligation.get("files") == fingerprint
+    # The same tree means the same commit, the same changed-file set AND the
+    # same working-tree content: an uncommitted edit moves none of the first two.
+    same_tree = (
+        obligation.get("commit") == head_commit
+        and obligation.get("files") == fingerprint
+        and bool(tree)
+        and obligation.get("tree") == tree
+    )
     if held is not None and same_tree and not held.blocks_claim:
         return held
     # Path-only, so a diff that changed no verification file costs nothing and
@@ -1699,48 +1796,199 @@ def _changed_surface_verification(
         obligation["value"] = value
         obligation["commit"] = head_commit
         obligation["files"] = fingerprint
+        obligation["tree"] = tree
         return value
     emit("→ operating the verification this diff changed...")
 
-    # Carry an open obligation forward rather than re-measuring what already
-    # answered: on the same tree, only what has not been observed is run.
-    only: list[str] = []
-    if held is not None and same_tree:
-        only = [g.path for g in held.pending]
-
-    try:
-        verification = verify_changed_surface(
-            config.neyma_repo,
-            diff_files,
-            base_commit=base_commit,
-            commit=head_commit,
-            max_changed=config.changed_verification.max_changed_guards,
-            max_related=config.changed_verification.max_related_guards,
-            timeout_s=config.changed_verification.timeout_s,
-            only=only,
+    # Bounded PASSES, not a bounded selection. Each pass executes at most
+    # `max_changed_guards` of what is still owed on this tree, carrying every
+    # result this same tree already produced, and is persisted before the next
+    # pass starts so an interruption loses nothing. Passes continue until
+    # nothing is owed or a pass could not advance. The bound on the loop is the
+    # number of changed paths, so a pass that stalls cannot become a spin.
+    prior = held if (held is not None and same_tree) else None
+    declared = _declared_invocations(config)
+    verification = None
+    for _pass in range(len(changed_verification_paths(diff_files)) + 1):
+        try:
+            verification = verify_changed_surface(
+                config.neyma_repo,
+                diff_files,
+                base_commit=base_commit,
+                commit=head_commit,
+                max_changed=config.changed_verification.max_changed_guards,
+                max_related=config.changed_verification.max_related_guards,
+                timeout_s=config.changed_verification.timeout_s,
+                declared=declared,
+                tree=tree,
+                prior=prior,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            emit(f"  changed-verification error: {type(exc).__name__}: {redact(str(exc))}")
+            return held if verification is None else verification
+        if not verification.applicable:
+            break
+        obligation["value"] = verification
+        obligation["commit"] = head_commit
+        obligation["files"] = fingerprint
+        obligation["tree"] = tree
+        before = len(prior.passes) if prior is not None else 0
+        executed = verification.passes[-1] if len(verification.passes) > before else []
+        emit(
+            f"  pass {len(verification.passes)}: executed {len(executed)} "
+            f"({', '.join(executed) or 'nothing new'}); "
+            f"{len(verification.pending)} still owed"
         )
-    except Exception as exc:  # pragma: no cover - defensive
-        emit(f"  changed-verification error: {type(exc).__name__}: {redact(str(exc))}")
-        return held
+        if persist is not None:
+            persist(verification)
+        if not verification.pending or not executed:
+            break
+        prior = verification
 
-    if not verification.applicable:
-        value = verification if verification.module_reachability else None
+    if verification is None or not verification.applicable:
+        value = (
+            verification
+            if verification is not None and verification.module_reachability
+            else None
+        )
         obligation["value"] = value
         obligation["commit"] = head_commit
         obligation["files"] = fingerprint
+        obligation["tree"] = tree
         return value
-
-    if held is not None and same_tree and held.results:
-        # Merge, so a partial answer taken earlier on this same tree is not lost
-        # by a later round that only ran the remainder.
-        observed = {r.target.path for r in verification.results}
-        verification.results = [
-            r for r in held.results if r.target.path not in observed
-        ] + list(verification.results)
-    obligation["value"] = verification
-    obligation["commit"] = head_commit
-    obligation["files"] = fingerprint
     return verification
+
+
+def _declared_invocations(config: DriverConfig) -> list[Any]:
+    """Every exact invocation a human declared for a verification script.
+
+    Two sources, both already authority for this driver: the commands the
+    permanent scenario files state an exit contract for (the same corpus the
+    approved command set is harvested from), and the single-program lines the
+    target repository's own CI runs. Nothing is composed. Never raises: an
+    unreadable source simply declares nothing.
+    """
+    from .changed_verification import (
+        declared_invocations_from_ci,
+        declared_invocations_from_scenarios,
+    )
+    from .repo_verification import detect_test_runner
+
+    declared: list[Any] = []
+    try:
+        declared += declared_invocations_from_scenarios(_permanent_scenarios(config))
+    except Exception:  # pragma: no cover - defensive
+        pass
+    runner = detect_test_runner(config.neyma_repo)
+    interpreter = runner.split(" -m ", 1)[0] if runner else ""
+    try:
+        declared += declared_invocations_from_ci(config.neyma_repo, interpreter)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return declared
+
+
+def _operate_gap_obligations(
+    *,
+    config: DriverConfig,
+    state: RunState,
+    store: EvidenceStore,
+    iteration: int,
+    register: Sequence[Any],
+    changed_tree: str,
+    record: IterationRecord,
+    emit: Callable[[str], None],
+) -> dict[str, Any]:
+    """Bind, operate and persist this run's routed verification-gap obligations.
+
+    Returns the keyword arguments every gate evaluation of this iteration takes
+    (``obligations``, ``judged_tree``, ``repo``), so the evaluator's briefing,
+    the gate and the routing all judge the same evidence on the same tree.
+    Never raises: an obligation that cannot be operated stays open, saying why.
+    """
+    from .repo_verification import detect_test_runner
+    from .verification_obligations import adopt_wordings, answer, dump, execute, load
+    from .worktree_state import worktree_tree_hash
+
+    # Measured now, never inherited: the changed-verification step can return
+    # a record without re-reading the tree, and the tree an execution is
+    # recorded against has to be the one actually judged.
+    tree, _error = worktree_tree_hash(config.neyma_repo)
+    if not tree:
+        tree = changed_tree
+    obligations = load(state.verification_gap_obligations)
+    context: dict[str, Any] = {
+        "obligations": obligations,
+        "judged_tree": tree,
+        "repo": config.neyma_repo,
+    }
+    if not obligations:
+        return context
+    try:
+        notes = adopt_wordings(obligations, register)
+        notes += answer(obligations, config.neyma_repo, tree)
+        runner = detect_test_runner(config.neyma_repo)
+        for obligation in obligations:
+            execution = execute(
+                obligation,
+                config.neyma_repo,
+                tree=tree,
+                runner=runner,
+                timeout_s=config.changed_verification.timeout_s,
+            )
+            if execution is not None:
+                notes.append(
+                    f"{obligation.obligation_id}: executed `{execution.command}` on tree "
+                    f"{tree[:12]} — {len(execution.passed)} passed, {len(execution.failed)} "
+                    f"failed, {len(execution.skipped)} skipped"
+                )
+    except Exception as exc:  # pragma: no cover - defensive
+        notes = [f"verification-gap obligations could not be operated: {type(exc).__name__}: {exc}"]
+    for note_text in notes:
+        emit(f"  {note_text}")
+        record.notes.append(note_text)
+    state.verification_gap_obligations = dump(obligations)
+    store.save_state(state)
+    store.write_json(
+        store.iteration_dir(iteration).relative_to(store.run_dir)
+        / "verification-gap-obligations.json",
+        state.verification_gap_obligations,
+    )
+    return context
+
+
+def _record_gap_routing(
+    *,
+    state: RunState,
+    store: EvidenceStore,
+    iteration: int,
+    group: Sequence[Any],
+    tree: str,
+    record: IterationRecord,
+    emit: Callable[[str], None],
+) -> None:
+    """Persist that ``group`` was routed to the builder now, on ``tree``.
+
+    This is the provenance. Without it, the guard the builder adds next has no
+    recorded reason to exist, and nothing may bind it to the risk it answers.
+    """
+    from .verification_obligations import dump, load, route
+
+    obligations = load(state.verification_gap_obligations)
+    obligation = route(obligations, group, iteration=iteration, tree=tree)
+    state.verification_gap_obligations = dump(obligations)
+    store.save_state(state)
+    store.write_json(
+        store.iteration_dir(iteration).relative_to(store.run_dir)
+        / "verification-gap-obligations.json",
+        state.verification_gap_obligations,
+    )
+    note_text = (
+        f"routed verification-gap obligation {obligation.label()} on tree {tree[:12]}; the "
+        "tests the next change moves are bound to exactly these risk keys"
+    )
+    record.notes.append(note_text)
+    emit(f"  {note_text}")
 
 
 def _pre_review_blockers(gate: Any, changed: Any) -> list[str]:
@@ -1760,8 +2008,19 @@ def _pre_review_blockers(gate: Any, changed: Any) -> list[str]:
         ]
         if not blockers:
             blockers.append(gate.headline())
-    if changed is not None and getattr(changed, "blocks_acceptance", False):
-        blockers += [f"changed verification: {g}" for g in changed.gap_reasons]
+    # The whole changed-verification obligation, not only a guard that refused:
+    # a changed guard nothing has run yet, one with no declared invocation, or
+    # a changed negative guard with no discrimination case is evidence a
+    # reviewer cannot execute into existence either.
+    if changed is not None and getattr(changed, "applicable", False) and (
+        getattr(changed, "blocks_claim", False)
+    ):
+        reasons = [f"changed verification: {g}" for g in changed.gap_reasons]
+        reasons += [
+            f"changed verification: {r.brief()}"
+            for r in getattr(changed, "product_failures", []) or []
+        ]
+        blockers += reasons or [f"changed verification: {changed.headline()}"]
     return blockers
 
 
@@ -1789,7 +2048,11 @@ def _changed_verification_gap_correction(verification: Any) -> str:
             "What to do:",
             "  1. Make each changed guard runnable through one of this repository's "
             "already-approved verification entry points, exactly as the repository "
-            "expects its own tests to be run, and report that command.",
+            "expects its own tests to be run, and report that command. An executable "
+            "check that is not a collected test (a probe, a mutation battery) is run "
+            "here ONLY through an exact invocation the repository declares for it — a "
+            "CI step that runs it, for example. Declare the real command; do not wrap "
+            "it in a test written only so this driver can reach it.",
             "  2. Where a guard asserts that something must NOT be present and this "
             "change altered what it asserts, add the smallest case proving it still "
             "FIRES when the forbidden state is realised — a forced-drift case, a "
@@ -1978,7 +2241,11 @@ def _identified_risks(planner: Any) -> Sequence[Any]:
 
 
 def _coverage_gap_briefs(
-    planner: Any, suite_result: Any, *, changed_verification: Any = None
+    planner: Any,
+    suite_result: Any,
+    *,
+    changed_verification: Any = None,
+    bound: dict[str, Any] | None = None,
 ) -> list[str]:
     """The deterministic coverage gaps, rendered for the evaluator.
 
@@ -1995,6 +2262,7 @@ def _coverage_gap_briefs(
             _identified_risks(planner),
             suite_result,
             changed_verification=changed_verification,
+            **(bound or {}),
         )
     ]
 
@@ -2074,6 +2342,10 @@ class GapClosure:
     #: True when ``decision`` routes a gap no approved measurement can express
     #: to the builder as verification work. See :func:`_verification_gap_decision`.
     verification_gap: bool = False
+    #: The register entries that routing named — ONE obligation, by identity.
+    #: Persisted by the caller, and the only risks the answering change's guard
+    #: may ever speak for.
+    routed_group: list[Any] = field(default_factory=list)
 
 
 async def _close_coverage_gaps(
@@ -2090,6 +2362,7 @@ async def _close_coverage_gaps(
     diff_files: Sequence[str],
     emit: Callable[[str], None],
     changed_verification: Any = None,
+    bound: dict[str, Any] | None = None,
 ) -> GapClosure:
     """Generate and execute the coverage a passing run is missing, then re-gate.
 
@@ -2130,6 +2403,28 @@ async def _close_coverage_gaps(
             )
             closure.notes.append(note)
             emit(f"  {note}")
+            # No wave can ever cover these now. A guard the builder adds in
+            # answer to a gap routed by risk identity still can — so that is the
+            # route, rather than a refusal that sends the founder back to the
+            # builder by hand with the same sentence, iteration after iteration.
+            routed = _verification_gap_decision(
+                planner=planner,
+                wave=None,
+                gaps=gaps,
+                verdict=closure.verdict,
+                accepted=accepted,
+                scenario=scenario,
+                budget_spent=True,
+            )
+            if routed is not None:
+                closure.routed_group = list(routed[1])
+                routed = routed[0]
+                note = (
+                    "routed ONE verification-gap obligation to the builder by risk identity: "
+                    + ", ".join(getattr(r, "id", "") or r.key for r in closure.routed_group)
+                )
+                closure.notes.append(note)
+                emit(f"  {note}")
             break
 
         emit(
@@ -2175,6 +2470,8 @@ async def _close_coverage_gaps(
                 scenario=scenario,
             )
             if routed is not None:
+                closure.routed_group = list(routed[1])
+                routed = routed[0]
                 note = (
                     f"{len(gaps)} acceptance-blocking risk(s) cannot be expressed by any "
                     "currently approved measurement; routed to the builder as "
@@ -2203,6 +2500,7 @@ async def _close_coverage_gaps(
             generation_problems=planner.generation_problems(),
             risks=_identified_risks(planner),
             changed_verification=changed_verification,
+            **(bound or {}),
         )
 
         if closure.suite_result.blocking_failures():
@@ -2222,6 +2520,8 @@ async def _close_coverage_gaps(
             emit,
             generation_problems=planner.generation_problems(),
             risks=_identified_risks(planner),
+            changed_verification=changed_verification,
+            bound=bound,
         )
     # A defect an executed scenario actually observed outranks a gap: that FIX
     # carries a real failure. Anything else — the refusal a remaining gap
@@ -2242,114 +2542,138 @@ def _verification_gap_decision(
     verdict: Any,
     accepted: EvaluatorDecision,
     scenario: Scenario,
-) -> EvaluatorDecision | None:
-    """Route a gap no approved measurement can express to the builder, as verification work.
+    budget_spent: bool = False,
+) -> tuple[EvaluatorDecision, list[Any]] | None:
+    """Route ONE gap no approved measurement can express to the builder, by identity.
 
-    A wave was aimed at exactly these risks and produced nothing that can run,
-    which means the currently approved measurements cannot express the hostile
-    case each one needs. That is not a product defect, and it is not something
-    the harness may paper over by composing an invocation the program does not
-    support: the invocation would be refused, and the refusal would be read as
-    the product failing. Nor is it a reason to stop — the one move that closes
-    it is a small test, probe case or guard under the repository's own
-    authority, and the builder is the one who can add it.
+    A wave was aimed at exactly these risks and produced nothing that can run —
+    or no wave can be generated at all any more — so the currently approved
+    measurements cannot express the hostile case. That is not a product defect,
+    and it is not something the harness may paper over by composing an
+    invocation the program does not support. The one move that closes it is a
+    small guard under the repository's own authority, and the builder is the one
+    who can add it.
 
-    Nothing here marks a risk covered. The risks stay in the gate's uncovered
-    list, and leave it only when an executed scenario passes against them.
+    What makes that move converge is that the gap is routed BY IDENTITY: the
+    correction names one obligation — the first uncovered risk and every
+    register entry that names the same concrete subjects under the same
+    category — with the exact risk keys, and the caller persists that routing
+    with the tree it was made on. The tests the answering change moves are then
+    bound to those keys and to nothing else
+    (:mod:`~neyma_product_driver.verification_obligations`). Without that, a
+    risk whose prose names too little to be checked against any guard stays
+    open whatever guard the builder adds, and the correction repeats forever.
 
+    Nothing here marks a risk covered. Returns ``(decision, routed_group)``, or
     ``None`` — leaving the ordinary refusal standing — unless all of:
 
-    * the evaluator ACCEPTed. A FIX, ASK_USER or BLOCKED it returned carries
-      reasoning this must not overwrite, exactly as suite precedence respects it;
-    * a wave was actually generated for these gaps — ``wave`` is the record
-      this closure round produced, never an older one — and generation itself
-      worked: its generator answered and Product Driver could read every
-      candidate. A wave that failed says nothing about what the approved
-      measurements can express;
-    * the wave is actual evidence of inexpressibility: it proposed nothing, or
-      everything it proposed was refused as an invocation its program does not
-      accept. A duplicate, an ungrounded requirement or an unsafe command says
-      only that the generator chose badly, and asking a builder for new
-      measurement on that basis would be inventing work out of a bad proposal;
-    * budget remains for a later wave, since that is what would turn the
-      builder's new measurement into executed coverage. Without it the honest
-      outcome is the refusal the spent budget already produces.
+    * the evaluator ACCEPTed, or BLOCKED on exactly this missing evidence. A FIX
+      or ASK_USER carries reasoning this must not overwrite;
+    * either the budget for generating coverage is spent (``budget_spent``), or
+      a wave was generated for these gaps in this round, its generator answered
+      and Product Driver could read every candidate, and everything it proposed
+      was refused as an invocation its program does not accept. A duplicate, an
+      ungrounded requirement or an unsafe command says only that the generator
+      chose badly.
     """
-    if accepted.decision is not Decision.ACCEPT or not gaps:
-        return None
-    if wave is None or wave.reasoner_error or wave.contract_rejections:
-        return None
-    if any(not rejected.is_invocation_defect for rejected in wave.rejected):
-        return None
-    if planner.budget_exhausted():
-        return None
+    from .verification_obligations import obligation_group
 
-    risks = [
-        f"[{r.severity.value} {r.risk_category.value}] {r.description}" for r in gaps
+    if accepted.decision not in (Decision.ACCEPT, Decision.BLOCKED) or not gaps:
+        return None
+    if not budget_spent:
+        if wave is None or wave.reasoner_error or wave.contract_rejections:
+            return None
+        if any(not rejected.is_invocation_defect for rejected in wave.rejected):
+            return None
+
+    group = obligation_group(gaps[0], _identified_risks(planner))
+    keys = [r.key for r in group]
+    wordings = [
+        f"[{r.severity.value} {r.risk_category.value}] {r.id or r.key}: {r.description}"
+        for r in group
     ]
-    refusals = [
-        f"{rejected.id or '(unnamed)'}: "
-        + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
-        for rejected in wave.rejected
-    ][:8]
+    refusals = (
+        [
+            f"{rejected.id or '(unnamed)'}: "
+            + (rejected.reasons[0] if rejected.reasons else "no reason recorded")
+            for rejected in wave.rejected
+        ][:8]
+        if wave is not None
+        else []
+    )
+    others = [g for g in gaps if g.key not in set(keys)]
     correction = "\n".join(
         [
             "PRODUCT-VERIFICATION GAP — this is NOT a product defect. Nothing about the "
             "product was observed to be wrong.",
             "",
-            "This run identified acceptance-blocking risk(s) that no currently approved "
-            "measurement can express:",
-            *(f"  - {line}" for line in risks),
+            "ONE verification obligation, routed by identity. Its risk keys are:",
+            *(f"  - {key}" for key in keys),
+            "and it is stated in these words (they are the SAME obligation):",
+            *(f"  - {line}" for line in wordings),
             "",
-            "Product Driver generated coverage aimed at exactly these and none of it can "
-            "run" + (":" if refusals else "."),
+            (
+                "No generated scenario can cover it: the scenario-generation budget is spent."
+                if budget_spent
+                else "Product Driver generated coverage aimed at it and none of it can run:"
+            ),
             *(f"  - {line}" for line in refusals),
             "",
-            "They stay UNCOVERED, and acceptance stays blocked, until an executed "
-            "scenario passes against each one.",
+            "It stays UNCOVERED, and acceptance stays blocked, until it is measured.",
             "",
-            "What to do:",
-            "  1. Add the smallest appropriate test, probe case or guard, under this "
-            "repository's own authority, that exercises exactly the hostile case each "
-            "risk names and fails if the risk is realised. Put it where the repository's "
-            "verification authority expects it, reachable through one of its "
-            "already-approved verification entry points (for example, a test the "
-            "approved test command collects).",
-            "  2. Do NOT widen, weaken or rename any closed fault or argument vocabulary, "
-            "probe grammar, refusal control or acceptance requirement to make an "
-            "existing command pass. A program refusing an argument it does not have is "
-            "correct behaviour.",
-            "  3. If the repository's authority does not define the behaviour a risk "
-            "asks about, say so rather than inventing it.",
-            "  4. Report the exact command that now establishes each risk.",
+            "What to do, in THIS change:",
+            "  1. Add or change the smallest guard test — collected by this repository's "
+            "own test runner — that realises exactly the hostile case above and FAILS if the "
+            "forbidden behaviour happens.",
+            "  2. In the same change, add the control that proves that guard can go RED: a "
+            "test whose name marks it as the control (for example `..._catches_...`) and "
+            "which invokes the guard test while the forbidden behaviour is reintroduced, "
+            "expecting it to fail; or a mutation battery case naming the guard's exact node "
+            "id, with the battery's exact invocation declared in the repository's CI.",
+            "  3. Only verification files changed in answer to THIS correction are bound to "
+            "these risk keys. Product Driver will execute the bound tests itself, by node id, "
+            "on the tree it judges, and read the result; your report that they pass is not "
+            "evidence.",
+            "  4. Do NOT widen, weaken or rename any closed fault or argument vocabulary, "
+            "probe grammar, refusal control or acceptance requirement, and do not change the "
+            "product to make a guard pass. If the repository's authority does not define the "
+            "behaviour this obligation asks about, say so rather than inventing it.",
+            *(
+                [
+                    "",
+                    f"{len(others)} other uncovered risk(s) are NOT part of this correction and "
+                    "will be routed separately; a guard added now does not speak for them.",
+                ]
+                if others
+                else []
+            ),
         ]
     )
-    return EvaluatorDecision(
+    decision = EvaluatorDecision(
         decision=Decision.FIX,
         summary=(
-            f"Verification gap, not a product defect: {len(gaps)} acceptance-blocking "
-            "risk(s) cannot be expressed by any currently approved measurement, so the "
-            "builder is asked to add the smallest test, probe case or guard that "
-            "establishes them."
+            "Verification gap, not a product defect: one acceptance-blocking obligation "
+            f"({len(group)} wording(s)) cannot be expressed by any currently approved "
+            "measurement, so the builder is asked for the smallest guard, with its control, "
+            "bound to exactly its risk keys."
         ),
-        problems=[f"no approved measurement expresses {line}" for line in risks] + refusals,
+        problems=[f"no approved measurement expresses {line}" for line in wordings] + refusals,
         observed_behavior=list(accepted.observed_behavior),
         evidence_paths=list(accepted.evidence_paths),
         correction_prompt=correction,
         requirement_reference=(
-            "the acceptance-blocking risks this run identified: "
-            + "; ".join(risks)
+            "the acceptance-blocking risk obligation this run routed: " + "; ".join(wordings)
         )[:2000],
         product_principle_reference=(
-            "an unmeasured risk is not a covered risk: it is verified only by an executed "
-            "scenario that passed with resolvable evidence"
+            "an unmeasured risk is not a covered risk, and a guard speaks only for the "
+            "obligation it was written to answer"
         ),
         scenario=scenario.name,
         observed_result=verdict.summary_block() if verdict is not None else "",
         expected_result=(
-            "A repository test, probe case or guard, reachable through an approved "
-            "verification command, that exercises exactly each risk's hostile case and "
-            "fails if the risk is realised."
+            "A repository guard test that realises exactly this obligation's hostile case and "
+            "fails if it is realised, with a control proving it goes RED, both changed in "
+            "answer to this correction."
         ),
         preserve=(
             "Every closed fault and argument vocabulary, every probe grammar and refusal "
@@ -2357,12 +2681,12 @@ def _verification_gap_decision(
             "may be widened, weakened or deleted to make an existing command pass."
         ),
         retest=(
-            "Product Driver generates coverage for these risks against the approved "
-            "commands and executes it; each risk leaves the uncovered list only when an "
-            "executed scenario passes against it."
+            "Product Driver binds the tests this change moves to these risk keys, executes "
+            "them by node id on the judged tree, and requires the control to pass beside them."
         ),
         confidence=0.6,
     )
+    return decision, group
 
 
 def _withhold_held(
@@ -2534,6 +2858,7 @@ def _apply_suite_precedence(
     generation_problems: Sequence[str] = (),
     risks: Sequence[Any] = (),
     changed_verification: Any = None,
+    bound: dict[str, Any] | None = None,
 ) -> EvaluatorDecision:
     """A required scenario that failed cannot be accepted away.
 
@@ -2558,6 +2883,7 @@ def _apply_suite_precedence(
         generation_problems=generation_problems,
         risks=risks,
         changed_verification=changed_verification,
+        **(bound or {}),
     )
 
     if not verdict.blocks_acceptance and suite_result.full_run:

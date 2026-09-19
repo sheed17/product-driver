@@ -523,7 +523,10 @@ class ChangedVerificationConfig(BaseModel):
     #: saying it passed.
     enabled: bool = True
 
-    #: How many changed verification files may be executed. A cap, not a target.
+    #: How many changed verification files ONE pass executes. A per-pass bound,
+    #: not a lifetime cap: the next pass takes the next ones still owed on the
+    #: same tree, so every changed file is eventually operated (at least one per
+    #: pass, whatever this says, or the obligation could never close).
     max_changed_guards: int = 4
 
     #: How many of the repository's OWN guards over the other files the diff

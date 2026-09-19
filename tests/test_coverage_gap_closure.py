@@ -397,8 +397,17 @@ class TestBlockedIsStillReachable:
         assert any("no runnable scenario" in n for n in notes)
         assert any("product-verification work" in n for n in notes)
 
-    async def test_an_unexpressible_risk_with_no_budget_left_stays_blocked(self, loop_bits):
-        """Without a wave left to use what the builder would add, the refusal stands."""
+    async def test_an_unexpressible_risk_with_no_budget_left_is_routed_by_identity(
+        self, loop_bits
+    ):
+        """Without a wave left, the builder's guard can still close it — if it is BOUND.
+
+        This used to stand as a refusal: with no wave left to turn the builder's
+        new measurement into a generated scenario, nothing the builder added could
+        count. A guard bound to the routed risk identity now can, so the gap is
+        routed — once, by key — and the risk stays uncovered until that bound
+        guard is executed here with its control.
+        """
         config, store, state = loop_bits
         config.max_iterations = 1
         planner = make_planner(
@@ -410,14 +419,21 @@ class TestBlockedIsStillReachable:
 
         result = await drive(config, store, state, planner)
 
-        assert result.status is RunStatus.BLOCKED
+        assert result.status is not RunStatus.ACCEPTED
         assert result.final_decision is not None
-        assert result.final_decision.decision is Decision.BLOCKED
+        assert result.final_decision.decision is Decision.FIX
         assert any(CRASH_RISK in p for p in result.final_decision.problems)
+        assert result.gate is not None and result.gate.blocks_acceptance
+        assert [r.description for r in result.gate.uncovered_risks] == [CRASH_RISK]
         notes = result.state.iterations[0].notes
         assert any("no runnable scenario" in n for n in notes)
+        routed = result.state.verification_gap_obligations
+        assert len(routed) == 1 and len(routed[0]["risk_keys"]) == 1
+        assert routed[0]["corrections"][0]["routed_iteration"] == 1
 
-    async def test_an_exhausted_generation_budget_stays_blocked(self, loop_bits):
+    async def test_an_exhausted_generation_budget_routes_the_gap_instead_of_stopping(
+        self, loop_bits
+    ):
         config, store, state = loop_bits
         config.max_iterations = 1
         planner = make_planner(
@@ -429,12 +445,18 @@ class TestBlockedIsStillReachable:
 
         result = await drive(config, store, state, planner)
 
-        assert result.status is RunStatus.BLOCKED
+        assert result.status is not RunStatus.ACCEPTED
+        assert result.final_decision is not None
+        assert result.final_decision.decision is Decision.FIX
+        assert "ONE verification obligation, routed by identity" in (
+            result.final_decision.correction_prompt
+        )
         assert planner.waves_used == 1
         notes = result.state.iterations[0].notes
         assert any("budget is spent" in n for n in notes)
         # No second wave was even attempted, so no scenario was invented for it.
         assert [w.stage for w in planner.plan.waves] == ["initial"]
+        assert len(result.state.verification_gap_obligations) == 1
 
     async def test_a_scenario_the_gate_never_verifies_does_not_loop_forever(
         self, loop_bits

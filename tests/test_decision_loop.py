@@ -342,6 +342,33 @@ async def test_builder_error_is_recorded_but_does_not_crash_the_loop(loop_bits) 
     assert any("rate limited" in n for n in state.iterations[0].notes)
 
 
+async def test_consecutive_idle_builder_errors_pause_instead_of_spending_iterations(
+    loop_bits,
+) -> None:
+    """Run 20260918-223447 judged an unchanged tree ten times over "session limit".
+
+    A builder that errors and changes nothing leaves nothing new to judge. One
+    such turn is still evaluated; the second in a row pauses the run, resumable
+    in place, before any more of the iteration budget is spent.
+    """
+    config, store, state, scenario, make_executor, _ = loop_bits
+    config.max_iterations = 5
+    builder = FakeBuilder()
+    builder.turn = FakeTurn(is_error=True, error_detail="You've hit your session limit", text="")
+
+    result = await run_control_loop(
+        config=config, scenario=scenario, store=store, state=state,
+        builder=builder, evaluator=FakeEvaluator([fix(), fix(), fix(), fix(), fix()]),
+        make_executor=make_executor, emit=lambda _m: None,
+    )
+
+    assert result.status is RunStatus.STOPPED
+    assert len(state.iterations) == 2
+    assert result.final_decision is not None
+    assert "session limit" in result.final_decision.summary
+    assert "Resume" in result.final_decision.summary
+
+
 # -- the driver never commits or pushes ------------------------------------
 
 

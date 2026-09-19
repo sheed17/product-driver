@@ -424,6 +424,13 @@ class RunState(BaseModel):
     #: once and kept across every resume, so "what this task changed" is always
     #: measured from the task's start and never from wherever a restart landed.
     task_base_commit: str = ""
+    #: Every PRODUCT-VERIFICATION GAP this run routed to the builder, each with
+    #: the exact risk identities it named, the tree it was routed on, the tests
+    #: the answering change moved, and every execution of those tests this
+    #: driver performed and on which tree. Read by the scenario gate; a guard
+    #: may speak for a risk ONLY through an entry here. See
+    #: :mod:`~neyma_product_driver.verification_obligations`.
+    verification_gap_obligations: list[dict[str, Any]] = Field(default_factory=list)
 
     def touch(self) -> None:
         self.updated_at = utcnow()

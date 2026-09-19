@@ -440,10 +440,11 @@ class TestUncoveredRisksReachAcceptance:
         """
         source = " ".join(inspect.getsource(driver_cli.run_control_loop).split())
         # The gaps are computed from the same evidence the gate reads, including
-        # the changed-verification record (run 20260917-063502).
+        # the changed-verification record (run 20260917-063502) and the routed
+        # verification-gap obligations (run 20260918-223447).
         assert (
             "coverage_gaps=_coverage_gap_briefs( planner, suite_result, "
-            'changed_verification=changed_verification["value"] )'
+            'changed_verification=changed_verification["value"], bound=bound_gap, )'
         ) in source
 
     def test_the_gap_briefs_helper_reads_the_planner_risk_register(self) -> None:

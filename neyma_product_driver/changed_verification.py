@@ -303,6 +303,13 @@ class ChangedGuard(BaseModel):
     #: one measures and whether it carries its own positive control. See
     #: :mod:`~neyma_product_driver.risk_grounding`.
     test_measures: list[GuardTestMeasure] = Field(default_factory=list)
+    #: Where the command came from when this is an executable script rather
+    #: than a collected test file: the exact invocation a human declared for it,
+    #: and the declaration's own location. Empty for a test file, which runs
+    #: under the repository's test runner. Never composed by this driver.
+    declared_by: str = ""
+    #: The declared invocation's own time allowance, when it states one.
+    declared_timeout_s: int = 0
 
     @property
     def path(self) -> str:
@@ -374,6 +381,26 @@ class ChangedSurfaceVerification(BaseModel):
     #: while :attr:`module_reachability` is always a measurement of
     #: :attr:`commit`. Subject identity from the task; result from this tree.
     task_modules: list[str] = Field(default_factory=list)
+    #: The whole working tree these results were read from, untracked files
+    #: included (:func:`~neyma_product_driver.worktree_state.worktree_tree_hash`).
+    #: A commit is not enough: an uncommitted edit leaves it unchanged. A result
+    #: carries forward only onto the identical tree, and never onto another.
+    tree: str = ""
+    #: The changed-file set the selection was made from, so a resumed run can
+    #: tell "the same tree and the same diff" from anything else.
+    diff_fingerprint: str = ""
+    #: Changed verification files this driver will not execute, each with why:
+    #: an executable script for which no exact invocation is declared anywhere
+    #: this driver may read. A gap, stated as one — never a pass, never a
+    #: composed command.
+    undeclared: dict[str, str] = Field(default_factory=dict)
+    #: Changed verification files there is nothing to operate for — a deleted
+    #: guard. Not a gap and not an observation.
+    not_applicable: dict[str, str] = Field(default_factory=dict)
+    #: The paths each bounded pass executed, in order. ``max_changed_guards`` is
+    #: a bound on ONE pass, so a diff with more changed verification than that
+    #: is operated across several, and this is how that is audited.
+    passes: list[list[str]] = Field(default_factory=list)
 
     # -- what happened ----------------------------------------------------
 
@@ -405,7 +432,32 @@ class ChangedSurfaceVerification(BaseModel):
     def unobserved_changed_paths(self) -> list[str]:
         """Changed verification files this run holds no direct observation of."""
         passed = {r.target.path for r in self.results}
-        return [p for p in self.changed_paths if p not in passed]
+        return [
+            p for p in self.changed_paths if p not in passed and p not in self.not_applicable
+        ]
+
+    def path_status(self) -> dict[str, str]:
+        """Every changed verification path, and which of the four things it is.
+
+        ``OBSERVED`` — a command this driver ran reached an assertion (pass or
+        refusal); ``UNEXECUTABLE`` — it could not be run here, or no invocation
+        for it is declared; ``NOT_APPLICABLE`` — there is nothing to operate;
+        ``PENDING`` — selected and not yet reached by a bounded pass. Only the
+        last one is a state the obligation may not rest in.
+        """
+        observed = {r.target.path for r in self.results if not r.infrastructure}
+        broken = {r.target.path for r in self.results if r.infrastructure}
+        status: dict[str, str] = {}
+        for path in self.changed_paths:
+            if path in observed:
+                status[path] = "OBSERVED"
+            elif path in self.not_applicable:
+                status[path] = "NOT_APPLICABLE"
+            elif path in broken or path in self.undeclared:
+                status[path] = "UNEXECUTABLE"
+            else:
+                status[path] = "PENDING"
+        return status
 
     @property
     def blocks_acceptance(self) -> bool:
@@ -439,7 +491,12 @@ class ChangedSurfaceVerification(BaseModel):
             )
         for guard in self.pending:
             reasons.append(f"{guard.path} was selected for verification and never ran")
+        for path, why in self.undeclared.items():
+            if path in self.changed_paths:
+                reasons.append(why)
         for path in self.unobserved_changed_paths:
+            if path in self.undeclared:
+                continue
             if path not in [g.path for g in self.pending] and path not in [
                 r.target.path for r in self.results
             ]:
@@ -486,6 +543,11 @@ class ChangedSurfaceVerification(BaseModel):
             )
         if self.pending or self.unobserved_changed_paths:
             missing = self.pending and [g.path for g in self.pending] or self.unobserved_changed_paths
+            if not self.pending and all(p in self.undeclared for p in missing):
+                return (
+                    "verification this change CHANGED has no declared invocation, so this "
+                    "driver cannot operate it: " + ", ".join(missing[:4])
+                )
             return (
                 "verification this change CHANGED has not been operated: "
                 + ", ".join(missing[:4])
@@ -509,6 +571,10 @@ class ChangedSurfaceVerification(BaseModel):
             lines.append(f"  observed: {observation}")
         for gap in self.discrimination_gaps:
             lines.append(f"  gap: {gap}")
+        for why in self.undeclared.values():
+            lines.append(f"  gap: {why}")
+        for number, executed in enumerate(self.passes, start=1):
+            lines.append(f"  pass {number}: {', '.join(executed) or 'nothing new to run'}")
         for note in self.notes:
             lines.append(f"  note: {note}")
         return "\n".join(lines)
@@ -796,28 +862,250 @@ def analyse_guard(
     )
 
 
+# --------------------------------------------------------------------------
+# Declared invocations: how a changed SCRIPT may be operated at all
+# --------------------------------------------------------------------------
+
+
+class DeclaredInvocation(BaseModel):
+    """One exact command a human already wrote down for one verification script.
+
+    The only way a probe or battery that declares no collected test is ever run
+    here. Its arguments are the declaration's, character for character; the one
+    thing ever substituted is a CI line's bare ``python`` for the repository's
+    own interpreter, which is the environment the line names and not an argument.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    command: str
+    #: The script the command runs, repository-relative.
+    script: str
+    #: The exit status the declaration says this invocation must produce.
+    expect_exit_code: int = 0
+    timeout_s: int = 0
+    #: Where it was declared, for the record: a scenario step, or a CI file.
+    source: str = ""
+
+    @property
+    def bare(self) -> bool:
+        """Runs the script with no arguments — its own whole-run default."""
+        tokens = _tokens(self.command)
+        return bool(tokens) and tokens[-1] == self.script
+
+
+#: Shell syntax a declared command may not carry to be run here. Such a line is
+#: a pipeline or a redirection, and its exit status is not the script's.
+_SHELL = re.compile(r"[|;&<>`$\\]")
+
+
+def _tokens(command: str) -> list[str]:
+    import shlex
+
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+def _script_of(command: str) -> str:
+    """The ``*.py`` a single-program command runs, or ``""``.
+
+    Only ``<interpreter> path/to/script.py [args...]`` qualifies. ``-m``,
+    ``-c``, a pipeline, a redirection or a chained command does not: in each of
+    those the exit status read back is not the script's own.
+    """
+    if not command or _SHELL.search(command):
+        return ""
+    tokens = _tokens(command)
+    if len(tokens) < 2 or "python" not in Path(tokens[0]).name:
+        return ""
+    script = tokens[1]
+    if not script.endswith(".py") or script.startswith("-"):
+        return ""
+    return script[2:] if script.startswith("./") else script
+
+
+def declared_invocations_from_scenarios(scenarios: Sequence[Any]) -> list[DeclaredInvocation]:
+    """Every single-program invocation a scenario file states an exit contract for."""
+    out: list[DeclaredInvocation] = []
+    for scenario in scenarios:
+        name = str(getattr(scenario, "name", "") or "")
+        specs = list(getattr(scenario, "commands", None) or [])
+        specs += [
+            step.command
+            for step in (getattr(scenario, "steps", None) or [])
+            if getattr(step, "command", None) is not None
+        ]
+        for spec in specs:
+            command = str(getattr(spec, "run", "") or "")
+            script = _script_of(command)
+            if not script:
+                continue
+            out.append(
+                DeclaredInvocation(
+                    command=command,
+                    script=script,
+                    expect_exit_code=int(getattr(spec, "expect_exit_code", 0) or 0),
+                    timeout_s=int(getattr(spec, "timeout_s", 0) or 0),
+                    source=f"scenario {name}: {getattr(spec, 'name', '') or command}",
+                )
+            )
+    return out
+
+
+def declared_invocations_from_ci(repo: Path, interpreter: str) -> list[DeclaredInvocation]:
+    """Every single-program line the repository's own CI runs.
+
+    A CI step that runs a line is the repository declaring that the line must
+    exit 0. Multi-line ``run:`` blocks are read line by line and only lines that
+    are one program with no shell syntax count. A bare ``python``/``python3`` is
+    the CI image's interpreter; here it is the repository's own, which is the
+    one detail of the line that describes the machine rather than the check.
+    """
+    import yaml
+
+    repo = Path(repo)
+    found: list[DeclaredInvocation] = []
+    workflows = repo / ".github" / "workflows"
+    if not interpreter or not workflows.is_dir():
+        return found
+
+    def runs(node: Any):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "run" and isinstance(value, str):
+                    yield value
+                else:
+                    yield from runs(value)
+        elif isinstance(node, list):
+            for item in node:
+                yield from runs(item)
+
+    for path in sorted(workflows.glob("*.y*ml")):
+        try:
+            document = yaml.safe_load(path.read_text(errors="replace"))
+        except (OSError, yaml.YAMLError):
+            continue
+        for block in runs(document):
+            for line in block.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                tokens = _tokens(line)
+                if tokens and tokens[0] in ("python", "python3"):
+                    line = " ".join([interpreter, *line.split(None, 1)[1:]])
+                script = _script_of(line)
+                if not script:
+                    continue
+                found.append(
+                    DeclaredInvocation(
+                        command=line,
+                        script=script,
+                        source=f"{path.relative_to(repo)}",
+                    )
+                )
+    return found
+
+
+def choose_invocation(
+    rel: str, declared: Sequence[DeclaredInvocation]
+) -> DeclaredInvocation | None:
+    """The one declared invocation this driver runs for ``rel``, or ``None``.
+
+    Only declarations that run exactly this script and state exit 0 are
+    candidates — a refusal control proves the program's input is closed, not
+    that its checks hold. Among them: the bare invocation (the script's own
+    whole-run default) first; otherwise the one declared with the largest time
+    allowance, which is the declaration a human sized as the whole run; ties go
+    to the first written. Every choice is a string a human wrote.
+    """
+    candidates = [d for d in declared if d.script == rel and d.expect_exit_code == 0]
+    if not candidates:
+        return None
+    bare = [d for d in candidates if d.bare]
+    if bare:
+        return bare[0]
+    best = candidates[0]
+    for candidate in candidates[1:]:
+        if candidate.timeout_s > best.timeout_s:
+            best = candidate
+    return best
+
+
+def analyse_script(
+    repo: Path, rel: str, declared: Sequence[DeclaredInvocation]
+) -> tuple[ChangedGuard | None, str]:
+    """A changed script that collects no test: its declared invocation, or why none.
+
+    Returns ``(guard, "")`` when a human declared an exact invocation for it, and
+    ``(None, reason)`` otherwise. The reason is the gap, and it says what closes
+    it: a declaration, not a wrapper written to satisfy this driver.
+    """
+    invocation = choose_invocation(rel, declared)
+    if invocation is None:
+        return None, (
+            f"{rel} changed and is an executable check that collects no test, and no exact "
+            "invocation for it is declared — not in this driver's approved scenario "
+            "vocabulary and not in the repository's CI — so it has not been operated. This "
+            "driver does not compose arguments for it; declare the exact command the "
+            "repository runs it with (for example as a CI step) and it will be run"
+        )
+    return (
+        ChangedGuard(
+            target=VerificationTarget(
+                path=rel,
+                command=invocation.command,
+                surface="the verification this change changed",
+                why=[
+                    "this change edited this executable check; it is the deliverable, not "
+                    "collateral",
+                    f"run exactly as declared by {invocation.source}",
+                ],
+            ),
+            relation="changed",
+            added=not _is_tracked(Path(repo), rel),
+            declared_by=invocation.source,
+            declared_timeout_s=invocation.timeout_s,
+        ),
+        "",
+    )
+
+
 def select_changed_verification(
     repo: Path,
     diff_files: Sequence[str],
     *,
     base_commit: str = "",
-    max_changed: int = 4,
     max_related: int = 2,
     runner: str = "",
+    declared: Sequence[DeclaredInvocation] = (),
+    undeclared: dict[str, str] | None = None,
+    not_applicable: dict[str, str] | None = None,
 ) -> tuple[list[ChangedGuard], list[str], list[str], list[str]]:
     """The guards this diff earns: the ones it changed, plus their narrow collateral.
 
     Returns ``(guards, changed_paths, related_paths, notes)``.
 
-    Two sources, both bounded, and neither of them "the suite":
+    Two sources, and neither of them "the suite":
 
-    * every verification file the diff changed. This is the deliverable, so the
-      cap is generous and the order is the diff's;
+    * EVERY verification file the diff changed. This is the deliverable, so all
+      of it is selected, in the diff's order. How much of it runs at once is a
+      separate question with a separate bound — see :func:`verify_changed_surface`.
+      Selecting only the first few made that bound a lifetime cap: on an
+      unchanged tree the same few were selected, observed and re-run forever,
+      and everything after them stayed "not operated" for as long as the run
+      lasted (Neyma U8.4, run 20260918-223447: 11 changed, the same 4 run on
+      each of 11 iterations);
     * the repository's own guards over the OTHER files the diff changed. A guard
       file usually exists because some non-test file has a property worth
       keeping, and that file is normally in the same diff. This is the part that
       catches "the document you reconciled is read by a guard you did not run",
       and it is capped hard, because it is collateral rather than deliverable.
+
+    A changed script that collects no test is selected only through an exact
+    invocation in ``declared``; otherwise it lands in ``undeclared`` with the
+    reason. A changed file that no longer exists lands in ``not_applicable``.
     """
     repo = Path(repo)
     notes: list[str] = []
@@ -833,20 +1121,25 @@ def select_changed_verification(
         return [], changed_paths, [], notes
 
     guards: list[ChangedGuard] = []
-    for rel in changed_paths[:max_changed]:
+    for rel in changed_paths:
+        if not (repo / rel).is_file():
+            if not_applicable is not None:
+                not_applicable[rel] = f"{rel} no longer exists; a deleted guard is not run"
+            continue
         guard = analyse_guard(repo, rel, base_commit=base_commit, runner=runner)
         if guard is not None:
             guards.append(guard)
+            continue
+        script, why = analyse_script(repo, rel, declared)
+        if script is not None:
+            guards.append(script)
         else:
+            if undeclared is not None:
+                undeclared[rel] = why
             notes.append(
-                f"{rel} changed and declares no test this runner collects, so this driver "
-                "did not invent an entry point for it"
+                f"{rel} changed and declares no test this runner collects, and no exact "
+                "invocation is declared for it, so this driver did not invent an entry point"
             )
-    if len(changed_paths) > max_changed:
-        notes.append(
-            f"{len(changed_paths)} verification files changed; the first {max_changed} were "
-            "executed. This is a bounded check, not a suite run."
-        )
 
     # The other files the diff changed. A changed test file is never its own
     # collateral, and the whole point of the cap is that a test edit must not
@@ -949,23 +1242,43 @@ def verify_changed_surface(
     max_related: int = 2,
     timeout_s: int = 900,
     only: Sequence[str] = (),
+    declared: Sequence[DeclaredInvocation] = (),
+    tree: str = "",
+    prior: ChangedSurfaceVerification | None = None,
 ) -> ChangedSurfaceVerification:
-    """Select and operate the verification this change changed.
+    """Select the verification this change changed, and operate ONE bounded pass of it.
 
-    ``only`` restricts execution to named paths, which is how a run that already
-    observed some of them carries the obligation forward rather than paying for
-    the same measurement twice.
+    ``max_changed`` bounds how many changed guards one pass executes; it is not
+    a bound on how many ever will. Each pass takes the next ones still owed —
+    never re-running one this same tree already answered — so a diff with more
+    changed verification than the bound is operated across passes, and every
+    changed path ends OBSERVED, UNEXECUTABLE with its reason, or NOT_APPLICABLE.
+
+    ``prior`` is an earlier record of this obligation. Its results are carried
+    only when it was read from the identical working tree (``tree``) and the
+    identical commit; a result from any other tree is never evidence here. A
+    guard that could not be run is not carried — it is tried again — because
+    "the environment could not run it" is not a fact about the tree.
+
+    ``only`` restricts execution to named paths.
     """
     from .risk_grounding import product_modules
+    from .worktree_state import worktree_tree_hash
 
     repo = Path(repo)
+    if not tree:
+        tree, _error = worktree_tree_hash(repo)
     reachability = structural_measurements(repo, diff_files, commit=commit)
+    undeclared: dict[str, str] = {}
+    not_applicable: dict[str, str] = {}
     guards, changed_paths, related_paths, notes = select_changed_verification(
         repo,
         diff_files,
         base_commit=base_commit,
-        max_changed=max_changed,
         max_related=max_related,
+        declared=declared,
+        undeclared=undeclared,
+        not_applicable=not_applicable,
     )
     record = ChangedSurfaceVerification(
         changed_paths=changed_paths,
@@ -975,18 +1288,61 @@ def verify_changed_surface(
         commit=commit,
         module_reachability=reachability,
         task_modules=product_modules(diff_files),
+        tree=tree,
+        diff_fingerprint="\n".join(sorted(str(f) for f in diff_files)),
+        undeclared=undeclared,
+        not_applicable=not_applicable,
     )
     if not guards:
         return record
     record.discrimination_gaps = discrimination_gaps(repo, guards)
-    wanted = [g for g in guards if not only or g.path in set(only)]
-    if not wanted:
-        return record
-    executed = run_verification(
-        repo,
-        [g.target for g in wanted],
-        timeout_s=timeout_s,
-        commit=commit,
+
+    # What this same tree already answered, command for command.
+    carried: list[VerificationResult] = []
+    if (
+        prior is not None
+        and tree
+        and prior.tree == tree
+        and prior.commit == commit
+    ):
+        commands = {g.path: g.target.command for g in guards}
+        carried = [
+            r
+            for r in prior.results
+            if not r.infrastructure and commands.get(r.target.path) == r.target.command
+        ]
+        record.passes = [list(p) for p in prior.passes]
+    done = {r.target.path for r in carried}
+
+    wanted = [
+        g for g in guards if g.path not in done and (not only or g.path in set(only))
+    ]
+    batch = [g for g in wanted if g.relation == "changed"][: max(1, max_changed)]
+    batch += [g for g in wanted if g.relation != "changed"][: max(0, max_related)]
+    remaining = len([g for g in wanted if g.relation == "changed"]) - len(
+        [g for g in batch if g.relation == "changed"]
     )
-    record.results = list(executed.results)
+    if remaining > 0:
+        record.notes.append(
+            f"{len(changed_paths)} verification files changed; this pass executed "
+            f"{len([g for g in batch if g.relation == 'changed'])} and {remaining} are still "
+            "owed to a later pass. The bound is per pass, not per run."
+        )
+
+    executed: list[VerificationResult] = []
+    for guard in batch:
+        # A declared script runs under its declaration's own time allowance
+        # when that is the longer one; a guard is never cut short by a
+        # stopwatch tighter than the one a human wrote beside it.
+        executed += run_verification(
+            repo,
+            [guard.target],
+            timeout_s=max(timeout_s, guard.declared_timeout_s),
+            commit=commit,
+        ).results
+    record.results = carried + executed
+    if executed or not carried:
+        # A pass that found nothing still owed on a tree already answered is
+        # not a pass; recording it would only pad the audit trail.
+        record.passes.append([r.target.path for r in executed])
     return record
