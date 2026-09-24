@@ -1376,6 +1376,7 @@ class ScenarioPlanner:
         for risk in incoming:
             if risk.key in seen_keys:
                 continue
+            self._resolve_lineage(risk)
             if risk.id and risk.id in taken_ids:
                 original = risk.id
                 risk.id = f"{original}-w{self._wave}"
@@ -1385,6 +1386,58 @@ class ScenarioPlanner:
             if risk.id:
                 taken_ids.add(risk.id)
             self.plan.risks.append(risk)
+
+    def _resolve_lineage(self, risk: IdentifiedRisk) -> None:
+        """Check a wave risk's declared lineage against the register, in place.
+
+        A rewording is only one obligation with an earlier risk because its
+        generator SAID so — ``restates`` set to a key this run minted and showed
+        it. That declaration is checked, never supplied: it must name a risk
+        already in the register, in the same category, and the rewording may
+        name no concrete artifact the original does not, since a wording that
+        brings a new subject is about something else. A declaration that fails
+        is refused in the risk's own basis and the risk stays its own
+        obligation. Accepted, it resolves to the root of the chain, so one
+        obligation has one identity however many times it is reworded.
+
+        Keys the basis merely cites are kept as lineage only when they name a
+        registered risk. Derived-from is not restates: a risk derived from
+        another may be a different property of it.
+        """
+        from .guard_coverage import subjects
+
+        register = {r.key: r for r in self.plan.risks}
+        risk.derived_from = [k for k in risk.derived_from if k in register and k != risk.key]
+        declared = risk.restates
+        if not declared:
+            return
+        risk.restates = ""
+        parent = register.get(declared)
+        problem = ""
+        if parent is None:
+            problem = f"{declared} is not a risk this run identified"
+        else:
+            root = register.get(parent.lineage_key, parent)
+            if root.risk_category != risk.risk_category:
+                problem = (
+                    f"{declared} is {root.risk_category.value}, and this risk is "
+                    f"{risk.risk_category.value}"
+                )
+            else:
+                extra = sorted(
+                    set(subjects(risk.description)) - set(subjects(root.description))
+                )
+                if extra:
+                    problem = (
+                        f"it names {', '.join(extra)}, which {root.key} does not, so it is "
+                        "about something else"
+                    )
+                else:
+                    risk.restates = root.key
+        if problem:
+            risk.basis = f"{risk.basis} (declared restatement of {declared} refused: {problem})".strip()
+        else:
+            risk.basis = f"{risk.basis} (declared restatement of {risk.restates})".strip()
 
     def _link_risks(self) -> None:
         """Record what this plan *intends* to exercise for each identified risk.

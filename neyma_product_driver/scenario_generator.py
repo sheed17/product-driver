@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import textwrap
 import threading
 from pathlib import Path
@@ -213,6 +214,12 @@ class GenerationBrief:
                 "to the risk key(s) shown in parentheses above. A scenario that cannot "
                 "name the identified risk it closes is refused at this stage, for the "
                 "same reason a case responding to a failure must name the failure.",
+                "",
+                "Do not list one of these risks again under new wording as if it were a "
+                "new risk. If you do list it again, set `restates` to its key: a rewording "
+                "with no declared key is recorded as a separate risk that blocks "
+                "acceptance on its own. Set `restates` only for the SAME obligation — a "
+                "risk that adds a property, a subject or a consequence is new.",
                 "",
                 "If a listed risk cannot be exercised with the approved commands "
                 "available to you, do NOT invent a command and do not propose a scenario "
@@ -545,6 +552,15 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "type": "string",
                         "description": "The acceptance criterion, diff file or prior "
                         "failure that makes this risk real.",
+                    },
+                    "restates": {
+                        "type": "string",
+                        "description": "Only when this entry is an already-identified "
+                        "risk listed again: that risk's key, exactly as shown in "
+                        "parentheses (e.g. `idempotency:2fcf040507`). It declares the SAME "
+                        "obligation reworded — same property, no new subject, not wider "
+                        "and not narrower. A risk that adds a property, a subject or a "
+                        "consequence is a NEW risk and leaves this empty.",
                     },
                 },
                 "required": ["description", "risk_category"],
@@ -938,15 +954,38 @@ def parse_risks(payload: dict[str, Any] | None) -> list[IdentifiedRisk]:
         description = str(raw.get("description") or "").strip()
         if not description:
             continue
+        basis = str(raw.get("basis") or "")
         out.append(
             IdentifiedRisk(
                 id=str(raw.get("id") or f"R{index}"),
                 description=description,
                 risk_category=category,
                 severity=_priority(raw.get("severity")),
-                basis=str(raw.get("basis") or ""),
+                basis=basis,
+                # Declared, and validated against the register at merge. Kept
+                # here verbatim so a declaration that fails validation is
+                # visible as refused rather than silently absent.
+                restates=str(raw.get("restates") or "").strip(),
+                derived_from=cited_risk_keys(basis),
             )
         )
+    return out
+
+
+#: A risk key as this driver mints it (:attr:`IdentifiedRisk.key`): a category
+#: value and ten hex digits. Matched exactly; nothing resembling one counts.
+_RISK_KEY = re.compile(
+    r"\b(" + "|".join(re.escape(c.value) for c in RiskCategory) + r"):([0-9a-f]{10})\b"
+)
+
+
+def cited_risk_keys(text: str) -> list[str]:
+    """The risk keys a piece of text cites, exactly, in order, once each."""
+    out: list[str] = []
+    for match in _RISK_KEY.finditer(text or ""):
+        key = f"{match.group(1)}:{match.group(2)}"
+        if key not in out:
+            out.append(key)
     return out
 
 

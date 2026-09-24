@@ -92,6 +92,16 @@ def _risk_key(risk: Any) -> str:
     return str(getattr(risk, "key", "") or "")
 
 
+def _lineage_key(risk: Any) -> str:
+    """The root key a risk's generator DECLARED it restates, or its own key.
+
+    The one identity that survives a rewording with no concrete subjects. It is
+    provenance — a key this driver minted, named by the wave that reworded it
+    and checked when the wave was merged — never a judgement about wording.
+    """
+    return str(getattr(risk, "restates", "") or "") or _risk_key(risk)
+
+
 def group_by_obligation(risks: Sequence[Any]) -> list[list[Any]]:
     """Risks partitioned into obligations, in first-appearance order."""
     groups: list[list[Any]] = []
@@ -224,11 +234,16 @@ def find_obligation(
 
 
 def obligation_group(risk: Any, register: Sequence[Any]) -> list[Any]:
-    """``risk`` and every register entry that is the same obligation."""
+    """``risk`` and every register entry that is the same obligation: the same
+    declared lineage, or the same category and concrete subjects."""
     identity = obligation_identity(risk)
-    if identity is None:
-        return [risk]
-    group = [r for r in register if obligation_identity(r) == identity]
+    root = _lineage_key(risk)
+    group = [
+        r
+        for r in register
+        if (root and _lineage_key(r) == root)
+        or (identity is not None and obligation_identity(r) == identity)
+    ]
     return group if any(_risk_key(r) == _risk_key(risk) for r in group) else [risk, *group]
 
 
@@ -275,11 +290,27 @@ def adopt_wordings(
 ) -> list[str]:
     """Join a later wording of an already-routed obligation to it. Returns notes.
 
-    Only an exact identity match joins, so a wording that names a different
-    artifact, or none, stays its own obligation.
+    Two exact identities join, and nothing looser. A wording whose generator
+    declared it restates a risk this obligation already speaks for joins by that
+    declared key — the only identity a rewording with no concrete subjects has.
+    A wording that names the same subjects under the same category joins by
+    those. A wording with neither, including one that merely cites an earlier
+    risk in its basis, stays its own obligation.
     """
     notes: list[str] = []
     for obligation in obligations:
+        for risk in register:
+            key = _risk_key(risk)
+            root = str(getattr(risk, "restates", "") or "")
+            if key and root and key not in obligation.risk_keys and root in obligation.risk_keys:
+                obligation.risk_keys.append(key)
+                obligation.risk_ids.append(str(getattr(risk, "id", "") or key))
+                obligation.descriptions.append(str(getattr(risk, "description", "")))
+                notes.append(
+                    f"{getattr(risk, 'id', key)} was declared by its generator to restate "
+                    f"{root}, which {obligation.obligation_id} speaks for; joined as one "
+                    "obligation"
+                )
         if not obligation.subjects:
             continue
         identity = (obligation.category, tuple(sorted(obligation.subjects)))

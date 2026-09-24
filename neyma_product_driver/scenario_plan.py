@@ -1002,10 +1002,26 @@ class IdentifiedRisk(BaseModel):
     severity: Priority = Priority.P2
     basis: str = ""
     covered_by: list[str] = Field(default_factory=list)
+    #: The :attr:`key` of the already-identified risk this entry RESTATES — the
+    #: same obligation, reworded — always resolved to the root of its lineage.
+    #: Set only from the generator's explicit declaration, and only once the
+    #: wave merge has checked it against the register (see
+    #: ``ScenarioPlanner._merge_risks``). Never inferred from wording.
+    restates: str = ""
+    #: Keys of identified risks this entry's basis cites. Lineage for a reader
+    #: and nothing more: a risk DERIVED from another may be a different
+    #: property of it, so a citation is never identity and never coverage.
+    derived_from: list[str] = Field(default_factory=list)
 
     @property
     def covered(self) -> bool:
         return bool(self.covered_by)
+
+    @property
+    def lineage_key(self) -> str:
+        """The key of the obligation this risk speaks for: its declared root,
+        or itself."""
+        return self.restates or self.key
 
     @property
     def key(self) -> str:
