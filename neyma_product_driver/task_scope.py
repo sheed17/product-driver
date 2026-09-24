@@ -19,6 +19,8 @@ registry, and it answers what the task asks to happen (:class:`ScopeIntent`):
     build one unit inside the phase     UNIT_IMPLEMENTATION
     build the whole phase               PHASE_IMPLEMENTATION
     accept / close / adjudicate it      PHASE_ACCEPTANCE
+    repair named gaps, refusing         SCOPED_REMEDIATION
+      the phase's acceptance
 
 For a unit, phase-level acceptance is not this run's bar; the task's own
 authoritative requirements are, and the phase stays exactly where the
@@ -106,10 +108,64 @@ _PHASE_IMPLEMENTATION_VERB = (
 #: according to its acceptance criteria" names the bar the work is built to,
 #: which is the opposite of asking this run to award it. That exclusion is the
 #: negative lookahead on "acceptance".
+#:
+#: The same holds for "acceptance" used to modify a noun: "the frozen P8
+#: phase-acceptance run", "the P8 acceptance review" name a thing that exists,
+#: not an act this run is asked to perform. A hyphenated compound
+#: ("phase-acceptance") is always a modifier, which is the lookbehind.
+_ACCEPTANCE_AS_MODIFIER = (
+    r"(?!\s+(?:criteri|condition|test|bar|contract|runs?\b|review|record|attempt|evidence|"
+    r"guard|gate))"
+)
 _PHASE_ACCEPTANCE_VERB = (
-    r"accept(?:ed|ing)?(?![-\w])|acceptance(?![-\w])(?!\s+(?:criteri|condition|test|bar|contract))|"
+    r"accept(?:ed|ing)?(?![-\w])|(?<![-\w])acceptance(?![-\w])" + _ACCEPTANCE_AS_MODIFIER + "|"
     r"adjudicat(?:e|es|ed|ing|ion)(?![-\w])|sign(?:s|ed|ing)?\s*-?\s*off|"
     r"clos(?:e|es|ed|ing|ure)(?![-\w])(?:\s+out)?|declare\s+(?:it\s+)?(?:done|accepted|complete)"
+)
+
+#: The forms that can REQUEST acceptance when they come BEFORE the phase id.
+#: A past participle there is an adjective, not an instruction: "preserve every
+#: accepted P0-P8 invariant" and "the closed P6 contract" describe what already
+#: holds. It cost a whole run to learn this — a remediation task that told its
+#: builder to preserve the accepted invariants was held to the phase's full
+#: acceptance bar. After the phase id the participle still asks ("declare P8
+#: accepted"), so :data:`_PHASE_ACCEPTANCE_VERB` keeps it for that position.
+_PHASE_ACCEPTANCE_REQUEST_VERB = (
+    r"accept(?:ing)?(?![-\w])|(?<![-\w])acceptance(?![-\w])" + _ACCEPTANCE_AS_MODIFIER + "|"
+    r"adjudicat(?:e|es|ing|ion)(?![-\w])|sign(?:s|ing)?\s*-?\s*off|"
+    r"clos(?:e|es|ing|ure)(?![-\w])(?:\s+out)?|declare\s+(?:it\s+)?(?:done|accepted|complete)"
+)
+
+#: A phase id immediately preceded by the start of a range: the `P8` in
+#: `P0-P8` or `P0 through P8`. The range is the object — a SET of phases a
+#: sentence talks about — and its endpoint is never, on its own, the phase a
+#: verb in front of the range acts on.
+_RANGE_OPENING = re.compile(
+    rf"\b{_PHASE_TOKEN}\s*(?:-|–|—|\.\.\.?|through|thru|to|until)\s*$", re.I
+)
+
+#: Asking for a BOUNDED repair: a remediation verb and, in the same sentence,
+#: the specific things it repairs. "Work on P8" names no bounded target, and
+#: neither does "improve P8"; "close the G4 verification gaps" and "fix
+#: AC-RACE-017" do.
+_REMEDIATION_VERB = (
+    r"remediat(?:e|es|ing)|repair(?:s|ing)?|fix(?:es|ing)?|clos(?:e|es|ing)|address(?:es|ing)?|"
+    r"resolv(?:e|es|ing)|discharg(?:e|es|ing)"
+)
+_REMEDIATION_OBJECT = (
+    r"gaps?|defects?|findings?|blockers?|obligations?|deficienc(?:y|ies)|regressions?|bugs?|"
+    r"(?:[A-Z][A-Z0-9]*-)+\d{1,4}"
+)
+
+#: An explicit denial, strictly: the words that say an act must not happen in
+#: this run. Narrower than :data:`_NEGATED` on purpose — "before phase
+#: acceptance" or "P8 remains READY" are statements about sequence and state,
+#: and a bounded scope is granted only by a task that actually refuses the
+#: phase's acceptance.
+_DENIAL = re.compile(
+    r"\b(?:not|no|never|cannot|can'?t|don'?t|do\s+not|does\s+not|must\s+not|may\s+not|"
+    r"shall\s+not|without)\b",
+    re.I,
 )
 
 #: A phase id that is really a phase id, and not the stem of a nested unit's:
@@ -159,6 +215,11 @@ class ScopeIntent(str, Enum):
     #: Formally accept, close, adjudicate or sign off the phase. The full phase
     #: bar: every required criterion satisfied, by its own authority.
     PHASE_ACCEPTANCE = "PHASE_ACCEPTANCE"
+    #: Repair specific, named gaps or defects associated with a phase, in a
+    #: task that explicitly refuses the phase's acceptance or completion. A
+    #: bounded task like a unit build: its bar is the remediation it was given,
+    #: and it can neither score, complete nor accept the phase.
+    SCOPED_REMEDIATION = "SCOPED_REMEDIATION"
     #: No unit and no explicit phase request could be read. The strict default
     #: governs what a CLAIM is measured against; nothing is owed on its behalf.
     UNSPECIFIED = "UNSPECIFIED"
@@ -208,6 +269,9 @@ class TaskScope(BaseModel):
     #: have work in flight that its registry has not yet named.
     repository_unit_id: str = ""
 
+    #: For a bounded remediation: the task's own words naming what it repairs.
+    remediation_targets: list[str] = Field(default_factory=list)
+
     #: How each field above was arrived at, for the record.
     derivation: list[str] = Field(default_factory=list)
     evidence_paths: list[str] = Field(default_factory=list)
@@ -246,6 +310,12 @@ class TaskScope(BaseModel):
         return self.intent is ScopeIntent.PHASE_ACCEPTANCE
 
     @property
+    def remediation_requested(self) -> bool:
+        """The task asked for named gaps inside the phase to be repaired, and
+        refused the phase's acceptance."""
+        return self.intent is ScopeIntent.SCOPED_REMEDIATION
+
+    @property
     def may_record_phase_acceptance(self) -> bool:
         """Whether this run's record may ever say the parent phase is accepted.
 
@@ -256,6 +326,11 @@ class TaskScope(BaseModel):
         return self.claims_phase_completion and self.phase_acceptance_requested
 
     def describe(self) -> str:
+        if self.remediation_requested:
+            return (
+                f"{self.scope_id} (a bounded remediation inside {self.parent_phase_id}; "
+                f"{self.parent_phase_id} stays {self.phase_state_text} and is not accepted)"
+            )
         if self.is_nested:
             return (
                 f"{self.scope_id} (a unit inside {self.parent_phase_id}; "
@@ -286,6 +361,11 @@ class TaskScope(BaseModel):
             lines.append(
                 "CLAIMS PHASE COMPLETION: no — this run builds the phase; its acceptance "
                 "belongs to phase closure"
+            )
+        elif self.remediation_requested:
+            lines.append(
+                "CLAIMS PHASE COMPLETION: no — a bounded remediation; its bar is the "
+                "remediation it was given"
             )
         else:
             lines.append(
@@ -321,6 +401,20 @@ class TaskScope(BaseModel):
                 f"production. Do not describe {phase} as accepted or COMPLETE, and do not "
                 "edit a status surface to say so. The completed candidate is handed to phase "
                 "closure, which is where acceptance happens."
+            )
+        if self.remediation_requested:
+            targets = "; ".join(self.remediation_targets) or "the gaps the task names"
+            return (
+                f"SCOPE OF THIS RUN: {self.scope_id} — a BOUNDED REMEDIATION inside {phase}.\n"
+                f"PARENT PHASE: {phase} — recorded as {self.phase_state_text}, and this run "
+                "does not change that.\n"
+                f"The bar is the remediation the task names ({targets}), and nothing wider. "
+                f"{phase}'s acceptance criteria are not this run's bar and are not yours to "
+                "score.\n"
+                f"Completing this remediation does NOT accept {phase}, does NOT complete it, "
+                "does NOT score a criterion, does NOT unblock the next phase, and enables "
+                f"nothing in production. Do not describe {phase} as accepted or COMPLETE, and "
+                "do not edit a status surface to say so."
             )
         if not self.is_nested:
             return (
@@ -437,6 +531,19 @@ def standard_exclusions(phase_id: str) -> list[str]:
     ]
 
 
+#: What a verified bounded remediation never means.
+def remediation_exclusions(phase_id: str) -> list[str]:
+    phase = phase_id or "the parent phase"
+    return [
+        f"{phase} is accepted or COMPLETE",
+        f"any {phase} acceptance criterion is scored",
+        f"the rest of {phase} is built or verified",
+        "phase acceptance has occurred",
+        "the next phase is unblocked",
+        "anything is enabled in production or on live traffic",
+    ]
+
+
 #: What a verified whole-phase IMPLEMENTATION never means. The implementation is
 #: the candidate phase closure is handed; everything on this list is what phase
 #: closure, and only phase closure, can establish.
@@ -499,13 +606,38 @@ def _negated_near(text: str, start: int, end: int) -> bool:
     return any(_NEGATED.search(chunk) for chunk in (inside, before, after))
 
 
+def _ref_is_range_endpoint(text: str, match: re.Match[str]) -> bool:
+    """Whether the phase id a match found is the far end of a range (`P0-P8`)."""
+    if "ref" not in match.re.groupindex or match.start("ref") < 0:
+        return False
+    start = match.start("ref")
+    return bool(_RANGE_OPENING.search(text[max(0, start - 24) : start]))
+
+
 def _first_unnegated(task: str, patterns: tuple[str, ...]) -> str:
     for pattern in patterns:
         for match in re.finditer(pattern, task, re.I):
             if _negated_near(task, match.start(), match.end()):
                 continue
+            if _ref_is_range_endpoint(task, match):
+                continue
             return match.group(0).strip()[:160]
     return ""
+
+
+def _acceptance_patterns(phase_id: str) -> tuple[str, ...]:
+    """Every way a task names the act of accepting this phase. The phase id is
+    captured as ``ref`` so a range endpoint can be told from an object."""
+    ref = rf"(?P<ref>{_phase_ref(phase_id)})"
+    return (
+        rf"\b(?:{_PHASE_ACCEPTANCE_REQUEST_VERB})[^.\n]{{0,14}}?{ref}",
+        rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_ACCEPTANCE_VERB})",
+        rf"{ref}\s+phase\s+acceptance(?![-\w])" + _ACCEPTANCE_AS_MODIFIER,
+        rf"\bphase\s+(?:acceptance|closure|adjudication)\s+(?:of|for)\s+{ref}",
+        # "Complete P6 and take it through phase acceptance."
+        rf"{ref}[^.\n]{{0,60}}?\b(?:to|through|into)\s+(?:formal\s+)?(?:phase\s+)?"
+        r"(?:acceptance|closure|adjudication|sign\s*-?\s*off)\b" + _ACCEPTANCE_AS_MODIFIER,
+    )
 
 
 def _phase_acceptance_requested(task: str, phase_id: str) -> tuple[bool, str]:
@@ -513,21 +645,50 @@ def _phase_acceptance_requested(task: str, phase_id: str) -> tuple[bool, str]:
     adjudicated or signed off?"""
     if not phase_id:
         return False, ""
-    ref = _phase_ref(phase_id)
-    phrase = _first_unnegated(
-        task,
-        (
-            rf"\b(?:{_PHASE_ACCEPTANCE_VERB})[^.\n]{{0,14}}?{ref}",
-            rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_ACCEPTANCE_VERB})",
-            rf"{ref}\s+phase\s+acceptance",
-            rf"\bphase\s+(?:acceptance|closure|adjudication)\s+(?:of|for)\s+{ref}",
-            # "Complete P6 and take it through phase acceptance."
-            rf"{ref}[^.\n]{{0,60}}?\b(?:to|through|into)\s+(?:formal\s+)?(?:phase\s+)?"
-            r"(?:acceptance|closure|adjudication|sign\s*-?\s*off)\b"
-            r"(?!\s+(?:criteri|condition|test|bar|contract))",
-        ),
-    )
+    phrase = _first_unnegated(task, _acceptance_patterns(phase_id))
     return bool(phrase), phrase
+
+
+def _phase_acceptance_denied(task: str, phase_id: str) -> str:
+    """The phrase in which the task explicitly refuses to accept or complete the
+    phase in this run, or "" when it never does.
+
+    Only a denial counts: "do not mark P8 COMPLETE", "not a phase-acceptance
+    run", "do not accept P8". A sentence that merely mentions acceptance, or
+    puts it later in a sequence, refuses nothing.
+    """
+    if not phase_id:
+        return ""
+    ref = _phase_ref(phase_id)
+    patterns = _acceptance_patterns(phase_id) + (
+        rf"\b(?:{_PHASE_IMPLEMENTATION_VERB})[^.\n]{{0,14}}?{ref}",
+        rf"{ref}[^.\n]{{0,14}}?\b(?:{_PHASE_IMPLEMENTATION_VERB})",
+        r"\bphase[-\s]+(?:acceptance|closure|adjudication)\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, task, re.I):
+            before, inside, _after = _sentence_around(task, match.start(), match.end(), span=60)
+            if _DENIAL.search(before) or _DENIAL.search(inside):
+                return f"{before.strip()} {inside.strip()}".strip()[-160:]
+    return ""
+
+
+def _bounded_remediation_requested(task: str) -> tuple[bool, str]:
+    """Does the task ask for specific, named gaps or defects to be repaired?
+
+    The object is what makes it bounded: a remediation verb with nothing
+    specific to remediate is a vague request, and a vague request keeps the
+    strict reading.
+    """
+    pattern = (
+        rf"\b(?:{_REMEDIATION_VERB})\b[^.;\n]{{0,80}}?\b(?:{_REMEDIATION_OBJECT})\b"
+    )
+    for match in re.finditer(pattern, task, re.I):
+        before, inside, _after = _sentence_around(task, match.start(), match.end(), span=60)
+        if _DENIAL.search(before) or _DENIAL.search(inside):
+            continue
+        return True, match.group(0).strip()[:160]
+    return False, ""
 
 
 def _phase_implementation_requested(task: str, phase_id: str) -> tuple[bool, str]:
@@ -904,6 +1065,41 @@ def resolve_task_scope(
             evidence_paths=evidence,
         )
 
+    # A task that asks for no unit, and does not ask for the phase itself to be
+    # built, completed or accepted, may still be BOUNDED: it repairs named gaps
+    # associated with the phase and explicitly refuses the phase's acceptance.
+    # Both halves are required. A denial alone bounds nothing — appending "not
+    # phase acceptance" to "work on P8" leaves a task with no target, and that
+    # keeps the strict reading below. And a positive request anywhere in the
+    # task has already won above, whatever else the task denies.
+    if not nested and not claims_phase:
+        remediation, remediation_phrase = _bounded_remediation_requested(text)
+        denial = _phase_acceptance_denied(text, phase_id) if remediation else ""
+        if remediation and denial:
+            scope_id = f"{phase_id}/REMEDIATION" if phase_id else "REMEDIATION"
+            derivation.append(
+                f"the task asks for named gaps to be repaired ({remediation_phrase!r}) and "
+                f"refuses {phase_id or 'the phase'}'s acceptance ({denial!r})"
+            )
+            derivation.append(
+                "the task asks for no unit and does not ask for the phase itself to be "
+                "built, completed or accepted, so the remediation it names is this run's "
+                "bar and phase acceptance is not"
+            )
+            return TaskScope(
+                scope_id=scope_id,
+                label=_label_for(text, scope_id),
+                level=ScopeLevel.TASK,
+                parent_phase_id=phase_id,
+                parent_phase_state=phase_status,
+                parent_phase_execution_state=phase_execution,
+                claims_phase_completion=False,
+                intent=ScopeIntent.SCOPED_REMEDIATION,
+                remediation_targets=[remediation_phrase],
+                derivation=derivation,
+                evidence_paths=evidence,
+            )
+
     if not claims_phase:
         intent = ScopeIntent.UNSPECIFIED
     elif acceptance_asked:
@@ -1001,7 +1197,9 @@ def scoped_completion(
     and neither can a whole-phase build however complete it is; the guard lives
     here rather than at the call sites so there is one place to read.
     """
-    if scope.is_nested:
+    if scope.remediation_requested:
+        exclusions = remediation_exclusions(scope.parent_phase_id)
+    elif scope.is_nested:
         exclusions = standard_exclusions(scope.parent_phase_id)
     elif scope.phase_implementation_requested:
         exclusions = implementation_exclusions(scope.parent_phase_id or scope.scope_id)

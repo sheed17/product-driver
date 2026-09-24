@@ -1043,7 +1043,10 @@ class RunJournal:
             lines.append("    - the registry declared no active unit for this run")
         if self.scope_is_nested and self.task_scope_id:
             lines.append(
-                f"    - this run built **{self.task_scope_id}**, one unit inside "
+                f"    - this run was a bounded remediation, **{self.task_scope_id}**, inside "
+                f"**{self.parent_phase_id}**"
+                if self.task_intent == "SCOPED_REMEDIATION"
+                else f"    - this run built **{self.task_scope_id}**, one unit inside "
                 f"**{self.parent_phase_id}**"
             )
             lines.append(
