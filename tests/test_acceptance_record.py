@@ -468,6 +468,44 @@ class TestMissingAuthorityStopsRatherThanInvents:
         assert gaps, "an unstated acceptance format is an authority gap, not a refusal"
         assert any("founder or architect" in g.closure_condition for g in gaps)
 
+    def test_a_run_that_stopped_for_its_own_reason_still_states_the_gap(
+        self, tmp_path: Path
+    ) -> None:
+        """The founder summary reports the run's FINDINGS, not where it stopped.
+
+        Observed on run 20260922-052032: phase closure recorded a P8 authority
+        gap whose repair layer was FOUNDER_DECISION, the run then exhausted its
+        iteration budget on something else, and both founder-facing sections of
+        the summary said "None recorded" — the one decision that was actually
+        owed was the one the founder was never told about.
+        """
+        from types import SimpleNamespace
+
+        from neyma_product_driver.cli import _founder_decision
+        from neyma_product_driver.models import RunStatus
+
+        control = closed_phase(
+            tmp_path, extra_units=[pending_unit("P10", dependencies=("P9",))]
+        )
+        control.materialize_acceptance_record()
+
+        stated = _founder_decision(
+            SimpleNamespace(
+                status=RunStatus.MAX_ITERATIONS,
+                final_decision=None,
+                phase_closure=SimpleNamespace(record=control.record),
+            )
+        )
+        assert "authority gap" in stated
+        assert "founder or architect" in stated
+
+        # And a run holding no gap still invents none.
+        assert _founder_decision(
+            SimpleNamespace(
+                status=RunStatus.MAX_ITERATIONS, final_decision=None, phase_closure=None
+            )
+        ) == ""
+
     def test_accepted_units_that_disagree_are_a_gap_rather_than_a_vote(
         self, tmp_path: Path
     ) -> None:

@@ -767,9 +767,27 @@ def _read(path: Path, limit: int = 400_000) -> str:
         return ""
 
 
+def _marks(low: str, marker: str) -> bool:
+    """Does ``marker`` begin a word of ``low``?
+
+    A marker is a word the repository put in the name, not a run of letters that
+    happens to fall inside a longer one. A guard named for the state it forbids
+    — ``..._or_the_race_oracle_is_underpopulated`` — is not a control because
+    ``populated`` is spelled inside ``underpopulated``. The match is a word's
+    prefix rather than a whole word, so ``discriminat`` still reads
+    ``discriminates`` and ``catch`` still reads ``catches``.
+    """
+    at = low.find(marker)
+    while at != -1:
+        if at == 0 or not low[at - 1].isalnum():
+            return True
+        at = low.find(marker, at + 1)
+    return False
+
+
 def _matching(names: Sequence[str], markers: Sequence[str]) -> list[str]:
     lowered = [(n, n.lower()) for n in names]
-    return [n for n, low in lowered if any(m in low for m in markers)]
+    return [n for n, low in lowered if any(_marks(low, m) for m in markers)]
 
 
 # --------------------------------------------------------------------------

@@ -412,6 +412,33 @@ def test_the_control_catches_nothing_in_particular():
     assert True
 '''
 
+#: The guard names the state it FORBIDS — "underpopulated" — and the answer's
+#: third case is an anti-vacuity check on the measurement. Read as runs of
+#: letters, every one of these three reads as a control and the answer has no
+#: guard at all. Read as words, only two of them do.
+NAMED_FOR_WHAT_IT_FORBIDS = '''\
+from pkg import compensation as c
+
+
+def test_compensation_is_refused_while_the_outcome_ledger_is_underpopulated():
+    c.LEDGER.clear()
+    assert c.compensate(c.UNKNOWN_OUTCOME) == "refused"
+    assert c.LEDGER == []
+
+
+def test_the_control_catches_a_compensation_from_unknown_outcome(monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(c, "PERMITTED", frozenset({c.VERIFIED, c.UNKNOWN_OUTCOME}))
+    with pytest.raises(AssertionError):
+        test_compensation_is_refused_while_the_outcome_ledger_is_underpopulated()
+
+
+def test_the_measurement_is_populated_and_reads_the_real_ledger():
+    assert c.PERMITTED
+    assert isinstance(c.LEDGER, list)
+'''
+
 
 class Routed:
     """A repository with the three wordings routed as one obligation at T0."""
@@ -555,6 +582,57 @@ class TestRoutedByIdentity:
         tree = routed.answer_with(GUARD + HOLLOW_CONTROL)
         routed.operate(tree)
         assert routed.gate(tree).status is GateStatus.NOT_VERIFIED
+
+    def test_a_guard_named_for_the_state_it_forbids_is_not_read_as_a_control(self, tmp_path):
+        """A marker is a word, not a run of letters inside a longer one.
+
+        Observed on run 20260922-052032: the builder answered VG-3990df9396
+        with a guard, its RED control and an anti-vacuity case on the
+        measurement, all three green. ``populated`` spelled inside
+        ``underpopulated`` made the guard read as a third control, so the
+        obligation was refused as "only control cases and no guard" — a
+        refusal the builder could only answer by renaming a correct test, and
+        the run spent its whole iteration budget there.
+        """
+        routed = Routed(tmp_path)
+        tree = routed.answer_with(NAMED_FOR_WHAT_IT_FORBIDS)
+        execution = routed.operate(tree)
+        assert execution is not None and len(execution.passed) == 3 and not execution.failed
+
+        verdict = routed.gate(tree)
+        covered = [r for r in verdict.covered_risks if r.basis == BASIS_BOUND_GAP]
+        assert len(covered) == 1, verdict.uncovered_risks
+        assert covered[0].measurement == (
+            "guards/test_unknown_outcome_guard.py::"
+            "test_compensation_is_refused_while_the_outcome_ledger_is_underpopulated"
+        )
+        assert covered[0].discrimination == [
+            "guards/test_unknown_outcome_guard.py::"
+            "test_the_control_catches_a_compensation_from_unknown_outcome"
+        ]
+
+    def test_a_marker_is_a_word_and_not_a_run_of_letters_inside_one(self):
+        """The naming rule underneath, on its own.
+
+        Two independent rules answered the run above — this one, and the
+        structural fallback that asks which bound case operates another — so
+        each is pinned separately or a regression in one hides behind the other.
+        """
+        from neyma_product_driver.changed_verification import (
+            DISCRIMINATION_NAME_MARKERS,
+            _matching,
+        )
+
+        forbidden_state = "test_the_race_oracle_is_not_underpopulated"
+        assert _matching([forbidden_state], DISCRIMINATION_NAME_MARKERS) == []
+        # And the words themselves still read, including as a word's prefix.
+        for control in (
+            "test_the_measurement_is_populated",
+            "test_the_control_catches_it",
+            "test_it_discriminates",
+            "test_the_mutant_is_seen_red",
+        ):
+            assert _matching([control], DISCRIMINATION_NAME_MARKERS) == [control], control
 
     def test_evidence_from_an_earlier_tree_does_not(self, tmp_path):
         routed = Routed(tmp_path)

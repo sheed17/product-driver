@@ -4727,6 +4727,23 @@ def _founder_decision(result: LoopResult) -> str:
     if result.status is RunStatus.NEEDS_USER:
         return (decision.summary if decision is not None and decision.summary
                 else "The run stopped for a product or authority question.")
+    # A run that stopped for its OWN reason — an exhausted budget, a verification
+    # gap — can still be holding a gap only a founder can close. Observed on run
+    # 20260922-052032: phase-closure recorded P8-AUTHORITY-GAP, repair layer
+    # FOUNDER_DECISION, and both founder-facing sections said "None recorded",
+    # because this read the run's terminal status instead of the run's findings.
+    # The finding is the record; the status is where the run happened to stop.
+    record = getattr(result.phase_closure, "record", None)
+    gaps = list(getattr(record, "authority_gaps", None) or [])
+    if gaps:
+        first = gaps[0]
+        condition = str(getattr(first, "closure_condition", "") or "").strip()
+        summary = str(getattr(first, "summary", "") or "").strip()
+        more = f" (and {len(gaps) - 1} more authority gap(s))" if len(gaps) > 1 else ""
+        return (
+            f"An authority gap no builder can close{more}: {summary}"
+            + (f" It closes when {condition}." if condition else "")
+        )
     return ""
 
 

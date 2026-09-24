@@ -586,6 +586,32 @@ class TestTheSummaryCannotUpgradeEvidence:
         # And it is never restated as an achievement.
         assert "the grant machine claims exactly once" not in summary
 
+    def test_a_not_verified_gate_is_never_narrated_as_a_pass(self):
+        """The gate's status and the sentence beside it must agree.
+
+        Observed on run 20260922-052032: every required scenario passed and
+        the gate was still NOT_VERIFIED, because its blockers were uncovered
+        risks rather than scenarios. Section 3 — "What is actually proven
+        true" — paired that status with "20/20 required scenario(s) passed
+        with resolvable evidence", the one sentence only a VERIFIED gate earns.
+        """
+        gate = _Gate(
+            "NOT_VERIFIED",
+            uncovered=["[P1] conflicting_evidence — no scenario exercised this risk"],
+            passed=20,
+            total=20,
+        )
+        gate.headline = lambda: (  # type: ignore[method-assign]
+            "scenario gate: NOT VERIFIED — 1 identified acceptance-blocking risk(s) have "
+            "no passing measurement (20 of 20 required passed, 20 executed)"
+        )
+        summary = _journal(run_status="MAX_ITERATIONS", gate=gate).personal_summary()
+
+        gate_line = next(ln for ln in summary.splitlines() if "Acceptance gate:" in ln)
+        assert "NOT_VERIFIED" in gate_line
+        assert "passed with resolvable evidence" not in gate_line
+        assert "no passing measurement" in gate_line, gate_line
+
     def test_an_uncovered_risk_alone_blocks_the_claim(self):
         journal = _journal(
             run_status="ACCEPTED",

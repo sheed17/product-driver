@@ -915,9 +915,29 @@ class RunJournal:
         # 3 ------------------------------------------------------------------
         lines += ["", "### 3. What is actually proven true", ""]
         if self.gate_status:
-            lines.append(f"- Acceptance gate: **{self.gate_status}** — "
-                         f"{self.required_passed}/{self.required_total} required scenario(s) "
-                         "passed with resolvable evidence.")
+            # The gate's OWN sentence, which names its own blockers. This line
+            # used to pair whatever the status was with "N/N required
+            # scenario(s) passed with resolvable evidence", a sentence only the
+            # VERIFIED case earns. Run 20260922-052032 therefore reported
+            # "NOT_VERIFIED — 20/20 required scenario(s) passed with resolvable
+            # evidence" under the heading "What is actually proven true": the
+            # count was right and the sentence read as a pass. A verdict states
+            # its own reason, or it states none.
+            detail = self.gate_headline
+            for prefix in (
+                "scenario gate: VERIFIED — ",
+                "scenario gate: NOT VERIFIED — ",
+                "scenario gate: ",
+            ):
+                if detail.startswith(prefix):
+                    detail = detail[len(prefix):]
+                    break
+            if not detail:
+                detail = (
+                    f"{self.required_passed} of {self.required_total} required scenario(s) "
+                    "passed; this run recorded no reason of its own"
+                )
+            lines.append(f"- Acceptance gate: **{self.gate_status}** — {detail}")
         if self.task_result:
             declared = self.task_scope_id or "the task as written"
             lines.append(

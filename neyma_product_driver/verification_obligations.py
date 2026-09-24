@@ -543,10 +543,31 @@ def bound_evidence(
         n for n in nodes if _matching([n.split("::", 1)[1]], DISCRIMINATION_NAME_MARKERS)
     }
     guards = [n for n in nodes if n not in controls]
+    if not guards and nodes:
+        # Every bound name read as a control, which cannot be what the answer
+        # says: a control controls something. Ask the code instead of the name
+        # — the case that operates another bound case is the control, and what
+        # it operates is the guard.
+        def _operates_another(node: str) -> bool:
+            path, name = node.split("::", 1)
+            body = _body(by_file.get(path, ""), name)
+            if not body:
+                return False
+            return any(
+                re.search(rf"\b{re.escape(other.split('::', 1)[1])}\b", body)
+                for other in nodes
+                if other != node and other.split("::", 1)[0] == path
+            )
+
+        operators = {n for n in nodes if _operates_another(n)}
+        if operators and len(operators) < len(nodes):
+            controls = operators
+            guards = [n for n in nodes if n not in controls]
     if not guards:
         verdict.reason = (
             f"the change answering {obligation.obligation_id} bound only control cases and no "
-            "guard"
+            "guard: no bound case was observed to operate another, so none of them reads as the "
+            "guard the others control"
         )
         return verdict
 
