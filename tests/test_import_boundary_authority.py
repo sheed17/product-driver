@@ -157,8 +157,9 @@ def probe(body: str, root: str = "product") -> str:
 ZERO = probe(f"print('production importers of ledger:', {SCAN})")
 #: The same scan bound to a name first, as the second defective scenario did.
 BOUND = probe(f"importers={SCAN}; print('shipped importers of ledger:', importers)")
-#: The same scan counted, and in an f-string.
-COUNTED = probe(f"print(f'importer count: {{len({SCAN})}}')")
+#: The same scan counted, and in an f-string. Double-quoted, because SCAN holds
+#: single-quoted literals and Python 3.11 cannot reuse the enclosing quote.
+COUNTED = probe(f'print(f"importer count: {{len({SCAN})}}")')
 #: The same scan under a label that says nothing about importers.
 NEUTRAL = probe(f"print('value:', {SCAN})")
 #: A real dark-shipping guard: importers OUTSIDE the authorized set.
