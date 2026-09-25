@@ -1204,7 +1204,11 @@ def build_suite(
                 # would have had to consult priority to know what "required"
                 # meant. The judgement still lives in the priority the generator
                 # assigned; it is simply recorded honestly here.
-                required=model.priority.blocks_acceptance,
+                # A replacement discharges a hold, and a hold blocks at any
+                # priority; so the replacement must pass at any priority, or a
+                # held P2 would stop blocking the moment its replacement was
+                # admitted, whatever that replacement then observed.
+                required=model.priority.blocks_acceptance or bool(model.replaces),
             ),
             "the generated scenario",
         )

@@ -119,8 +119,23 @@ STAGE_RESUME = "resume"
 STAGE_REDERIVE = "rederivation"
 #: Recorded when an executed scenario is held. Not a generation stage.
 STAGE_HOLD = "outcome_contract_hold"
-#: Re-derivation waves one held scenario may consume, across every resume.
+#: Re-derivation waves one held scenario may consume, across every resume,
+#: under one re-derivation contract.
 MAX_REDERIVE_ATTEMPTS = 2
+#: The re-derivation contract this harness applies: what a replacement is told,
+#: and what it must satisfy to be admitted. Attempts are charged against the
+#: contract that spent them, so a hold whose attempts were consumed by a
+#: contract Product Driver itself has since corrected is attempted again — once
+#: per correction, never per resume. Bump it ONLY with a change that makes a
+#: replacement admissible that the previous contract wrongly refused.
+#:
+#: 1 (implicit, persisted as 0): a replacement for a held REGRESSION scenario
+#:   could not inherit its scope, so in a run with no diff it was refused
+#:   whatever it verified; and the brief described every hold as a typed
+#:   refusal and offered every same-category risk key.
+#: 2: a lawful replacement inherits the scope and risk lineage of the hold it
+#:   re-derives, and the brief names each hold's own obligation and cause.
+REDERIVE_CONTRACT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -625,8 +640,10 @@ class ScenarioPlanner:
         clusters: Sequence[FailureCluster] = (),
         gaps: Sequence[Any] | None = None,
         budgeted: bool = True,
+        notes: Sequence[str] = (),
     ) -> None:
         record = WaveRecord(wave=self._wave + 1, stage=stage, basis=basis)
+        record.budget_notes += list(notes)
 
         if budgeted and self._wave >= self.config.max_waves:
             record.budget_notes.append(
@@ -761,6 +778,8 @@ class ScenarioPlanner:
             # oracle destroys exactly those. Recorded here, read back by
             # `rebind_observations_to_approved` on a resume.
             bind_observations(scenario, self.approved_commands, self._established_observations)
+            if stage == STAGE_REDERIVE:
+                self._inherit_held_lineage(scenario)
         # Which STAGE rejected a candidate is what classifies it, not what the
         # reason string happens to say. Everything in `malformed` failed before
         # it was ever a model: the payload did not satisfy the structured schema
@@ -942,16 +961,41 @@ class ScenarioPlanner:
     def _held_briefs(self) -> list[str]:
         out: list[str] = []
         for scenario in self.plan.held_scenarios():
-            keys = [
+            # The obligation THIS hold verifies. Offering every key of its
+            # category let a replacement cite a neighbouring risk and drop the
+            # one it was generated for; only where the hold recorded none is
+            # the category the best the run can say.
+            labels = {r.key: r.label() for r in self.plan.risks}
+            labels.update({r.id: r.label() for r in self.plan.risks if r.id})
+            keys = [labels.get(k, k) for k in scenario.provenance.source_risks] or [
                 r.key for r in self.plan.risks if r.risk_category is scenario.risk_category
             ]
             commands = "; ".join(c[:400] for c in scenario.command_strings())
             out.append(
                 f"{scenario.id} [{scenario.priority.value} {scenario.risk_category.value}] "
-                f"{scenario.title} — risk keys: {', '.join(keys) or '(none)'} — it ran: "
-                f"{commands} — held because {scenario.contract_hold[:600]}"
+                f"{scenario.title} — verifies risk keys: {', '.join(keys) or '(none)'} — "
+                f"it ran: {commands} — held because {scenario.contract_hold[:1200]}"
             )
         return out
+
+    def _inherit_held_lineage(self, scenario: GeneratedScenario) -> None:
+        """Carry a replacement's held obligation onto it, in place.
+
+        A replacement is the SAME obligation under a lawful oracle, so the risks
+        the held scenario verifies are the risks it verifies. Recorded rather
+        than inferred: it happens only for a held id the proposal itself named,
+        and adds lineage without removing any the proposal declared. Validation
+        still decides whether the replacement is lawful at all.
+        """
+        held = {s.id: s for s in self.plan.held_scenarios()}
+        inherited = [
+            risk
+            for held_id in scenario.replaces
+            if held_id in held
+            for risk in held[held_id].provenance.source_risks
+        ]
+        own = list(scenario.provenance.source_risks)
+        scenario.provenance.source_risks = own + [r for r in inherited if r not in own]
 
     def hold(self, scenario: GeneratedScenario, reason: str) -> bool:
         """Hold ``scenario``: blocking, never executed again, awaiting re-derivation."""
@@ -1097,6 +1141,15 @@ class ScenarioPlanner:
                 f"replaced by {replacement.id}, re-derived under the outcome contract; it "
                 f"was held because {held.contract_hold}"
             )
+            # One obligation, one budget. Were the replacement itself held later,
+            # a fresh count would let a chain of replacements re-derive the same
+            # obligation without end.
+            replacement.rederive_attempts = max(
+                replacement.rederive_attempts, held.rederive_attempts
+            )
+            replacement.rederive_contract = max(
+                replacement.rederive_contract, held.rederive_contract
+            )
             self.compiled.pop(held_id, None)
             self._unbuildable.pop(held_id, None)
             note = f"{held_id} replaced by {replacement.id} under the outcome contract"
@@ -1119,17 +1172,51 @@ class ScenarioPlanner:
         chain of resumes can turn a hold into unbounded generation. A hold whose
         attempts are spent stays held — and blocking — which is honest: the
         repository did not let Product Driver derive a lawful oracle for it.
+
+        Attempts are charged against the re-derivation contract that spent them
+        (:data:`REDERIVE_CONTRACT_VERSION`). A hold whose attempts were consumed
+        under an obsolete contract — one that could not admit a lawful
+        replacement whatever the generator proposed — did not show that the
+        repository withholds a lawful oracle; it showed that Product Driver did.
+        Its count starts again under the current contract, once, and the
+        migration is recorded on the wave. The bound is unchanged: at most
+        :data:`MAX_REDERIVE_ATTEMPTS` per contract, and the contract changes only
+        with Product Driver itself.
         """
+        migrated: list[str] = []
+        for scenario in self.plan.held_scenarios():
+            if scenario.rederive_contract >= REDERIVE_CONTRACT_VERSION:
+                continue
+            if scenario.rederive_attempts:
+                migrated.append(
+                    f"{scenario.id}: {scenario.rederive_attempts} re-derivation attempt(s) "
+                    f"spent under the obsolete re-derivation contract "
+                    f"v{scenario.rederive_contract or 1} are not charged against contract "
+                    f"v{REDERIVE_CONTRACT_VERSION}; it may be re-derived up to "
+                    f"{MAX_REDERIVE_ATTEMPTS} more time(s)"
+                )
+            scenario.rederive_attempts = 0
+            scenario.rederive_contract = REDERIVE_CONTRACT_VERSION
+        for note in migrated:
+            self.emit(f"  {note}")
         pending = [
             s for s in self.plan.held_scenarios() if s.rederive_attempts < MAX_REDERIVE_ATTEMPTS
         ]
         if not pending:
+            if migrated:
+                self.persist()
             return self.plan
         for scenario in pending:
             scenario.rederive_attempts += 1
         self.persist()
         basis = self._basis(task=task, unit=unit, diff_files=list(diff_files or []))
-        self._generate(basis, stage=STAGE_REDERIVE, limit=len(pending), budgeted=False)
+        self._generate(
+            basis,
+            stage=STAGE_REDERIVE,
+            limit=len(pending),
+            budgeted=False,
+            notes=migrated,
+        )
         return self.plan
 
     @property
@@ -2225,6 +2312,7 @@ __all__ = [
     "PromotionLedger",
     "STAGE_ADAPTIVE",
     "STAGE_REDERIVE",
+    "REDERIVE_CONTRACT_VERSION",
     "STAGE_DIFF",
     "STAGE_INITIAL",
     "ScenarioPlanner",

@@ -697,6 +697,10 @@ class GeneratedScenario(BaseModel):
     #: How many re-derivation waves have been spent on this hold. Persisted so
     #: that repeated resumes cannot buy unbounded generation.
     rederive_attempts: int = 0
+    #: The re-derivation contract :attr:`rederive_attempts` were charged under
+    #: (see ``scenario_planner.REDERIVE_CONTRACT_VERSION``). ``0`` is a plan
+    #: persisted before attempts were versioned, which is the first contract.
+    rederive_contract: int = 0
 
     @field_validator("confidence")
     @classmethod

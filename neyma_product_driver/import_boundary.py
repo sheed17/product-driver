@@ -33,13 +33,19 @@ So this module reads the repository the way the refusal index does
   subset, an allowlist subtracted, a population this reader cannot resolve)
   makes it a different question, and nothing is concluded from it.
 
-Then one rule: a generated expectation that such a scan prints nothing — an
+Then two rules. A generated expectation that such a scan prints nothing — an
 empty collection expected, or a non-empty one forbidden — is refused before
 it runs when the repository's guards unambiguously authorize a NON-EMPTY
-importer set for ``M`` that lies inside the scanned population. Expecting the
-scan to print exactly the authorized set, expecting an unauthorized importer
-to be absent, and expecting zero importers where the guards require zero all
-remain lawful: this can only withhold admission, never pass anything.
+importer set for ``M`` that lies inside the scanned population; and likewise
+when the repository's own TESTS that import ``M`` lie inside it — a scan of
+the whole tree for "anything that reaches ``M``", as run 20260925-043237's
+re-derived replacements did, can only print nothing if the repository deletes
+its own verification. A population may be narrowed by path substrings
+(``'X' not in str(file)``), which both rules honour. Expecting the scan to
+print exactly the authorized set, expecting an unauthorized importer to be
+absent, and expecting zero importers where the guards require zero and no
+test is in the population all remain lawful: this can only withhold
+admission, never pass anything.
 
 ### WHAT THIS DOES NOT DO. It reads no prose — the label is matched only as
 the literal a print statement emits, never interpreted — and no product,
@@ -147,6 +153,9 @@ class ImportBoundaryIndex:
     boundaries: dict[str, list[Boundary]] = field(default_factory=dict)
     #: Tracked, non-test ``.py`` paths by module stem.
     production: dict[str, list[str]] = field(default_factory=dict)
+    #: Tracked TEST paths by the production module stems they import: the
+    #: repository's own verification of each module.
+    verified_by: dict[str, list[str]] = field(default_factory=dict)
     files_read: int = 0
 
     def authorized(self, stem: str) -> Boundary | None:
@@ -156,15 +165,19 @@ class ImportBoundaryIndex:
             return None
         return declared[0]
 
-    def covered(self, allowed: Iterable[str], root: str) -> list[str]:
+    def covered(self, allowed: Iterable[str], root: str, excluded: Iterable[str] = ()) -> list[str]:
         """Paths of the ``allowed`` modules that lie inside population ``root``."""
-        prefix = root.strip().strip("/")
-        prefix = "" if prefix in {"", "."} else prefix + "/"
         return sorted(
             path
             for stem in allowed
             for path in self.production.get(stem, [])
-            if path.startswith(prefix)
+            if in_population(path, root, excluded)
+        )
+
+    def verification_inside(self, stem: str, root: str, excluded: Iterable[str] = ()) -> list[str]:
+        """The repository's own tests that import ``stem`` and lie inside the population."""
+        return sorted(
+            path for path in self.verified_by.get(stem, []) if in_population(path, root, excluded)
         )
 
     @classmethod
@@ -193,6 +206,8 @@ class ImportBoundaryIndex:
             except (OSError, UnicodeDecodeError, SyntaxError, ValueError, RecursionError):
                 continue
             index.files_read += 1
+            for stem in sorted(_imported_stems(tree) & index.production.keys()):
+                index.verified_by.setdefault(stem, []).append(path)
             module_names = _assignments(tree.body)
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test"):
@@ -203,6 +218,33 @@ class ImportBoundaryIndex:
                             Boundary(frozenset(allowed), f"{path}:{node.lineno}")
                         )
         return index
+
+
+def in_population(path: str, root: str, excluded: Iterable[str] = ()) -> bool:
+    """Is tracked ``path`` among the files ``rglob`` under ``root`` yields, less ``excluded``?
+
+    ``excluded`` are the substrings a scan filters its paths by, matched against
+    the path as the scan renders it (relative to the repository root, where
+    every approved command runs).
+    """
+    prefix = root.strip().strip("/")
+    prefix = "" if prefix in {"", "."} else prefix + "/"
+    return path.startswith(prefix) and not any(x and x in path for x in excluded)
+
+
+def _imported_stems(tree: ast.AST) -> set[str]:
+    """Every module stem an ``import`` statement in ``tree`` names."""
+    stems: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            stems |= {module_stem(a.name) for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                stems.add(module_stem(node.module))
+            # `from pkg import mod` imports `mod` as a module.
+            stems |= {module_stem(a.name) for a in node.names}
+    stems.discard("")
+    return stems
 
 
 def _assignments(body: Iterable[ast.AST]) -> dict[str, ast.AST]:
@@ -294,6 +336,8 @@ class ImporterScan:
     root: str
     counted: bool
     source: str
+    #: Path substrings the scan filters out of its population.
+    excluded: tuple[str, ...] = ()
 
 
 def _unwrap(node: ast.AST) -> tuple[ast.AST, bool]:
@@ -400,8 +444,35 @@ def _membership_module(
     return None
 
 
-def _scan_of(expr: ast.AST, names: dict[str, ast.AST], callables: dict[str, ast.AST]) -> tuple[str, str, bool] | None:
-    """``(module, population root, counted)`` when ``expr`` is a pure importer scan."""
+def _path_exclusion(conjunct: ast.AST, loop: set[str]) -> str | None:
+    """``X`` when ``conjunct`` is ``'X' not in str(<file>)``: a path filter, not a question."""
+    if not (
+        isinstance(conjunct, ast.Compare)
+        and len(conjunct.ops) == 1
+        and isinstance(conjunct.ops[0], ast.NotIn)
+        and _string(conjunct.left)
+    ):
+        return None
+    right = conjunct.comparators[0]
+    if (
+        isinstance(right, ast.Call)
+        and isinstance(right.func, ast.Name)
+        and right.func.id == "str"
+        and len(right.args) == 1
+        and not right.keywords
+    ):
+        right = right.args[0]
+    if isinstance(right, ast.Name) and right.id in loop:
+        return _string(conjunct.left)
+    return None
+
+
+def _scan_of(
+    expr: ast.AST, names: dict[str, ast.AST], callables: dict[str, ast.AST], depth: int = 0
+) -> tuple[str, str, bool, tuple[str, ...]] | None:
+    """``(module, population root, counted, excluded paths)`` when ``expr`` is a pure importer scan."""
+    if depth > 8:
+        return None
     node, counted = _unwrap(expr)
     # A scan bound once to a name and printed by that name is the same scan.
     for _hop in range(8):
@@ -414,6 +485,14 @@ def _scan_of(expr: ast.AST, names: dict[str, ast.AST], callables: dict[str, ast.
     if not isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)) or len(node.generators) != 1:
         return None
     generator = node.generators[0]
+    # `sorted(str(q) for q in found)`: the same scan, each member re-rendered.
+    # Unfiltered, it is empty exactly when the scan it renders is.
+    if not generator.ifs and not generator.is_async:
+        inner = _scan_of(generator.iter, names, callables, depth + 1)
+        if inner is not None:
+            if inner[2] and counted:
+                return None
+            return inner[0], inner[1], counted or inner[2], inner[3]
     root = _population_root(generator.iter, names)
     if root is None:
         return None
@@ -426,7 +505,12 @@ def _scan_of(expr: ast.AST, names: dict[str, ast.AST], callables: dict[str, ast.
             conjuncts.append(condition)
     module = ""
     excluded: set[str] = set()
+    paths_excluded: list[str] = []
     for conjunct in conjuncts:
+        path_filter = _path_exclusion(conjunct, loop)
+        if path_filter is not None:
+            paths_excluded.append(path_filter)
+            continue
         if (
             isinstance(conjunct, ast.Compare)
             and len(conjunct.ops) == 1
@@ -445,7 +529,7 @@ def _scan_of(expr: ast.AST, names: dict[str, ast.AST], callables: dict[str, ast.
         module = stem
     if not module or not excluded <= {module}:
         return None
-    return module, root, counted
+    return module, root, counted, tuple(paths_excluded)
 
 
 def importer_scans(text: str) -> list[ImporterScan]:
@@ -486,7 +570,7 @@ def importer_scans(text: str) -> list[ImporterScan]:
         found = _scan_of(expr, names, callables)
         if found is None:
             continue
-        module, root, counted = found
+        module, root, counted, paths_excluded = found
         scans.append(
             ImporterScan(
                 label=label,
@@ -494,6 +578,7 @@ def importer_scans(text: str) -> list[ImporterScan]:
                 root=root,
                 counted=counted,
                 source=(ast.get_source_segment(text, node) or label)[:240],
+                excluded=paths_excluded,
             )
         )
     return scans
@@ -528,7 +613,7 @@ def _requires_none(scan: ImporterScan, literal: str, *, forbidden: bool, allowed
 
 
 def boundary_problems(generated: object, repository: "RepositoryText") -> list[str]:
-    """Every expectation of ``generated`` that forbids an importer its repository authorizes."""
+    """Every expectation of ``generated`` that forbids an importer its repository authorizes or owns."""
     from .outcome_contract import command_actions
     from .refusal_semantics import command_program
 
@@ -544,32 +629,89 @@ def boundary_problems(generated: object, repository: "RepositoryText") -> list[s
             continue
         expected = [str(x) for x in getattr(action, "expect_contains", []) or []] + scenario_expected
         for scan in importer_scans(program[1]):
-            boundary = index.authorized(scan.module)
-            if boundary is None or not boundary.allowed:
-                continue
-            inside = index.covered(boundary.allowed, scan.root)
-            if not inside:
-                continue
-            offending = [
-                (literal, False) for literal in expected
-                if _requires_none(scan, literal, forbidden=False, allowed=boundary.allowed)
-            ] + [
-                (literal, True) for literal in scenario_forbidden
-                if _requires_none(scan, literal, forbidden=True, allowed=boundary.allowed)
-            ]
-            for literal, forbidden in dict.fromkeys(offending):
-                verb = "forbids" if forbidden else "expects"
-                problems.append(
-                    f"actions[{action_index}] {verb} {literal!r} of `{scan.source}`, which lists the "
-                    f"importers of `{scan.module}` under {scan.root!r}: that demands `{scan.module}` "
-                    f"have NO importer there, but this repository's own guard at {boundary.where} "
-                    f"authorizes exactly {sorted(boundary.allowed)} to import it ({', '.join(inside)}). "
-                    "Repository authority outranks the generated expectation: the scenario could "
-                    "only pass against a product that removed wiring its authority requires. "
-                    "Expect the scan to print exactly the authorized importers, or assert that no "
-                    "importer OUTSIDE that set exists"
-                )
+            problems += _authorized_importer_problems(
+                scan, index, action_index, expected, scenario_forbidden
+            )
+            problems += _own_verification_problems(
+                scan, index, action_index, expected, scenario_forbidden
+            )
     return problems
+
+
+def _offending(
+    scan: ImporterScan, expected: list[str], forbidden: list[str], allowed: frozenset[str]
+) -> list[tuple[str, bool]]:
+    found = [
+        (literal, False) for literal in expected
+        if _requires_none(scan, literal, forbidden=False, allowed=allowed)
+    ] + [
+        (literal, True) for literal in forbidden
+        if _requires_none(scan, literal, forbidden=True, allowed=allowed)
+    ]
+    return list(dict.fromkeys(found))
+
+
+def _authorized_importer_problems(
+    scan: ImporterScan,
+    index: ImportBoundaryIndex,
+    action_index: int,
+    expected: list[str],
+    forbidden: list[str],
+) -> list[str]:
+    """No importer demanded where a guard authorizes a non-empty set inside the population."""
+    boundary = index.authorized(scan.module)
+    if boundary is None or not boundary.allowed:
+        return []
+    inside = index.covered(boundary.allowed, scan.root, scan.excluded)
+    if not inside:
+        return []
+    return [
+        f"actions[{action_index}] {'forbids' if is_forbidden else 'expects'} {literal!r} of "
+        f"`{scan.source}`, which lists the importers of `{scan.module}` under {scan.root!r}: "
+        f"that demands `{scan.module}` have NO importer there, but this repository's own guard "
+        f"at {boundary.where} authorizes exactly {sorted(boundary.allowed)} to import it "
+        f"({', '.join(inside)}). Repository authority outranks the generated expectation: the "
+        "scenario could only pass against a product that removed wiring its authority "
+        "requires. Expect the scan to print exactly the authorized importers, or assert that "
+        "no importer OUTSIDE that set exists"
+        for literal, is_forbidden in _offending(scan, expected, forbidden, boundary.allowed)
+    ]
+
+
+def _own_verification_problems(
+    scan: ImporterScan,
+    index: ImportBoundaryIndex,
+    action_index: int,
+    expected: list[str],
+    forbidden: list[str],
+) -> list[str]:
+    """No importer demanded of a population that holds the repository's own tests of the module.
+
+    A test that imports a module to verify it is the repository's authority
+    about that module, not an enablement path through it. A scan whose
+    population contains such a test can only print nothing if the repository
+    deletes its own verification, so demanding nothing of it is a harness
+    oracle defect whatever the product does. Read from the tracked tree, never
+    from a name: which files are tests is the classification the refusal index
+    already applies, and which module each imports is its own import statement.
+    """
+    tests = index.verification_inside(scan.module, scan.root, scan.excluded)
+    if not tests:
+        return []
+    allowed = frozenset(module_stem(t) for t in tests)
+    shown = ", ".join(tests[:6]) + (f", ... and {len(tests) - 6} more" if len(tests) > 6 else "")
+    return [
+        f"actions[{action_index}] {'forbids' if is_forbidden else 'expects'} {literal!r} of "
+        f"`{scan.source}`, which lists the files under {scan.root!r}"
+        + (f" (excluding paths containing {list(scan.excluded)})" if scan.excluded else "")
+        + f" that import `{scan.module}`: that demands NO file there import it, but this "
+        f"repository's own tests of `{scan.module}` lie inside that population and import it "
+        f"({shown}). The scenario could only pass if the repository deleted its own "
+        "verification. Scope the scan to the population whose importers the repository "
+        "governs, or assert that no importer outside the authorized set and the repository's "
+        "own verification exists"
+        for literal, is_forbidden in _offending(scan, expected, forbidden, allowed)
+    ]
 
 
 __all__ = [
@@ -578,5 +720,6 @@ __all__ = [
     "ImporterScan",
     "boundary_problems",
     "importer_scans",
+    "in_population",
     "module_stem",
 ]

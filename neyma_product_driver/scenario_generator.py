@@ -230,23 +230,34 @@ class GenerationBrief:
         if self.held_scenarios:
             parts += [
                 "",
-                "SCENARIOS HELD FOR RE-DERIVATION. Each was generated before the outcome "
-                "contract existed, expected its command to succeed, and the product ended "
-                "in a typed refusal. Product Driver cannot tell whether that refusal is "
-                "the repository's mandated fail-closed behaviour or a regression, so the "
-                "scenario blocks acceptance until you re-derive it:",
+                "SCENARIOS HELD FOR RE-DERIVATION. Each was admitted earlier and then "
+                "found to carry an oracle Product Driver itself cannot judge the product "
+                "by. The obligation it verifies still stands and blocks acceptance until "
+                "you re-derive it; the reason each one is held is given after 'held "
+                "because':",
                 *(f"  - {h}" for h in self.held_scenarios[:20]),
                 "",
                 "For each, propose ONE replacement: set `replaces` to the held id, keep its "
                 "risk_category and at least its priority, set `source_risks` to the risk "
-                "key it verifies, and declare the outcome from the REPOSITORY'S AUTHORITY, "
-                "not from the observed output. If the repository requires refusal, expect "
-                "`refused`, name the refusal text in `refusal_evidence`, and cite the "
-                "requiring text in `authority`. If the repository requires the operation "
-                "to succeed, expect `permitted` — the product will then fail, correctly. "
-                "Only assert output the command prints BEFORE any refusal ends it. If the "
-                "repository does not say which, propose nothing and say so in "
-                "`unresolved_questions`.",
+                "key(s) it verifies, and declare the outcome from the REPOSITORY'S "
+                "AUTHORITY, never from the observed output and never from what the held "
+                "scenario asserted. Repair the cause the hold names:",
+                "  * Held because the command ended in a typed refusal it never declared: "
+                "if the repository requires refusal, expect `refused`, name the refusal "
+                "text in `refusal_evidence`, and cite the requiring text in `authority`. If "
+                "the repository requires the operation to succeed, expect `permitted` — "
+                "the product will then fail, correctly. Only assert output the command "
+                "prints BEFORE any refusal ends it.",
+                "  * Held because its declared expectation contradicts a repository-"
+                "established boundary (the hold names the repository's own guard and what "
+                "it establishes, e.g. the exact set of modules authorized to import "
+                "something): assert what that guard establishes — the exact authorized "
+                "set, or that nothing OUTSIDE it exists, or a narrower property the guard "
+                "implies — and nothing the guard contradicts. Do not restate the held "
+                "expectation under other words.",
+                "If the repository does not establish which outcome is correct, propose "
+                "nothing for that scenario and say so in `unresolved_questions`: it stays "
+                "held, and blocking, which is the correct outcome.",
             ]
         if self.prior_rejections:
             parts += [

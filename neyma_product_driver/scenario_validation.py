@@ -2173,10 +2173,25 @@ def _check_quality(generated: GeneratedScenario, context: ValidationContext) -> 
         cites_registered_risk = generated.provenance.stage == "coverage_gap" and bool(
             {str(r).strip() for r in generated.provenance.source_risks} & context.known_risk_ids
         )
+        # A re-derivation is the held scenario's own obligation under a lawful
+        # oracle. The hold was admitted in scope, and a replacement can only be
+        # admitted for the same risk at no lower priority (see
+        # `_replacement_problems`), so it inherits that scope. Refusing it left
+        # every held regression case in a run with no diff unreplaceable
+        # whatever it verified: run 20260925-043237 re-derived both of its held
+        # importer scans from the repository's own guard, and this rule refused
+        # them. Only a proposal whose every `replaces` names a real hold
+        # inherits anything.
+        replaces_a_hold = (
+            generated.provenance.stage == "rederivation"
+            and bool(generated.replaces)
+            and all(h in context.held_scenarios for h in generated.replaces)
+        )
         if not (
             generated.provenance.diff_files_consulted
             or generated.generated_from
             or cites_registered_risk
+            or replaces_a_hold
         ):
             reasons.append(
                 "a regression scenario must name the diff or prior evidence that puts the "
