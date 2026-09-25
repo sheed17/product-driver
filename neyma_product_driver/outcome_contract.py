@@ -268,6 +268,7 @@ class RepositoryText:
         self._classes: dict[str, str] = {}
         self._tracked: set[str] | None = None
         self._refusal_index: object | None = None
+        self._import_boundaries: object | None = None
         self._index_head = ""
         self._programs: dict[str, object] = {}
 
@@ -281,6 +282,17 @@ class RepositoryText:
 
             self._refusal_index = RefusalIndex.build(self)
         return self._refusal_index
+
+    def import_boundaries(self):
+        """Who the repository's own guards say may import each module. Cached.
+
+        See :class:`~neyma_product_driver.import_boundary.ImportBoundaryIndex`.
+        """
+        if self._import_boundaries is None:
+            from .import_boundary import ImportBoundaryIndex
+
+            self._import_boundaries = ImportBoundaryIndex.build(self)
+        return self._import_boundaries
 
     def refresh(self) -> None:
         """Forget every cached answer if the repository's HEAD has moved.
@@ -299,6 +311,7 @@ class RepositoryText:
         self._classes.clear()
         self._tracked = None
         self._refusal_index = None
+        self._import_boundaries = None
 
     def program_analysis(self, text: str):
         """The operations of one probe program, parsed once. ``None`` if unparseable."""
@@ -529,6 +542,12 @@ def contract_problems(generated: object, repository: RepositoryText) -> list[str
     from .refusal_semantics import semantics_problems
 
     problems += semantics_problems(generated, repository)
+    # Likewise for what a probe expects of an importer scan: an expectation
+    # that a module has no importer cannot outvote the repository's own guard
+    # authorizing one.
+    from .import_boundary import boundary_problems
+
+    problems += boundary_problems(generated, repository)
 
     if REQUIRES_REFUSAL in requires and REFUSED not in expected:
         problems.append(

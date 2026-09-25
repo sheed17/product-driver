@@ -56,6 +56,7 @@ from .outcome_contract import (
     contract_problems,
     undeclared_refusal,
 )
+from .import_boundary import boundary_problems
 from .refusal_semantics import refusal_note, semantics_problems
 from .scenario_plan import (
     REJECTED_CONTRACT,
@@ -1036,9 +1037,13 @@ class ScenarioPlanner:
         probe that runs an operation the repository's own guards only ever
         exercise as a refusal. Executing it again can only ask the product to
         stop refusing, so it is held and re-derived instead — decided from the
-        scenario's text and the repository, before anything runs.
+        scenario's text and the repository, before anything runs. Likewise a
+        probe expecting a module to have no importer where the repository's own
+        guard authorizes one (:mod:`~neyma_product_driver.import_boundary`).
         """
-        problems = semantics_problems(scenario, self._repository)
+        problems = semantics_problems(scenario, self._repository) + boundary_problems(
+            scenario, self._repository
+        )
         if not problems:
             return ""
         return (
