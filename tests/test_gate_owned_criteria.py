@@ -765,3 +765,195 @@ class TestTheAcceptanceRecordNamesTheAuthority:
             gate_established={},
         )
         assert "does not score it PASS" in plan.refusal
+
+
+# --------------------------------------------------------------------------
+# (I) acceptance supplied from outside the build lineage is the same gate
+# --------------------------------------------------------------------------
+#
+# From the real P8 phase closure. The frozen criterion
+# ``acceptance_supplied_from_outside_build_lineage`` says what
+# ``independent_phase_review_by_a_non_builder`` says — only a session the
+# builder did not produce may award the phase — without naming a review. The
+# vocabulary required a review noun, so the criterion was an implementation
+# criterion, the reviewer was asked to score how Product Driver had
+# constructed it, answered CANNOT_DETERMINE, and blocked a phase whose
+# adjudication was mechanically valid.
+
+#: The exact pattern the P8 closure exposed.
+OUTSIDE_LINEAGE = "acceptance_supplied_from_outside_build_lineage"
+
+ACCEPTANCE_FROM_OUTSIDE = [
+    OUTSIDE_LINEAGE,
+    "AcceptanceSuppliedFromOutsideBuildLineage",
+    "acceptance_supplied_from_outside_the_remediation_lineage",
+    "acceptance_established_by_a_non_builder",
+    "acceptance_established_by_a_session_outside_the_build_lineage",
+    "phase_accepted_by_a_session_outside_the_build_lineage",
+    "phase_acceptance_adjudicated_from_a_fresh_session",
+    "acceptance_from_an_independent_session",
+    "acceptance_is_only_established_from_outside_the_build",
+]
+
+NOT_ACCEPTANCE_FROM_OUTSIDE = [
+    # Acceptance from INSIDE the lineage is the opposite claim.
+    "acceptance_supplied_from_build_lineage",
+    "acceptance_supplied_from_the_builder_lineage",
+    "acceptance_supplied_from_within_the_build_lineage",
+    "acceptance_supplied_by_a_session_inside_the_build_lineage",
+    # An artifact built elsewhere is not a party outside the lineage.
+    "importer_accepts_outside_build_artifact",
+    "acceptance_supplied_from_outside_build_artifact",
+    "acceptance_established_from_a_fresh_build",
+    "acceptance_supplied_from_external_build",
+    # The words, present but not attached to each other.
+    "outside_build_artifact_accepted",
+    "independent_build_lineage_tracking",
+    "acceptance_tests_cover_outside_build_lineage",
+    "order_accepted_by_outside_party",
+]
+
+
+class TestAcceptanceFromOutsideTheLineageIsTheReviewGate:
+    def test_the_exposed_criterion_is_structural_gate_owned(self) -> None:
+        assert gate_kind("P8-AC-17", OUTSIDE_LINEAGE) is CriterionKind.INDEPENDENT_REVIEW
+
+    @pytest.mark.parametrize("name", ACCEPTANCE_FROM_OUTSIDE)
+    def test_acceptance_from_outside_the_lineage_is_independent_review(
+        self, name: str
+    ) -> None:
+        assert gate_kind("AC-9", name) is CriterionKind.INDEPENDENT_REVIEW
+
+    @pytest.mark.parametrize("name", NOT_ACCEPTANCE_FROM_OUTSIDE)
+    def test_near_misses_stay_implementation(self, name: str) -> None:
+        assert gate_kind("AC-9", name) is None
+
+    def test_requirement_prose_is_never_read_for_it(self) -> None:
+        """Only identifiers. A requirement describing an outside reviewer does
+        not turn an implementation criterion into a gate."""
+        from neyma_product_driver.criterion_kinds import criterion_kind
+
+        assert (
+            criterion_kind(
+                "AC-9",
+                "behaviour_landed",
+                "acceptance is supplied from outside the build lineage",
+            )
+            is CriterionKind.IMPLEMENTATION
+        )
+
+    def test_the_other_gates_are_classified_as_before(self) -> None:
+        assert gate_kind("", "ci_green_on_the_accepted_tree") is (
+            CriterionKind.EXTERNAL_VERIFICATION
+        )
+        assert gate_kind("", "external_verification_passes") is (
+            CriterionKind.EXTERNAL_VERIFICATION
+        )
+        assert gate_kind("", "carried_residuals_recorded_and_nonblocking") is (
+            CriterionKind.RESIDUAL_LEDGER
+        )
+        assert gate_kind("", "open_risks_listed") is CriterionKind.RESIDUAL_LEDGER
+
+
+def outside_lineage_repo(tmp_path: Path) -> Path:
+    criteria = default_criteria()
+    criteria[3] = criterion(REVIEW_CRITERION, OUTSIDE_LINEAGE, evidence="an adjudication")
+    return phase_repo(tmp_path, criteria=criteria)
+
+
+class TestTheExposedPhaseCloses:
+    def test_a_valid_review_establishes_it_despite_cannot_determine(
+        self, tmp_path: Path
+    ) -> None:
+        repo = outside_lineage_repo(tmp_path)
+        control = ready(repo)
+        assert gate_owned(control.record.criteria)[REVIEW_CRITERION] is (
+            CriterionKind.INDEPENDENT_REVIEW
+        )
+        control.ingest_review(
+            review(repo, all_but(ALL_CRITERIA, {REVIEW_CRITERION: "CANNOT_DETERMINE"}))
+        )
+        assert status(control, REVIEW_CRITERION) is CriterionEvidenceStatus.ESTABLISHED
+        assert satisfied(control, REVIEW_CRITERION)[0]
+        assert incomplete_findings(control) == []
+        assert control.decide() is ClosureState.READY_FOR_ACCEPTANCE_COMMIT
+
+    def test_a_builder_reviewer_still_leaves_it_unsatisfied(self, tmp_path: Path) -> None:
+        repo = outside_lineage_repo(tmp_path)
+        control = ready(repo)
+        control.ingest_review(
+            review(repo, all_but(ALL_CRITERIA, {}), reviewer_session_id="builder-1")
+        )
+        assert not satisfied(control, REVIEW_CRITERION)[0]
+        assert control.decide() is not ClosureState.READY_FOR_ACCEPTANCE_COMMIT
+
+    def test_a_record_written_under_rule_4_is_re_derived_without_a_reviewer(
+        self, tmp_path: Path
+    ) -> None:
+        """The real run's shape: the rule-4 vocabulary never gave the criterion
+        to the review gate, so it carries no review evidence and is absent from
+        the persisted gate lists. Reopening must re-classify it from the frozen
+        criteria, attach the gate's evidence, withdraw the stale refusal, keep
+        the reviewer's own answer, and launch nothing."""
+        repo = outside_lineage_repo(tmp_path)
+        store = EvidenceStore(tmp_path / "runs", "20260924-000000")
+        control = controller(repo, store=store)
+        control.preflight()
+        green_ci(control, repo)
+        control.ingest_review(
+            review(
+                repo,
+                all_but(ALL_CRITERIA, {REVIEW_CRITERION: "CANNOT_DETERMINE"}),
+                reviewer_session_id="the-one-session",
+            )
+        )
+        control.settle()
+
+        path = store.run_dir / CLOSURE_FILE
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw["decision_rule_version"] = "4"
+        raw["state"] = "BLOCKED"
+        raw["independent_review_criterion_ids"] = [
+            c for c in raw["independent_review_criterion_ids"] if c != REVIEW_CRITERION
+        ]
+        raw["gate_criterion_ids"] = [
+            c for c in raw["gate_criterion_ids"] if c != REVIEW_CRITERION
+        ]
+        raw["evidence"]["refs"] = [
+            r
+            for r in raw["evidence"]["refs"]
+            if not (r["criterion_id"] == REVIEW_CRITERION and r["kind"] == "REVIEW")
+        ]
+        raw["findings"].append(
+            {
+                "finding_id": "P9-ADJUDICATION-INCOMPLETE",
+                "classification": "VERIFICATION_GAP",
+                "severity": "major",
+                "phase_id": "P9",
+                "about_adjudication": "attempt 1 by the-one-session",
+                "summary": (
+                    "the independent adjudication did not settle the phase: the "
+                    f"adjudication could not determine {REVIEW_CRITERION}"
+                ),
+            }
+        )
+        path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+        reopened = controller(repo, store=store)
+        assert reopened.load() is not None
+
+        record = reopened.record
+        assert REVIEW_CRITERION in record.independent_review_criterion_ids
+        assert REVIEW_CRITERION in record.gate_criterion_ids
+        assert status(reopened, REVIEW_CRITERION) is CriterionEvidenceStatus.ESTABLISHED
+        assert not reopened._adjudication_outstanding()
+        assert record.adjudication.reviewer_session_id == "the-one-session"
+        assert record.adjudication.result_for(REVIEW_CRITERION).verdict == "CANNOT_DETERMINE"
+        assert record.adjudication_history == [] or all(
+            a.reviewer_session_id == "the-one-session" for a in record.adjudication_history
+        )
+        assert incomplete_findings(reopened) == []
+        withdrawn = record.finding("P9-ADJUDICATION-INCOMPLETE")
+        assert withdrawn is not None and withdrawn.withdrawn
+        assert any("closure rule 4 -> 5" in line for line in record.history + record.notes)
+        assert record.state is ClosureState.READY_FOR_ACCEPTANCE_COMMIT

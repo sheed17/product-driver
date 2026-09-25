@@ -822,9 +822,12 @@ REVIEW_NAMES = [
     "phase_reviewed_by_a_session_outside_the_build",
     "non_builder_sign_off",
     "IndependentPhaseReview",
+    "acceptance_supplied_from_outside_build_lineage",
 ]
 ORDINARY_NAMES = [
     "reviewer_ui_shows_independent_totals",
+    "acceptance_supplied_from_build_lineage",
+    "importer_accepts_outside_build_artifact",
     "independent_tenant_isolation",
     "code_review_comments_rendered",
     "fresh_data_review_screen",

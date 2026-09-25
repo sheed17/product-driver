@@ -23,7 +23,11 @@ sign-off) is performed *by someone other than the builder*: an independence
 qualifier attached to the review noun ("independent review", "independent
 phase review", "non-builder sign-off"), a review attributed to such a party
 ("review by a non builder", "reviewed by a session outside the build"), or a
-final adjudication. The words must be attached to each other. A criterion that
+final adjudication. It is one, too, when its identifier says the phase's
+ACCEPTANCE is supplied, established or adjudicated from such a party
+("acceptance supplied from outside the build lineage", "phase accepted by a
+fresh session") — the same gate, named for what it produces rather than for
+the act. The words must be attached to each other. A criterion that
 merely contains both words somewhere — "reviewer UI shows independent totals" —
 is about a screen, and stays an implementation criterion.
 
@@ -189,6 +193,129 @@ def _qualified_review(words: list[str]) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------
+# Acceptance supplied from outside the build lineage — the same gate, without
+# the review noun
+# --------------------------------------------------------------------------
+#
+# "acceptance supplied from outside the build lineage" says exactly what
+# "independent phase review" says — only a session the builder did not produce
+# may award the phase — and it names no review, adjudication or sign-off. Read
+# by the review-noun rule alone it was an implementation criterion, so the
+# reviewer was asked to score how Product Driver had constructed it, and an
+# honest CANNOT_DETERMINE refused the phase.
+#
+# The rule is the review rule's shape with the phase's acceptance as the thing
+# being supplied: the ACCEPTANCE, optionally a verb saying it is supplied, the
+# preposition naming its source, and a source that is a party OUTSIDE the build
+# lineage. Every link is attached to the next; nothing is found by collecting
+# words from anywhere in the identifier.
+
+#: The thing supplied. "accepted" counts only after a scope word — "phase
+#: accepted by …" is the phase's acceptance, "importer accepted …" is not.
+_ACCEPTANCE_NOUNS = frozenset({"acceptance"})
+_ACCEPTED_VERBS = frozenset({"accepted"})
+_ACCEPTED_SUBJECTS = frozenset({"phase", "unit", "checkpoint", "milestone"})
+
+#: Verbs (and auxiliaries) allowed between the acceptance and its source:
+#: "acceptance SUPPLIED from", "phase acceptance IS ESTABLISHED by".
+_SUPPLY_VERBS = frozenset(
+    {
+        "supplied",
+        "supply",
+        "supplies",
+        "established",
+        "establish",
+        "adjudicated",
+        "awarded",
+        "granted",
+        "given",
+        "provided",
+        "conferred",
+        "decided",
+        "issued",
+        "performed",
+        "obtained",
+        "made",
+        "is",
+        "was",
+        "be",
+        "been",
+        "only",
+    }
+)
+
+_SOURCE_PREPOSITIONS = frozenset({"from", "by"})
+
+#: What may sit between the preposition and the qualifier, and between the
+#: qualifier and the party: "from OUTSIDE OF THE PHASE build lineage".
+_SOURCE_FILLERS = (_FILLERS | {"of", "the"} | _SCOPE_WORDS) - {"session", "sessions", "party"}
+
+#: A party that is a session or a lineage, whatever qualifies it: "a fresh
+#: session", "an independent lineage", "an outside party".
+_PARTY_NOUNS = frozenset(
+    {"session", "sessions", "party", "lineage", "lineages", "reviewer", "reviewers"}
+)
+#: The build side of the lineage. Outside it is independence; a "fresh build"
+#: or an "external build" is an artifact, so these count only after "outside",
+#: and only when what follows is the lineage itself rather than a thing built.
+_BUILD_NOUNS = frozenset({"build", "builder", "builders", "building", "remediation"})
+_LINEAGE_TAILS = frozenset(
+    {"lineage", "lineages", "session", "sessions", "loop", "chain", "context", "conversation"}
+)
+
+
+def _outside_party(words: list[str], start: int) -> bool:
+    """Whether ``words[start:]`` names a party outside the build lineage."""
+    index = start
+    while index < len(words) and words[index] in _SOURCE_FILLERS:
+        index += 1
+    # "by a SESSION outside the build lineage": the party named first, then
+    # the qualifier that places it.
+    if index < len(words) - 1 and words[index] in {"session", "sessions", "party"}:
+        index += 1
+    if index >= len(words):
+        return False
+    qualifier = words[index]
+    if qualifier == "nonbuilder":
+        return True
+    if qualifier not in _INDEPENDENCE:
+        return False
+    index += 1
+    while index < len(words) and words[index] in _SOURCE_FILLERS:
+        index += 1
+    if index >= len(words):
+        return False
+    party = words[index]
+    if party in _PARTY_NOUNS:
+        return True
+    if party in _BUILD_NOUNS:
+        tail = words[index + 1 : index + 2]
+        if tail and tail[0] in _LINEAGE_TAILS:
+            return True
+        return qualifier == "outside" and not tail
+    return False
+
+
+def _acceptance_from_outside(words: list[str]) -> bool:
+    for index, word in enumerate(words):
+        if word in _ACCEPTANCE_NOUNS:
+            pass
+        elif word in _ACCEPTED_VERBS and index > 0 and words[index - 1] in _ACCEPTED_SUBJECTS:
+            pass
+        else:
+            continue
+        cursor = index + 1
+        verbs = 0
+        while cursor < len(words) and words[cursor] in _SUPPLY_VERBS and verbs < 3:
+            cursor += 1
+            verbs += 1
+        if cursor < len(words) and words[cursor] in _SOURCE_PREPOSITIONS:
+            if _outside_party(words, cursor + 1):
+                return True
+    return False
+
+
 def is_independent_review_criterion(criterion_id: str = "", name: str = "") -> bool:
     """Whether only a session outside the build lineage may award this criterion.
 
@@ -196,7 +323,8 @@ def is_independent_review_criterion(criterion_id: str = "", name: str = "") -> b
     for the rule and why it is a rule about attached words rather than a list
     of names.
     """
-    return _qualified_review(_words(criterion_id, name))
+    words = _words(criterion_id, name)
+    return _qualified_review(words) or _acceptance_from_outside(words)
 
 
 # --------------------------------------------------------------------------

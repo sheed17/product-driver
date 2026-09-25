@@ -120,7 +120,15 @@ CLOSURE_FILE = "phase-closure.json"
 #:    independence and a record could sit BLOCKED on a mechanically valid
 #:    adjudication. The migration re-derives the gate evidence and the
 #:    statements made about it, and it launches nothing.
-CLOSURE_RULE_VERSION = "4"
+#: 5: a criterion saying the phase's ACCEPTANCE is supplied from outside the
+#:    build lineage is the independent-review gate's, even when its identifier
+#:    names no review — see :mod:`~neyma_product_driver.criterion_kinds`. Under
+#:    rule 4 such a criterion was an implementation criterion, so the reviewer
+#:    scored its own independence again by another name. The persisted gate
+#:    lists were written by the rule-4 vocabulary, so the migration re-derives
+#:    them from the frozen criteria, attaches the independent-review evidence
+#:    the criterion never received, and launches nothing.
+CLOSURE_RULE_VERSION = "5"
 
 
 # --------------------------------------------------------------------------
@@ -1212,6 +1220,8 @@ class PhaseClosureController:
         if record.decision_rule_version == CLOSURE_RULE_VERSION:
             return
         previous = record.decision_rule_version or "(unversioned)"
+        # Who owns which criterion first, because everything below reads it.
+        reclassified = self._rederive_gate_classification()
         changed = self._rederive_findings()
         # The review criteria too. Under rule 2 an adjudication that answered
         # nothing was still recorded as an OBSERVATION of the criterion that
@@ -1220,7 +1230,7 @@ class PhaseClosureController:
         # a review that never happened. Re-derived from the same stored
         # adjudication, so a run reopens eligible for an adjudication instead of
         # needing its evidence edited by hand.
-        repointed = self._refresh_adjudication_evidence()
+        repointed = self._refresh_adjudication_evidence(attach=reclassified)
         # Rule 2's own sentence about the adjudication. It wrote exactly one,
         # under a fixed id, about whatever adjudication the record carried — so
         # it is stamped with that subject here and then retired by the ordinary
@@ -1248,6 +1258,11 @@ class PhaseClosureController:
             f"closure rule {previous} -> {CLOSURE_RULE_VERSION}: "
             f"{len(changed)} of {len(record.findings)} findings re-derived"
             + (
+                f", and {', '.join(reclassified)} re-classified as independent review"
+                if reclassified
+                else ""
+            )
+            + (
                 f", and the review evidence for {', '.join(repointed)} re-derived"
                 if repointed
                 else ""
@@ -1257,6 +1272,30 @@ class PhaseClosureController:
             record.note(f"  re-derived: {line}")
         if record.state is not ClosureState.NOT_STARTED:
             self.decide()
+
+    def _rederive_gate_classification(self) -> list[str]:
+        """Re-read which gate owns each frozen criterion under the current rule.
+
+        The persisted gate lists were written by whatever vocabulary froze the
+        attempt, and a resume reads them before it has re-read the repository.
+        A criterion the current rule gives to a gate is added to them; nothing
+        is removed, because narrowing a gate mid-attempt would hand a reviewer
+        authority the attempt never gave it. Returns the criteria newly given
+        to the independent-review gate.
+        """
+        record = self.record
+        owners = gate_owned(record.criteria)
+        known_review = set(record.independent_review_criterion_ids)
+        added = [
+            cid
+            for cid, kind in owners.items()
+            if kind is CriterionKind.INDEPENDENT_REVIEW and cid not in known_review
+        ]
+        record.independent_review_criterion_ids = _dedupe_ids(
+            [*record.independent_review_criterion_ids, *added]
+        )
+        record.gate_criterion_ids = sorted(set(record.gate_criterion_ids) | set(owners))
+        return added
 
     def _rederive_findings(self) -> list[str]:
         """Re-run the whole rule over every stored finding. Returns what moved."""
@@ -2720,7 +2759,7 @@ class PhaseClosureController:
             record.note(f"withdrawn, and kept: {finding_id} — a later adjudication replaced it")
         return retired
 
-    def _refresh_adjudication_evidence(self) -> list[str]:
+    def _refresh_adjudication_evidence(self, *, attach: Sequence[str] = ()) -> list[str]:
         """Re-point the review criteria at what the stored adjudication is worth.
 
         The persisted ``independent_review_criterion_ids`` rather than the live
@@ -2731,6 +2770,12 @@ class PhaseClosureController:
         Only refs this module wrote, and never a stale one: evidence retired by
         a tree movement stays retired, because whether it described the product
         is a question the tree already answered.
+
+        ``attach`` names criteria a migration has just given to this gate. They
+        were never treated as review criteria, so they carry no review evidence
+        at all; each receives the ref :meth:`_attach_gate_evidence` would have
+        written, at the attempt's own candidate tree. A criterion that already
+        has review evidence — live or stale — is left to the rule above.
         """
         record = self.record
         ids = [
@@ -2749,6 +2794,26 @@ class PhaseClosureController:
         taken = bool(adjudication is not None and adjudication.taken(record.criteria)[0])
         changed: list[str] = []
         for cid in ids:
+            if cid in attach and not any(
+                ref.kind is EvidenceKind.REVIEW for ref in record.evidence.for_criterion(cid)
+            ):
+                record.evidence.add(
+                    EvidenceRef(
+                        criterion_id=cid,
+                        kind=EvidenceKind.REVIEW,
+                        locator=(
+                            adjudication.reviewer_session_id
+                            if adjudication is not None
+                            else "(no adjudication taken)"
+                        ),
+                        observed=taken,
+                        established=taken,
+                        observed_at_tree=record.fingerprint().identity,
+                        detail=self._gate_evidence_detail(cid),
+                    )
+                )
+                changed.append(cid)
+                continue
             detail = self._gate_evidence_detail(cid)
             for ref in record.evidence.for_criterion(cid):
                 if ref.kind is not EvidenceKind.REVIEW or ref.stale:
